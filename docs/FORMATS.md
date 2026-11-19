@@ -104,6 +104,10 @@ Optional label
 - `#id` is optional and stable; animations, links and tools refer to it. Without an id an object is addressed by its order.
 - Attributes: `x y w h` (px), `rotate` (degrees), `z` (stacking, default 0), `fill`, `color` (text), `radius`, `border`, `stroke`, `opacity` (0..1). Images take them in curly braces after the image; `crop=x,y,w,h` is the visible part as fractions of the picture; `fit=cover|contain`. Unknown attributes are kept.
 - Text attributes (boxes and shape labels): `font` (`sans`, `serif`, `mono`, `rounded` or a font name), `size` (px), `color`, `align` (`left`, `center`, `right`, `justify`), `valign` (`top`, `middle`, `bottom`), `line` (line height, e.g. `1.4`), `fit=shrink` (shrink text until it fits). Bold, italic, lists, headings and links are ordinary Markdown in the body.
+- Lines and connectors: `::: line #id x=100 y=100 w=300 h=0 head=arrow :::` draws from (x, y) to (x+w, y+h); `w` and `h` may be negative. `from=` and `to=` attach an end to another object by id, optionally with a side (`from=a.right to=b.left`); without a side Folio picks the facing sides, and the line follows when the objects move. Options: `head=arrow`, `tail=arrow`, `stroke=#111`, `width=3`, `dash=true`, `route=elbow`.
+- Icons: `::: icon #id name=rocket x= y= w= h= color=#111 weight=2 :::` (any [Lucide](https://lucide.dev) icon name).
+- Video and audio: `::: media #id src=assets/clip.mp4 x= y= w= h= poster=assets/still.jpg loop=true muted=true :::`.
+- Tables, charts, equations and code are boxes with a Markdown table, a ` ```chart ` block, `$$ … $$` or a code block inside.
 - Arrange attributes: `group=name` (objects with the same group are selected and moved together), `lock=true` (cannot be selected on the canvas).
 - Only top-level objects are placed. Containers nested in a box (`::: note`, `::: card`) are ordinary content. Objects inside code fences are text.
 - Editing the canvas rewrites only the opener line (or the image line) of the moved object. Everything else is untouched.

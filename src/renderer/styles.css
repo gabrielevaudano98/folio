@@ -947,3 +947,24 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .st-links:hover { background: var(--color-hover); color: var(--color-ink); }
 .st-links:focus-visible { outline: 2px solid var(--color-ink); }
 .st-links[hidden] { display: none; }
+.sl-end { position: absolute; z-index: 8; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--color-paper); border: 2px solid var(--color-ink); cursor: crosshair; touch-action: none; }
+.sl-end.is-snapped { background: var(--color-ink); }
+.sl-frame .sl-line { cursor: move; }
+.sl-frame .sl-line:hover { outline: none; }
+
+/* insert gallery */
+.sl-gallery { position: absolute; top: 12px; left: 12px; z-index: 9; width: 360px; max-height: calc(100% - 24px); overflow: auto; padding: 10px; border-radius: var(--radius-lg); background: var(--color-chrome); backdrop-filter: blur(20px); box-shadow: var(--shadow-pop); }
+.sl-gallery[hidden] { display: none; }
+.slg-head { font-weight: 600; font-size: 13px; padding: 2px 4px 8px; }
+.slg-sub { font-weight: 400; color: var(--color-muted); font-size: 12px; margin-left: 4px; }
+.slg-group { font-size: 12px; color: var(--color-muted); padding: 8px 4px 4px; }
+.slg-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.slg-item { aspect-ratio: 1; display: grid; place-items: center; padding: 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-ink); cursor: pointer; }
+.slg-item:hover { background: var(--color-hover); }
+.slg-item:focus-visible { outline: 2px solid var(--color-ink); outline-offset: -2px; }
+.slg-item svg { width: 100%; height: 100%; overflow: visible; }
+.slg-shape { fill: var(--color-paper-2); stroke: var(--color-ink); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.slg-item .b-line { fill: none; stroke: var(--color-ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.slg-search { width: 100%; margin-bottom: 8px; }
+.slg-icons .slg-item { padding: 8px; }
+.slg-empty { grid-column: 1 / -1; color: var(--color-muted); font-size: 12.5px; margin: 6px 4px; }

@@ -7,7 +7,7 @@ import mark from 'markdown-it-mark';
 import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
-import { extractObjects, geometry, textStyle } from './slides-objects.js';
+import { extractObjects, geometry, textStyle, linePoints, linePath } from './slides-objects.js';
 import { shapeSvg } from './board-core.js';
 import { refsPlugin } from './refs-syntax.js';
 
@@ -143,8 +143,10 @@ export function renderSlide(deck, s, { number = true } = {}) {
   const full = bgs.filter((b) => !b.side), side = bgs.filter((b) => b.side);
   const sideW = side[0]?.size || 50;
   const html = DOMPurify.sanitize(md.render(s.content), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+  const byId = Object.fromEntries((s.objects || []).filter((o) => o.id && o.kind !== 'line').map((o) => [o.id, geometry(o)]));
   const placed = (s.objects || []).map((o, n) => {
     const g = geometry(o);
+    if (o.kind === 'line') return lineHtml(o, n, byId);
     const st = [`left:${g.x}px`, `top:${g.y}px`, `width:${g.w}px`, `height:${g.h}px`, `z-index:${10 + g.z}`];
     if (g.rotate) st.push(`transform:rotate(${g.rotate}deg)`);
     if (g.opacity != null) st.push(`opacity:${g.opacity}`);
@@ -163,6 +165,14 @@ export function renderSlide(deck, s, { number = true } = {}) {
     if (o.kind === 'box') st.push(...ts);
     if (a.border) st.push(`border:${parseFloat(a.border) || 1}px solid ${escape(a.stroke || 'currentColor')}`);
     const inner = DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+    if (o.kind === 'icon') {
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><span class="sl-icon-svg" data-icon="${escape(a.name || 'circle')}" data-sw="${escape(a.weight || '2')}"></span></div>`;
+    }
+    if (o.kind === 'media') {
+      const audio = /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(a.src || '');
+      const opts = `${a.loop === 'true' ? ' loop' : ''}${a.muted === 'true' ? ' muted' : ''}${a.autoplay === 'true' ? ' data-autoplay="1"' : ''}`;
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${audio ? `<audio class="sl-media-el" controls preload="metadata" data-src="${escape(a.src || '')}"${opts}></audio>` : `<video class="sl-media-el" controls preload="metadata" playsinline data-src="${escape(a.src || '')}"${a.poster ? ` data-poster="${escape(a.poster)}"` : ''}${opts}></video>`}</div>`;
+    }
     if (o.kind === 'shape') {
       const svg = shapeSvg({ shape: a.type || 'rect', w: g.w, h: g.h, style: { fill: a.fill } }, 'sl-shape-fill');
       return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}">${svg}</svg><div class="sl-obj-text" style="${ts.join(';')}">${inner}</div></div>`;
@@ -180,6 +190,20 @@ export function renderSlide(deck, s, { number = true } = {}) {
     ${e.footer ? `<footer class="sl-footer">${escape(e.footer)}</footer>` : ''}
     ${number && e.paginate === 'true' ? `<span class="sl-num">${s.index + 1}</span>` : ''}
   </section>`;
+}
+
+function lineHtml(o, n, byId) {
+  const a = o.attrs; const g = geometry(o);
+  const pts = linePoints(o, byId); const [[x1, y1], [x2, y2]] = pts;
+  const pad = 16, sw = parseFloat(a.width) || 3;
+  const bx = Math.min(x1, x2) - pad, by = Math.min(y1, y2) - pad, bw = Math.abs(x2 - x1) + pad * 2, bh = Math.abs(y2 - y1) + pad * 2;
+  const color = escape(a.stroke || 'currentColor');
+  const d = linePath(pts, a.route);
+  const head = (tip, from) => { const ang = Math.atan2(tip[1] - from[1], tip[0] - from[0]); const L = 6 + sw * 3, W = 3 + sw * 1.6; const p = (dx, dy) => `${tip[0] - Math.cos(ang) * dx + Math.sin(ang) * dy},${tip[1] - Math.sin(ang) * dx - Math.cos(ang) * dy}`; return `<polygon points="${tip[0]},${tip[1]} ${p(L, W)} ${p(L, -W)}" fill="${color}"/>`; };
+  const seg = a.route === 'elbow' ? [[(x1 + x2) / 2, y2], [(x1 + x2) / 2, y1]] : [[x1, y1], [x2, y2]];
+  const heads = (/arrow/.test(a.head || '') ? head([x2, y2], seg[0]) : '') + (/arrow/.test(a.tail || '') ? head([x1, y1], seg[1]) : '');
+  const dash = a.dash === 'true' ? ` stroke-dasharray="${sw * 3} ${sw * 2}"` : '';
+  return `<div class="sl-obj sl-line${['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase()) ? ' is-locked' : ''}${a.from || a.to ? ' is-connector' : ''}" data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''} data-x1="${x1}" data-y1="${y1}" data-x2="${x2}" data-y2="${y2}" style="left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px;z-index:${10 + g.z}"><svg width="${bw}" height="${bh}" viewBox="${bx} ${by} ${bw} ${bh}"><path class="sl-line-hit" d="${d}"/><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash}/>${heads}</svg></div>`;
 }
 
 /* ---------- synced copies ---------- */

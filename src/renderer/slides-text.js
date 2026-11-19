@@ -5,13 +5,14 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
 import Highlight from '@tiptap/extension-highlight';
+import { TableKit } from '@tiptap/extension-table';
 
 export function startTextEdit({ el, body, onChange, onEnd, onLink, barSelector = '.sl-fmtbar' }) {
   el.innerHTML = ''; el.dataset.editing = '1'; el.classList.add('is-editing');
   let timer, ended = false;
   const editor = new Editor({
     element: el,
-    extensions: [StarterKit.configure({ link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener' } }, codeBlock: false }), Markdown.configure({ markedOptions: { gfm: true } }), Highlight],
+    extensions: [StarterKit.configure({ link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener' } }, codeBlock: false }), Markdown.configure({ markedOptions: { gfm: true } }), Highlight, TableKit.configure({ table: { resizable: false } })],
     content: body, contentType: 'markdown', autofocus: 'end',
     editorProps: { attributes: { class: 'sl-prose', spellcheck: 'true', 'aria-label': 'Slide text. Escape to finish.' } },
     onUpdate: () => { clearTimeout(timer); timer = setTimeout(() => onChange(editor.getMarkdown()), 180); },

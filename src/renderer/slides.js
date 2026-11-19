@@ -4,6 +4,7 @@ import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
 import { mountCanvas } from './slides-canvas.js';
+import { LIBRARY, shapeSvg, defaultSize } from './board-core.js';
 import { startTextEdit } from './slides-text.js';
 import { scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
 
@@ -15,7 +16,7 @@ export function mountSlides(host, ctx) {
     <div class="sf-toolbar" role="toolbar" aria-label="Slides">
       <button class="btn" type="button" data-sl="add">${icons.plus} New slide</button>
       <button class="btn" type="button" data-sl="box" title="Add a text box you can place anywhere">${icons.plus} Text box</button>
-      <button class="btn" type="button" data-sl="shape" title="Add a shape you can place anywhere">${icons.plus} Shape</button>
+      <button class="btn" type="button" data-sl="insert" aria-haspopup="menu" title="Insert shapes, lines, images, tables, charts, icons, media">${icons.plus} Insert</button>
       <button class="btn" type="button" data-sl="arrange" aria-haspopup="menu" title="Align, distribute, order, group, lock">Arrange</button>
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
       <label class="sf-check"><input type="checkbox" data-sl-grid> Grid</label>
@@ -50,6 +51,7 @@ export function mountSlides(host, ctx) {
       <div class="sl-center">
         <div class="sl-layers" hidden aria-label="Objects on this slide"></div>
         <div class="sl-sync" role="status" hidden></div>
+        <div class="sl-gallery" role="dialog" aria-label="Insert" hidden></div>
         <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
         <div class="sl-edit">
           <div class="sl-edit-col"><div class="sl-edit-head"><span>Slide ${'<b class="sl-cur">1</b>'} content</span><span class="sl-hint">Markdown. <code>::: left</code> / <code>::: right</code>, <code>::: card</code>, <code>![bg right](img)</code></span></div><div class="sl-cm"></div></div>
@@ -86,6 +88,8 @@ export function mountSlides(host, ctx) {
 
   function hydrate(root) {
     if (root.querySelector('.chart-block[data-spec]')) hydrateCharts(root, ctx.readNote);
+    if (root.querySelector('.sl-icon-svg')) import('./slides-icons.js').then(({ hydrateIcons }) => hydrateIcons(root));
+    for (const m of root.querySelectorAll('.sl-media-el[data-src]')) { const src = m.dataset.src; const set = (u) => { if (u) m.src = u; }; if (/^(https?:|data:|file:)/.test(src)) set(src); else Promise.resolve(ctx.resolveImage(src)).then(set); if (m.dataset.poster) Promise.resolve(ctx.resolveImage(m.dataset.poster)).then((u) => u && (m.poster = u)); }
     if (root.querySelector('[data-ref]') && ctx.refEnv) import('./refs.js').then(({ hydrateRefs }) => hydrateRefs(root, ctx.refEnv()));
     for (const img of root.querySelectorAll('img[data-src]')) {
       const src = img.dataset.src;
@@ -363,6 +367,107 @@ export function mountSlides(host, ctx) {
     try { const src = await sourceOf(ref); const { fm, list } = chunks(); list.splice(cur + 1, 0, syncedCopy(ref, src)); cur += 1; commit(joinDeck(fm, list)); ctx.toast('Added a synced copy. It will offer to update when the source changes.'); }
     catch (e) { ctx.toast(e.message, { kind: 'error' }); }
   }
+  /* insert (P5) */
+  const gallery = host.querySelector('.sl-gallery');
+  function placeBlock(make, w = 360, h = 160) {
+    const { fm, list } = chunks();
+    const n = scanObjects(list[cur]).length;
+    const x = Math.round(deck.width / 2 - w / 2 + (n % 6) * 24), y = Math.round(deck.height / 2 - h / 2 + (n % 6) * 24);
+    list[cur] = addObject(list[cur], make({ x, y, w, h, id: (kind) => nextId(list[cur], kind) }));
+    selected = [scanObjects(list[cur]).length - 1];
+    commit(joinDeck(fm, list));
+  }
+  const box = (body, w = 520, h = 260, extra = '') => placeBlock(({ x, y, id }) => `::: box #${id('box')} x=${x} y=${y} w=${w} h=${h}${extra}\n${body}\n:::`, w, h);
+  function closeGallery() { gallery.hidden = true; gallery.innerHTML = ''; }
+  gallery.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeGallery(); stage.focus(); } });
+  document.addEventListener('pointerdown', (e) => { if (!gallery.hidden && !gallery.contains(e.target) && !e.target.closest('[data-sl="insert"]')) closeGallery(); });
+
+  function shapeGallery() {
+    const seen = new Set(); const groups = LIBRARY.filter(([g]) => ['General', 'Flowchart', 'Architecture'].includes(g)).map(([g, items]) => [g, items.filter(([sh]) => !seen.has(sh) && seen.add(sh))]);
+    gallery.innerHTML = `<div class="slg-head">Shapes</div>` + groups.map(([g, items]) => `<div class="slg-group">${esc(g)}</div><div class="slg-grid">${items.map(([sh, label]) => `<button type="button" class="slg-item" data-shape="${sh}" title="${esc(label)}" aria-label="${esc(label)}"><svg viewBox="-4 -4 ${defaultSize(sh)[0] + 8} ${defaultSize(sh)[1] + 8}">${shapeSvg({ shape: sh, w: defaultSize(sh)[0], h: defaultSize(sh)[1], style: {} }, 'slg-shape')}</svg></button>`).join('')}</div>`).join('');
+    gallery.hidden = false; gallery.querySelector('button')?.focus();
+    gallery.onclick = (e) => {
+      const b = e.target.closest('[data-shape]'); if (!b) return; const sh = b.dataset.shape; closeGallery();
+      const [dw, dh] = defaultSize(sh); const k2 = Math.max(1, 200 / Math.max(dw, dh));
+      const w = Math.round(dw * k2), h = Math.round(dh * k2);
+      placeBlock(({ x, y, id }) => `::: shape #${id('shape')} type=${sh} x=${x} y=${y} w=${w} h=${h} fill=#e8e8e8\n\n\n:::`, w, h);
+    };
+  }
+  async function iconGallery() {
+    const { searchIcons, iconSvg } = await import('./slides-icons.js');
+    gallery.innerHTML = `<div class="slg-head">Icons <span class="slg-sub">Lucide</span></div><input class="input slg-search" type="search" placeholder="Search icons, e.g. rocket, chart, user" aria-label="Search icons"><div class="slg-grid slg-icons" role="listbox" aria-label="Icons"></div>`;
+    gallery.hidden = false;
+    const grid = gallery.querySelector('.slg-icons'), q = gallery.querySelector('.slg-search');
+    let seq = 0;
+    const show = async () => {
+      const n = ++seq; const names = await searchIcons(q.value, 96);
+      const svgs = await Promise.all(names.map((nm) => iconSvg(nm, 2)));
+      if (n !== seq) return;
+      grid.innerHTML = names.length ? names.map((nm, i) => `<button type="button" class="slg-item" data-icon="${nm}" title="${nm}" aria-label="${nm}">${svgs[i]}</button>`).join('') : '<p class="slg-empty">No icon matches.</p>';
+    };
+    q.addEventListener('input', show); await show(); q.focus();
+    gallery.onclick = (e) => {
+      const b = e.target.closest('[data-icon]'); if (!b) return; closeGallery();
+      placeBlock(({ x, y, id }) => `::: icon #${id('icon')} name=${b.dataset.icon} x=${x} y=${y} w=120 h=120 :::`, 120, 120);
+    };
+  }
+  async function insertImage() {
+    const src = await ctx.pickImage?.(); if (!src) return;
+    const url = await ctx.resolveImage(src);
+    const dim = await new Promise((res) => { const im = new Image(); im.onload = () => res([im.naturalWidth, im.naturalHeight]); im.onerror = () => res([800, 600]); im.src = url; });
+    const k2 = Math.min(1, 640 / dim[0], 420 / dim[1]); const w = Math.round(dim[0] * k2), h = Math.round(dim[1] * k2);
+    placeBlock(({ x, y }) => `![${src.split('/').pop().replace(/^[a-z0-9]+-/, '').replace(/\.\w+$/, '')}](${src}){x=${x} y=${y} w=${w} h=${h}}`, w, h);
+  }
+  async function insertMedia() {
+    const src = await ctx.pickMedia?.(); if (!src) return;
+    const audio = /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(src);
+    const [w, h] = audio ? [480, 64] : [640, 360];
+    placeBlock(({ x, y, id }) => `::: media #${id('media')} src=${src} x=${x} y=${y} w=${w} h=${h} :::`, w, h);
+  }
+  async function insertChart() {
+    const t = await ctx.pickRef?.({ kind: 'embed' }); if (!t) return;
+    const { parseRef, resolveTarget, docKind } = await import('./refs-syntax.js');
+    const { target, part } = parseRef(t.replace(/^!?\[\[|\]\]$/g, '').replace(/^\{\{|\}\}$/g, ''));
+    const env = ctx.refEnv(); const path = resolveTarget(target, env.files, env.from);
+    if (!path || docKind(path) !== 'sheet') return ctx.toast('Choose a sheet and a range, for example Costs!A1:E5.');
+    const bang = part.lastIndexOf('!'); const sheet = bang >= 0 ? part.slice(0, bang).replace(/^'|'$/g, '') : ''; const range = bang >= 0 ? part.slice(bang + 1) : part;
+    if (!/:/.test(range)) return ctx.toast('A chart needs a range of cells, for example A1:E5.');
+    box(`\`\`\`chart\ntype: column\nsource: /${path}\n${sheet ? `sheet: ${sheet}\n` : ''}range: ${range}\n\`\`\``, 640, 380);
+  }
+  async function insertRefBox(kind) {
+    const t = await ctx.pickRef?.({ kind }); if (!t) return;
+    if (kind === 'value') box(`# ${t}`, 360, 140, ' align=center valign=middle');
+    else box(t, 560, 340);
+  }
+  function insertMenu(anchor) {
+    const line = (extra, w, h) => placeBlock(({ x, y, id }) => `::: line #${id('line')} x=${x} y=${y + h} w=${w} h=0${extra} :::`, w, h);
+    ctx.showMenu(anchor, [
+      { label: 'Text box', run: () => addObjectBlock('box') },
+      { label: 'Shape…', run: shapeGallery },
+      { label: 'Icon…', run: iconGallery }, '-',
+      { label: 'Line', run: () => line('', 320, 0) },
+      { label: 'Arrow', run: () => line(' head=arrow', 320, 0) },
+      { label: 'Connector between two objects', run: connectSelected, disabled: selected.length !== 2 }, '-',
+      { label: 'Image…', run: insertImage },
+      { label: 'Video or audio…', run: insertMedia },
+      { label: 'Table', run: () => box('| Item | Value |\n| --- | --- |\n| One | 1 |\n| Two | 2 |', 560, 220) },
+      { label: 'Chart from a sheet…', run: insertChart },
+      { label: 'Equation', run: () => box('$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$', 480, 160, ' align=center valign=middle') },
+      { label: 'Code', run: () => box('```js\nconst answer = 42;\n```', 520, 200) }, '-',
+      { label: 'Live value from another document…', run: () => insertRefBox('value') },
+      { label: 'Embed from another document…', run: () => insertRefBox('embed') },
+    ]);
+  }
+  function connectSelected() {
+    const objs = objsNow(); const [a, b] = selected.map((i) => objs[i]);
+    if (!a || !b || a.kind === 'line' || b.kind === 'line') return ctx.toast('Select two objects (not lines) to connect.');
+    const { fm, list } = chunks(); let t = list[cur];
+    const ensure = (i) => { const o = scanObjects(t)[i]; if (o.id) return o.id; const nid = nextId(t, o.kind === 'image' ? 'image' : o.kind); t = setObjectAttrs(t, i, { id: nid }); return nid; };
+    const ia = ensure(selected[0]), ib = ensure(selected[1]);
+    t = addObject(t, `::: line #${nextId(t, 'line')} from=${ia} to=${ib} head=arrow :::`);
+    list[cur] = t; selected = [scanObjects(t).length - 1]; commit(joinDeck(fm, list));
+  }
+
   function restore(from, to) {
     if (!from.length) return;
     to.push(text); restoring = true; commit(from.pop()); restoring = false;
@@ -378,7 +483,7 @@ export function mountSlides(host, ctx) {
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); restore(redo, undo); }
   });
   host.querySelector('[data-sl="box"]').addEventListener('click', () => addObjectBlock('box'));
-  host.querySelector('[data-sl="shape"]').addEventListener('click', () => addObjectBlock('shape'));
+  host.querySelector('[data-sl="insert"]').addEventListener('click', (e) => insertMenu(e.currentTarget));
 
   /* events */
   thumbs.addEventListener('click', (e) => { const li = e.target.closest('[data-i]'); if (li) select(Number(li.dataset.i)); });
@@ -459,6 +564,7 @@ export function mountSlides(host, ctx) {
     const box = document.createElement('div');
     box.innerHTML = deck.slides.map((s) => renderSlide(deck, s)).join('');
     await hydrateCharts(box, ctx.readNote);
+    if (box.querySelector('.sl-icon-svg')) { const { hydrateIcons } = await import('./slides-icons.js'); await hydrateIcons(box); }
     if (ctx.refEnv) { const { hydrateRefs } = await import('./refs.js'); await hydrateRefs(box, ctx.refEnv()); }
     await Promise.all([...box.querySelectorAll('img')].map(async (img) => {
       const src = img.dataset.src || img.getAttribute('src') || '';

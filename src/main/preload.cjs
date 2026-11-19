@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('folio', {
   saveImage: (note, name, bytes) => call('fs:save-image', note, name, bytes),
   absUrl: (p) => call('fs:abs-url', p),
   pickImage: (note) => call('fs:pick-image', note),
+  pickMedia: (note) => call('fs:pick-media', note),
   openExternal: (u) => call('shell:open', u),
   copy: (t) => call('clipboard:write', t),
   exportHtml: (p, html) => call('export:html', p, html),

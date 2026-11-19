@@ -7,7 +7,7 @@
 // Pure text functions. Every edit rewrites only the opener line (or the one image line) of one object, so the rest of
 // the slide, and every other slide, keeps its bytes.
 
-const KINDS = ['box', 'shape'];
+export const KINDS = ['box', 'shape', 'line', 'icon', 'media'];
 const NUM = ['x', 'y', 'w', 'h', 'rotate', 'z', 'radius', 'opacity'];
 
 /** `#id x=1 fill="#fff" alt="a b"` → { id, attrs, tokens } */
@@ -41,7 +41,7 @@ export function patchTokens(tokens, patch) {
   return out;
 }
 
-const OPEN = /^(\s*):::\s*(box|shape)\b(.*)$/;
+const OPEN = /^(\s*):::\s*(box|shape|line|icon|media)\b(.*)$/;
 const SELF = /\s:::\s*$/;
 const IMG = /^(\s*)!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)\{([^}]*)\}\s*$/;
 
@@ -237,6 +237,33 @@ export function textStyle(a) {
 
 /** can the on-canvas text editor round-trip this body without losing anything? */
 export function inlineSafe(body) {
-  return !(/^\s*:::/m.test(body) || /^\s*(```|~~~)/m.test(body) || /!\[/.test(body) || /^\s*\|.*\|\s*$/m.test(body)
+  return !(/^\s*:::/m.test(body) || /^\s*(```|~~~)/m.test(body) || /!\[/.test(body)
     || /<\/?[a-zA-Z]/.test(body) || /\[\[|\{\{|\[\^|\$\$/.test(body) || /^\s*\[.+\]:\s*\S/m.test(body));
+}
+
+/* ---------- lines and connectors (P5) ----------
+   ::: line #id x=100 y=100 w=300 h=0 head=arrow :::      from (x,y) to (x+w, y+h); w and h may be negative
+   ::: line #id from=a.right to=b.left head=arrow :::     a connector that follows objects a and b */
+const PORT = { top: [0.5, 0], right: [1, 0.5], bottom: [0.5, 1], left: [0, 0.5], center: [0.5, 0.5] };
+export function portPoint(g, port = 'center') { const [fx, fy] = PORT[port] || PORT.center; return [g.x + g.w * fx, g.y + g.h * fy]; }
+/** pick the facing ports of two boxes */
+function facing(a, b) {
+  const dx = b.x + b.w / 2 - (a.x + a.w / 2), dy = b.y + b.h / 2 - (a.y + a.h / 2);
+  return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? ['right', 'left'] : ['left', 'right']) : (dy > 0 ? ['bottom', 'top'] : ['top', 'bottom']);
+}
+/** end points of a line, resolving from/to against the other objects' geometry (map id → geometry) */
+export function linePoints(o, byId) {
+  const g = geometry(o); const a = o.attrs;
+  let p1 = [g.x, g.y], p2 = [g.x + g.w, g.y + g.h];
+  const end = (spec) => { if (!spec) return null; const [id, port] = String(spec).split('.'); return byId[id] ? { g: byId[id], port } : null; };
+  const f = end(a.from), t = end(a.to);
+  if (f && t) { const [pf, pt] = facing(f.g, t.g); p1 = portPoint(f.g, f.port || pf); p2 = portPoint(t.g, t.port || pt); }
+  else if (f) p1 = portPoint(f.g, f.port || facing(f.g, { x: p2[0], y: p2[1], w: 0, h: 0 })[0]);
+  else if (t) p2 = portPoint(t.g, t.port || facing(t.g, { x: p1[0], y: p1[1], w: 0, h: 0 })[0]);
+  return [p1, p2];
+}
+/** SVG path for a line: straight, or elbow (route=elbow) */
+export function linePath([[x1, y1], [x2, y2]], route) {
+  if (route === 'elbow') { const mx = (x1 + x2) / 2; return `M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`; }
+  return `M${x1},${y1} L${x2},${y2}`;
 }

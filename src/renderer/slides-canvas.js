@@ -3,7 +3,7 @@
 // Every gesture ends in ONE call to ctx.edit(fn), which rewrites only the moved objects' opener lines.
 import Moveable from 'moveable';
 import Selecto from 'selecto';
-import { setMany, removeObject, scanObjects, objectSource, addObject, geometry, nextId, groupOf } from './slides-objects.js';
+import { setMany, setObjectAttrs, removeObject, scanObjects, objectSource, addObject, geometry, nextId, groupOf, portPoint } from './slides-objects.js';
 
 const num = (v) => Math.round(v * 10) / 10;
 const whole = (v) => Math.round(v);
@@ -35,6 +35,7 @@ export function mountCanvas(o) {
   const indexOf = (el) => Number(el.dataset.obj);
   const k = () => parseFloat(frame.style.getPropertyValue('--k')) || 1;
 
+  let ends = [];
   const geo = () => { const list = scanObjects(o.getChunk()); return list.map(geometry); };
   let start = [];
 
@@ -78,11 +79,16 @@ export function mountCanvas(o) {
   selecto.on('dragStart', (e) => {
     const t = e.inputEvent.target;
     if (t.closest?.('[data-editing]')) { e.stop(); return; }
+    const ie = e.inputEvent;
+    if (ie && (ie.shiftKey || ie.ctrlKey || ie.metaKey)) {
+      const hit = t.closest?.('.sl-obj:not(.is-locked)');
+      if (hit) { e.stop(); const prev = new Set(sel); const i = indexOf(hit); if (prev.has(i)) prev.delete(i); else prev.add(i); set([...prev].sort((a, b) => a - b)); return; }
+    }
     if (moveable.isMoveableElement(t) || [].concat(moveable.target || []).some((el) => el === t || el.contains(t))) e.stop();
   });
   selecto.on('selectEnd', (e) => {
-    const sel = e.selected.map(indexOf).sort((a, b) => a - b);
-    set(sel);
+    const next = e.selected.map(indexOf).sort((a, b) => a - b);
+    set(next);
     if (e.isDragStart) { e.inputEvent.preventDefault(); setTimeout(() => moveable.dragStart(e.inputEvent)); }
   });
 
@@ -93,7 +99,11 @@ export function mountCanvas(o) {
     next = [...new Set([...next, ...all.map((ob, i) => (grp.has(groupOf(ob)) ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b);
     sel = next.filter((i) => byIndex(i) && !byIndex(i).classList.contains('is-locked'));
     const els = sel.map(byIndex);
+    const hasLine = els.some((el) => el.classList.contains('sl-line'));
+    moveable.resizable = !hasLine; moveable.rotatable = !hasLine;
+    moveable.draggable = !els.some((el) => el.classList.contains('is-connector'));
     moveable.target = els.length ? els : null;
+    drawEnds(els.length === 1 && hasLine ? els[0] : null);
     moveable.elementGuidelines = objEls().filter((el) => !els.includes(el));
     frame.querySelectorAll('.sl-obj').forEach((el) => el.classList.toggle('is-selected', els.includes(el)));
     // handles on a single object follow its rotation; groups are axis-aligned
@@ -142,11 +152,57 @@ export function mountCanvas(o) {
   set(o.selected || [], { notify: false });
   frame.addEventListener('scroll', () => moveable.updateRect());
 
+  /* endpoint handles for a selected line; ends snap to the ports of objects that have an id */
+  function drawEnds(el) {
+    ends.forEach((h) => h.remove()); ends = [];
+    if (!el) return;
+    const kk = k();
+    for (const which of [1, 2]) {
+      const h = document.createElement('div');
+      h.className = 'sl-end'; h.dataset.end = which; h.tabIndex = -1;
+      h.style.left = `${parseFloat(el.dataset['x' + which]) * kk}px`; h.style.top = `${parseFloat(el.dataset['y' + which]) * kk}px`;
+      h.addEventListener('pointerdown', (e) => dragEnd(e, el, which, h));
+      frame.appendChild(h); ends.push(h);
+    }
+  }
+  function snapTarget(x, y, lineIdx) {
+    const all = scanObjects(o.getChunk()); let best = null;
+    all.forEach((ob, i) => {
+      if (i === lineIdx || ob.kind === 'line' || !ob.id) return;
+      const g = geometry(ob);
+      for (const port of ['top', 'right', 'bottom', 'left', 'center']) {
+        const [px, py] = portPoint(g, port); const d = Math.hypot(px - x, py - y);
+        if (d < 18 && (!best || d < best.d)) best = { d, ref: `${ob.id}.${port}`, x: px, y: py };
+      }
+    });
+    return best;
+  }
+  function dragEnd(e, el, which, h) {
+    e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId);
+    const i = indexOf(el); const rect = frame.getBoundingClientRect(); const kk = k();
+    let pt = null;
+    const move = (ev) => {
+      const x = (ev.clientX - rect.left) / kk, y = (ev.clientY - rect.top) / kk;
+      const snap = snapTarget(x, y, i);
+      pt = snap ? { x: snap.x, y: snap.y, ref: snap.ref } : { x: Math.round(x), y: Math.round(y), ref: null };
+      h.style.left = `${pt.x * kk}px`; h.style.top = `${pt.y * kk}px`; h.classList.toggle('is-snapped', !!snap);
+    };
+    const up = () => {
+      h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up);
+      if (!pt) return;
+      const x1 = which === 1 ? pt.x : parseFloat(el.dataset.x1), y1 = which === 1 ? pt.y : parseFloat(el.dataset.y1);
+      const x2 = which === 2 ? pt.x : parseFloat(el.dataset.x2), y2 = which === 2 ? pt.y : parseFloat(el.dataset.y2);
+      const patch = { x: Math.round(x1), y: Math.round(y1), w: Math.round(x2 - x1), h: Math.round(y2 - y1), [which === 1 ? 'from' : 'to']: pt.ref };
+      o.edit((chunk) => setObjectAttrs(chunk, i, patch));
+    };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
+  }
+
   return {
     select: set,
     setGrid(n) { moveable.snapGridWidth = n; moveable.snapGridHeight = n; moveable.updateRect(); },
     selection: () => sel,
-    update: () => moveable.updateRect(),
-    destroy() { stage.removeEventListener('keydown', onKey); selecto.destroy(); moveable.destroy(); },
+    update: () => { moveable.updateRect(); if (ends.length) drawEnds(byIndex(sel[0])); },
+    destroy() { ends.forEach((h) => h.remove()); stage.removeEventListener('keydown', onKey); selecto.destroy(); moveable.destroy(); },
   };
 }

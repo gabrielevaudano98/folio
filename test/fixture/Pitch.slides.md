@@ -101,6 +101,28 @@ stacked: true
 
 ---
 
+## Inserted objects
+
+::: shape #a type=rounded x=120 y=260 w=240 h=120 fill=#e8e8e8
+
+Plan
+:::
+
+::: shape #b type=ellipse x=760 y=260 w=200 h=200 fill=#e8e8e8
+
+Ship
+:::
+
+::: line #ab from=a to=b head=arrow :::
+
+::: line #free x=120 y=560 w=400 h=0 dash=true :::
+
+::: icon #rocket name=rocket x=1040 y=120 w=120 h=120 :::
+
+::: media #clip src=assets/clip.mp4 x=440 y=480 w=320 h=180 :::
+
+---
+
 <!-- source: Pitch.slides#2 -->
 ## A copy that drifted
 
