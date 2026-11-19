@@ -52,3 +52,13 @@ export function wordCount(text) {
   return (text.match(/\S+/g) || []).length;
 }
 ```
+
+## Linked results
+
+Total budget: {{Budget.sheet#Costs!H6}}, status {{Budget.sheet#Costs!H7}}. The deck opens with {{Pitch.slides#1}}.
+
+![[Budget.sheet#Costs!A1:H5]]
+
+![[System.board]]
+
+![[Pitch.slides#2]]

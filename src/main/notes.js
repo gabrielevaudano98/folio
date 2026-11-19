@@ -1,6 +1,7 @@
 // Folio — notes core. Pure Node, shared by the app (IPC + HTTP MCP) and the stdio MCP bridge.
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { findRefs, resolveTarget, rewriteRefs } from '../renderer/refs-syntax.js';
 
 export const NOTE_EXT = ['.md', '.markdown', '.mdx', '.txt'];
 const IGNORE = new Set(['node_modules', '.git', '.obsidian', '.trash', '.DS_Store', 'dist', 'build']);
@@ -163,12 +164,52 @@ export function createNotes(getRoot) {
   }
 
   async function move(from, to) {
-    const a = resolve(from), b = resolve(to, { mustBeNote: true });
+    const a = resolve(from);
+    const isDir = (await fs.stat(a).catch(() => null))?.isDirectory();
+    const b = resolve(to, { mustBeNote: !isDir });
     if (await fs.stat(b).then(() => true, () => false)) throw new NotesError(`Destination exists: ${to}`);
     await fs.mkdir(path.dirname(b), { recursive: true });
     await fs.rename(a, b);
     return { from: relOf(a), to: relOf(b) };
   }
 
-  return { root, resolve, relOf, tree, list, read, write, edit, append, search, outline, move };
+  /* references between documents */
+  async function allTexts() {
+    const files = (await list({ limit: 20000 })).map((f) => f.path);
+    const texts = await Promise.all(files.map((f) => fs.readFile(resolve(f), 'utf8').catch(() => '')));
+    return { files, texts };
+  }
+  /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten */
+  async function rewriteAfterMove(from, to) {
+    const { files, texts } = await allTexts();
+    const before = files.map((f) => (f === to ? from : f));
+    const changed = [];
+    for (let i = 0; i < files.length; i++) {
+      if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
+      const next = rewriteRefs(texts[i], before[i], from, to, before);
+      if (next !== texts[i]) { await fs.writeFile(resolve(files[i]), next, 'utf8'); changed.push(files[i]); }
+    }
+    return changed;
+  }
+  async function backlinks(target) {
+    const { files, texts } = await allTexts(); const want = relOf(resolve(target)); const out = [];
+    files.forEach((f, i) => {
+      const lines = texts[i].split('\n');
+      for (const r of findRefs(texts[i])) if (resolveTarget(r.target, files, f) === want) {
+        const line = texts[i].slice(0, r.start).split('\n').length;
+        out.push({ path: f, line, kind: r.kind, ref: r.raw, text: lines[line - 1].trim().slice(0, 200) });
+      }
+    });
+    return out;
+  }
+  async function brokenLinks(only) {
+    const { files, texts } = await allTexts(); const out = [];
+    files.forEach((f, i) => {
+      if (only && f !== relOf(resolve(only))) return;
+      for (const r of findRefs(texts[i])) if (r.target && !resolveTarget(r.target, files, f)) out.push({ path: f, line: texts[i].slice(0, r.start).split('\n').length, ref: r.raw });
+    });
+    return out;
+  }
+
+  return { root, resolve, relOf, tree, list, read, write, edit, append, search, outline, move, rewriteAfterMove, backlinks, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
 }

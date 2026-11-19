@@ -604,6 +604,7 @@ A o-- B   aggregation</pre>`;
       if (first || !fitted) { fitted = false; requestAnimationFrame(() => { if (canvas.clientWidth) { fitted = true; fit(); } }); }
     },
     setMode(v) { host.classList.toggle('bd-compact', v === 'split'); requestAnimationFrame(() => { drawOverlay(); }); },
+    gotoNode(id) { if (model?.nodes.some((n) => n.id === id)) { sel = new Set([id]); render(); } },
     selectAtLine(line) {
       const n = model.nodes.find((x) => x.line === line - (parts.before.split('\n').length));
       if (n && !(sel.size === 1 && sel.has(n.id))) { sel = new Set([n.id]); render(); }

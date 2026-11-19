@@ -557,6 +557,14 @@ export function mountSheet(host, ctx) {
     setText(t) { if (t === text) return; load(t); render(); },
     setMode() { requestAnimationFrame(drawSel); },
     selectAtLine() {},
+    gotoCell(part) {
+      const bang = part.lastIndexOf('!'); const name = bang >= 0 ? part.slice(0, bang).replace(/^'|'$/g, '') : '';
+      const cell = (bang >= 0 ? part.slice(bang + 1) : part).split(':')[0];
+      const i = name ? sheets().findIndex((s) => s.name.toLowerCase() === name.toLowerCase()) : -1;
+      if (i >= 0) si = i;
+      const a = parseAddr(cell) || null; render();
+      if (a) select(a[0], a[1]); wrap.focus();
+    },
     focus() { wrap.focus(); },
   };
 }

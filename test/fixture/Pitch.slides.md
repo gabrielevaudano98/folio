@@ -81,6 +81,7 @@ Formulas in Markdown
 
 - Engineering is most of it
 - Marketing grows after launch
+- Total for the year: {{Budget.sheet#Costs!H6}}
 
 ```chart
 type: column

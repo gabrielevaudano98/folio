@@ -85,6 +85,7 @@ export function mountSlides(host, ctx) {
 
   function hydrate(root) {
     if (root.querySelector('.chart-block[data-spec]')) hydrateCharts(root, ctx.readNote);
+    if (root.querySelector('[data-ref]') && ctx.refEnv) import('./refs.js').then(({ hydrateRefs }) => hydrateRefs(root, ctx.refEnv()));
     for (const img of root.querySelectorAll('img[data-src]')) {
       const src = img.dataset.src;
       if (/^(https?:|data:|file:)/.test(src)) img.src = src;
@@ -422,6 +423,7 @@ export function mountSlides(host, ctx) {
     const box = document.createElement('div');
     box.innerHTML = deck.slides.map((s) => renderSlide(deck, s)).join('');
     await hydrateCharts(box, ctx.readNote);
+    if (ctx.refEnv) { const { hydrateRefs } = await import('./refs.js'); await hydrateRefs(box, ctx.refEnv()); }
     await Promise.all([...box.querySelectorAll('img')].map(async (img) => {
       const src = img.dataset.src || img.getAttribute('src') || '';
       try { img.src = await ctx.dataUrl(src); } catch { img.remove(); }
@@ -460,6 +462,8 @@ export function mountSlides(host, ctx) {
       if (idx !== cur) { cur = idx; render(); }
     },
     present: () => present(cur),
+    gotoSlide(i) { if (deck && i >= 0) select(i, { reveal: false }); },
+    refresh() { if (deck) render({ keepEditor: true }); },
     exportPdf, exportPptx,
     focus() { thumbs.querySelector('[aria-current="true"]')?.focus(); },
   };

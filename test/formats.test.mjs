@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, applyEdgeStyle, autoLayout } from '../src/renderer/board-core.js';
 import { parseWorkbook, serializeWorkbook, evaluator, shiftFormula } from '../src/renderer/sheet-core.js';
+import { findRefs, resolveTarget, rewriteRefs } from '../src/renderer/refs-syntax.js';
+import { resolveRef } from '../src/renderer/refs.js';
 import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter } from '../src/renderer/slides-core.js';
 import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle } from '../src/renderer/slides-objects.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
@@ -73,6 +75,25 @@ assert(inlineSafe('### Title\n- one\n- two\n\n**bold** and *italic* and [a link]
 const T = '::: box #a x=1 y=1 w=100 h=50\nOld\n:::\n\n::: box #b x=2 y=2 w=100 h=50\nKeep\n:::\n';
 const T2 = setObjectBody(T, 'a', '## New\n- a\n- b'); assert.equal(scanObjects(T2).length, 2); assert.equal(scanObjects(T2)[1].body, 'Keep'); assert.equal(scanObjects(T2)[0].body, '## New\n- a\n- b'); ok('writing a box body leaves the other objects alone');
 assert.deepEqual(textStyle({ font: 'serif', size: '40', align: 'center', line: '1.4', valign: 'middle' }), ['font-family:Georgia, "Times New Roman", serif', 'font-size:40px', 'text-align:center', 'line-height:1.4', 'justify-content:center']); ok('text attributes become CSS');
+
+// board ports on the source side
+{ const bm = parseBoard('a: rect @0,0\nb: rect @200,0\na.right -> b.left'); assert.equal(bm.nodes.length, 2); assert.equal(bm.edges[0].from, 'a'); assert.equal(bm.edges[0].fromPort, 'right'); ok('a port on the source of an edge is not read as a new node'); }
+
+// references between documents
+const files = ['Roadmap.md', 'Budget.sheet.md', 'Pitch.slides.md', 'System.board.md', 'Projects/Meeting notes.md', 'Projects/Pricing ideas.md'];
+const roadmap = fx('Roadmap.md');
+const R = findRefs(roadmap); assert.deepEqual(R.filter((r) => r.kind === 'value').map((r) => r.target + '#' + r.part), ['Budget.sheet#Costs!H6', 'Budget.sheet#Costs!H7', 'Pitch.slides#1']);
+assert.equal(R.filter((r) => r.kind === 'embed').length, 3); assert.equal(findRefs('`{{X#1}}`\n```\n[[Y]]\n```').length, 0); ok('references are found outside code');
+assert.equal(resolveTarget('Budget.sheet', files), 'Budget.sheet.md'); assert.equal(resolveTarget('Budget', files), 'Budget.sheet.md'); assert.equal(resolveTarget('Pricing ideas', files, 'Projects/Meeting notes.md'), 'Projects/Pricing ideas.md'); assert.equal(resolveTarget('/Budget.sheet.md', files), 'Budget.sheet.md'); assert.equal(resolveTarget('Nope', files), null); ok('targets resolve by name, type, path and folder');
+const env = { files, from: 'Roadmap.md', read: async (p) => fx(p) };
+const total = await resolveRef('Budget.sheet#Costs!H6', env); assert.equal(total.kind, 'sheet'); assert.match(total.value, /28[.,\s]?050/);
+assert.equal((await resolveRef('Budget.sheet#Costs!H7', env)).value, 'Over budget'); assert.match((await resolveRef('Budget.sheet#Costs!A1:H5', env)).html, /<table class="ref-table">.*Engineering/); ok('sheet references give formatted cell values and range tables');
+assert.equal((await resolveRef('Pitch.slides#1', env)).value, 'Folio'); assert.match((await resolveRef('System.board', env)).html, /<svg class="ref-board"/); assert.match((await resolveRef('System.board#api', env)).value, /Orders API/); ok('slide titles and boards resolve');
+assert.match((await resolveRef('Roadmap#Linked results', env)).value, /Linked results/); await assert.rejects(resolveRef('Budget.sheet#Nope!A1', env), /no sheet named Nope/); await assert.rejects(resolveRef('Missing#x', env), /not found/); ok('page sections resolve and errors explain what is missing');
+const meeting = fx('Projects/Meeting notes.md');
+const movedRefs = rewriteRefs(meeting, 'Projects/Meeting notes.md', 'Budget.sheet.md', 'Finance/Plan 2027.sheet.md', files);
+assert.match(movedRefs, /\[\[Plan 2027\.sheet#Costs!H6\|the total\]\]/); assert.match(movedRefs, /\{\{\/Finance\/Plan 2027\.sheet\.md#Costs!H6\}\}/);
+assert.equal(movedRefs.split('\n').filter((l, i) => l !== meeting.split('\n')[i]).length, 1); ok('renaming a document rewrites only the references to it, in the style they were written');
 
 // charts
 const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows');

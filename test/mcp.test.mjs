@@ -33,6 +33,13 @@ async function suite(client, root, label) {
   await client.callTool({ name: 'create_note', arguments: { path: `Calc${label.length}.sheet.md`, content: '## Data\n\n| A | B |\n| --- | --- |\n| 2 | =A2*21 |\n' } });
   const sv = JSON.parse(text(await client.callTool({ name: 'get_sheet_values', arguments: { path: `Calc${label.length}.sheet.md` } })));
   assert.equal(sv[0].rows[1].values[1], 42); ok('get_sheet_values computes formulas');
+  const rv = JSON.parse(text(await client.callTool({ name: 'resolve_ref', arguments: { ref: 'Budget.sheet#Costs!H7' } })));
+  assert.equal(rv.value, 'Over budget'); assert.equal(rv.path, 'Budget.sheet.md'); ok('resolve_ref computes a sheet cell');
+  const bl = JSON.parse(text(await client.callTool({ name: 'get_backlinks', arguments: { path: 'Budget.sheet.md' } })));
+  assert(bl.some((b) => b.path === 'Roadmap.md' && b.kind === 'embed') && bl.some((b) => b.path === 'Projects/Meeting notes.md')); ok(`get_backlinks finds ${bl.length} references`);
+  await client.callTool({ name: 'create_note', arguments: { path: `Broken${label.length}.md`, content: 'See {{Nowhere#A1}}\n' } });
+  const br = JSON.parse(text(await client.callTool({ name: 'find_broken_links', arguments: { path: `Broken${label.length}.md` } })));
+  assert.equal(br.length, 1); assert.equal(br[0].ref, '{{Nowhere#A1}}'); ok('find_broken_links reports a missing target');
   const esc = await client.callTool({ name: 'read_note', arguments: { path: '../../etc/passwd' } });
   assert(esc.isError && /escapes/.test(text(esc))); ok('refuses paths outside the workspace');
   const exe = await client.callTool({ name: 'write_note', arguments: { path: 'evil.sh', content: 'x' } });

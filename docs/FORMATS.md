@@ -9,6 +9,22 @@ Every Folio document is a Markdown file. The type comes from the file name.
 | `name.board.md` | Board (board-md) | draw.io-style canvas |
 | `name.sheet.md` | Sheet (sheet-md) | Excel-style grid, Kanban |
 
+## References between documents
+
+Any document can point at a part of another one. References are plain text, so they work in pages, slides (flow text and boxes), and anything an AI writes.
+
+| Write | Shows |
+|---|---|
+| `[[Budget.sheet#Costs!H6]]` or `[[Budget.sheet#Costs!H6\|the total]]` | a link; Ctrl/⌘ click opens the document at that part |
+| `{{Budget.sheet#Costs!H6}}` | the live value, formatted like the cell (e.g. €28,050.00) |
+| `![[Budget.sheet#Costs!A1:H5]]` | the part drawn in place |
+
+- Target: a document name (`Budget`, `Budget.sheet`), a file name (`Budget.sheet.md`), a path relative to this document, or a path from the workspace root (`/Finance/Budget.sheet.md`).
+- Parts: sheets `Sheet!A1`, `Sheet!A1:D9`, `A1` (first sheet) or `Sheet` (whole sheet); slides `3` (slide number, value is its title); boards nothing (whole board) or a shape id (value is its label); pages `Heading text` (a section) or `^block-id`.
+- Values and embeds update when the source changes. Renaming or moving a document in Folio (or with the `move_note` tool) rewrites every reference to it.
+- References inside code spans and code fences are text.
+- MCP tools: `resolve_ref`, `get_backlinks`, `find_broken_links`.
+
 ## slides-md
 
 A superset of [Marp](https://marp.app) Markdown. A Marp deck opens as is.

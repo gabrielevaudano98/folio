@@ -1,5 +1,6 @@
 // Folio — Markdown to safe HTML, with source-line anchors for scroll sync and AI-edit marks.
 import MarkdownIt from 'markdown-it';
+import { refsPlugin } from './refs-syntax.js';
 import taskLists from 'markdown-it-task-lists';
 import footnote from 'markdown-it-footnote';
 import mark from 'markdown-it-mark';
@@ -86,6 +87,8 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
   return true;
 });
 
+md.use(refsPlugin, { escape });
+
 export function splitFrontmatter(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!m) return { body: text, meta: null, offset: 0 };
@@ -103,7 +106,7 @@ export function render(text) {
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
   if (meta?.length) html = `<dl class="frontmatter" data-line="0">${meta.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
   return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-spec', 'target', 'aria-hidden'],
+    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],
     FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form'],
   });

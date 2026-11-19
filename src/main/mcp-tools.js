@@ -3,13 +3,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import FORMATS from '../../docs/FORMATS.md';
 import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
+import { resolveRef } from '../renderer/refs.js';
 
 export const SERVER_INFO = { name: 'folio', version: '1.1.0' };
 
 export const INSTRUCTIONS = `Folio is the user's Markdown workspace. Paths are relative to the open folder and use forward slashes.
 Read a note before editing it. Prefer edit_note (exact find-and-replace) over write_note for small changes so the user's formatting survives.
 Every change you make is shown live to the user in Folio with a one-click undo. Use get_open_note to see what the user is looking at right now.
-Besides pages (.md) Folio has slides (name.slides.md, Marp compatible), boards (name.board.md, diagrams as text) and sheets (name.sheet.md, Markdown tables with Excel formulas). Call get_format_guide before creating or editing those, and get_sheet_values to read computed sheet values.`;
+Besides pages (.md) Folio has slides (name.slides.md, Marp compatible), boards (name.board.md, diagrams as text) and sheets (name.sheet.md, Markdown tables with Excel formulas). Call get_format_guide before creating or editing those, and get_sheet_values to read computed sheet values. Documents can reference each other: [[Doc#part]] links, {{Doc#part}} shows a live value (e.g. {{Budget.sheet#Summary!B7}}), ![[Doc#part]] embeds a sheet range, slide, board or page section. Use resolve_ref to see what a reference shows.`;
 
 const ro = { readOnlyHint: true, openWorldHint: false };
 const rw = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
@@ -48,8 +49,17 @@ export const TOOLS = [
   { name: 'append_to_note', title: 'Append to note', write: true, annotations: rw,
     description: 'Append Markdown to the end of a note, or to the end of the section under a given heading.',
     input: { path: z.string(), content: z.string(), underHeading: z.string().optional() } },
+  { name: 'resolve_ref', title: 'Resolve reference', write: false, annotations: ro,
+    description: 'Compute what a Folio reference points at, as Folio would show it: a sheet cell value or range, a slide title, a board shape label, or a page section. Reference syntax: "Doc#part", e.g. "Budget.sheet#Summary!B7", "Pitch.slides#3", "System.board#api", "Roadmap#Goals".',
+    input: { ref: z.string(), from: z.string().optional().describe('Path of the document containing the reference, for relative names') } },
+  { name: 'get_backlinks', title: 'Get backlinks', write: false, annotations: ro,
+    description: 'List every link ([[..]]), live value ({{..}}) and embed (![[..]]) in the workspace that points at a document.',
+    input: { path: z.string() } },
+  { name: 'find_broken_links', title: 'Find broken links', write: false, annotations: ro,
+    description: 'List references whose target document does not exist, in one document or the whole workspace.',
+    input: { path: z.string().optional() } },
   { name: 'move_note', title: 'Move or rename note', write: true, annotations: rw,
-    description: 'Move or rename a note inside the workspace.',
+    description: 'Move or rename a note inside the workspace. References to it in other documents are updated.',
     input: { from: z.string(), to: z.string() } },
   { name: 'open_note', title: 'Show note to user', write: false, annotations: ro, appOnly: true,
     description: 'Open a note in Folio so the user sees it, optionally scrolled to a line.',
@@ -106,7 +116,14 @@ export async function runTool(notes, name, a, hooks = {}) {
     case 'write_note': return wrote(await notes.write(a.path, a.content), 'Rewrote');
     case 'edit_note': return wrote(await notes.edit(a.path, a.edits), 'Edited');
     case 'append_to_note': return wrote(await notes.append(a.path, a.content, a), 'Appended to');
-    case 'move_note': { const r = await notes.move(a.from, a.to); await hooks.onMove?.(r); return `Moved ${r.from} to ${r.to}`; }
+    case 'move_note': { const r = await notes.move(a.from, a.to); const changed = await notes.rewriteAfterMove(r.from, r.to).catch(() => []); await hooks.onMove?.(r); return `Moved ${r.from} to ${r.to}` + (changed.length ? `. Updated references in ${changed.join(', ')}` : ''); }
+    case 'resolve_ref': {
+      const files = await notes.allFiles();
+      const r = await resolveRef(a.ref, { files, from: a.from || '', read: (p) => notes.read(p) });
+      return { ref: a.ref, path: r.open.path, kind: r.kind, value: r.value };
+    }
+    case 'get_backlinks': return notes.backlinks(a.path);
+    case 'find_broken_links': return notes.brokenLinks(a.path);
     case 'get_open_note': if (!hooks.openNote) throw new Error('Folio is not running.'); return hooks.openNote();
     case 'open_note': if (!hooks.showNote) throw new Error('Folio is not running.'); await hooks.showNote(a); return `Opened ${a.path}`;
     default: throw new Error(`Unknown tool ${name}`);

@@ -3,7 +3,9 @@ import { diffLines } from 'diff';
 import { createEditor } from './editor.js';
 import { createRich } from './rich.js';
 import { mountSlides } from './slides.js';
-import { NEW_DECK } from './slides-core.js';
+import { NEW_DECK, renderSlide } from './slides-core.js';
+import { hydrateRefs, resolveRef } from './refs.js';
+import { parseRef, resolveTarget } from './refs-syntax.js';
 import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
@@ -64,6 +66,8 @@ function surfaceCtx(type) {
     exportPdf: (html) => folio.exportPdf(S.active, html, { cssPage: true }),
     saveBinary: (ext, bytes) => folio.exportBinary(S.active, ext, bytes),
     isDark: () => S.dark,
+    refEnv,
+    openRef,
   };
 }
 const curType = () => app.dataset.doc || 'md';
@@ -113,7 +117,8 @@ async function boot() {
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
     readNote: (src) => readRelative(src),
     isDark: () => S.dark,
-    onWikiLink: async (name) => { const f = resolveWiki(name); if (f) return openFile(f); if (await confirmSheet({ title: `Create “${name}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
+    onWikiLink: async (name) => { const f = resolveWiki(name); if (f) return openRef(f, parseRef(name).part); if (await confirmSheet({ title: `Create “${name}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
+    resolveValue: (raw) => resolveRef(raw, refEnv()).then((r) => r.value),
     onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
   });
   $('#pane-rich').addEventListener('paste', async (e) => {
@@ -395,17 +400,38 @@ async function renderPreview() {
   if (ai) markPreviewAi(ai);
   renderMermaid(el, S.dark);
   hydrateCharts(el, readRelative);
+  hydrateRefs(el, refEnv());
 }
+/* references between documents */
+function refEnv() {
+  return {
+    files: S.files, from: S.active || '',
+    read: (p) => (tabOf(p) ? Promise.resolve(tabOf(p).text) : folio.read(p)),
+    renderMarkdown: (m) => render(m),
+    renderSlideHtml: (deck, s) => renderSlide(deck, s, { number: false }),
+    afterSlide: (el) => { for (const img of el.querySelectorAll('img[data-src]')) Promise.resolve(resolveImg(img.dataset.src)).then((u) => { if (u) img.src = u; }); },
+  };
+}
+async function openRef(path, part = '') {
+  await openFile(path);
+  if (!part) return;
+  const type = docType(path);
+  if (type === 'slides') curSurface()?.gotoSlide?.(parseInt(part, 10) - 1);
+  else if (type === 'sheet') curSurface()?.gotoCell?.(part);
+  else if (type === 'board') curSurface()?.gotoNode?.(part);
+  else { const h = headings(activeTab().text).find((x) => x.text.replace(/[*_`]/g, '').toLowerCase() === part.toLowerCase()); if (h) editor.scrollToLine(h.line, { select: true }); }
+}
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('.ref-value[data-path], .ref-embed[data-path]');
+  if (el && (e.ctrlKey || e.metaKey || el.classList.contains('ref-embed') && e.target.closest('.ref-embed-head'))) { e.preventDefault(); e.stopPropagation(); openRef(el.dataset.path, el.dataset.part); }
+}, true);
 function readRelative(src) { if (src.startsWith('/')) return folio.read(normalize(src.slice(1))); const d = dirOf(S.active || ''); return folio.read(normalize(d ? `${d}/${src}` : src)); }
 function normalize(p) {
   const out = [];
   for (const seg of p.split('/')) { if (seg === '..') out.pop(); else if (seg && seg !== '.') out.push(seg); }
   return out.join('/');
 }
-function resolveWiki(name) {
-  const n = name.toLowerCase().replace(/#.*$/, '');
-  return S.files.find((f) => stem(f).toLowerCase() === n || f.toLowerCase() === n || f.toLowerCase() === n + '.md');
-}
+function resolveWiki(name) { return resolveTarget(parseRef(name).target, S.files, S.active || ''); }
 
 /* ============ outline ============ */
 let currentHeads = [];
@@ -548,16 +574,17 @@ async function newFolder(parent = '') {
 async function renamePath(p, isDir) {
   const name = await prompt({ title: isDir ? 'Rename folder' : 'Rename note', label: 'Name', value: isDir ? base(p) : stem(p), action: 'Rename' });
   if (!name) return;
-  const ext = isDir ? '' : (p.match(/\.\w+$/)?.[0] || '.md');
+  const ext = isDir ? '' : (p.match(/(\.(slides|board|sheet))?\.\w+$/i)?.[0] || '.md');
   const to = (dirOf(p) ? dirOf(p) + '/' : '') + name + (isDir || /\.\w+$/.test(name) ? '' : ext);
   if (to === p) return;
   await movePath(p, to, isDir);
 }
 async function movePath(from, to, isDir) {
   try {
-    if (isDir) { await folio.rename(from, to).catch(async (e) => { throw e; }); }
-    else await folio.rename(from, to);
+    const r = await folio.rename(from, to);
     retargetTabs(from, to);
+    const n = r?.changed?.length || 0;
+    if (n) toast(`Updated links in ${n} ${n === 1 ? 'document' : 'documents'}.`);
     await refreshTree();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
@@ -1118,7 +1145,7 @@ function bindChrome() {
     }
     const a = e.target.closest('a'); if (!a) return;
     e.preventDefault();
-    if (a.dataset.wikilink) { const f = resolveWiki(a.dataset.wikilink); if (f) openFile(f); else if (await confirmSheet({ title: `Create “${a.dataset.wikilink}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(a.dataset.wikilink + '.md', `# ${a.dataset.wikilink}\n\n`); await refreshTree(); openFile(p); } return; }
+    if (a.dataset.wikilink) { const f = resolveWiki(a.dataset.wikilink); if (f) openRef(f, parseRef(a.dataset.wikilink).part); else if (await confirmSheet({ title: `Create “${a.dataset.wikilink}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(a.dataset.wikilink + '.md', `# ${a.dataset.wikilink}\n\n`); await refreshTree(); openFile(p); } return; }
     const href = a.getAttribute('href') || '';
     if (href.startsWith('#')) { const id = decodeURIComponent(href.slice(1)); const el = [...$('#preview').querySelectorAll('[id]')].find((x) => x.id === id); el?.scrollIntoView(); return; }
     if (/^(https?|mailto):/.test(href)) return folio.openExternal(href);
@@ -1207,6 +1234,7 @@ function dragResize(handle, onMove) {
 function bindIpc() {
   folio.onTreeChanged(() => refreshTree());
   folio.onFileChanged(({ path: p, content }) => {
+    if (p !== S.active && /\{\{|!\[\[|```chart/.test(activeTab()?.text || '')) { renderPreview(); curSurface()?.refresh?.(); }
     const t = tabOf(p); if (!t || content === t.saved) return;
     if (t.text === t.saved) { t.saved = content; if (p === S.active) { setActiveText(content); renderPreview(); renderOutline(); } else t.text = content; }
     else toast(`${stem(p)} changed on disk while you were editing.`, { action: ['Use disk version', () => { t.saved = content; if (p === S.active) setActiveText(content); else t.text = content; }] });

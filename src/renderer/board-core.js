@@ -51,7 +51,7 @@ export const ARROWS = {
   '<->': { line: 'solid', start: 'arrow', end: 'arrow' }, '-|>': { line: 'solid', end: 'triangle' }, '..|>': { line: 'dashed', end: 'triangle' },
   '*--': { line: 'solid', start: 'diamond' }, 'o--': { line: 'solid', start: 'diamondOpen' }, '..>': { line: 'dashed', end: 'open' },
 };
-const ARROW_RE = /^([\w.-]+)(?:\.(top|right|bottom|left))?\s*(<->|\.\.\|>|-\|>|\*--|o--|-->|\.\.>|->|--|\.\.)\s*([\w.-]+?)(?:\.(top|right|bottom|left))?(?:\s+"((?:[^"\\]|\\.)*)")?(?:\s*\{([^}]*)\})?\s*$/;
+const ARROW_RE = /^([\w.-]+?)(?:\.(top|right|bottom|left))?\s*(<->|\.\.\|>|-\|>|\*--|o--|-->|\.\.>|->|--|\.\.)\s*([\w.-]+?)(?:\.(top|right|bottom|left))?(?:\s+"((?:[^"\\]|\\.)*)")?(?:\s*\{([^}]*)\})?\s*$/;
 const NODE_RE = /^([A-Za-z_][\w-]*)\s*:\s*([a-z-]+)?\s*(?:"((?:[^"\\]|\\.)*)")?\s*(?:@\s*(-?[\d.]+)\s*,\s*(-?[\d.]+))?\s*(?:(\d+)\s*[x×]\s*(\d+))?\s*(?:\{([^}]*)\})?\s*(\[)?\s*$/;
 
 export const defaultSize = (shape) => SIZE[shape] || [120, 60];

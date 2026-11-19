@@ -168,7 +168,14 @@ h('fs:create', async (rel, content = '') => {
   return notes.relOf(abs);
 });
 h('fs:mkdir', async (rel) => { await fs.mkdir(notes.resolve(rel), { recursive: true }); return rel; });
-h('fs:rename', async (from, to) => (await notes.move(from, to)).to);
+h('fs:rename', async (from, to) => {
+  const isDir = (await fs.stat(notes.resolve(from)).catch(() => null))?.isDirectory();
+  const r = await notes.move(from, to);
+  const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
+  const changed = new Set();
+  for (const [a, b] of pairs) for (const c of await notes.rewriteAfterMove(a, b).catch(() => [])) changed.add(c);
+  return { to: r.to, changed: [...changed] };
+});
 h('fs:trash', async (rel) => { await shell.trashItem(notes.resolve(rel)); return true; });
 h('fs:search', (q, opts) => notes.search(q, opts));
 h('fs:list', () => notes.list({ limit: 5000 }));

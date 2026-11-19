@@ -57,7 +57,7 @@ const FolioCodeBlock = CodeBlock.extend({
 const KINDS = { note: 'Note', tip: 'Tip', important: 'Important', warning: 'Warning', caution: 'Caution' };
 const Decorate = Extension.create({
   name: 'folioDecorate',
-  addOptions() { return { onWikiLink: null }; },
+  addOptions() { return { onWikiLink: null, resolveValue: null }; },
   addProseMirrorPlugins() {
     const opts = this.options;
     const build = (doc) => {
@@ -73,7 +73,16 @@ const Decorate = Extension.create({
         }
         if (n.isText) {
           const re = /\[\[([^\]\n]+)\]\]/g; let m;
-          while ((m = re.exec(n.text))) deco.push(Decoration.inline(pos + m.index, pos + m.index + m[0].length, { class: 'rich-wikilink', 'data-target': m[1], title: 'Ctrl or ⌘ click to open' }));
+          while ((m = re.exec(n.text))) {
+            const embed = n.text[m.index - 1] === '!';
+            deco.push(Decoration.inline(pos + m.index - (embed ? 1 : 0), pos + m.index + m[0].length, { class: embed ? 'rich-ref' : 'rich-wikilink', 'data-target': m[1], title: embed ? 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open' : 'Ctrl or ⌘ click to open' }));
+          }
+          const rv = /\{\{([^}\n]+?)\}\}/g;
+          while ((m = rv.exec(n.text))) {
+            const raw = m[1].trim(); const end = pos + m.index + m[0].length;
+            deco.push(Decoration.inline(pos + m.index, end, { class: 'rich-ref', 'data-target': raw.replace(/\|.*$/, ''), title: 'Live value. Ctrl or ⌘ click to open the source' }));
+            if (opts.resolveValue) deco.push(Decoration.widget(end, () => { const sp = document.createElement('span'); sp.className = 'rich-ref-out'; sp.contentEditable = 'false'; sp.textContent = '…'; opts.resolveValue(raw).then((v) => { sp.textContent = '= ' + v; }, (e) => { sp.textContent = '= ?'; sp.title = e.message; sp.classList.add('is-broken'); }); return sp; }, { side: 1, key: 'ref:' + raw + ':' + end }));
+          }
         }
       });
       return DecorationSet.create(doc, deco);
@@ -84,7 +93,7 @@ const Decorate = Extension.create({
       props: {
         decorations(state) { return this.getState(state); },
         handleClick(view, pos, event) {
-          const el = event.target.closest?.('.rich-wikilink');
+          const el = event.target.closest?.('.rich-wikilink, .rich-ref');
           if (el && (event.metaKey || event.ctrlKey)) { opts.onWikiLink?.(el.dataset.target); return true; }
           return false;
         },
@@ -135,7 +144,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, readNote, isDark = () => false, keyLabel = (k) => k }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k }) {
   host.innerHTML = `
     <div class="ribbon" role="toolbar" aria-label="Formatting">
       <div class="rb-group">${btn('undo', 'Undo', icons.undo, keyLabel('Mod+Z'))}${btn('redo', 'Redo', icons.redo, keyLabel('Mod+Shift+Z'))}</div>
@@ -180,7 +189,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     extensions: [
       StarterKit.configure({ link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener' } }, codeBlock: false }),
       FolioCodeBlock.configure({ readNote, isDark, HTMLAttributes: { spellcheck: 'false' } }),
-      Decorate.configure({ onWikiLink }),
+      Decorate.configure({ onWikiLink, resolveValue }),
       Markdown.configure({ markedOptions: { gfm: true } }),
       TableKit.configure({ table: { resizable: false } }),
       TaskList, TaskItem.configure({ nested: true }),

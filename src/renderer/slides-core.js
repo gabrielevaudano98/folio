@@ -9,6 +9,7 @@ import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import { extractObjects, geometry, textStyle } from './slides-objects.js';
 import { shapeSvg } from './board-core.js';
+import { refsPlugin } from './refs-syntax.js';
 
 export const LAYOUTS = [
   ['default', 'Title and content'], ['title', 'Title'], ['section', 'Section header'], ['two-columns', 'Two columns'],
@@ -31,6 +32,7 @@ const md = new MarkdownIt({
     return `<pre><code class="hljs">${escape(code)}</code></pre>`;
   },
 }).use(taskLists).use(mark).use(katex.default || katex, { throwOnError: false });
+md.use(refsPlugin, { escape });
 for (const name of ['left', 'right', 'columns', 'column', 'card', 'center', 'note', 'small', 'big', 'box', 'shape']) {
   md.use(container.default || container, name, { render: (t, i) => (t[i].nesting === 1 ? `<div class="sx-${name}">\n` : '</div>\n') });
 }
@@ -140,7 +142,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
   const bgs = [...s.bgs, ...(bgImg ? [{ src: bgImg, fit: 'cover', side: null, filters: [] }] : [])];
   const full = bgs.filter((b) => !b.side), side = bgs.filter((b) => b.side);
   const sideW = side[0]?.size || 50;
-  const html = DOMPurify.sanitize(md.render(s.content), { ADD_ATTR: ['target', 'data-spec'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+  const html = DOMPurify.sanitize(md.render(s.content), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
   const placed = (s.objects || []).map((o, n) => {
     const g = geometry(o);
     const st = [`left:${g.x}px`, `top:${g.y}px`, `width:${g.w}px`, `height:${g.h}px`, `z-index:${10 + g.z}`];
@@ -160,7 +162,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
     if (a.fit === 'shrink') cls.push('is-fit');
     if (o.kind === 'box') st.push(...ts);
     if (a.border) st.push(`border:${parseFloat(a.border) || 1}px solid ${escape(a.stroke || 'currentColor')}`);
-    const inner = DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+    const inner = DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
     if (o.kind === 'shape') {
       const svg = shapeSvg({ shape: a.type || 'rect', w: g.w, h: g.h, style: { fill: a.fill } }, 'sl-shape-fill');
       return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}">${svg}</svg><div class="sl-obj-text" style="${ts.join(';')}">${inner}</div></div>`;
