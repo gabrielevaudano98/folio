@@ -886,3 +886,12 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .sl-frame.sl-grid::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 5; background-image: linear-gradient(to right, color-mix(in oklch, var(--color-ink) 14%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklch, var(--color-ink) 14%, transparent) 1px, transparent 1px); background-size: calc(40px * var(--k, .5)) calc(40px * var(--k, .5)); }
 .sl-frame .sl-obj.is-locked { cursor: not-allowed; opacity: .96; }
 .menu-item:disabled { opacity: .4; cursor: default; pointer-events: none; }
+
+/* format bar for placed text */
+.sl-fmtbar { gap: 4px; flex-wrap: wrap; }
+
+.sl-fmtbar .rb[aria-pressed="true"] { background: var(--color-ink); color: var(--color-paper); }
+.sl-fmtbar .rb:disabled { opacity: .35; }
+.sf-num { width: 64px; }
+.sf-color { width: 30px; height: 26px; padding: 0; border: 1px solid var(--color-rule-strong); border-radius: var(--radius-xs); background: var(--color-paper); cursor: pointer; }
+.sl-fmtbar.is-idle { opacity: .5; }

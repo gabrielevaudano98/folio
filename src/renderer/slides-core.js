@@ -7,7 +7,7 @@ import mark from 'markdown-it-mark';
 import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
-import { extractObjects, geometry } from './slides-objects.js';
+import { extractObjects, geometry, textStyle } from './slides-objects.js';
 import { shapeSvg } from './board-core.js';
 
 export const LAYOUTS = [
@@ -156,11 +156,14 @@ export function renderSlide(deck, s, { number = true } = {}) {
     if (a.fill && o.kind === 'box') st.push(`background:${escape(a.fill)}`);
     if (a.color) st.push(`color:${escape(a.color)}`);
     if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`);
+    const ts = textStyle(a);
+    if (a.fit === 'shrink') cls.push('is-fit');
+    if (o.kind === 'box') st.push(...ts);
     if (a.border) st.push(`border:${parseFloat(a.border) || 1}px solid ${escape(a.stroke || 'currentColor')}`);
     const inner = DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec'], FORBID_TAGS: ['style', 'script', 'iframe'] });
     if (o.kind === 'shape') {
       const svg = shapeSvg({ shape: a.type || 'rect', w: g.w, h: g.h, style: { fill: a.fill } }, 'sl-shape-fill');
-      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}">${svg}</svg><div class="sl-obj-text">${inner}</div></div>`;
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}">${svg}</svg><div class="sl-obj-text" style="${ts.join(';')}">${inner}</div></div>`;
     }
     return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${inner}</div>`;
   }).join('');

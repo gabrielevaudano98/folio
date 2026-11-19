@@ -91,3 +91,8 @@
 .slide .sl-obj-text { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px; }
 .slide .sl-obj-text > * { margin: 0; }
 .slide .sl-image .sl-img { width: 100%; height: 100%; }
+.slide .sl-prose { outline: none; width: 100%; min-height: 1em; }
+.slide .sl-prose > :first-child { margin-top: 0; }
+.slide .sl-prose > :last-child { margin-bottom: 0; }
+.slide .is-editing { overflow: visible; outline: 2px solid var(--sl-ink, #111); outline-offset: 2px; cursor: text; }
+.slide .is-editing .sl-prose { cursor: text; }

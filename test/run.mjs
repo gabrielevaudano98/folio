@@ -7,5 +7,6 @@ run('dist/test/formats.test.mjs');
 run('test/mcp.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/canvas.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/arrange.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/text.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/smoke.test.mjs');
 else console.log('\nui smoke skipped (no display; run under xvfb-run)');

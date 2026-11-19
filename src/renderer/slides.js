@@ -4,7 +4,8 @@ import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
 import { mountCanvas } from './slides-canvas.js';
-import { scanObjects, addObject, nextId, setMany, setObjectAttrs, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
+import { startTextEdit } from './slides-text.js';
+import { scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -27,6 +28,23 @@ export function mountSlides(host, ctx) {
       <button class="btn" type="button" data-sl="export" aria-haspopup="menu">${icons.export} Export</button>
       <button class="btn btn-primary" type="button" data-sl="present">${icons.play} Present</button>
     </div>
+    <div class="sf-toolbar sl-fmtbar" role="toolbar" aria-label="Format selected object">
+      <select class="rb-select sf-narrow" data-tx="style" aria-label="Paragraph style"><option value="p">Text</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option></select>
+      <button class="rb" type="button" data-tx="bold" aria-label="Bold" title="Bold">${icons.bold}</button><button class="rb" type="button" data-tx="italic" aria-label="Italic" title="Italic">${icons.italic}</button>
+      <button class="rb" type="button" data-tx="underline" aria-label="Underline" title="Underline">${icons.underline}</button><button class="rb" type="button" data-tx="strike" aria-label="Strikethrough" title="Strikethrough">${icons.strike}</button>
+      <button class="rb" type="button" data-tx="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button><button class="rb" type="button" data-tx="link" aria-label="Link" title="Link">${icons.link}</button>
+      <button class="rb" type="button" data-tx="bullet" aria-label="Bulleted list" title="Bulleted list">${icons.listBullet}</button><button class="rb" type="button" data-tx="ordered" aria-label="Numbered list" title="Numbered list">${icons.listOrdered}</button>
+      <div class="sf-sep"></div>
+      <label class="sf-field"><span>Font</span><select class="rb-select sf-narrow" data-at="font"><option value="">Theme</option><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option><option value="rounded">Rounded</option></select></label>
+      <label class="sf-field"><span>Size</span><input class="input sf-num" type="number" min="8" max="400" step="1" data-at="size" placeholder="auto"></label>
+      <label class="sf-field"><span>Text</span><input class="sf-color" type="color" data-at="color" value="#1a1a1a" aria-label="Text colour"></label>
+      <label class="sf-field"><span>Fill</span><input class="sf-color" type="color" data-at="fill" value="#f2f2f2" aria-label="Fill colour"></label>
+      <div class="sf-sep"></div>
+      <button class="rb" type="button" data-al="left" aria-label="Align left" title="Align left">${icons.alignLeft}</button><button class="rb" type="button" data-al="center" aria-label="Align centre" title="Align centre">${icons.alignCenter}</button><button class="rb" type="button" data-al="right" aria-label="Align right" title="Align right">${icons.alignRight}</button>
+      <label class="sf-field"><span>Vertical</span><select class="rb-select sf-narrow" data-at="valign"><option value="">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>
+      <label class="sf-field"><span>Spacing</span><select class="rb-select sf-narrow" data-at="line"><option value="">Theme</option><option value="1">1.0</option><option value="1.15">1.15</option><option value="1.4">1.4</option><option value="1.8">1.8</option></select></label>
+      <label class="sf-check"><input type="checkbox" data-at-fit> Shrink to fit</label>
+    </div>
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
@@ -48,7 +66,7 @@ export function mountSlides(host, ctx) {
   const chunkEditor = createEditor(host.querySelector('.sl-cm'), { onChange: (t) => { if (!silent) editChunk(() => t); } });
 
   function chunks() { const fm = parseFrontmatter(text); return { fm: fm.raw, list: splitSlides(fm.body) }; }
-  function commit(next, { keepEditor = false } = {}) {
+  function commit(next, { keepEditor = false, keepFrame = false } = {}) {
     if (!restoring && text && next !== text) {
       const now = Date.now();
       if (now - lastPush > 700) { undo.push(text); if (undo.length > 200) undo.shift(); }
@@ -56,7 +74,7 @@ export function mountSlides(host, ctx) {
     }
     text = next; deck = parseDeck(text);
     cur = Math.min(cur, deck.slides.length - 1);
-    render({ keepEditor });
+    render({ keepEditor, keepFrame });
     ctx.onChange(text);
   }
   function editChunk(fn) {
@@ -77,6 +95,12 @@ export function mountSlides(host, ctx) {
       if (src && !/^(https?:|data:|file:)/.test(src)) Promise.resolve(ctx.resolveImage(src)).then((u) => { if (u) img.src = u; });
     }
   }
+  function shrinkFit(root) {
+    for (const el of root.querySelectorAll('.sl-obj.is-fit')) {
+      const t = el.querySelector('.sl-obj-text') || el; let size = parseFloat(getComputedStyle(t).fontSize) || 30;
+      for (let n = 0; n < 60 && size > 10 && (t.scrollHeight > el.clientHeight + 1 || t.scrollWidth > el.clientWidth + 1); n++) { size -= 1; t.style.fontSize = `${size}px`; }
+    }
+  }
   function fit() {
     if (!deck) return;
     const r = stage.getBoundingClientRect();
@@ -87,7 +111,7 @@ export function mountSlides(host, ctx) {
   }
   new ResizeObserver(fit).observe(stage);
 
-  function render({ keepEditor = false } = {}) {
+  function render({ keepEditor = false, keepFrame = false } = {}) {
     if (!deck) return;
     const tk = 176 / deck.width;
     thumbs.innerHTML = deck.slides.map((s, i) => `
@@ -97,21 +121,23 @@ export function mountSlides(host, ctx) {
       </li>`).join('');
     hydrate(thumbs);
     const s = deck.slides[cur];
+    if (!keepFrame) {
     frame.innerHTML = `<div class="sl-scale">${renderSlide(deck, s)}</div>`;
-    hydrate(frame); fit();
+    hydrate(frame); fit(); shrinkFit(frame);
     canvas?.destroy();
     canvas = mountCanvas({
       frame, stage, width: deck.width, height: deck.height, selected,
       getChunk: () => chunks().list[cur],
       edit(fn) { const { fm, list } = chunks(); list[cur] = fn(list[cur]); commit(joinDeck(fm, list)); },
-      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); },
+      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); syncFmt(); },
     });
+    }
     host.querySelector('[data-sl-layout]').value = s.layout;
     host.querySelector('[data-sl-theme]').value = deck.theme;
     host.querySelector('[data-sl-size]').value = deck.global.size === '4:3' ? '4:3' : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur').textContent = cur + 1;
-    renderLayers();
+    renderLayers(); syncFmt();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.slides.length} ${deck.slides.length === 1 ? 'slide' : 'slides'}`);
@@ -229,12 +255,85 @@ export function mountSlides(host, ctx) {
   host.querySelector('[data-sl-layers]').addEventListener('change', (e) => { host.querySelector('.sl-layers').hidden = !e.target.checked; renderLayers(); });
   host.querySelector('[data-sl-grid]').addEventListener('change', (e) => { frame.classList.toggle('sl-grid', e.target.checked); canvas?.setGrid(e.target.checked ? 40 : 0); });
   host.querySelector('[data-sl="arrange"]').addEventListener('click', (e) => arrangeMenu(e.currentTarget));
+  /* text on the canvas (P3) */
+  let textEdit = null, editing = -1;
+  const fmt = host.querySelector('.sl-fmtbar');
+  const isText = (o) => o && (o.kind === 'box' || o.kind === 'shape');
+  function syncFmt() {
+    const objs = objsNow(); const picked = selected.filter((i) => isText(objs[i]));
+    fmt.classList.toggle('is-idle', !picked.length);
+    for (const c of fmt.querySelectorAll('input, select, button')) c.disabled = !picked.length;
+    if (!picked.length) return;
+    const a = objs[picked[0]].attrs;
+    for (const el of fmt.querySelectorAll('[data-at]')) { const k = el.dataset.at; el.value = a[k] ?? (el.type === 'color' ? (k === 'fill' ? '#f2f2f2' : '#1a1a1a') : ''); }
+    fmt.querySelector('[data-at-fit]').checked = a.fit === 'shrink';
+    for (const b of fmt.querySelectorAll('[data-al]')) b.setAttribute('aria-pressed', String(a.align === b.dataset.al));
+    const live = !!textEdit;
+    for (const b of fmt.querySelectorAll('[data-tx]')) {
+      const k = b.dataset.tx; b.disabled = !live;
+      if (k === 'style') { b.value = !live ? 'p' : textEdit.active('heading', { level: 1 }) ? 'h1' : textEdit.active('heading', { level: 2 }) ? 'h2' : textEdit.active('heading', { level: 3 }) ? 'h3' : 'p'; continue; }
+      const name = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strike', highlight: 'highlight', link: 'link', bullet: 'bulletList', ordered: 'orderedList' }[k];
+      b.setAttribute('aria-pressed', String(live && textEdit.active(name)));
+      b.title = live ? b.getAttribute('aria-label') : 'Double-click a box to edit its text';
+    }
+  }
+  fmt.addEventListener('sl-text-state', syncFmt);
+  fmt.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+  fmt.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tx]'); if (t && t.tagName === 'BUTTON' && textEdit) { textEdit.run(t.dataset.tx); return; }
+    const al = e.target.closest('[data-al]'); if (al) setAttrs({ align: al.dataset.al });
+  });
+  fmt.querySelector('[data-tx="style"]').addEventListener('change', (e) => textEdit?.run(e.target.value));
+  fmt.addEventListener('change', (e) => {
+    const el = e.target.closest('[data-at]'); if (el) { setAttrs({ [el.dataset.at]: el.value === '' ? null : el.value }); return; }
+    if (e.target.matches('[data-at-fit]')) setAttrs({ fit: e.target.checked ? 'shrink' : null });
+  });
+  /** write box-level attributes for the selection; while typing, keep the editor open and restyle live */
+  function setAttrs(patch) {
+    const objs = objsNow(); const picked = selected.filter((i) => isText(objs[i]));
+    if (!picked.length) return;
+    const clean = Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === '' ? null : v]));
+    if (!textEdit) { patchSel(picked.map((i) => [i, clean])); return; }
+    editChunk2k((c) => setMany(c, picked.map((i) => [i, clean])));
+    const o = objsNow()[editing]; const el = frame.querySelector(`.sl-obj[data-obj="${editing}"]`); if (!el || !o) return;
+    const t = o.kind === 'shape' ? el.querySelector('.sl-obj-text') : el;
+    for (const prop of ['fontFamily', 'fontSize', 'textAlign', 'lineHeight', 'justifyContent', 'fontWeight']) t.style[prop] = '';
+    for (const d of textStyle(o.attrs)) { const [k, ...v] = d.split(':'); t.style.setProperty(k, v.join(':')); }
+    if (o.attrs.color) el.style.color = o.attrs.color; else el.style.color = '';
+    if (o.kind === 'box') el.style.background = o.attrs.fill || '';
+    el.classList.toggle('is-fit', o.attrs.fit === 'shrink');
+  }
+  function editChunk2k(fn) {
+    const { fm: f, list } = chunks(); const before = scanObjects(list[cur]);
+    const next = fn(list[cur]); const after = scanObjects(next);
+    // safety net: an edit may never add, drop or merge objects or other slides
+    if (after.length !== before.length || splitSlides(next.replace(/^\n+/, '')).length !== 1 + (list[cur].match(/^---\s*$/gm) || []).length) { ctx.toast('That edit could not be saved safely, so nothing was changed.', { kind: 'error' }); return; }
+    list[cur] = next; commit(joinDeck(f, list), { keepFrame: true });
+  }
+
+  function startEdit(i) {
+    const o = objsNow()[i]; if (!isText(o) || locked(o) || textEdit) return;
+    const el = frame.querySelector(`.sl-obj[data-obj="${i}"]`); if (!el) return;
+    if (!inlineSafe(o.body)) { ctx.toast('This box has blocks the text editor cannot keep (containers, code, images, tables or HTML). Edit it in the code panel below.'); return; }
+    const target = o.kind === 'shape' ? el.querySelector('.sl-obj-text') : el;
+    selected = [i]; canvas?.select([], { notify: false }); editing = i; renderLayers();
+    textEdit = startTextEdit({
+      el: target, body: o.body.replace(/^\n+/, ''),
+      onChange: (md) => editChunk2k((c) => setObjectBody(c, i, o.kind === 'shape' ? '\n' + md : md)),
+      onLink: (prev) => ctx.prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
+      onEnd: () => { textEdit = null; const was = editing; editing = -1; selected = [was]; render({ keepEditor: false }); syncFmt(); stage.focus(); },
+    });
+    syncFmt();
+  }
+  frame.addEventListener('dblclick', (e) => { const el = e.target.closest('.sl-obj'); if (el) startEdit(Number(el.dataset.obj)); });
+
   function restore(from, to) {
     if (!from.length) return;
     to.push(text); restoring = true; commit(from.pop()); restoring = false;
   }
   stage.addEventListener('keydown', (e) => {
-    if (e.target.closest('input, textarea, select, .cm-editor')) return;
+    if (e.target.closest('input, textarea, select, .cm-editor, [contenteditable="true"]')) return;
+    if ((e.key === 'Enter' || e.key === 'F2') && selected.length === 1) { e.preventDefault(); startEdit(selected[0]); return; }
     const mod = e.ctrlKey || e.metaKey, kk = e.key.toLowerCase();
     if (mod && kk === 'c' && selected.length) { e.preventDefault(); copySel(); }
     else if (mod && kk === 'x' && selected.length) { e.preventDefault(); copySel(); deleteSel(); }

@@ -209,3 +209,34 @@ export function retarget(src, text, dx = 24, dy = 24) {
   h = h.replace(/\b(x|y)=(-?[\d.]+)/g, (m, a, v) => `${a}=${Math.round(parseFloat(v) + (a === 'x' ? dx : dy))}`);
   out[0] = h; return out.join('\n');
 }
+
+/** replace the Markdown body of a box or shape (the lines between its opener and closer) */
+export function setObjectBody(text, ref, body) {
+  const o = find(scanObjects(text), ref);
+  if (!o || o.kind === 'image') return text;
+  const lines = text.split('\n');
+  const clean = body.replace(/\s+$/, '').split('\n');
+  if (o.self) { lines.splice(o.open, 1, `${o.indent}::: ${o.kind}${o.tokens.length ? ' ' + o.tokens.join(' ') : ''}`, ...clean, `${o.indent}:::`); return lines.join('\n'); }
+  lines.splice(o.open + 1, o.close - o.open - 1, ...(body.trim() ? clean : ['']));
+  return lines.join('\n');
+}
+
+export const FONTS = { sans: 'inherit', serif: 'Georgia, "Times New Roman", serif', mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace', rounded: 'ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif' };
+/** text attributes → CSS declarations (shared by the renderer and the editor) */
+export function textStyle(a) {
+  const st = [];
+  if (a.font) st.push(`font-family:${FONTS[a.font] || (/^[\w \-]{1,40}$/.test(a.font) ? `"${a.font}", sans-serif` : 'inherit')}`);
+  if (a.size && parseFloat(a.size) > 0) st.push(`font-size:${parseFloat(a.size)}px`);
+  if (['left', 'center', 'right', 'justify'].includes(a.align)) st.push(`text-align:${a.align}`);
+  if (a.line && parseFloat(a.line) > 0) st.push(`line-height:${parseFloat(a.line)}`);
+  if (a.bold === 'true') st.push('font-weight:700');
+  const v = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[a.valign];
+  if (v) st.push(`justify-content:${v}`);
+  return st;
+}
+
+/** can the on-canvas text editor round-trip this body without losing anything? */
+export function inlineSafe(body) {
+  return !(/^\s*:::/m.test(body) || /^\s*(```|~~~)/m.test(body) || /!\[/.test(body) || /^\s*\|.*\|\s*$/m.test(body)
+    || /<\/?[a-zA-Z]/.test(body) || /\[\[|\{\{|\[\^|\$\$/.test(body) || /^\s*\[.+\]:\s*\S/m.test(body));
+}

@@ -77,6 +77,7 @@ export function mountCanvas(o) {
   });
   selecto.on('dragStart', (e) => {
     const t = e.inputEvent.target;
+    if (t.closest?.('[data-editing]')) { e.stop(); return; }
     if (moveable.isMoveableElement(t) || [].concat(moveable.target || []).some((el) => el === t || el.contains(t))) e.stop();
   });
   selecto.on('selectEnd', (e) => {
