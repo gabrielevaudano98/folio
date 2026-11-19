@@ -97,3 +97,30 @@ stacked: true
 > Make the file the interface.
 
 — Folio design note
+
+---
+
+## Placed objects
+
+::: box #claim x=80 y=200 w=520 h=240 fill=#f2f2f2 radius=12
+### Placed text
+- Any Markdown
+- Anywhere on the slide
+
+::: note
+Nested containers stay inside the box.
+:::
+:::
+
+::: shape #dot type=ellipse x=700 y=220 w=200 h=200 fill=#111
+
+Dot
+:::
+
+![Cover](assets/cover.png){x=960 y=200 w=240 h=240 crop=0,0,1,.8}
+
+```
+::: box x=1 y=1
+this is a code fence, not an object
+:::
+```

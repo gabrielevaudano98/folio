@@ -7,6 +7,8 @@ import mark from 'markdown-it-mark';
 import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
+import { extractObjects, geometry } from './slides-objects.js';
+import { shapeSvg } from './board-core.js';
 
 export const LAYOUTS = [
   ['default', 'Title and content'], ['title', 'Title'], ['section', 'Section header'], ['two-columns', 'Two columns'],
@@ -29,7 +31,7 @@ const md = new MarkdownIt({
     return `<pre><code class="hljs">${escape(code)}</code></pre>`;
   },
 }).use(taskLists).use(mark).use(katex.default || katex, { throwOnError: false });
-for (const name of ['left', 'right', 'columns', 'column', 'card', 'center', 'note', 'small', 'big']) {
+for (const name of ['left', 'right', 'columns', 'column', 'card', 'center', 'note', 'small', 'big', 'box', 'shape']) {
   md.use(container.default || container, name, { render: (t, i) => (t[i].nesting === 1 ? `<div class="sx-${name}">\n` : '</div>\n') });
 }
 
@@ -113,14 +115,15 @@ export function parseDeck(text) {
     const eff = { ...global, ...carried };
     for (const [k, v] of Object.entries(directives)) { if (k.startsWith('_')) eff[k.slice(1)] = v; else if (SPOT.includes(k)) eff[k] = v; }
     if (!directives.layout && !directives._layout) delete eff.layout;
-    const { body: content, bgs } = parseBg(body);
+    const { body: withObjects, bgs } = parseBg(body);
+    const { flow: content, objects } = extractObjects(withObjects);
     let layout = eff.layout || 'default';
     const cls = (eff.class || '').split(/\s+/).filter(Boolean);
     if (!eff.layout && cls.includes('lead')) layout = 'title';
     if (!eff.layout && bgs.some((b) => b.side === 'right')) layout = 'image-right';
     if (!eff.layout && bgs.some((b) => b.side === 'left')) layout = 'image-left';
-    const title = (content.match(/^\s*#{1,6}\s+(.+)$/m) || [])[1]?.replace(/[*_`]/g, '') || '';
-    return { index: i, src, content: content.trim(), directives, notes, bgs, layout, classes: cls, eff, title };
+    const title = ((content.trim() || withObjects).match(/^\s*#{1,6}\s+(.+)$/m) || [])[1]?.replace(/[*_`]/g, '') || '';
+    return { index: i, src, content: content.trim(), objects, directives, notes, bgs, layout, classes: cls, eff, title };
   });
   const theme = MARP_THEME[global.theme] || (THEMES.some(([t]) => t === global.theme) ? global.theme : 'folio');
   const [w, h] = global.size === '4:3' ? [960, 720] : [1280, 720];
@@ -138,12 +141,36 @@ export function renderSlide(deck, s, { number = true } = {}) {
   const full = bgs.filter((b) => !b.side), side = bgs.filter((b) => b.side);
   const sideW = side[0]?.size || 50;
   const html = DOMPurify.sanitize(md.render(s.content), { ADD_ATTR: ['target', 'data-spec'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+  const placed = (s.objects || []).map((o, n) => {
+    const g = geometry(o);
+    const st = [`left:${g.x}px`, `top:${g.y}px`, `width:${g.w}px`, `height:${g.h}px`, `z-index:${10 + g.z}`];
+    if (g.rotate) st.push(`transform:rotate(${g.rotate}deg)`);
+    if (g.opacity != null) st.push(`opacity:${g.opacity}`);
+    const a = o.attrs; const cls = ['sl-obj', 'sl-' + o.kind];
+    const ref = ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`;
+    if (o.kind === 'image') {
+      const crop = (a.crop || '').split(',').map(Number);
+      if (crop.length === 4 && crop.every((v) => !Number.isNaN(v))) { const [cx, cy, cw, ch] = crop; st.push('overflow:hidden'); return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><img class="sl-img" data-src="${escape(o.src)}" alt="${escape(a.alt || o.alt || '')}" style="position:absolute;width:${100 / cw}%;height:${100 / ch}%;left:${(-cx / cw) * 100}%;top:${(-cy / ch) * 100}%;object-fit:fill"></div>`; }
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><img class="sl-img" data-src="${escape(o.src)}" alt="${escape(a.alt || o.alt || '')}" style="object-fit:${a.fit || 'cover'}"></div>`;
+    }
+    if (a.fill && o.kind === 'box') st.push(`background:${escape(a.fill)}`);
+    if (a.color) st.push(`color:${escape(a.color)}`);
+    if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`);
+    if (a.border) st.push(`border:${parseFloat(a.border) || 1}px solid ${escape(a.stroke || 'currentColor')}`);
+    const inner = DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+    if (o.kind === 'shape') {
+      const svg = shapeSvg({ shape: a.type || 'rect', w: g.w, h: g.h, style: { fill: a.fill } }, 'sl-shape-fill');
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}">${svg}</svg><div class="sl-obj-text">${inner}</div></div>`;
+    }
+    return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${inner}</div>`;
+  }).join('');
   const img = (b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'none' ? 'none' : /%$/.test(b.fit) ? 'contain' : b.fit};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`;
   const theme = MARP_THEME[e.theme] || (THEMES.some(([t]) => t === e.theme) ? e.theme : deck.theme);
   return `<section class="slide theme-${theme} layout-${escape(s.layout)} ${s.classes.map((c) => 'cls-' + escape(c)).join(' ')}${side.length ? ' has-side side-' + side[0].side : ''}" style="width:${deck.width}px;height:${deck.height}px;--side:${sideW}%;${style.join(';')}">
     ${full.length ? `<div class="sl-bg">${full.map(img).join('')}</div>` : ''}
     ${side.length ? `<div class="sl-side">${side.map(img).join('')}</div>` : ''}
     <div class="sl-body">${html}</div>
+    ${placed ? `<div class="sl-placed">${placed}</div>` : ''}
     ${e.header ? `<header class="sl-header">${escape(e.header)}</header>` : ''}
     ${e.footer ? `<footer class="sl-footer">${escape(e.footer)}</footer>` : ''}
     ${number && e.paginate === 'true' ? `<span class="sl-num">${s.index + 1}</span>` : ''}

@@ -64,6 +64,31 @@ Right column
 - Blocks: `::: left`, `::: right`, `::: columns` with `::: column` inside, `::: card`, `::: center`, `::: note`, `::: small`, `::: big`.
 - Backgrounds (Marp): `![bg](img)`, `![bg left](img)`, `![bg right:40%](img)`, `![bg contain](img)`, filters `grayscale`, `blur`, `brightness:0.5`.
 
+### Placed objects (slides-md v2)
+
+Content is laid out by the slide's layout (flow). Objects with explicit geometry sit on top, in slide pixels on a 1280×720 canvas (960×720 for `size: 4:3`), origin top left.
+
+```markdown
+::: box #claim x=80 y=160 w=520 h=300 rotate=0 z=2 fill=#f2f2f2 radius=12
+### Any Markdown
+- lists, images, charts, tables
+:::
+
+::: shape #dot type=ellipse x=700 y=220 w=200 h=200 fill=#111
+
+Optional label
+:::
+
+![Photo](assets/a.jpg){x=960 y=200 w=240 h=240 crop=0,0,1,.8 alt="Team"}
+```
+
+- `::: box` holds Markdown. `::: shape` draws one of the board shapes (`type=`: `rect`, `rounded`, `ellipse`, `diamond`, `triangle`, `star`, `cloud`, `cylinder`, ...) with the body as its label. A shape may also be written on one line: `::: shape type=rect x=0 y=0 w=100 h=60 :::`.
+- `#id` is optional and stable; animations, links and tools refer to it. Without an id an object is addressed by its order.
+- Attributes: `x y w h` (px), `rotate` (degrees), `z` (stacking, default 0), `fill`, `color` (text), `radius`, `border`, `stroke`, `opacity` (0..1). Images take them in curly braces after the image; `crop=x,y,w,h` is the visible part as fractions of the picture; `fit=cover|contain`. Unknown attributes are kept.
+- Only top-level objects are placed. Containers nested in a box (`::: note`, `::: card`) are ordinary content. Objects inside code fences are text.
+- Editing the canvas rewrites only the opener line (or the image line) of the moved object. Everything else is untouched.
+- Marp shows boxes as ordinary content in reading order, without positioning.
+
 ## board-md
 
 One fenced block named `board`. Each line is a shape or a connector.
