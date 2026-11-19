@@ -3,6 +3,8 @@ import { parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, sp
 import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
+import { mountCanvas } from './slides-canvas.js';
+import { scanObjects, addObject, nextId } from './slides-objects.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -11,6 +13,8 @@ export function mountSlides(host, ctx) {
   host.innerHTML = `
     <div class="sf-toolbar" role="toolbar" aria-label="Slides">
       <button class="btn" type="button" data-sl="add">${icons.plus} New slide</button>
+      <button class="btn" type="button" data-sl="box" title="Add a text box you can place anywhere">${icons.plus} Text box</button>
+      <button class="btn" type="button" data-sl="shape" title="Add a shape you can place anywhere">${icons.plus} Shape</button>
       <div class="sf-sep"></div>
       <label class="sf-field"><span>Layout</span><select class="rb-select" data-sl-layout>${LAYOUTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
       <label class="sf-field"><span>Theme</span><select class="rb-select sf-narrow" data-sl-theme>${THEMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
@@ -23,7 +27,7 @@ export function mountSlides(host, ctx) {
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
-        <div class="sl-stage"><div class="sl-frame"></div></div>
+        <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
         <div class="sl-edit">
           <div class="sl-edit-col"><div class="sl-edit-head"><span>Slide ${'<b class="sl-cur">1</b>'} content</span><span class="sl-hint">Markdown. <code>::: left</code> / <code>::: right</code>, <code>::: card</code>, <code>![bg right](img)</code></span></div><div class="sl-cm"></div></div>
           <div class="sl-edit-col sl-notes-col"><label class="sl-edit-head" for="sl-notes-${host.id}">Speaker notes</label><textarea class="sl-notes input" id="sl-notes-${host.id}" placeholder="Only you see these while presenting"></textarea></div>
@@ -31,7 +35,8 @@ export function mountSlides(host, ctx) {
       </div>
     </div>`;
 
-  let text = '', deck = null, cur = 0, silent = false;
+  let text = '', deck = null, cur = 0, silent = false, canvas = null, selected = [];
+  const undo = []; const redo = []; let lastPush = 0, restoring = false;
   const thumbs = host.querySelector('.sl-thumbs');
   const frame = host.querySelector('.sl-frame');
   const stage = host.querySelector('.sl-stage');
@@ -40,6 +45,11 @@ export function mountSlides(host, ctx) {
 
   function chunks() { const fm = parseFrontmatter(text); return { fm: fm.raw, list: splitSlides(fm.body) }; }
   function commit(next, { keepEditor = false } = {}) {
+    if (!restoring && text && next !== text) {
+      const now = Date.now();
+      if (now - lastPush > 700) { undo.push(text); if (undo.length > 200) undo.shift(); }
+      lastPush = now; redo.length = 0;
+    }
     text = next; deck = parseDeck(text);
     cur = Math.min(cur, deck.slides.length - 1);
     render({ keepEditor });
@@ -69,6 +79,7 @@ export function mountSlides(host, ctx) {
     const k = Math.max(0.05, Math.min((r.width - 48) / deck.width, (r.height - 48) / deck.height));
     frame.style.width = `${deck.width * k}px`; frame.style.height = `${deck.height * k}px`;
     frame.style.setProperty('--k', k);
+    canvas?.update();
   }
   new ResizeObserver(fit).observe(stage);
 
@@ -84,6 +95,13 @@ export function mountSlides(host, ctx) {
     const s = deck.slides[cur];
     frame.innerHTML = `<div class="sl-scale">${renderSlide(deck, s)}</div>`;
     hydrate(frame); fit();
+    canvas?.destroy();
+    canvas = mountCanvas({
+      frame, stage, width: deck.width, height: deck.height, selected,
+      getChunk: () => chunks().list[cur],
+      edit(fn) { const { fm, list } = chunks(); list[cur] = fn(list[cur]); commit(joinDeck(fm, list)); },
+      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); },
+    });
     host.querySelector('[data-sl-layout]').value = s.layout;
     host.querySelector('[data-sl-theme]').value = deck.theme;
     host.querySelector('[data-sl-size]').value = deck.global.size === '4:3' ? '4:3' : '16:9';
@@ -95,6 +113,7 @@ export function mountSlides(host, ctx) {
   }
 
   function select(i, { reveal = true } = {}) {
+    if (i !== cur) selected = [];
     cur = Math.max(0, Math.min(i, deck.slides.length - 1));
     render();
     thumbs.querySelector(`[data-i="${cur}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -126,6 +145,30 @@ export function mountSlides(host, ctx) {
   function duplicateSlide(i) {
     const { fm, list } = chunks(); list.splice(i + 1, 0, list[i]); cur = i + 1; commit(joinDeck(fm, list));
   }
+
+  function addObjectBlock(kind) {
+    const { fm, list } = chunks();
+    const id = nextId(list[cur], kind);
+    const n = scanObjects(list[cur]).length;
+    const x = Math.round(deck.width / 2 - 180 + n * 24), y = Math.round(deck.height / 2 - 80 + n * 24);
+    const block = kind === 'box'
+      ? `::: box #${id} x=${x} y=${y} w=360 h=160 fill=#f2f2f2 radius=12\nText\n:::`
+      : `::: shape #${id} type=rounded x=${x} y=${y} w=240 h=120 fill=#e8e8e8\n\nLabel\n:::`;
+    list[cur] = addObject(list[cur], block);
+    selected = [scanObjects(list[cur]).length - 1];
+    commit(joinDeck(fm, list));
+  }
+  function restore(from, to) {
+    if (!from.length) return;
+    to.push(text); restoring = true; commit(from.pop()); restoring = false;
+  }
+  stage.addEventListener('keydown', (e) => {
+    if (e.target.closest('input, textarea, select, .cm-editor')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); restore(e.shiftKey ? redo : undo, e.shiftKey ? undo : redo); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); restore(redo, undo); }
+  });
+  host.querySelector('[data-sl="box"]').addEventListener('click', () => addObjectBlock('box'));
+  host.querySelector('[data-sl="shape"]').addEventListener('click', () => addObjectBlock('shape'));
 
   /* events */
   thumbs.addEventListener('click', (e) => { const li = e.target.closest('[data-i]'); if (li) select(Number(li.dataset.i)); });

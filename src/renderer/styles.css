@@ -857,3 +857,13 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .rich-callout .rich-callout-marker::before { content: ""; }
 .rich-wikilink { text-decoration: underline dotted; text-underline-offset: 0.2em; text-decoration-color: var(--color-muted); cursor: pointer; }
 .rich-wikilink:hover { text-decoration-style: solid; }
+
+/* slide canvas: selection handles in ink and paper (Moveable) */
+.sl-stage:focus-visible { outline: 2px solid var(--color-ink); outline-offset: -2px; }
+.sl-moveable.moveable-control-box { --moveable-color: var(--color-ink); }
+.sl-moveable .moveable-control { width: 10px; height: 10px; margin-top: -5px; margin-left: -5px; border: 1.5px solid var(--color-ink); background: var(--color-paper); }
+.sl-moveable .moveable-line { background: var(--color-ink); }
+.sl-moveable .moveable-rotation-line, .sl-moveable .moveable-rotation-control { border-color: var(--color-ink); }
+.sl-moveable .moveable-guideline, .sl-moveable .moveable-gap { background: var(--color-muted) !important; }
+.sl-frame .sl-obj { cursor: move; }
+.sl-frame .sl-obj:hover { outline: 1.5px solid color-mix(in oklch, var(--color-ink) 40%, transparent); outline-offset: 0; }
