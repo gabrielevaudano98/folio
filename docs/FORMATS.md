@@ -82,6 +82,27 @@ Right column
 - Blocks: `::: left`, `::: right`, `::: columns` with `::: column` inside, `::: card`, `::: center`, `::: note`, `::: small`, `::: big`.
 - Backgrounds (Marp): `![bg](img)`, `![bg left](img)`, `![bg right:40%](img)`, `![bg contain](img)`, filters `grayscale`, `blur`, `brightness:0.5`.
 
+### Themes, masters and templates
+
+Front matter can set theme tokens; Marp ignores them:
+
+```yaml
+paper: "#fafaf7"        # slide background
+ink: "#1f1f1f"          # text
+muted: "#666666"        # secondary text
+accent: "#0a5c36"       # links and accents
+card: "#f2f2f2"         # cards
+heading-font: Georgia
+body-font: Inter
+fonts: assets/Inter-Regular.woff2, assets/Inter-Bold.woff2   # font files; family and weight come from the file name
+size: 16:9              # 16:9, 4:3, 16:10, 1:1, 9:16, A4, A4-portrait
+template: Brand.slides  # take theme, tokens, fonts and masters from another deck
+```
+
+- A slide starting with `<!-- master -->` is a master: its placed objects and background appear behind every slide. `<!-- master: title -->` applies only to slides with that layout. Masters are not numbered, presented or exported, and the flow text on a master is a note for the author.
+- With `template:`, the template's front matter is the base (the deck's own keys win) and the template's masters come before the deck's own.
+- Slide backgrounds: `<!-- _backgroundColor: #f2f2f2 -->` or `<!-- _backgroundImage: linear-gradient(135deg, #ffffff, #d9d9d9) -->` for one slide, the same keys in front matter for all slides, or `![bg](picture.jpg)`.
+
 ### Placed objects (slides-md v2)
 
 Content is laid out by the slide's layout (flow). Objects with explicit geometry sit on top, in slide pixels on a 1280×720 canvas (960×720 for `size: 4:3`), origin top left.

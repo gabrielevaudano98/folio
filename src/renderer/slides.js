@@ -1,5 +1,5 @@
 // Folio — slides surface: thumbnails, stage, per-slide Markdown, presenter, PDF and PowerPoint export.
-import { syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
+import { SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
 import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
@@ -18,13 +18,14 @@ export function mountSlides(host, ctx) {
       <button class="btn" type="button" data-sl="box" title="Add a text box you can place anywhere">${icons.plus} Text box</button>
       <button class="btn" type="button" data-sl="insert" aria-haspopup="menu" title="Insert shapes, lines, images, tables, charts, icons, media">${icons.plus} Insert</button>
       <button class="btn" type="button" data-sl="arrange" aria-haspopup="menu" title="Align, distribute, order, group, lock">Arrange</button>
+      <label class="sf-check"><input type="checkbox" data-sl-design> Design</label>
       <label class="sf-check"><input type="checkbox" data-sl-format> Format</label>
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
       <label class="sf-check"><input type="checkbox" data-sl-grid> Grid</label>
       <div class="sf-sep"></div>
       <label class="sf-field"><span>Layout</span><select class="rb-select" data-sl-layout>${LAYOUTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
       <label class="sf-field"><span>Theme</span><select class="rb-select sf-narrow" data-sl-theme>${THEMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-      <label class="sf-field"><span>Size</span><select class="rb-select sf-narrow" data-sl-size><option value="16:9">16:9</option><option value="4:3">4:3</option></select></label>
+      <label class="sf-field"><span>Size</span><select class="rb-select sf-narrow" data-sl-size>${Object.keys(SIZES).map((k) => `<option value="${k}">${k.replace("-portrait", " portrait")}</option>`).join("")}</select></label>
       <label class="sf-check"><input type="checkbox" data-sl-paginate> Slide numbers</label>
       <div class="sf-spacer"></div>
       <button class="btn" type="button" data-sl="export" aria-haspopup="menu">${icons.export} Export</button>
@@ -50,18 +51,20 @@ export function mountSlides(host, ctx) {
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
-        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div></div>
+        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div></div>
         <div class="sl-sync" role="status" hidden></div>
         <div class="sl-gallery" role="dialog" aria-label="Insert" hidden></div>
         <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
         <div class="sl-edit">
-          <div class="sl-edit-col"><div class="sl-edit-head"><span>Slide ${'<b class="sl-cur">1</b>'} content</span><span class="sl-hint">Markdown. <code>::: left</code> / <code>::: right</code>, <code>::: card</code>, <code>![bg right](img)</code></span></div><div class="sl-cm"></div></div>
+          <div class="sl-edit-col"><div class="sl-edit-head"><span class="sl-cur-label">Slide <b class="sl-cur">1</b> content</span><span class="sl-hint">Markdown. <code>::: left</code> / <code>::: right</code>, <code>::: card</code>, <code>![bg right](img)</code></span></div><div class="sl-cm"></div></div>
           <div class="sl-edit-col sl-notes-col"><label class="sl-edit-head" for="sl-notes-${host.id}">Speaker notes</label><textarea class="sl-notes input" id="sl-notes-${host.id}" placeholder="Only you see these while presenting"></textarea></div>
         </div>
       </div>
     </div>`;
 
   let text = '', deck = null, cur = 0, silent = false, canvas = null, selected = [];
+  let tplText = null, tplRef = null, tplSeq = 0;
+  const parse = (t) => parseDeck(t, { template: tplText });
   const undo = []; const redo = []; let lastPush = 0, restoring = false;
   const thumbs = host.querySelector('.sl-thumbs');
   const frame = host.querySelector('.sl-frame');
@@ -69,6 +72,40 @@ export function mountSlides(host, ctx) {
   const notesEl = host.querySelector('.sl-notes');
   const chunkEditor = createEditor(host.querySelector('.sl-cm'), { onChange: (t) => { if (!silent) editChunk(() => t); } });
 
+  /** a deck can take its theme, tokens and masters from another deck: `template: Brand.slides` */
+  async function loadTemplate(force = false) {
+    const ref = parseFrontmatter(text).data.template || null;
+    if (ref === tplRef && !force) return;
+    tplRef = ref; const n = ++tplSeq;
+    if (!ref) { if (tplText != null) { tplText = null; deck = parse(text); render({ keepEditor: true }); } return; }
+    try {
+      const { resolveTarget } = await import('./refs-syntax.js');
+      const env = ctx.refEnv(); const path = resolveTarget(ref.replace(/^\[\[|\]\]$/g, ''), env.files, env.from);
+      if (!path || path === env.from) throw new Error(`template “${ref}” not found`);
+      const t = await env.read(path);
+      if (n !== tplSeq) return;
+      tplText = t.replace(/^(---\r?\n[\s\S]*?)^template:.*\r?\n/m, '$1');
+    } catch (e) { if (n !== tplSeq) return; tplText = null; ctx.toast(e.message, { kind: 'error' }); }
+    deck = parse(text); render({ keepEditor: true }); loadFonts();
+  }
+  /** fonts: assets/Brand-Regular.woff2, assets/Brand-Bold.woff2 → @font-face rules (family from the file name) */
+  let fontKey = '';
+  async function fontFaces({ inline = false } = {}) {
+    const list = String(deck?.global.fonts || '').split(',').map((x) => x.trim()).filter((x) => /\.(woff2?|ttf|otf)$/i.test(x));
+    const W = { thin: 100, extralight: 200, light: 300, regular: 400, book: 400, medium: 500, semibold: 600, bold: 700, extrabold: 800, black: 900 };
+    const rules = await Promise.all(list.map(async (f) => {
+      const base = f.split('/').pop().replace(/\.\w+$/, ''); const [fam, ...rest] = base.split(/[-_]/); const tag = rest.join('').toLowerCase();
+      const weight = Object.entries(W).find(([k]) => tag.includes(k))?.[1] || 400; const style = tag.includes('italic') ? 'italic' : 'normal';
+      const url = inline ? await ctx.dataUrl(f).catch(() => null) : await ctx.resolveImage(f);
+      return url ? `@font-face{font-family:"${fam.replace(/"/g, '')}";src:url("${url}");font-weight:${weight};font-style:${style};font-display:block}` : '';
+    }));
+    return rules.join('');
+  }
+  async function loadFonts() {
+    const key = String(deck?.global.fonts || ''); if (key === fontKey) return; fontKey = key;
+    let el = document.getElementById('sl-fonts'); if (!el) { el = document.createElement('style'); el.id = 'sl-fonts'; document.head.appendChild(el); }
+    el.textContent = await fontFaces();
+  }
   function chunks() { const fm = parseFrontmatter(text); return { fm: fm.raw, list: splitSlides(fm.body) }; }
   function commit(next, { keepEditor = false, keepFrame = false } = {}) {
     if (!restoring && text && next !== text) {
@@ -76,7 +113,7 @@ export function mountSlides(host, ctx) {
       if (now - lastPush > 700) { undo.push(text); if (undo.length > 200) undo.shift(); }
       lastPush = now; redo.length = 0;
     }
-    text = next; deck = parseDeck(text);
+    text = next; deck = parse(text); loadTemplate();
     cur = Math.min(cur, deck.slides.length - 1);
     render({ keepEditor, keepFrame });
     ctx.onChange(text);
@@ -122,11 +159,12 @@ export function mountSlides(host, ctx) {
     if (!deck) return;
     const tk = 176 / deck.width;
     thumbs.innerHTML = deck.slides.map((s, i) => `
-      <li class="sl-thumb" data-i="${i}" draggable="true" aria-current="${i === cur}" tabindex="0" aria-label="Slide ${i + 1}${s.title ? ': ' + esc(s.title) : ''}">
-        <span class="sl-thumb-n">${i + 1}</span>
+      <li class="sl-thumb${s.master ? ' is-master' : ''}" data-i="${i}" draggable="true" aria-current="${i === cur}" tabindex="0" aria-label="${s.master ? `Master slide${s.master !== 'all' ? ' for ' + esc(s.master) + ' slides' : ''}` : `Slide ${s.number}`}${s.title ? ': ' + esc(s.title) : ''}">
+        <span class="sl-thumb-n">${s.master ? 'M' : s.number}</span>
         <div class="sl-thumb-box" style="width:176px;height:${deck.height * tk}px"><div class="sl-scale" style="transform:scale(${tk})">${renderSlide(deck, s)}</div></div>
       </li>`).join('');
     hydrate(thumbs);
+    loadFonts();
     const s = deck.slides[cur];
     if (!keepFrame) {
     frame.innerHTML = `<div class="sl-scale">${renderSlide(deck, s)}</div>`;
@@ -141,13 +179,13 @@ export function mountSlides(host, ctx) {
     }
     host.querySelector('[data-sl-layout]').value = s.layout;
     host.querySelector('[data-sl-theme]').value = deck.theme;
-    host.querySelector('[data-sl-size]').value = deck.global.size === '4:3' ? '4:3' : '16:9';
+    host.querySelector('[data-sl-size]').value = SIZES[deck.global.size] ? deck.global.size : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
-    host.querySelector('.sl-cur').textContent = cur + 1;
-    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices();
+    host.querySelector('.sl-cur-label').innerHTML = s.master ? `Master${s.master !== 'all' ? ` for <b>${esc(s.master)}</b> slides` : ' for <b>all</b> slides'}` : `Slide <b class="sl-cur">${s.number}</b> content`;
+    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
-    ctx.onStatus?.(`${deck.slides.length} ${deck.slides.length === 1 ? 'slide' : 'slides'}`);
+    ctx.onStatus?.(`${deck.shown.length} ${deck.shown.length === 1 ? 'slide' : 'slides'}${deck.masters.length ? ` · ${deck.masters.length} ${deck.masters.length === 1 ? 'master' : 'masters'}` : ''}`);
   }
 
   function select(i, { reveal = true } = {}) {
@@ -371,10 +409,97 @@ export function mountSlides(host, ctx) {
     try { const src = await sourceOf(ref); const { fm, list } = chunks(); list.splice(cur + 1, 0, syncedCopy(ref, src)); cur += 1; commit(joinDeck(fm, list)); ctx.toast('Added a synced copy. It will offer to update when the source changes.'); }
     catch (e) { ctx.toast(e.message, { kind: 'error' }); }
   }
+  /* design pane (P7): theme, template, colours, fonts, background, masters */
+  const dpane = host.querySelector('.sl-design');
+  host.querySelector('[data-sl-design]').addEventListener('change', (e) => { dpane.hidden = !e.target.checked; dockRoom(); renderDesign(); });
+  const FONT_CHOICES = ['Inter', 'Helvetica Neue', 'Arial', 'Georgia', 'Times New Roman', 'Palatino', 'Garamond', 'Verdana', 'Trebuchet MS', 'Futura', 'Avenir Next', 'Gill Sans', 'Courier New'];
+  function setFm(key, value) { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, key, value), list)); }
+  function renderDesign() {
+    if (dpane.hidden || !deck) return;
+    const g = deck.global; const s0 = deck.slides[cur]; const d = s0.directives;
+    const fileFonts = String(g.fonts || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const fams = [...new Set([...fileFonts.map((f) => f.split('/').pop().split(/[-_.]/)[0]), ...FONT_CHOICES])];
+    const fontSel = (k) => `<select class="rb-select fp-sel" data-dk="${k}"><option value="">Theme default</option>${fams.map((f) => `<option${g[k] === f ? ' selected' : ''}>${esc(f)}</option>`).join('')}${g[k] && !fams.includes(g[k]) ? `<option selected>${esc(g[k])}</option>` : ''}</select>`;
+    const colour = (k, label, d0) => `<label class="fp-row"><span>${label}</span><span class="dp-col"><input class="sf-color" type="color" data-dk="${k}" value="${hex(g[k], d0)}">${g[k] ? `<button class="dp-x" type="button" data-dreset="${k}" aria-label="Reset ${label}">Reset</button>` : ''}</span></label>`;
+    const bgc = d._backgroundColor ?? d.backgroundColor, bgi = d._backgroundImage ?? d.backgroundImage;
+    const gm = String(bgi || '').match(/^linear-gradient\((-?\d+)deg,\s*([^,]+),\s*([^)]+)\)$/);
+    const bt = gm ? 'gradient' : s0.bgs.some((b) => !b.side) ? 'image' : bgc ? 'colour' : '';
+    const ms = deck.masters;
+    dpane.innerHTML = `<div class="fp-head">Design</div>
+      <section class="fp-sec"><h3>Theme</h3>
+        ${fRow('Theme', `<select class="rb-select fp-sel" data-dk="theme">${THEMES.map(([v, l]) => `<option value="${v}"${deck.theme === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`)}
+        <div class="fp-row"><span>Template</span><span class="dp-tpl">${g.template ? `<b>${esc(g.template)}</b>` : 'None'}</span></div>
+        <div class="fp-btns"><button class="btn" type="button" data-da="template">${g.template ? 'Change template…' : 'Use another deck as template…'}</button>${g.template ? '<button class="btn" type="button" data-da="untemplate">Remove</button>' : ''}</div>
+        <p class="fp-note">A template deck gives this deck its theme, colours, fonts and masters.</p></section>
+      <section class="fp-sec"><h3>Colours</h3>${colour('paper', 'Background', '#fcfcfc')}${colour('ink', 'Text', '#1f1f1f')}${colour('muted', 'Secondary text', '#666666')}${colour('accent', 'Accent and links', '#1f1f1f')}${colour('card', 'Cards', '#f2f2f2')}</section>
+      <section class="fp-sec"><h3>Fonts</h3>${fRow('Headings', fontSel('heading-font'))}${fRow('Body', fontSel('body-font'))}
+        ${fileFonts.length ? `<p class="fp-note">Font files: ${fileFonts.map((f) => esc(f.split('/').pop())).join(', ')}</p>` : ''}
+        <div class="fp-btns"><button class="btn" type="button" data-da="font">Add font file…</button></div></section>
+      <section class="fp-sec"><h3>Background${s0.master ? ' of this master' : ' of this slide'}</h3>
+        ${fRow('Type', `<select class="rb-select fp-sel" data-dk="bg-type"><option value="">Theme</option><option value="colour"${bt === 'colour' ? ' selected' : ''}>Colour</option><option value="gradient"${bt === 'gradient' ? ' selected' : ''}>Gradient</option><option value="image"${bt === 'image' ? ' selected' : ''}>Picture</option></select>`)}
+        ${bt === 'colour' ? fRow('Colour', `<input class="sf-color" type="color" data-dk="bg-1" value="${hex(bgc, '#ffffff')}">`) : ''}
+        ${bt === 'gradient' ? `<div class="fp-grid">${fRow('From', `<input class="sf-color" type="color" data-dk="bg-1" value="${hex(gm[2].trim(), '#ffffff')}">`)}${fRow('To', `<input class="sf-color" type="color" data-dk="bg-2" value="${hex(gm[3].trim(), '#dddddd')}">`)}${fRow('Angle', `<input class="input fp-num" type="number" data-dk="bg-angle" value="${gm[1]}" step="15">`)}</div>` : ''}
+        ${bt === 'image' ? '<div class="fp-btns"><button class="btn" type="button" data-da="bg-image">Change picture…</button></div>' : ''}
+        <div class="fp-btns">${bt ? '<button class="btn" type="button" data-da="bg-all">Apply to all slides</button>' : ''}</div></section>
+      <section class="fp-sec"><h3>Masters</h3>
+        ${ms.length ? `<ul class="dp-masters">${ms.map((m) => `<li><span>${m.master === 'all' ? 'All slides' : `${esc(m.master)} slides`}</span>${m.fromTemplate ? '<em>from template</em>' : `<button class="btn" type="button" data-dm="${m.index}">Edit</button>`}</li>`).join('')}</ul>` : '<p class="fp-note">Objects on a master appear on every slide, like a logo or a footer bar.</p>'}
+        <div class="fp-btns"><button class="btn" type="button" data-da="master-all">Add master for all slides</button>${!s0.master && s0.layout !== 'default' ? `<button class="btn" type="button" data-da="master-layout">Add master for ${esc(s0.layout)} slides</button>` : ''}</div></section>`;
+  }
+  function setBg(type, vals = {}) {
+    editChunk2((c) => {
+      let t = setDirective(setDirective(c, '_backgroundColor', null), '_backgroundImage', null);
+      t = t.replace(/^!\[bg(?![^\]]*\b(left|right)\b)[^\]]*\]\([^)]*\)\s*\n?/gm, '');
+      if (type === 'colour') t = setDirective(t, '_backgroundColor', vals.c1 || '#ffffff');
+      if (type === 'gradient') t = setDirective(t, '_backgroundImage', `linear-gradient(${vals.angle ?? 135}deg, ${vals.c1 || '#ffffff'}, ${vals.c2 || '#dddddd'})`);
+      if (type === 'image' && vals.src) t = `![bg](${vals.src})\n` + t.replace(/^\n+/, '');
+      return t;
+    });
+  }
+  dpane.addEventListener('change', async (e) => {
+    const el = e.target.closest('[data-dk]'); if (!el) return; const k = el.dataset.dk;
+    if (k === 'theme') return setFm('theme', el.value);
+    if (['paper', 'ink', 'muted', 'accent', 'card', 'heading-font', 'body-font'].includes(k)) return setFm(k, el.value || null);
+    const v = (n) => dpane.querySelector(`[data-dk="${n}"]`)?.value;
+    if (k === 'bg-type') {
+      if (el.value === 'image') { const src = await ctx.pickImage?.(); if (!src) return renderDesign(); return setBg('image', { src }); }
+      return setBg(el.value, { c1: el.value === 'gradient' ? '#ffffff' : '#f2f2f2', c2: '#d9d9d9', angle: 135 });
+    }
+    const type = dpane.querySelector('[data-dk="bg-type"]').value;
+    setBg(type, { c1: v('bg-1'), c2: v('bg-2'), angle: v('bg-angle') });
+  });
+  dpane.addEventListener('click', async (e) => {
+    const r = e.target.closest('[data-dreset]'); if (r) return setFm(r.dataset.dreset, null);
+    const m = e.target.closest('[data-dm]'); if (m) return select(Number(m.dataset.dm));
+    const b = e.target.closest('[data-da]'); if (!b) return;
+    const a = b.dataset.da;
+    if (a === 'template') {
+      const t = await ctx.pickRef?.({ kind: 'link' }); if (!t) return;
+      const target = t.replace(/^!?\[\[|\]\]$/g, '').replace(/\|.*$/, '').replace(/#.*$/, '');
+      if (!/\.slides$/i.test(target) && !/\.slides\.md$/i.test(target)) return ctx.toast('Choose a slide deck as the template.');
+      return setFm('template', target);
+    }
+    if (a === 'untemplate') return setFm('template', null);
+    if (a === 'font') { const f = await ctx.pickMedia?.('font'); if (!f) return; const cur0 = String(deck.global.fonts || '').split(',').map((x) => x.trim()).filter(Boolean); return setFm('fonts', [...new Set([...cur0, f])].join(', ')); }
+    if (a === 'bg-image') { const src = await ctx.pickImage?.(); if (src) setBg('image', { src }); return; }
+    if (a === 'bg-all') {
+      const s0 = deck.slides[cur]; const d = s0.directives; const bgc = d._backgroundColor ?? d.backgroundColor, bgi = d._backgroundImage ?? d.backgroundImage;
+      const img = s0.bgs.find((x) => !x.side);
+      let { fm, list } = chunks();
+      fm = setGlobal(setGlobal(fm, 'backgroundColor', bgc || null), 'backgroundImage', bgi || (img ? `url(${img.src})` : null));
+      list = list.map((c) => setDirective(setDirective(c, '_backgroundColor', null), '_backgroundImage', null).replace(/^!\[bg(?![^\]]*\b(left|right)\b)[^\]]*\]\([^)]*\)\s*\n?/gm, ''));
+      commit(joinDeck(fm, list)); return ctx.toast('Background applied to all slides.');
+    }
+    if (a === 'master-all' || a === 'master-layout') {
+      const which = a === 'master-all' ? '' : `: ${deck.slides[cur].layout}`;
+      const { fm, list } = chunks(); list.unshift(`\n<!-- master${which} -->\n## Master${which ? ' for ' + which.slice(2) + ' slides' : ''}\n\nObjects placed here appear on every ${which ? which.slice(2) : ''} slide. Text in the flow is a note for you.\n\n::: box #footer x=88 y=650 w=500 h=40 size=18 color=#666666\nYour company\n:::\n`);
+      cur = 0; commit(joinDeck(fm, list)); return ctx.toast('Master added. Place a logo or footer on it.');
+    }
+  });
+
   /* format pane (P6) */
   const fpane = host.querySelector('.sl-format');
   host.querySelector('[data-sl-format]').addEventListener('change', (e) => { fpane.hidden = !e.target.checked; dockRoom(); renderFormat(); });
-  function dockRoom() { const open = !fpane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
+  function dockRoom() { const open = !fpane.hidden || !dpane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : /^#[0-9a-f]{3}$/i.test(c || '') ? '#' + c.slice(1).split('').map((x) => x + x).join('') : d);
   const fRow = (label, html) => `<label class="fp-row"><span>${label}</span>${html}</label>`;
   const num = (k, v, step = 1, min = '', max = '') => `<input class="input fp-num" type="number" data-fk="${k}" value="${v ?? ''}" step="${step}"${min !== '' ? ` min="${min}"` : ''}${max !== '' ? ` max="${max}"` : ''}>`;
@@ -728,28 +853,29 @@ export function mountSlides(host, ctx) {
 
   /* presenter */
   function present(start = 0) {
-    let i = start, showNotes = false;
+    const show = deck.shown; if (!show.length) return ctx.toast('There are no slides to present, only masters.');
+    const startSlide = deck.slides[start]; let i = Math.max(0, show.indexOf(startSlide?.master ? show[0] : startSlide)), showNotes = false;
     const ov = document.createElement('div');
     ov.className = 'presenter'; ov.tabIndex = 0; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Presentation');
     document.body.appendChild(ov);
     const draw = () => {
-      const s = deck.slides[i];
+      const s = show[i];
       const k = Math.min(innerWidth / deck.width, (innerHeight - (showNotes ? 160 : 0)) / deck.height);
       ov.innerHTML = `<div class="pr-stage" style="width:${deck.width * k}px;height:${deck.height * k}px"><div class="sl-scale" style="transform:scale(${k})">${renderSlide(deck, s)}</div></div>
         ${showNotes ? `<div class="pr-notes"><b>Notes</b><p>${esc(s.notes || 'No notes for this slide.')}</p></div>` : ''}
-        <div class="pr-bar">${i + 1} / ${deck.slides.length}<span>Arrows to move, N for notes, Esc to exit</span></div>`;
+        <div class="pr-bar">${i + 1} / ${show.length}<span>Arrows to move, N for notes, Esc to exit</span></div>`;
       hydrate(ov);
     };
-    const close = () => { removeEventListener('resize', draw); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); ov.remove(); select(i); };
+    const close = () => { removeEventListener('resize', draw); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); ov.remove(); select(show[i].index); };
     ov.addEventListener('keydown', (e) => {
-      if (['ArrowRight', 'ArrowDown', ' ', 'PageDown', 'Enter'].includes(e.key)) { i = Math.min(deck.slides.length - 1, i + 1); draw(); }
+      if (['ArrowRight', 'ArrowDown', ' ', 'PageDown', 'Enter'].includes(e.key)) { i = Math.min(show.length - 1, i + 1); draw(); }
       else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) { i = Math.max(0, i - 1); draw(); }
-      else if (e.key === 'Home') { i = 0; draw(); } else if (e.key === 'End') { i = deck.slides.length - 1; draw(); }
+      else if (e.key === 'Home') { i = 0; draw(); } else if (e.key === 'End') { i = show.length - 1; draw(); }
       else if (e.key.toLowerCase() === 'n') { showNotes = !showNotes; draw(); }
       else if (e.key === 'Escape') close();
       e.preventDefault();
     });
-    ov.addEventListener('click', (e) => { if (e.clientX > innerWidth / 3) i = Math.min(deck.slides.length - 1, i + 1); else i = Math.max(0, i - 1); draw(); });
+    ov.addEventListener('click', (e) => { if (e.clientX > innerWidth / 3) i = Math.min(show.length - 1, i + 1); else i = Math.max(0, i - 1); draw(); });
     document.addEventListener('fullscreenchange', function f() { if (!document.fullscreenElement && ov.isConnected) { document.removeEventListener('fullscreenchange', f); close(); } });
     addEventListener('resize', draw);
     draw(); ov.focus();
@@ -759,7 +885,7 @@ export function mountSlides(host, ctx) {
   /* exports */
   async function resolvedHtml() {
     const box = document.createElement('div');
-    box.innerHTML = deck.slides.map((s) => renderSlide(deck, s)).join('');
+    box.innerHTML = deck.shown.map((s) => renderSlide(deck, s)).join('');
     await hydrateCharts(box, ctx.readNote);
     if (box.querySelector('.sl-icon-svg')) { const { hydrateIcons } = await import('./slides-icons.js'); await hydrateIcons(box); }
     if (ctx.refEnv) { const { hydrateRefs } = await import('./refs.js'); await hydrateRefs(box, ctx.refEnv()); }
@@ -772,7 +898,7 @@ export function mountSlides(host, ctx) {
   async function exportPdf() {
     try {
       const body = await resolvedHtml();
-      const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:${deck.width}px ${deck.height}px;margin:0}html,body{margin:0}${slidesCss}.slide{page-break-after:always;break-after:page}</style></head><body>${body}</body></html>`;
+      const html = `<!doctype html><html><head><meta charset="utf-8"><style>${await fontFaces({ inline: true })}@page{size:${deck.width}px ${deck.height}px;margin:0}html,body{margin:0}${slidesCss}.slide{page-break-after:always;break-after:page}</style></head><body>${body}</body></html>`;
       const out = await ctx.exportPdf(html);
       if (out) ctx.toast('Slides exported to PDF.');
     } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
@@ -789,7 +915,7 @@ export function mountSlides(host, ctx) {
   return {
     setText(t) {
       if (t === text) return;
-      text = t; deck = parseDeck(t);
+      text = t; deck = parse(t); loadTemplate();
       cur = Math.min(cur, deck.slides.length - 1);
       render();
     },

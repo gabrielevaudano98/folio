@@ -30,7 +30,7 @@ function readPatch(el, g) {
  */
 export function mountCanvas(o) {
   const { frame, stage, width, height } = o;
-  const objEls = () => [...frame.querySelectorAll('.sl-obj')];
+  const objEls = () => [...frame.querySelectorAll('.sl-obj[data-obj]')];
   const byIndex = (i) => frame.querySelector(`.sl-obj[data-obj="${i}"]`);
   const indexOf = (el) => Number(el.dataset.obj);
   const k = () => parseFloat(frame.style.getPropertyValue('--k')) || 1;
@@ -73,7 +73,7 @@ export function mountCanvas(o) {
 
   const selecto = new Selecto({
     container: stage, rootContainer: stage, dragContainer: frame,
-    selectableTargets: ['.sl-obj:not(.is-locked)'], selectByClick: true, selectFromInside: false, hitRate: 0,
+    selectableTargets: ['.sl-obj[data-obj]:not(.is-locked)'], selectByClick: true, selectFromInside: false, hitRate: 0,
     toggleContinueSelect: ['shift'], preventDefault: false,
   });
   selecto.on('dragStart', (e) => {

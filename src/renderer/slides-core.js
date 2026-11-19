@@ -17,10 +17,15 @@ export const LAYOUTS = [
   ['cards', 'Cards'], ['blank', 'Blank'],
 ];
 export const THEMES = [['folio', 'Folio'], ['graphite', 'Graphite'], ['paper', 'Paper']];
+/** slide sizes: name → [width, height] in px */
+export const SIZES = { '16:9': [1280, 720], '4:3': [960, 720], '1:1': [1080, 1080], '9:16': [720, 1280], '16:10': [1280, 800], A4: [1123, 794], 'A4-portrait': [794, 1123] };
+/** theme tokens a deck (or its template) may set in front matter, and the CSS variable each one drives */
+export const TOKENS = { paper: '--sl-bg', ink: '--sl-ink', muted: '--sl-muted', accent: '--sl-accent', card: '--sl-card', 'heading-font': '--sl-face', 'body-font': '--sl-body' };
+const FONT_NAME = /^[\w \-'",.]{1,120}$/;
 const MARP_THEME = { default: 'folio', gaia: 'paper', uncover: 'graphite' };
-const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source'];
+const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source', 'master'];
 const LOCAL = ['paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color'];
-const SPOT = ['layout', 'source']; // Folio layouts apply to one slide only
+const SPOT = ['layout', 'source', 'master']; // Folio layouts apply to one slide only
 
 const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -66,6 +71,7 @@ export function splitSlides(body) {
 function parseComments(chunk) {
   const directives = {}; const notes = [];
   const body = chunk.replace(/<!--([\s\S]*?)-->/g, (all, inner) => {
+    if (/^\s*master\s*$/.test(inner)) { directives.master = ''; return ''; }
     const lines = inner.trim().split(/\r?\n/);
     const parsed = lines.map((l) => l.trim().match(/^(_?)([a-zA-Z]+)\s*:\s*(.*)$/));
     if (parsed.length && parsed.every((p) => p && DIRECTIVES.includes(p[2]))) {
@@ -102,10 +108,11 @@ function parseBg(body) {
   return { body: rest, bgs };
 }
 
-export function parseDeck(text) {
+export function parseDeck(text, { template = null } = {}) {
   const fm = parseFrontmatter(text);
+  const tpl = template ? parseDeck(template) : null;
   const chunks = splitSlides(fm.body);
-  const global = { theme: 'folio', paginate: 'false', size: '16:9' };
+  const global = { theme: 'folio', paginate: 'false', size: '16:9', ...(tpl ? Object.fromEntries(Object.entries(tpl.fm.data).filter(([k]) => !['marp', 'title', 'template', 'description', 'author'].includes(k))) : {}) };
   for (const [k, v] of Object.entries(fm.data)) global[k] = v;
   const carried = {};
   const slides = chunks.map((src, i) => {
@@ -125,28 +132,56 @@ export function parseDeck(text) {
     if (!eff.layout && bgs.some((b) => b.side === 'right')) layout = 'image-right';
     if (!eff.layout && bgs.some((b) => b.side === 'left')) layout = 'image-left';
     const title = ((content.trim() || withObjects).match(/^\s*#{1,6}\s+(.+)$/m) || [])[1]?.replace(/[*_`]/g, '') || '';
-    return { index: i, src, content: content.trim(), objects, directives, notes, bgs, layout, classes: cls, eff, title };
+    const master = directives.master != null ? (String(directives.master).trim() || 'all') : null;
+    return { index: i, src, content: content.trim(), objects, directives, notes, bgs, layout, classes: cls, eff, title, master };
   });
+  let n = 0; for (const sl of slides) sl.number = sl.master ? null : ++n;
+  const masters = [...(tpl ? tpl.masters.map((m) => ({ ...m, fromTemplate: true })) : []), ...slides.filter((sl) => sl.master)];
   const theme = MARP_THEME[global.theme] || (THEMES.some(([t]) => t === global.theme) ? global.theme : 'folio');
-  const [w, h] = global.size === '4:3' ? [960, 720] : [1280, 720];
-  return { fm, slides, global, theme, width: w, height: h };
+  const [w, h] = SIZES[global.size] || SIZES['16:9'];
+  return { fm, slides, shown: slides.filter((sl) => !sl.master), masters, global, theme, width: w, height: h, template: tpl ? true : false };
 }
 
 /* ---------- render ---------- */
 export function renderSlide(deck, s, { number = true } = {}) {
   const e = s.eff;
   const style = [];
-  if (e.backgroundColor) style.push(`--sl-bg:${e.backgroundColor}`);
-  if (e.color) style.push(`--sl-ink:${e.color}`);
-  const bgImg = e.backgroundImage?.match(/url\(["']?([^"')]+)/)?.[1];
+  for (const [k, v] of Object.entries(TOKENS)) {
+    const val = e[k]; if (val == null || val === '') continue;
+    if (k.endsWith('-font')) { if (FONT_NAME.test(val)) style.push(`${v}:${val.split(',').map((f) => `'${f.trim().replace(/["']/g, '')}'`).join(', ')}, system-ui, sans-serif`); }
+    else if (safeColor(val)) style.push(`${v}:${safeColor(val)}`);
+  }
+  if (safeColor(e.backgroundColor)) style.push(`--sl-bg:${safeColor(e.backgroundColor)}`);
+  if (safeColor(e.color)) style.push(`--sl-ink:${safeColor(e.color)}`);
+  const grad = /^(linear|radial)-gradient\([#\w\s,.%()-]+\)$/i.test(String(e.backgroundImage || '').trim()) ? String(e.backgroundImage).trim() : null;
+  if (grad) style.push(`background-image:${grad}`);
+  const bgImg = grad ? null : e.backgroundImage?.match(/url\(["']?([^"')]+)/)?.[1];
   const bgs = [...s.bgs, ...(bgImg ? [{ src: bgImg, fit: 'cover', side: null, filters: [] }] : [])];
   const full = bgs.filter((b) => !b.side), side = bgs.filter((b) => b.side);
   const sideW = side[0]?.size || 50;
   const html = DOMPurify.sanitize(md.render(s.content), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+  const placed = placedHtml(deck, s);
+  const img = (b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'none' ? 'none' : /%$/.test(b.fit) ? 'contain' : b.fit};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`;
+  const theme = MARP_THEME[e.theme] || (THEMES.some(([t]) => t === e.theme) ? e.theme : deck.theme);
+  return `<section class="slide theme-${theme} layout-${escape(s.layout)} ${s.classes.map((c) => 'cls-' + escape(c)).join(' ')}${side.length ? ' has-side side-' + side[0].side : ''}" style="width:${deck.width}px;height:${deck.height}px;--side:${sideW}%;${style.join(';')}">
+    ${full.length ? `<div class="sl-bg">${full.map(img).join('')}</div>` : ''}
+    ${side.length ? `<div class="sl-side">${side.map(img).join('')}</div>` : ''}
+    ${masterLayer(deck, s)}
+    <div class="sl-body">${html}</div>
+    ${placed ? `<div class="sl-placed">${placed}</div>` : ''}
+    ${e.header ? `<header class="sl-header">${escape(e.header)}</header>` : ''}
+    ${e.footer ? `<footer class="sl-footer">${escape(e.footer)}</footer>` : ''}
+    ${number && e.paginate === 'true' && !s.master ? `<span class="sl-num">${s.number ?? s.index + 1}</span>` : ''}
+    ${s.master ? `<span class="sl-master-tag">Master${s.master !== 'all' ? ': ' + escape(s.master) : ''}</span>` : ''}
+  </section>`;
+}
+
+/** placed objects of a slide; inert (for masters) leaves out the ids the canvas selects by */
+function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
   const byId = Object.fromEntries((s.objects || []).filter((o) => o.id && o.kind !== 'line').map((o) => [o.id, geometry(o)]));
-  const placed = (s.objects || []).map((o, n) => {
+  return (s.objects || []).map((o, n) => {
     const g = geometry(o);
-    if (o.kind === 'line') return lineHtml(o, n, byId);
+    if (o.kind === 'line') return lineHtml(o, n, byId, inert);
     const st = [`left:${g.x}px`, `top:${g.y}px`, `width:${g.w}px`, `height:${g.h}px`, `z-index:${10 + g.z}`];
     const a = o.attrs;
     const tf = [g.rotate ? `rotate(${g.rotate}deg)` : '', o.kind === 'image' || o.kind === 'icon' ? flipCss(a) : ''].filter(Boolean);
@@ -154,7 +189,8 @@ export function renderSlide(deck, s, { number = true } = {}) {
     if (g.opacity != null) st.push(`opacity:${g.opacity}`);
     st.push(...frameCss(o));
     const cls = ['sl-obj', 'sl-' + o.kind]; if (['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase())) cls.push('is-locked');
-    const ref = ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`;
+    const ref = inert ? '' : ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`;
+    if (inert) cls.push('is-master');
     if (o.kind === 'image') {
       const adj = adjustCss(a.adjust); const imgF = adj.length ? `filter:${adj.join(' ')};` : '';
       if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`, 'overflow:hidden');
@@ -195,20 +231,22 @@ export function renderSlide(deck, s, { number = true } = {}) {
     }
     return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${inner}</div>`;
   }).join('');
-  const img = (b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'none' ? 'none' : /%$/.test(b.fit) ? 'contain' : b.fit};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`;
-  const theme = MARP_THEME[e.theme] || (THEMES.some(([t]) => t === e.theme) ? e.theme : deck.theme);
-  return `<section class="slide theme-${theme} layout-${escape(s.layout)} ${s.classes.map((c) => 'cls-' + escape(c)).join(' ')}${side.length ? ' has-side side-' + side[0].side : ''}" style="width:${deck.width}px;height:${deck.height}px;--side:${sideW}%;${style.join(';')}">
-    ${full.length ? `<div class="sl-bg">${full.map(img).join('')}</div>` : ''}
-    ${side.length ? `<div class="sl-side">${side.map(img).join('')}</div>` : ''}
-    <div class="sl-body">${html}</div>
-    ${placed ? `<div class="sl-placed">${placed}</div>` : ''}
-    ${e.header ? `<header class="sl-header">${escape(e.header)}</header>` : ''}
-    ${e.footer ? `<footer class="sl-footer">${escape(e.footer)}</footer>` : ''}
-    ${number && e.paginate === 'true' ? `<span class="sl-num">${s.index + 1}</span>` : ''}
-  </section>`;
 }
 
-function lineHtml(o, n, byId) {
+/** objects and backgrounds of the master slides that apply to this slide, drawn under its content */
+function masterLayer(deck, s) {
+  if (s.master || !deck.masters?.length) return '';
+  const use = deck.masters.filter((m) => m.master === 'all' || m.master === s.layout);
+  if (!use.length) return '';
+  const parts = use.map((m) => {
+    const bg = m.bgs.filter((b) => !b.side).map((b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'contain' ? 'contain' : 'cover'};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`).join('');
+    const objs = placedHtml(deck, { ...m, index: `m${m.index}${m.fromTemplate ? 't' : ''}` });
+    return `${bg ? `<div class="sl-bg">${bg}</div>` : ''}${objs ? `<div class="sl-placed sl-master-objs">${objs}</div>` : ''}`;
+  }).join('');
+  return `<div class="sl-master" aria-hidden="true">${parts}</div>`;
+}
+
+function lineHtml(o, n, byId, inert = false) {
   const a = o.attrs; const g = geometry(o);
   const pts = linePoints(o, byId); const [[x1, y1], [x2, y2]] = pts;
   const pad = 16, sw = parseFloat(a.width) || 3;
@@ -219,7 +257,7 @@ function lineHtml(o, n, byId) {
   const seg = a.route === 'elbow' ? [[(x1 + x2) / 2, y2], [(x1 + x2) / 2, y1]] : [[x1, y1], [x2, y2]];
   const heads = (/arrow/.test(a.head || '') ? head([x2, y2], seg[0]) : '') + (/arrow/.test(a.tail || '') ? head([x1, y1], seg[1]) : '');
   const dash = a.dash === 'true' ? ` stroke-dasharray="${sw * 3} ${sw * 2}"` : '';
-  return `<div class="sl-obj sl-line${['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase()) ? ' is-locked' : ''}${a.from || a.to ? ' is-connector' : ''}" data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''} data-x1="${x1}" data-y1="${y1}" data-x2="${x2}" data-y2="${y2}" style="left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px;z-index:${10 + g.z}"><svg width="${bw}" height="${bh}" viewBox="${bx} ${by} ${bw} ${bh}"><path class="sl-line-hit" d="${d}"/><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash}/>${heads}</svg></div>`;
+  return `<div class="sl-obj sl-line${['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase()) ? ' is-locked' : ''}${a.from || a.to ? ' is-connector' : ''}${inert ? ' is-master' : ''}"${inert ? '' : ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`} data-x1="${x1}" data-y1="${y1}" data-x2="${x2}" data-y2="${y2}" style="left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px;z-index:${10 + g.z}"><svg width="${bw}" height="${bh}" viewBox="${bx} ${by} ${bw} ${bh}"><path class="sl-line-hit" d="${d}"/><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash}/>${heads}</svg></div>`;
 }
 
 /* ---------- synced copies ---------- */
@@ -246,14 +284,15 @@ export function setDirective(chunk, key, value) {
 export function setNotes(chunk, text) {
   let out = chunk.replace(/<!--([\s\S]*?)-->\n?/g, (all, inner) => {
     const lines = inner.trim().split(/\r?\n/);
-    return lines.every((l) => /^_?[a-zA-Z]+\s*:/.test(l.trim()) && DIRECTIVES.includes(l.trim().replace(/^_/, '').split(':')[0].trim())) ? all : '';
+    return /^\s*master\s*$/.test(inner) || lines.every((l) => /^_?[a-zA-Z]+\s*:/.test(l.trim()) && DIRECTIVES.includes(l.trim().replace(/^_/, '').split(':')[0].trim())) ? all : '';
   }).replace(/\n+$/, '');
   if (text.trim()) out += `\n\n<!--\n${text.trim()}\n-->`;
   return out + '\n';
 }
 export function setGlobal(fmRaw, key, value) {
-  if (!fmRaw) return `---\nmarp: true\n${key}: ${value}\n---\n\n`;
   const re = new RegExp(`^${key}:.*$`, 'm');
+  if (value == null || value === '') return fmRaw && re.test(fmRaw) ? fmRaw.replace(new RegExp(`^${key}:.*\\r?\\n`, 'm'), '') : fmRaw;
+  if (!fmRaw) return `---\nmarp: true\n${key}: ${value}\n---\n\n`;
   return re.test(fmRaw) ? fmRaw.replace(re, `${key}: ${value}`) : fmRaw.replace(/\n---\r?\n?$/, `\n${key}: ${value}\n---\n`);
 }
 

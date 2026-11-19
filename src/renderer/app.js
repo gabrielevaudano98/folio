@@ -71,7 +71,7 @@ function surfaceCtx(type) {
     copyRef: (part, kind) => copyRef(S.active, part, kind),
     pickRef,
     pickImage: () => folio.pickImage(S.active),
-    pickMedia: () => folio.pickMedia(S.active),
+    pickMedia: (kind) => folio.pickMedia(S.active, kind),
   };
 }
 const curType = () => app.dataset.doc || 'md';

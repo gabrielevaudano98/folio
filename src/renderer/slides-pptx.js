@@ -66,7 +66,7 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote }) {
   const W = wide ? 13.333 : 10, H = 7.5;
   pptx.title = deck.global.title || deck.slides[0]?.title || 'Slides';
 
-  for (const s of deck.slides) {
+  for (const s of deck.shown || deck.slides) {
     const themeName = ['folio', 'graphite', 'paper'].includes(s.eff.theme) ? s.eff.theme : deck.theme;
     const t = { ...THEME[(s.classes.includes('invert') ? 'graphite' : themeName)] };
     if (hex(s.eff.color)) t.ink = hex(s.eff.color);

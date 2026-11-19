@@ -194,12 +194,13 @@ h('fs:pick-image', async (noteRel) => {
   if (r.canceled || !r.filePaths[0]) return null;
   const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
   await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
+  const file = path.join(dir, font ? path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-') : `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
   await fs.copyFile(r.filePaths[0], file);
   return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
 });
-h('fs:pick-media', async (noteRel) => {
-  const r = await dialog.showOpenDialog(win, { title: 'Insert video or audio', properties: ['openFile'], filters: [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
+h('fs:pick-media', async (noteRel, kind) => {
+  const font = kind === 'font';
+  const r = await dialog.showOpenDialog(win, { title: font ? 'Add a font file' : 'Insert video or audio', properties: ['openFile'], filters: font ? [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] : [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
   await fs.mkdir(dir, { recursive: true });

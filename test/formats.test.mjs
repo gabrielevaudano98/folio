@@ -135,6 +135,18 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(polygonsBlock('m', [[[[0, 0], [100, 0], [100, 50], [0, 50], [0, 0]]]]), '::: path #m x=0 y=0 w=100 h=50 d="M0,0L1,0L1,1L0,1L0,0Z" :::'); ok('merged outlines become an even-odd path');
 }
 
+// themes, masters and templates (P7)
+{
+  const { parseDeck: pd, setGlobal: sg, SIZES: SZ } = await import('../src/renderer/slides-core.js');
+  const brand = fx('Brand.slides.md'), report = fx('Report.slides.md');
+  const r0 = pd(report); assert.equal(r0.masters.length, 1); assert.equal(r0.shown.length, 2); assert.deepEqual(r0.slides.map((x) => x.number), [null, 1, 2]); ok('master slides are not numbered or shown');
+  const r = pd(report, { template: brand });
+  assert.equal(r.theme, 'paper'); assert.equal(r.global.accent, '#0a5c36'); assert.equal(r.global['heading-font'], 'Georgia'); assert.equal(r.global.title, 'Quarterly report'); ok('a template deck gives its theme and tokens, the deck keeps its own title');
+  assert.deepEqual(r.masters.map((m) => [m.master, !!m.fromTemplate]), [['all', true], ['title', false]]); ok('masters come from the template and from the deck');
+  assert.equal(r.slides[1].layout, 'title'); assert.deepEqual(SZ['1:1'], [1080, 1080]); assert.deepEqual(pd('---\nsize: 9:16\n---\n\n# x').width, 720); ok('slide sizes include square, portrait and A4');
+  assert.equal(sg('---\nmarp: true\naccent: #111\n---\n', 'accent', null), '---\nmarp: true\n---\n'); assert.equal(sg('---\nmarp: true\n---\n', 'heading-font', 'Georgia'), '---\nmarp: true\nheading-font: Georgia\n---\n'); ok('front matter keys are set and removed');
+}
+
 // charts
 const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows');
 const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');

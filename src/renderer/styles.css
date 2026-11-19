@@ -997,3 +997,13 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .sl-vtx { position: absolute; z-index: 8; width: 10px; height: 10px; margin: -5px 0 0 -5px; background: var(--color-paper); border: 2px solid var(--color-ink); border-radius: 2px; cursor: move; touch-action: none; }
 .fp-note { margin: 4px 0 0; color: var(--color-muted); font-size: 11.5px; }
 .surface-slides.sl-docked .sl-stage { margin-right: 264px; }
+.dp-col { display: inline-flex; align-items: center; gap: 6px; }
+.dp-x { border: 0; background: transparent; color: var(--color-muted); font: inherit; font-size: 11.5px; cursor: pointer; padding: 2px 4px; border-radius: var(--radius-xs); }
+.dp-x:hover { color: var(--color-ink); background: var(--color-hover); }
+.dp-tpl { color: var(--color-ink-2); }
+.dp-masters { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
+.dp-masters li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dp-masters .btn { padding: 2px 9px; font-size: 12px; }
+.dp-masters em { color: var(--color-muted); font-style: normal; font-size: 11.5px; }
+.sl-thumb.is-master .sl-thumb-n { font-weight: 700; }
+.sl-thumb.is-master .sl-thumb-box { outline: 1.5px dashed var(--color-rule-strong); outline-offset: 2px; }
