@@ -14,6 +14,12 @@ Make what exists trustworthy: fidelity, tests, signed builds, updates.
 - **Accessibility audit of the canvas and the grid** — Keyboard-only creation and connection of shapes, screen-reader names for shapes and cells, focus order in the inspector. WCAG 2.2 AA.
 - **Virtualize the sheet grid** — Render only visible rows and columns so a 10,000 row sheet scrolls at 60 fps; recalculate only dependants of an edited cell.
 
+## v1.2 Slides Studio
+
+PowerPoint-level WYSIWYG slides: put anything anywhere, full formatting, PPTX parity. Full plan: [SLIDES-PLAN.md](SLIDES-PLAN.md).
+
+- **S0 Model** · **S1 Canvas** · **S2 Arrange** · **S3 Text in boxes** · **S4 Insert** · **S5 Format & masters** · **S6 Sorter & animations** · **S7 Presenter** · **S8 PPTX import/export** · **S9 MCP geometry tools** · **S10 Polish**
+
 ## v1.2 Editors
 
 Deeper visual editing for slides, boards and sheets.
