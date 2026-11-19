@@ -5,6 +5,10 @@ import { parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, applyEdgeStyle
 import { parseWorkbook, serializeWorkbook, evaluator, shiftFormula } from '../src/renderer/sheet-core.js';
 import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter } from '../src/renderer/slides-core.js';
 import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle } from '../src/renderer/slides-objects.js';
+import { getSchema } from '@tiptap/core';
+import { MarkdownManager } from '@tiptap/markdown';
+import { pageExtensions } from '../src/renderer/page-schema.js';
+import { createPageCodec, splitBlocks } from '../src/renderer/page-core.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -73,6 +77,65 @@ assert(inlineSafe('### Title\n- one\n- two\n\n**bold** and *italic* and [a link]
 const T = '::: box #a x=1 y=1 w=100 h=50\nOld\n:::\n\n::: box #b x=2 y=2 w=100 h=50\nKeep\n:::\n';
 const T2 = setObjectBody(T, 'a', '## New\n- a\n- b'); assert.equal(scanObjects(T2).length, 2); assert.equal(scanObjects(T2)[1].body, 'Keep'); assert.equal(scanObjects(T2)[0].body, '## New\n- a\n- b'); ok('writing a box body leaves the other objects alone');
 assert.deepEqual(textStyle({ font: 'serif', size: '40', align: 'center', line: '1.4', valign: 'middle' }), ['font-family:Georgia, "Times New Roman", serif', 'font-size:40px', 'text-align:center', 'line-height:1.4', 'justify-content:center']); ok('text attributes become CSS');
+
+// pages: lossless Markdown in the page editor
+{
+  const ext = pageExtensions(); const schema = getSchema(ext);
+  const codec = createPageCodec(new MarkdownManager({ extensions: ext, markedOptions: { gfm: true } }));
+  const open = (text) => { const m = codec.load(text); const doc = schema.nodeFromJSON(m.json); assert(codec.bind(m, doc)); return { m, doc, kids: Array.from({ length: doc.childCount }, (_, i) => doc.child(i)) }; };
+  const withKids = (kids) => schema.node('doc', null, kids);
+  const para = (t) => schema.node('paragraph', null, t ? [schema.text(t)] : []);
+  const corpus = fs.readdirSync(new URL('../test/fixture/pages/', new URL('../', import.meta.url))).filter((f) => f.endsWith('.md'));
+  assert(corpus.length >= 6);
+  for (const f of corpus) {
+    const text = fx('pages/' + f);
+    const { m, doc, kids } = open(text);
+    assert.equal(codec.save(m, doc), text, `${f}: opening and saving changes nothing`);
+    // edit each rich paragraph in turn: only its own text may change
+    m.blocks.forEach((b, k) => {
+      if (b.raw || b.count !== 1 || kids[m.first[k]].type.name !== 'paragraph') return;
+      const next = kids.slice(); next[m.first[k]] = para('Edited.');
+      const head = text.slice(0, text.indexOf(b.src)), tail = text.slice(text.indexOf(b.src) + b.src.length);
+      assert.equal(codec.save(m, withKids(next)), head + 'Edited.' + tail, `${f}: editing block ${k} touches only that block`);
+    });
+  }
+  ok(`page corpus (${corpus.length} files): opening is byte-identical, editing a paragraph rewrites only that paragraph`);
+
+  const obs = open(fx('pages/obsidian.md'));
+  const raw = obs.m.blocks.filter((b) => b.raw).map((b) => b.src);
+  assert(raw.some((s) => s.startsWith('[^1]:')) && raw.some((s) => s.includes('[^1]')) && raw.some((s) => s.startsWith('$$')));
+  const html = open(fx('pages/html.md')).m.blocks.filter((b) => b.raw).map((b) => b.src);
+  assert(html.some((s) => s.startsWith('<details>')) && html.some((s) => s.startsWith('<!--')));
+  ok('footnotes, maths and HTML the editor cannot hold become raw blocks instead of being rewritten');
+
+  const g = open(fx('pages/gfm.md')); const gt = fx('pages/gfm.md');
+  const li = g.m.blocks.findIndex((b) => b.src.startsWith('* Star'));
+  const list = g.kids[g.m.first[li]];
+  const longer = list.copy(list.content.addToEnd(schema.node('listItem', null, [para('Added')])));
+  const out = codec.save(g.m, withKids(g.kids.map((n, i) => (i === g.m.first[li] ? longer : n))));
+  assert.match(out, /^\* Last\n\* Added$/m); assert(out.includes('1) Parenthesis numbering')); ok('a rewritten list keeps the author\'s bullet marker');
+
+  const ins = codec.save(g.m, withKids([...g.kids.slice(0, 2), para('New paragraph'), ...g.kids.slice(2)]));
+  const firstTwo = g.m.blocks[0].src + g.m.blocks[0].sep + g.m.blocks[1].src;
+  assert(ins.startsWith(firstTwo + '\n\nNew paragraph\n\n' + g.m.blocks[2].src)); assert(ins.endsWith(gt.slice(gt.indexOf(g.m.blocks[2].src)))); ok('inserting a paragraph adds lines and leaves the rest as written');
+
+  const del = codec.save(g.m, withKids(g.kids.filter((_, i) => i !== g.m.first[1])));
+  assert(!del.includes('A first paragraph')); assert(del.includes(g.m.blocks[2].src) && del.startsWith(g.m.blocks[0].src)); ok('deleting a block removes only that block');
+
+  const r = obs.kids.findIndex((n) => n.type.name === 'folioRaw' && n.attrs.source.startsWith('$$'));
+  const edRaw = codec.save(obs.m, withKids(obs.kids.map((n, i) => (i === r ? n.type.create({ source: '$$\nx = 1\n$$' }) : n))));
+  assert(edRaw.includes('\n$$\nx = 1\n$$\n')); assert(edRaw.includes('[^1]: The footnote text')); ok('a raw block edited as source is written back as typed');
+
+  const fmText = fx('pages/obsidian.md'); const fmEd = open(fmText);
+  const h = fmEd.kids.slice(); h[0] = schema.node('heading', { level: 1 }, [schema.text('Renamed')]);
+  assert(codec.save(fmEd.m, withKids(h)).startsWith(fmText.match(/^---[\s\S]*?---\n\n/)[0] + '# Renamed\n')); ok('front matter is kept byte for byte');
+
+  assert(!obs.m.json.content.some((n) => n.type === 'paragraph' && !n.content?.length)); ok('loading adds no empty paragraphs');
+  const trail = open(fx('pages/obsidian.md')); const withTrail = withKids([...trail.kids, para('')]); const t2 = codec.load(fx('pages/obsidian.md'));
+  assert(codec.bind(t2, withTrail)); assert.equal(codec.save(t2, withTrail), fx('pages/obsidian.md')); ok('the editor\'s trailing empty paragraph belongs to no block');
+  const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
+  assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
+}
 
 // charts
 const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows');

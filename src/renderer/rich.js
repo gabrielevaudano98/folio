@@ -1,18 +1,16 @@
 // Folio — "mini Word" rich editor for Markdown. TipTap 3 (ProseMirror) with Markdown in and out.
 import { Editor, Extension } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
-import { TableKit } from '@tiptap/extension-table';
-import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Image from '@tiptap/extension-image';
-import Highlight from '@tiptap/extension-highlight';
 import { Placeholder } from '@tiptap/extensions';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { icons } from './icons.js';
 import CodeBlock from '@tiptap/extension-code-block';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { renderMermaid, hydrateCharts } from './markdown.js';
+import { renderMermaid, hydrateCharts, render } from './markdown.js';
+import { pageExtensions, FolioRaw } from './page-schema.js';
+import { createPageCodec } from './page-core.js';
 
 /* code blocks: mermaid and chart blocks show the drawing, the source opens on demand */
 const VISUAL = ['mermaid', 'chart'];
@@ -93,7 +91,59 @@ const Decorate = Extension.create({
   },
 });
 
-const FM = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+/* Markdown the editor cannot hold without loss: drawn, edited as source, written back exactly as typed */
+const RawBlock = FolioRaw.extend({
+  addKeyboardShortcuts() {
+    return { Enter: () => { const s = this.editor.state.selection; if (!(s instanceof NodeSelection) || s.node.type.name !== this.name) return false; this.editor.view.nodeDOM(s.from)?.folioOpen?.(); return true; } };
+  },
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement('div'); dom.className = 'rich-raw'; dom.contentEditable = 'false';
+      const bar = document.createElement('div'); bar.className = 'rich-raw-bar';
+      bar.innerHTML = '<span>Kept as written</span><button type="button" class="btn btn-quiet">Edit source</button>';
+      const preview = document.createElement('div'); preview.className = 'rich-raw-preview prose';
+      const area = document.createElement('textarea'); area.className = 'rich-raw-src'; area.spellcheck = false; area.setAttribute('aria-label', 'Markdown source'); area.hidden = true;
+      dom.append(bar, preview, area);
+      const btn = bar.querySelector('button');
+      let editing = false;
+      const draw = () => {
+        preview.innerHTML = render(node.attrs.source);
+        if (!preview.textContent.trim() && !preview.querySelector('img, svg, table, hr, math')) { preview.innerHTML = '<pre class="rich-raw-plain"></pre>'; preview.firstChild.textContent = node.attrs.source; }
+      };
+      const fit = () => { area.style.height = 'auto'; area.style.height = area.scrollHeight + 'px'; };
+      const open = () => {
+        if (editing) return; editing = true; dom.classList.add('raw-editing'); btn.textContent = 'Done';
+        area.hidden = false; area.value = node.attrs.source; fit(); area.focus();
+      };
+      const close = () => {
+        if (!editing) return; editing = false; dom.classList.remove('raw-editing'); btn.textContent = 'Edit source'; area.hidden = true;
+        const pos = typeof getPos === 'function' ? getPos() : null;
+        if (area.value !== node.attrs.source && pos != null) {
+          if (area.value.trim()) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { source: area.value.replace(/^\n+|\s+$/g, '') }));
+          else editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize));
+        } else draw();
+        editor.commands.focus();
+      };
+      dom.folioOpen = open;
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', () => (editing ? close() : open()));
+      preview.addEventListener('dblclick', open);
+      preview.addEventListener('click', (e) => { if (e.target.closest('a')) e.preventDefault(); });
+      area.addEventListener('input', fit);
+      area.addEventListener('blur', () => setTimeout(close, 0));
+      area.addEventListener('keydown', (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) { e.preventDefault(); close(); } });
+      draw();
+      return {
+        dom,
+        update(n) { if (n.type !== node.type) return false; node = n; if (!editing) draw(); return true; },
+        selectNode() { dom.classList.add('raw-selected'); },
+        deselectNode() { dom.classList.remove('raw-selected'); },
+        stopEvent: (e) => area.contains(e.target) || bar.contains(e.target),
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
 
 /* images keep their relative src in Markdown, the view resolves it to a file URL */
 const FolioImage = Image.extend({
@@ -170,7 +220,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       ${btn('bullet', 'Bulleted list', icons.listBullet)}${btn('quote', 'Quote', icons.quote)}
     </div>`;
 
-  let frontmatter = '';
+  let model = null; // what was loaded, so saving rewrites only the blocks that changed
   let silent = false;
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
@@ -178,16 +228,15 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const editor = new Editor({
     element: page,
     extensions: [
-      StarterKit.configure({ link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener' } }, codeBlock: false }),
-      FolioCodeBlock.configure({ readNote, isDark, HTMLAttributes: { spellcheck: 'false' } }),
+      ...pageExtensions({
+        codeBlock: FolioCodeBlock.configure({ readNote, isDark, HTMLAttributes: { spellcheck: 'false' } }),
+        image: FolioImage.configure({ resolve: resolveImage, inline: false, allowBase64: true }),
+        raw: RawBlock,
+      }),
       Decorate.configure({ onWikiLink }),
       Markdown.configure({ markedOptions: { gfm: true } }),
-      TableKit.configure({ table: { resizable: false } }),
-      TaskList, TaskItem.configure({ nested: true }),
-      FolioImage.configure({ resolve: resolveImage, inline: false, allowBase64: true }),
-      Highlight,
       Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : 'Write, or select text to format it') }),
-      BubbleMenu.configure({ element: bubble, shouldShow: ({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') }),
+      BubbleMenu.configure({ element: bubble, shouldShow: ({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && !e.isActive('folioRaw') }),
       WordKeys,
     ],
     editorProps: { attributes: { class: 'prose rich-prose', spellcheck: 'true', 'aria-label': 'Document' } },
@@ -196,6 +245,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     onTransaction: () => syncToolbar(),
   });
 
+  const codec = createPageCodec(editor.markdown);
   let emitTimer;
   function emit() {
     clearTimeout(emitTimer);
@@ -276,19 +326,18 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const api = {
     editor,
     setMarkdown(md) {
-      const m = md.match(FM);
-      frontmatter = m ? m[0] : '';
       silent = true;
-      try { editor.commands.setContent(md.slice(frontmatter.length), { contentType: 'markdown', emitUpdate: false }); }
-      finally { silent = false; }
+      try {
+        model = codec.load(md);
+        editor.commands.setContent(model.json, { emitUpdate: false });
+        codec.bind(model, editor.state.doc);
+      } finally { silent = false; }
       host.querySelector('.rich-scroll').scrollTop = 0;
       syncToolbar();
     },
     getMarkdown() {
-      let out = editor.getMarkdown().replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
-      // keep the conventions the rest of Folio (and the AI) reads
-      out = out.replace(/\\\[\\\[([^\]\n]+)\\\]\\\]/g, '[[$1]]').replace(/\\\[!(\w+)\\\]/g, '[!$1]').replace(/\\\[!(\w+)\]/g, '[!$1]');
-      return frontmatter + (frontmatter && !frontmatter.endsWith('\n\n') ? '\n' : '') + out;
+      if (!model) model = codec.load('');
+      return codec.save(model, editor.state.doc);
     },
     focus(where) { editor.commands.focus(where); },
     run,
@@ -304,7 +353,11 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       let idx = -1; api.headings().forEach((pos, i) => { const d = editor.view.nodeDOM(pos); if (d && d.getBoundingClientRect().top <= top) idx = i; });
       return idx;
     },
-    words() { return (editor.state.doc.textContent.match(/[\p{L}\p{N}’'-]+/gu) || []).length; },
+    words() {
+      let text = editor.state.doc.textContent;
+      editor.state.doc.descendants((n) => { if (n.type.name === 'folioRaw') text += ' ' + n.attrs.source.replace(/<[^>]+>|[#*_`>|[\]()$-]/g, ' '); });
+      return (text.match(/[\p{L}\p{N}’'-]+/gu) || []).length;
+    },
     destroy() { editor.destroy(); },
   };
   return api;
