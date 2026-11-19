@@ -164,6 +164,23 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   ok('the accessibility checker finds missing titles, picture descriptions, low contrast, tiny text and duplicate titles');
 }
 
+// SmartArt and Design ideas (P9)
+{
+  const { parseItems, smartArt, SMART_TYPES } = await import('../src/renderer/slides-smartart.js');
+  const { designIdeas, analyse, BLOCKS } = await import('../src/renderer/slides-designer.js');
+  const { parseDeck: pd } = await import('../src/renderer/slides-core.js');
+  assert.deepEqual(parseItems('- A\n  - a1\n- B\n1. C'), [{ text: 'A', depth: 0, children: [{ text: 'a1', depth: 2, children: [] }] }, { text: 'B', depth: 0, children: [] }, { text: 'C', depth: 0, children: [] }]); ok('diagram lists keep their nesting');
+  for (const [t] of SMART_TYPES) { const h = smartArt(t, '- One\n- Two\n  - sub\n- <b>Three</b>', 800, 400); assert.match(h, /<svg class="sm-svg"/, t); assert.match(h, /One/); assert.doesNotMatch(h, /<b>Three<\/b>/, `${t} escapes text`); }
+  ok(`all ${SMART_TYPES.length} diagram types draw and escape their text`);
+  const slide = '\n<!-- section: Plan -->\n## Our plan\n\n- Research\n- Design\n- Build\n- Launch\n\n<!--\nSay it slowly\n-->\n';
+  const ids = designIdeas(slide).map((x) => x.id); assert(['cards', 'process', 'chevron', 'cycle', 'pyramid'].every((k) => ids.includes(k)), ids.join());
+  const applied = designIdeas(slide).find((x) => x.id === 'process').chunk; assert.match(applied, /<!-- section: Plan -->/); assert.match(applied, /Say it slowly/); assert.match(applied, /::: smartart type=process x=88 y=200 w=1104 h=260\n- Research\n- Design\n- Build\n- Launch\n:::/);
+  ok('design ideas offer diagrams and layouts and keep sections and notes');
+  assert.equal(designIdeas('## Plan\n\n- 2025: Pilot\n- 2026: Launch\n')[0].id, 'timeline'); assert(designIdeas('## Team\n\n![](a.png)\n\nWe ship\n').some((x) => x.id === 'image-right')); assert(designIdeas('## 42%\n\nGrowth\n').some((x) => x.id === 'big-number'));
+  assert.equal(designIdeas('::: box x=1 y=1\nHi\n:::\n').length, 0); ok('dates suggest a timeline, pictures suggest picture layouts, hand-placed slides get no ideas');
+  for (const [, , body] of BLOCKS) assert.equal(pd('---\nmarp: true\n---\n\n' + body).slides.length, 1); ok('building blocks are single slides');
+}
+
 // charts
 const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows');
 const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');

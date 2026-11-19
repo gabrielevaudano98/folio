@@ -4,6 +4,8 @@ import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
 import { mountCanvas } from './slides-canvas.js';
+import { SMART_TYPES, smartArt } from './slides-smartart.js';
+import { designIdeas, BLOCKS } from './slides-designer.js';
 import { LIBRARY, shapeSvg, defaultSize } from './board-core.js';
 import { startTextEdit } from './slides-text.js';
 import { pathBlock, polygonsBlock, simplify, parsePoints, pointsText, replaceImageSrc, parseFill, MASKS, SHADOWS, scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
@@ -20,6 +22,7 @@ export function mountSlides(host, ctx) {
       <button class="btn" type="button" data-sl="arrange" aria-haspopup="menu" title="Align, distribute, order, group, lock">Arrange</button>
       <button class="btn" type="button" data-sl="review" aria-haspopup="menu" title="Find and replace, comments, accessibility">Review</button>
       <div class="seg sl-views" role="radiogroup" aria-label="Slide view"><button type="button" role="radio" data-slv="normal" aria-checked="true">Normal</button><button type="button" role="radio" data-slv="sorter" aria-checked="false">Sorter</button><button type="button" role="radio" data-slv="outline" aria-checked="false">Outline</button></div>
+      <label class="sf-check"><input type="checkbox" data-sl-ideas> Ideas</label>
       <label class="sf-check"><input type="checkbox" data-sl-design> Design</label>
       <label class="sf-check"><input type="checkbox" data-sl-format> Format</label>
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
@@ -53,7 +56,7 @@ export function mountSlides(host, ctx) {
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
-        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div><div class="sl-format sl-review" hidden role="region" aria-label="Review"></div></div>
+        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div><div class="sl-format sl-review" hidden role="region" aria-label="Review"></div><div class="sl-format sl-ideas" hidden role="region" aria-label="Design ideas"></div></div>
         <div class="sl-find" role="search" aria-label="Find and replace in this deck" hidden></div>
         <div class="sl-sync" role="status" hidden></div>
         <div class="sl-gallery" role="dialog" aria-label="Insert" hidden></div>
@@ -185,7 +188,7 @@ export function mountSlides(host, ctx) {
     host.querySelector('[data-sl-size]').value = SIZES[deck.global.size] ? deck.global.size : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur-label').innerHTML = s.master ? `Master${s.master !== 'all' ? ` for <b>${esc(s.master)}</b> slides` : ' for <b>all</b> slides'}` : `Slide <b class="sl-cur">${s.number}</b> content`;
-    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign(); renderReview(); renderView();
+    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign(); renderReview(); renderView(); renderIdeas();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.shown.length} ${deck.shown.length === 1 ? 'slide' : 'slides'}${deck.masters.length ? ` · ${deck.masters.length} ${deck.masters.length === 1 ? 'master' : 'masters'}` : ''}`);
@@ -309,7 +312,7 @@ export function mountSlides(host, ctx) {
   /* text on the canvas (P3) */
   let textEdit = null, editing = -1;
   const fmt = host.querySelector('.sl-fmtbar');
-  const isText = (o) => o && (o.kind === 'box' || o.kind === 'shape');
+  const isText = (o) => o && (o.kind === 'box' || o.kind === 'shape' || o.kind === 'smartart');
   function syncFmt() {
     const objs = objsNow(); const picked = selected.filter((i) => isText(objs[i]));
     fmt.classList.toggle('is-idle', !picked.length);
@@ -367,6 +370,7 @@ export function mountSlides(host, ctx) {
     const el = frame.querySelector(`.sl-obj[data-obj="${i}"]`); if (!el) return;
     if (!inlineSafe(o.body)) { ctx.toast('This box has blocks the text editor cannot keep (containers, code, images, tables or HTML). Edit it in the code panel below.'); return; }
     const target = o.kind === 'shape' ? el.querySelector('.sl-obj-text') : el;
+    if (o.kind === 'smartart') el.classList.add('is-sm-editing');
     selected = [i]; canvas?.select([], { notify: false }); editing = i; renderLayers();
     textEdit = startTextEdit({
       el: target, body: o.body.replace(/^\n+/, ''),
@@ -663,7 +667,7 @@ export function mountSlides(host, ctx) {
   /* format pane (P6) */
   const fpane = host.querySelector('.sl-format');
   host.querySelector('[data-sl-format]').addEventListener('change', (e) => { fpane.hidden = !e.target.checked; dockRoom(); renderFormat(); });
-  function dockRoom() { const open = !fpane.hidden || !dpane.hidden || !rpane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
+  function dockRoom() { const open = !fpane.hidden || !dpane.hidden || !rpane.hidden || !ipane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : /^#[0-9a-f]{3}$/i.test(c || '') ? '#' + c.slice(1).split('').map((x) => x + x).join('') : d);
   const fRow = (label, html) => `<label class="fp-row"><span>${label}</span>${html}</label>`;
   const num = (k, v, step = 1, min = '', max = '') => `<input class="input fp-num" type="number" data-fk="${k}" value="${v ?? ''}" step="${step}"${min !== '' ? ` min="${min}"` : ''}${max !== '' ? ` max="${max}"` : ''}>`;
@@ -707,6 +711,8 @@ export function mountSlides(host, ctx) {
     }
     if (only('path') && a.points) h += `<section class="fp-sec"><h3>Free shape</h3>${fRow('Closed', `<input type="checkbox" data-fk="closed"${a.closed === 'true' ? ' checked' : ''}>`)}${fRow('Smooth', `<input type="checkbox" data-fk="smooth"${a.smooth === 'true' ? ' checked' : ''}>`)}<p class="fp-note">Drag the square handles to move points. Double-click one to remove it.</p></section>`;
     if (only('icon')) h += `<section class="fp-sec"><h3>Icon</h3>${fRow('Colour', col('color', a.color, '#1a1a1a'))}${fRow('Line weight', range('weight', a.weight || 2, 0.5, 4, 0.25))}<div class="fp-btns"><button class="btn" type="button" data-fa="icon">Change icon…</button></div></section>`;
+    if (only('smartart')) h += `<section class="fp-sec"><h3>Diagram</h3>${fRow('Type', sel('type', a.type || 'process', SMART_TYPES))}${fRow('Colour', col('fill', a.fill, '#1f1f1f'))}<p class="fp-note">Double-click the diagram to edit its list. Indent an item to make a sub-item.</p><div class="fp-btns"><button class="btn" type="button" data-fa="explode">Convert to shapes</button><button class="btn" type="button" data-fa="sm-box">Convert to text box</button></div></section>`;
+    if (only('box') && /^\s*[-*+]\s/m.test(o.body || '')) h += `<section class="fp-sec"><h3>List</h3><div class="fp-btns"><button class="btn" type="button" data-fa="to-smartart">Convert to diagram…</button></div></section>`;
     if (only('media')) h += `<section class="fp-sec"><h3>Playback</h3>${fRow('Loop', `<input type="checkbox" data-fk="loop"${a.loop === 'true' ? ' checked' : ''}>`)}${fRow('Muted', `<input type="checkbox" data-fk="muted"${a.muted === 'true' ? ' checked' : ''}>`)}${fRow('Start when the slide shows', `<input type="checkbox" data-fk="autoplay"${a.autoplay === 'true' ? ' checked' : ''}>`)}</section>`;
     const focusKey = document.activeElement?.closest?.('.sl-format') ? document.activeElement.dataset.fk : null;
     fpane.innerHTML = h;
@@ -765,6 +771,9 @@ export function mountSlides(host, ctx) {
     }
     if (act === 'reset-adjust') patchSel([[i, { adjust: null, mask: null, crop: null }]]);
     if (act === 'icon') iconGallery((name) => patchSel([[i, { name }]]));
+    if (act === 'to-smartart') smartGallery((type) => editChunk2((c) => convertKind(c, i, 'smartart', { type, fill: null, radius: null, align: null, valign: null })));
+    if (act === 'sm-box') editChunk2((c) => convertKind(c, i, 'box', { type: null }));
+    if (act === 'explode') explodeSmart(i);
   });
 
   /* merge shapes, freeform drawing, edit points (P6) */
@@ -851,6 +860,61 @@ export function mountSlides(host, ctx) {
     patchSel([[i, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), points: pointsText(abs.map(([px, py]) => [(px - x) / w, (py - y) / h])) }]]);
   }
 
+  /* SmartArt (P9) */
+  function convertKind(c, i, kind, patch) {
+    const o = scanObjects(c)[i]; if (!o) return c;
+    const lines = c.split('\n'); lines[o.open] = lines[o.open].replace(/^(\s*:::\s*)\w+/, `$1${kind}`);
+    return setObjectAttrs(lines.join('\n'), i, patch);
+  }
+  function smartGallery(onPick) {
+    const sample = '- One\n- Two\n  - detail\n- Three\n- Four';
+    gallery.innerHTML = `<div class="slg-head">Diagrams</div><div class="slg-grid slg-sm">${SMART_TYPES.map(([t, l]) => `<button type="button" class="slg-item slg-sm-item" data-sm="${t}" aria-label="${l}"><span class="slide slg-sm-prev" style="--sm-c:var(--color-ink);width:240px;height:150px">${smartArt(t, sample, 240, 150, { size: 12 })}</span><span class="slg-sm-l">${l}</span></button>`).join('')}</div>`;
+    gallery.hidden = false; gallery.querySelector('button')?.focus();
+    gallery.onclick = (e) => { const b = e.target.closest('[data-sm]'); if (!b) return; closeGallery(); onPick(b.dataset.sm); };
+  }
+  function insertSmart() {
+    smartGallery((type) => placeBlock(({ id }) => `::: smartart #${id('diagram')} type=${type} x=88 y=${deck.slides[cur].title ? 200 : 110} w=${deck.width - 176} h=${type === 'chevron' ? 160 : deck.height - 300}\n- First\n- Second\n- Third\n:::`, deck.width - 176, deck.height - 300));
+  }
+  /** replace a diagram by the shapes, lines and text boxes it is drawn with */
+  function explodeSmart(i) {
+    const node = frame.querySelector(`.sl-obj[data-obj="${i}"]`); const o = objsNow()[i]; if (!node || !o) return;
+    const g = geometry(o); const blocks = []; let n = 0; const id = () => `${o.id || 'diagram'}-${++n}`;
+    const colour = (el) => { const c = getComputedStyle(el).fill; const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return '#e8e8e8'; const [r, gg, b] = m[1].split(',').map((v) => parseFloat(v)); return '#' + [r, gg, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join(''); };
+    for (const el of node.querySelectorAll('.sm-svg > *')) {
+      const t = el.tagName.toLowerCase(); const N = (k) => parseFloat(el.getAttribute(k)) || 0;
+      if (t === 'rect') blocks.push(`::: shape #${id()} type=${N('rx') ? 'rounded' : 'rect'} x=${Math.round(g.x + N('x'))} y=${Math.round(g.y + N('y'))} w=${Math.round(N('width'))} h=${Math.round(N('height'))} fill=${colour(el)} border=0\n\n\n:::`);
+      else if (t === 'circle') { const r = N('r'); blocks.push(`::: shape #${id()} type=ellipse x=${Math.round(g.x + N('cx') - r)} y=${Math.round(g.y + N('cy') - r)} w=${Math.round(r * 2)} h=${Math.round(r * 2)} fill=${colour(el)} border=0\n\n\n:::`); }
+      else if (t === 'polygon' && !el.classList.contains('sm-head')) { const pts = el.getAttribute('points').trim().split(/\s+/).map((p) => p.split(',').map(Number)).map(([x, y]) => [g.x + x, g.y + y]); blocks.push(pathBlock(id(), pts, ` closed=true fill=${colour(el)} border=0`)); }
+      else if (t === 'line') { const x1 = g.x + N('x1'), y1 = g.y + N('y1'), x2 = g.x + N('x2'), y2 = g.y + N('y2'); const head = el.nextElementSibling?.classList.contains('sm-head') ? ' head=arrow' : ''; blocks.push(`::: line #${id()} x=${Math.round(x1)} y=${Math.round(y1)} w=${Math.round(x2 - x1)} h=${Math.round(y2 - y1)}${head} :::`); }
+    }
+    for (const lb of node.querySelectorAll('.sm-label')) {
+      const st = lb.style; const html = lb.firstElementChild;
+      const md = [...html.childNodes].map((c) => (c.nodeName === 'UL' ? '\n' + [...c.children].map((li) => `- ${li.textContent}`).join('\n') : c.nodeName === 'B' ? `**${c.textContent}**` : c.nodeName === 'BR' ? '\n' : c.textContent)).join('').trim();
+      blocks.push(`::: box #${id()} x=${Math.round(g.x + parseFloat(st.left))} y=${Math.round(g.y + parseFloat(st.top))} w=${Math.round(parseFloat(st.width))} h=${Math.round(parseFloat(st.height))} align=${st.textAlign || 'center'} valign=middle${st.fontSize ? ` size=${parseFloat(st.fontSize)}` : ''}${/var\(--sl-bg\)/.test(st.color) ? ' color=#ffffff' : ''}\n${md}\n:::`);
+    }
+    const grp = nextGroup(objsNow());
+    editChunk2((c) => { let t = removeObject(c, i); const start = scanObjects(t).length; for (const b of blocks) t = addObject(t, b); const all = scanObjects(t); selected = all.map((_, k) => k).filter((k) => k >= start); return setMany(t, selected.map((k) => [k, { group: grp }])); });
+    ctx.toast(`Converted into ${blocks.length} shapes, grouped. Ungroup them in Arrange.`);
+  }
+
+  /* Design ideas (P9) */
+  const ipane = host.querySelector('.sl-ideas');
+  host.querySelector('[data-sl-ideas]').addEventListener('change', (e) => { ipane.hidden = !e.target.checked; dockRoom(); renderIdeas(); });
+  let ideas = [], ideasKey = '';
+  function renderIdeas() {
+    if (ipane.hidden || !deck) return;
+    const chunk = chunks().list[cur]; const key = `${cur}\u0000${chunk}\u0000${deck.theme}\u0000${deck.width}`;
+    if (key === ideasKey) return; ideasKey = key;
+    ideas = deck.slides[cur].master ? [] : designIdeas(chunk, { width: deck.width, height: deck.height });
+    const fmRaw = chunks().fm; const w = 220, k = w / deck.width;
+    ipane.innerHTML = `<div class="fp-head">Design ideas</div>` + (ideas.length ? `<p class="fp-note">Other ways to lay out this slide. Your text stays the same.</p><div class="ideas">${ideas.map((idea, n) => {
+      const d2 = parseDeck(joinDeck(fmRaw, [idea.chunk]), { template: tplText }); const sl = d2.slides[0];
+      return `<button type="button" class="idea" data-idea="${n}" aria-label="Apply ${esc(idea.label)}"><span class="idea-box" style="width:${w}px;height:${deck.height * k}px"><span class="sl-scale" style="transform:scale(${k})">${renderSlide(d2, sl, { number: false })}</span></span><span class="idea-l">${esc(idea.label)}</span></button>`;
+    }).join('')}</div>` : `<p class="fp-note">${deck.slides[cur].objects.length ? 'This slide is laid out by hand with placed objects, so there are no ideas for it.' : 'Add a title and a few bullets, a picture or a quote, and ideas appear here.'}</p>`);
+    hydrate(ipane);
+  }
+  ipane.addEventListener('click', (e) => { const b = e.target.closest('[data-idea]'); if (!b) return; const idea = ideas[Number(b.dataset.idea)]; selected = []; editChunk2(() => idea.chunk); ctx.toast(`Applied “${idea.label}”. Undo with Ctrl+Z.`); });
+
   /* insert (P5) */
   const gallery = host.querySelector('.sl-gallery');
   function placeBlock(make, w = 360, h = 160) {
@@ -929,7 +993,8 @@ export function mountSlides(host, ctx) {
     ctx.showMenu(anchor, [
       { label: 'Text box', run: () => addObjectBlock('box') },
       { label: 'Shape…', run: shapeGallery },
-      { label: 'Icon…', run: () => iconGallery() }, '-',
+      { label: 'Icon…', run: () => iconGallery() },
+      { label: 'Diagram (SmartArt)…', run: insertSmart }, '-',
       { label: 'Freeform (draw)', run: startDraw },
       { label: 'Line', run: () => line('', 320, 0) },
       { label: 'Arrow', run: () => line(' head=arrow', 320, 0) },
@@ -1013,7 +1078,8 @@ export function mountSlides(host, ctx) {
   host.querySelector('[data-sl-paginate]').addEventListener('change', (e) => { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, 'paginate', String(e.target.checked)), list)); });
   let notesTimer;
   notesEl.addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(() => editChunk((c) => setNotes(c, notesEl.value)), 350); });
-  host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: 'Synced copy of a slide…', run: reuseSlide }]));
+  host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: 'Synced copy of a slide…', run: reuseSlide }, '-', ...BLOCKS.map(([id, l, body]) => ({ label: `Building block: ${l}`, run: () => addBlock(body) }))]));
+  function addBlock(body) { const { fm, list } = chunks(); list.splice(cur + 1, 0, `\n${body}\n`); cur += 1; selected = []; commit(joinDeck(fm, list)); }
   host.querySelector('[data-sl="present"]').addEventListener('click', () => present(cur));
   host.querySelector('[data-sl="export"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [
     { label: 'PowerPoint (.pptx)…', run: () => exportPptx() },

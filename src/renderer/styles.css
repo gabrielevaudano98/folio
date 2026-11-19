@@ -1057,3 +1057,17 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .surface-slides.sl-alt-view .sl-fmtbar { display: none; }
 .sl-main[hidden] { display: none; }
 .sl-view { flex: 1; }
+
+/* design ideas and diagram gallery (P9) */
+.ideas { display: grid; gap: 10px; }
+.idea { display: grid; gap: 4px; padding: 6px; border: 1px solid var(--color-rule); border-radius: var(--radius-md); background: var(--color-paper); cursor: pointer; text-align: left; font: inherit; color: var(--color-ink-2); }
+.idea:hover { border-color: var(--color-ink-2); }
+.idea:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.idea-box { position: relative; display: block; overflow: hidden; border-radius: 4px; box-shadow: var(--shadow-page); }
+.idea-box .sl-scale { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.idea-l { font-size: 12px; }
+.sl-gallery:has(.slg-sm) { width: 560px; }
+.slg-sm { grid-template-columns: repeat(2, 1fr); }
+.slg-sm-item { aspect-ratio: auto; display: grid; gap: 4px; justify-items: center; padding: 8px; }
+.slg-sm-prev { position: relative; display: block; transform: none; font-size: 12px; background: transparent; box-shadow: none; }
+.slg-sm-l { font-size: 12px; color: var(--color-ink-2); }

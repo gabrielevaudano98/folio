@@ -10,6 +10,7 @@ import DOMPurify from 'dompurify';
 import { extractObjects, geometry, textStyle, linePoints, linePath, fillCss, fillSvg, frameCss, flipCss, adjustCss, safeColor, parsePoints, pointsPath } from './slides-objects.js';
 import { shapeSvg } from './board-core.js';
 import { refsPlugin } from './refs-syntax.js';
+import { smartArt, parseItems } from './slides-smartart.js';
 
 export const LAYOUTS = [
   ['default', 'Title and content'], ['title', 'Title'], ['section', 'Section header'], ['two-columns', 'Two columns'],
@@ -216,6 +217,11 @@ function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
       const audio = /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(a.src || '');
       const opts = `${a.loop === 'true' ? ' loop' : ''}${a.muted === 'true' ? ' muted' : ''}${a.autoplay === 'true' ? ' data-autoplay="1"' : ''}`;
       return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${audio ? `<audio class="sl-media-el" controls preload="metadata" data-src="${escape(a.src || '')}"${opts}></audio>` : `<video class="sl-media-el" controls preload="metadata" playsinline data-src="${escape(a.src || '')}"${a.poster ? ` data-poster="${escape(a.poster)}"` : ''}${opts}></video>`}</div>`;
+    }
+    if (o.kind === 'smartart') {
+      const c = safeColor(a.fill) || null;
+      const items = parseItems(o.body); const flat = (list) => list.map((x) => `<li>${escape(x.text)}${x.children.length ? `<ul>${flat(x.children)}</ul>` : ''}</li>`).join('');
+      return `<div class="${cls.join(' ')}" data-type="${escape(a.type || 'process')}"${ref} style="${st.join(';')}${c ? `;--sm-c:${c}` : ''}" role="img" aria-label="${escape((a.type || 'process') + ' diagram')}"><ul class="sm-sr">${flat(items)}</ul>${smartArt(a.type || 'process', o.body, g.w, g.h, { size: parseFloat(a.size) || null })}</div>`;
     }
     if (o.kind === 'path') {
       const gid = `sp-${s.index}-${n}`; const fl = fillSvg(a.fill, gid);
