@@ -84,6 +84,6 @@ jobs:
           prerelease: true
           generate_release_notes: true
           body: |
-            Pre-alpha builds. Windows: `Folio-*-portable.exe` runs without installing; the installer is `Folio-Setup-*.exe`. macOS: open the `.dmg` (universal, Apple silicon and Intel).
+            Pre-alpha builds. Windows: `Folio-Setup-*.exe` (installer) or `Folio-Portable-*.exe` (no install). macOS: open the universal `.dmg` (Apple silicon and Intel).
             These builds are not code-signed yet, so Windows SmartScreen / Smart App Control and macOS Gatekeeper may warn.
           files: dist-all/*
