@@ -9,6 +9,8 @@ import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import { icons } from './icons.js';
+import { parseCallout, CALLOUT_TYPES } from './callouts.js';
+import container from 'markdown-it-container';
 
 const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -50,26 +52,51 @@ md.renderer.rules.fence = (tokens, idx, opts, env, self) => {
   return html.replace('<pre>', `<pre${attrs}>`);
 };
 
-// GitHub alerts: > [!NOTE] … labelled by word and icon
-const ALERTS = { note: ['Note', icons.info], tip: ['Tip', icons.bulb], important: ['Important', icons.alert], warning: ['Warning', icons.alert], caution: ['Caution', icons.stop] };
+// Callouts: GitHub alerts and Obsidian callouts (title, fold) with Notion's icon and colour (callouts.js)
 md.core.ruler.after('block', 'callouts', (state) => {
   const tk = state.tokens;
   for (let i = 0; i < tk.length; i++) {
     if (tk[i].type !== 'blockquote_open') continue;
     const inline = tk[i + 2];
     if (!inline || inline.type !== 'inline') continue;
-    const m = inline.content.match(/^\[!(note|tip|important|warning|caution)\]\s*/i);
-    if (!m) continue;
-    const kind = m[1].toLowerCase();
-    tk[i].attrJoin('class', `callout callout-${kind}`);
-    inline.content = inline.content.slice(m[0].length);
-    if (inline.children?.length) {
-      inline.children[0].content = inline.children[0].content.replace(/^\[!\w+\]\s*/i, '');
-      if (inline.children[1]?.type === 'softbreak') inline.children.splice(1, 1);
+    const c = parseCallout(inline.content.split('\n')[0]);
+    if (!c) continue;
+    let depth = 0, j = i;
+    for (; j < tk.length; j++) { if (tk[j].type === 'blockquote_open') depth++; else if (tk[j].type === 'blockquote_close' && --depth === 0) break; }
+    inline.content = inline.content.split('\n').slice(1).join('\n');
+    if (inline.children) { const k = inline.children.findIndex((t) => t.type === 'softbreak' || t.type === 'hardbreak'); inline.children = k >= 0 ? inline.children.slice(k + 1) : []; }
+    if (!inline.content.trim()) { tk[i + 1].hidden = true; tk[i + 3].hidden = true; }
+    const icon = c.emoji ? `<span class="callout-emoji" aria-hidden="true">${escape(c.emoji)}</span>` : (icons[CALLOUT_TYPES[c.type].icon] || '');
+    const head = `${icon}<span>${escape(c.title || c.label)}</span>`;
+    const cls = `callout callout-${c.type} callout-c-${c.color}`;
+    const html = (content) => { const t = new state.Token('html_block', '', 0); t.content = content; return t; };
+    if (c.fold) {
+      tk[j] = html('</details>\n');
+      tk[i] = html(`<details class="${cls}"${c.fold === '+' ? ' open' : ''}><summary class="callout-title">${head}</summary>\n`);
+    } else {
+      tk[i].attrJoin('class', cls);
+      tk.splice(i + 1, 0, html(`<div class="callout-title">${head}</div>`));
     }
-    const title = new state.Token('html_block', '', 0);
-    title.content = `<div class="callout-title">${ALERTS[kind][1]}${ALERTS[kind][0]}</div>`;
-    tk.splice(i + 1, 0, title);
+  }
+});
+
+// Page structure: ::: columns / ::: column, [TOC], [BREADCRUMB]
+md.use(container, 'columns', { render: (t, i) => (t[i].nesting === 1 ? '<div class="md-columns">\n' : '</div>\n') });
+md.use(container, 'column', { render: (t, i) => (t[i].nesting === 1 ? '<div class="md-column">\n' : '</div>\n') });
+const soloLine = (tk, i, re) => tk[i].type === 'paragraph_open' && tk[i + 1]?.type === 'inline' && re.test(tk[i + 1].content.trim()) && tk[i + 2]?.type === 'paragraph_close';
+md.core.ruler.push('folio_toc', (state) => {
+  const tk = state.tokens;
+  const heads = [];
+  for (let i = 0; i < tk.length; i++) if (tk[i].type === 'heading_open') heads.push({ level: +tk[i].tag.slice(1), id: tk[i].attrGet('id'), text: tk[i + 1].children.filter((c) => c.type === 'text' || c.type === 'code_inline').map((c) => c.content).join('') });
+  for (let i = 0; i < tk.length; i++) {
+    let content = null;
+    if (soloLine(tk, i, /^\[TOC\]$/i)) {
+      const top = Math.min(...heads.map((h) => h.level), 6);
+      content = heads.length ? `<nav class="md-toc" aria-label="Contents"><p class="md-toc-title">Contents</p><ul>${heads.map((h) => `<li class="md-toc-l${h.level - top}"><a href="#${escape(h.id || '')}">${escape(h.text)}</a></li>`).join('')}</ul></nav>\n` : '<nav class="md-toc" aria-label="Contents"><p class="md-toc-title">Contents</p><p class="md-toc-empty">Add headings to see them here.</p></nav>\n';
+    } else if (soloLine(tk, i, /^\[BREADCRUMB\]$/i)) content = '<nav class="md-breadcrumb" aria-label="Breadcrumb"></nav>\n';
+    if (content == null) continue;
+    const t = new state.Token('html_block', '', 0); t.content = content; t.map = tk[i].map;
+    tk.splice(i, 3, t);
   }
 });
 
@@ -138,6 +165,9 @@ export function splitFrontmatter(text) {
   }
   return { body: text.slice(m[0].length), meta, offset: m[0].split('\n').length - 1 };
 }
+
+/* the markdown-it instance, unsanitized: for tests */
+export const markdownIt = md;
 
 export function render(text) {
   const { body, meta, offset } = splitFrontmatter(text);

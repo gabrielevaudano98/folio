@@ -42,7 +42,14 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Footnote | `Claim[^1]` and, anywhere, `[^1]: Source text.` | Labels can be words: `[^source]`. |
 | Inline footnote | `Claim^[Source text.]` | |
 | Hidden comment | `%%only in the file%%` | Not shown in Read view or exports. |
-| Callout | `> [!tip] Title` then `> body` | note, tip, important, warning, caution, and Obsidian types. `[!tip]-` starts folded. |
+| Callout | `> [!tip] Title` then `> body` | GitHub and Obsidian types: note, abstract (summary, tldr), info, todo, tip (hint), success (check, done), question (help, faq), warning (attention), important, failure (fail, missing), danger (error), caution, bug, example, quote (cite). Unknown types are notes. `[!tip]-` starts folded, `[!tip]+` can fold. |
+| Notion callout (icon, colour) | `> [!callout|💡 yellow] Title` | Obsidian metadata after `|`: an emoji and/or a colour from the list below. Works on any type. |
+| Toggle | `<details>`, `<summary>Title</summary>`, a blank line, the content, `</details>` | `<details open>` starts open. Toggles can nest. |
+| Toggle heading | `<summary><h2>Title</h2></summary>` inside a toggle | h1 to h3. |
+| Columns | `:::: columns`, then two to five `::: column` … `:::`, then `::::` | The outer fence has four colons so it can hold the inner ones. |
+| Table of contents | `[TOC]` on its own line | Live list of the page's headings. |
+| Breadcrumb | `[BREADCRUMB]` on its own line | Where the page sits in the workspace. Folio only. |
+| Page break | `<div class="page-break"></div>` | A new page in print and PDF export. |
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
 | Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
 | Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |

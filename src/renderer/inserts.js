@@ -3,6 +3,7 @@
 // source view inserts), and either `turn` (change the current block, keeping its text) or `run` (insert something).
 // Pure: functions receive the TipTap editor and a context from the host ({ pickImage, pickRef }).
 import { fuzzyItem } from './fuzzy.js';
+import { softBreaks } from './page-syntax.js';
 
 const CHART = 'type: column\ntitle: Chart\ndata:\n| Month | Value |\n| --- | --- |\n| Jan | 10 |\n| Feb | 14 |\n| Mar | 9 |';
 const MERMAID = 'flowchart LR\n  A[Idea] --> B[Draft] --> C[Shipped]';
@@ -14,6 +15,7 @@ export function placeBlock(editor, content) {
   const empty = para.type.name === 'paragraph' && !para.content.size;
   const at = empty ? $from.before() : $from.after();
   const ok = editor.chain().focus().insertContentAt(empty ? { from: at, to: $from.after() } : at, content).run();
+  placeBlock.at = at;
   // after a block you cannot type in (divider, image, maths), carry on in a paragraph below it, as in Notion
   const sel = editor.state.selection;
   const node = sel.node || null;
@@ -24,7 +26,7 @@ export function placeBlock(editor, content) {
   }
   return ok;
 }
-const fromMd = (editor, md) => editor.markdown.parse(md).content || [];
+const fromMd = (editor, md) => softBreaks(editor.markdown.parse(md)).content || [];
 /* select the n characters before the cursor, so typing replaces a placeholder */
 const selectBack = (editor, n) => { const to = editor.state.selection.from; editor.commands.setTextSelection({ from: Math.max(0, to - n), to }); return true; };
 const callout = (type, label) => ({
@@ -40,6 +42,37 @@ const heading = (l) => ({
   turn: (e) => e.chain().focus().setHeading({ level: l }).run(),
 });
 
+/* a toggle (<details>), optionally a toggle heading; turning a line into one keeps its text as the title */
+const toggleNode = (level, title = '') => ({ type: 'details', attrs: { open: true, heading: level }, content: [{ type: 'detailsSummary', content: title ? [{ type: 'text', text: title }] : [] }, { type: 'detailsContent', content: [{ type: 'paragraph' }] }] });
+const toggle = (level) => ({
+  id: level ? `toggle-h${level}` : 'toggle', label: level ? `Toggle heading ${level}` : 'Toggle list', cat: level ? 'Basic' : 'Lists', icon: level ? undefined : 'chevron', badge: level ? `▸${level}` : undefined,
+  desc: level ? 'A heading that hides its content' : 'Show or hide what is inside', aliases: level ? [`toggle h${level}`, 'collapsible heading', 'fold'] : ['toggle', 'details', 'collapse', 'accordion', 'disclosure', '>>'],
+  md: `\n<details>\n<summary>${level ? `<h${level}>Title</h${level}>` : 'Title'}</summary>\n\n\n\n</details>\n`,
+  run: (e) => {
+    const { $from } = e.state.selection; const para = $from.parent;
+    const title = para.isTextblock && para.type.name !== 'codeBlock' ? para.textContent : '';
+    if (title) e.chain().focus().insertContentAt({ from: $from.before(), to: $from.after() }, toggleNode(level, title)).run();
+    else placeBlock(e, toggleNode(level));
+    const at = title ? $from.before() : placeBlock.at;
+    return e.commands.setTextSelection(at + 2 + title.length);
+  },
+});
+const columns = (n) => ({
+  id: `columns-${n}`, label: `${n} columns`, cat: 'Layout', icon: 'grid', desc: 'Side by side, :::: columns', aliases: ['columns', 'layout', 'side by side', `${n} col`],
+  md: `\n:::: columns\n${Array.from({ length: n }, () => '::: column\n\n:::').join('\n')}\n::::\n`,
+  run: (e) => { placeBlock(e, { type: 'columns', content: Array.from({ length: n }, () => ({ type: 'column', content: [{ type: 'paragraph' }] })) }); return e.commands.setTextSelection(placeBlock.at + 3); },
+});
+/* Notion databases are Folio sheets: a new sheet next to this page, shown here */
+const SHEET_BODY = (title, kanban) => `# ${title}\n\n## ${kanban ? 'Board' : 'Table'}\n\n| Name | Status | Owner | Due |\n| --- | --- | --- | --- |\n| First item | To do |  |  |\n| Second item | In progress |  |  |\n| Third item | Done |  |  |\n${kanban ? '\n<!-- sheet: {"view":"kanban","kanbanBy":1} -->\n' : ''}`;
+const database = (kanban) => ({
+  id: kanban ? 'database-board' : 'database-table', label: kanban ? 'Board database' : 'Table database', cat: 'Databases', icon: kanban ? 'kanban' : 'sheet',
+  desc: kanban ? 'A sheet shown as a kanban, embedded here' : 'A sheet with rows and columns, embedded here', aliases: kanban ? ['kanban', 'board view', 'database', 'tasks board'] : ['database', 'table view', 'inline database', 'records', 'sheet'],
+  run: async (e, c) => {
+    const p = await c.createDoc?.({ type: 'sheet', name: kanban ? 'Board' : 'Table', content: (title) => SHEET_BODY(title, kanban) });
+    if (p) placeBlock(e, { type: 'paragraph', content: [{ type: 'text', text: `![[${p.ref}]]` }] });
+  },
+});
+
 export const INSERTS = [
   { id: 'text', label: 'Text', cat: 'Basic', badge: 'T', key: 'Mod+Alt+0', desc: 'Plain paragraph', aliases: ['paragraph', 'p', 'plain', 'normal'], md: '', turn: (e) => e.chain().focus().setParagraph().run() },
   heading(1), heading(2), heading(3), heading(4), heading(5), heading(6),
@@ -50,7 +83,7 @@ export const INSERTS = [
   { id: 'ordered', label: 'Numbered list', cat: 'Lists', icon: 'listOrdered', key: 'Mod+Shift+7', desc: 'A list with numbers', aliases: ['ol', 'numbers', 'ordered', '1.'], md: '1. ', turn: (e) => e.chain().focus().toggleOrderedList().run() },
   { id: 'task', label: 'Checklist', cat: 'Lists', icon: 'listTask', key: 'Mod+L', desc: 'Tasks with checkboxes', aliases: ['todo', 'to-do', 'tasks', 'checkbox', '[]'], md: '- [ ] ', turn: (e) => e.chain().focus().toggleTaskList().run() },
 
-  { id: 'table', label: 'Table', cat: 'Media and data', icon: 'table', desc: 'Type /3x4 for a size', aliases: ['grid', 'rows', 'columns'], md: '\n| Column | Column |\n| --- | --- |\n|  |  |\n',
+  { id: 'table', label: 'Table', cat: 'Media and data', icon: 'table', desc: 'Type /3x4 for a size', aliases: ['grid', 'rows', 'spreadsheet', 'cells'], md: '\n| Column | Column |\n| --- | --- |\n|  |  |\n',
     run: (e, _c, a = {}) => {
       if (!e.state.selection.$from.parent.content.size) placeBlock(e, { type: 'paragraph' });
       return e.chain().focus().insertTable({ rows: a.rows || 3, cols: a.cols || 3, withHeaderRow: true }).run();
@@ -71,8 +104,20 @@ export const INSERTS = [
   { id: 'hidden-comment', label: 'Hidden comment', cat: 'Advanced', icon: 'commentHidden', desc: 'Only in the file, %%…%%', aliases: ['%%', 'private', 'comment', 'aside note'], md: '%%%%',
     run: (e) => e.chain().focus().insertContent({ type: 'text', text: 'Comment', marks: [{ type: 'hiddenComment' }] }).run() && selectBack(e, 7) },
 
+  { id: 'callout', label: 'Callout', cat: 'Callouts', badge: '💡', desc: 'Notion style, with an icon', aliases: ['callout', 'aside', 'highlight box', 'notion callout'], md: '\n> [!callout|💡]\n> \n',
+    run: (e) => placeBlock(e, fromMd(e, '> [!callout|💡]\n> Text')) },
   callout('note', 'Note'), callout('tip', 'Tip'), callout('important', 'Important'), callout('warning', 'Warning'), callout('caution', 'Caution'),
 
+  { id: 'page', label: 'Page', cat: 'Basic', icon: 'doc', desc: 'A new page inside this one, linked here', aliases: ['subpage', 'sub-page', 'new page', 'child page', 'document'],
+    run: async (e, c) => { const p = await c.createDoc?.({ type: 'md', name: 'Untitled' }); if (p) placeBlock(e, { type: 'paragraph', content: [{ type: 'text', text: `[[${p.ref}]]` }] }); } },
+  toggle(0), toggle(1), toggle(2), toggle(3),
+  columns(2), columns(3), columns(4), columns(5),
+  { id: 'toc', label: 'Table of contents', cat: 'Layout', icon: 'outline', desc: 'The headings of this page, live', aliases: ['toc', 'contents', 'outline', 'index', '[toc]'], md: '\n[TOC]\n', run: (e) => placeBlock(e, { type: 'toc' }) },
+  { id: 'breadcrumb', label: 'Breadcrumb', cat: 'Layout', icon: 'folder', desc: 'Where this page sits in the workspace', aliases: ['breadcrumb', 'path', 'location'], md: '\n[BREADCRUMB]\n', run: (e) => placeBlock(e, { type: 'breadcrumb' }) },
+  { id: 'page-break', label: 'Page break', cat: 'Layout', icon: 'divider', key: 'Mod+Alt+Enter', desc: 'Starts a new page when printed or exported', aliases: ['page break', 'new page', 'break', 'pagebreak'], md: '\n<div class="page-break"></div>\n', run: (e) => placeBlock(e, { type: 'pageBreak' }) },
+  database(false), database(true),
+  { id: 'synced', label: 'Synced block', cat: 'Links and embeds', icon: 'copy', desc: 'Show a block from another page; edit it there', aliases: ['synced', 'mirror', 'transclusion', 'reuse block'],
+    run: async (e, c) => { const t = await c.pickRef?.({ kind: 'embed' }); if (t) placeBlock(e, { type: 'paragraph', content: [{ type: 'text', text: t }] }); } },
   { id: 'link', label: 'Link to a document', cat: 'Links and embeds', icon: 'link', key: 'Mod+Shift+K', desc: '[[Document]], a heading, a cell', aliases: ['[[', 'wiki', 'page', 'mention', 'reference'],
     run: async (e, c) => { const t = await c.pickRef?.({ kind: 'link' }); if (t) e.chain().focus().insertContent({ type: 'text', text: t }).run(); } },
   { id: 'value', label: 'Live value', cat: 'Links and embeds', icon: 'sheet', desc: '{{Budget.sheet#Costs!H6}}', aliases: ['{{', 'cell', 'number', 'formula result'],
@@ -80,7 +125,7 @@ export const INSERTS = [
   { id: 'embed', label: 'Embed', cat: 'Links and embeds', icon: 'doc', desc: 'Show part of another document', aliases: ['![[', 'transclude', 'synced block', 'include'],
     run: async (e, c) => { const t = await c.pickRef?.({ kind: 'embed' }); if (t) placeBlock(e, { type: 'paragraph', content: [{ type: 'text', text: t }] }); } },
 ];
-export const CATEGORIES = ['Basic', 'Lists', 'Media and data', 'Advanced', 'Callouts', 'Links and embeds'];
+export const CATEGORIES = ['Basic', 'Lists', 'Layout', 'Media and data', 'Databases', 'Advanced', 'Callouts', 'Links and embeds'];
 
 /* recently used items, per person, in this browser */
 const RECENT = 'folio.inserts.recent';

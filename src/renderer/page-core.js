@@ -7,21 +7,24 @@ import footnote from 'markdown-it-footnote';
 import mark from 'markdown-it-mark';
 import taskLists from 'markdown-it-task-lists';
 import katex from '@vscode/markdown-it-katex';
+import container from 'markdown-it-container';
 import { diffArrays } from 'diff';
+import { softBreaks } from './page-syntax.js';
 
 const FM = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
 const DEF = /^ {0,3}\[\^?[^\]\n]+\]:/m; // link reference or footnote definition
 
 /* The oracle: two pieces of Markdown mean the same thing when markdown-it draws them the same way. */
 const oracle = new MarkdownIt({ html: true, linkify: false, typographer: false })
-  .use(footnote).use(mark).use(taskLists, { enabled: false }).use(katex.default || katex, { throwOnError: false, strict: 'ignore' });
+  .use(footnote).use(mark).use(taskLists, { enabled: false }).use(katex.default || katex, { throwOnError: false, strict: 'ignore' })
+  .use(container, 'columns').use(container, 'column');
 const draw = (src, defs) => oracle.render(defs ? `${src}\n\n${defs}\n` : src).replace(/\s+/g, ' ').replace(/> </g, '><').trim();
 
 /* Keep the conventions the rest of Folio (and the AI) reads: the serializer escapes them, we put them back. */
 export function tidy(md) {
   return md
     .replace(/\\\[\\\[([^\]\n]+)\\\]\\\]/g, '[[$1]]')
-    .replace(/\\\[!(\w+)\\\]/g, '[!$1]').replace(/\\\[!(\w+)\]/g, '[!$1]')
+    .replace(/\\\[!([\w-]+(?:\|[^\]\n]*)?)\\\]/g, '[!$1]').replace(/\\\[!([\w-]+(?:\|[^\]\n]*)?)\]/g, '[!$1]')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/^\n+|\n+$/g, '');
 }
@@ -36,9 +39,20 @@ export function splitBlocks(body) {
   for (const t of oracle.parse(body, {})) {
     if (t.level !== 0 || !t.map || t.nesting === -1) continue;
     const a = off(t.map[0]); let b = off(t.map[1]);
+    // a container's map stops before its closing fence: take the fence too
+    if (t.type.startsWith('container_')) { const close = /^ {0,3}:{3,}[ \t]*(?:\n|$)/.exec(body.slice(b)); if (close) b += close[0].length; }
     if (spans.length && a < spans.at(-1)[1]) continue;
     while (b > a && /\s/.test(body[b - 1])) b--;
     if (b > a) spans.push([a, b]);
+  }
+  // HTML blocks that open more <details> than they close run until they are closed: one block, editable as a toggle
+  for (let i = 0; i < spans.length; i++) {
+    const count = (t, re) => (t.match(re) || []).length;
+    let bal = (t) => count(t, /<details[\s>]/gi) - count(t, /<\/details>/gi);
+    let depth = bal(body.slice(spans[i][0], spans[i][1]));
+    let j = i;
+    while (depth > 0 && j + 1 < spans.length) { j++; depth += bal(body.slice(spans[j][0], spans[j][1])); }
+    if (j > i && depth === 0) { spans.splice(i, j - i + 1, [spans[i][0], spans[j][1]]); }
   }
   // anything between blocks that is not whitespace (definitions, stray text) becomes its own raw block
   const blocks = []; let cur = 0;
@@ -111,7 +125,7 @@ export function createPageCodec(md) {
         try {
           const isDef = DEF.test(b.src);
           const refDefs = isDef ? '' : used(b.src, false), defs = isDef ? '' : [refDefs, used(b.src, true)].filter(Boolean).join('\n\n');
-          const parsed = md.parse(refDefs ? `${b.src}\n\n${refDefs}` : b.src).content || [];
+          const parsed = (softBreaks(md.parse(refDefs ? `${b.src}\n\n${refDefs}` : b.src)).content) || [];
           const back = serialize(parsed, style);
           // a definition draws nothing on its own: draw it with references to its labels
           const refs = isDef ? [...b.src.matchAll(/^ {0,3}\[(\^?[^\]\n]+)\]:/gm)].map((m) => `[${m[1]}]`).join(' ') : '';

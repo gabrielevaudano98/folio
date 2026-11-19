@@ -129,6 +129,18 @@ async function boot() {
     resolveValue: (raw) => resolveRef(raw, refEnv()).then((r) => r.value),
     smartTypography: () => S.settings.smartTypography !== false,
     pickRef: (o) => pickRef(o),
+    breadcrumb: () => breadcrumbHtml(S.active),
+    createDoc: async ({ type, name, content }) => {
+      if (!S.workspace || !S.active) return null;
+      const folder = dirOf(S.active), ext = type === 'md' ? '.md' : `.${type}.md`;
+      let title = name, n = 1; const pathOf = (t) => (folder ? folder + '/' : '') + t + ext;
+      while (S.files.includes(pathOf(title))) title = `${name} ${++n}`;
+      try {
+        const p = await folio.create(pathOf(title), content ? content(title) : (NEW_CONTENT[type] || NEW_CONTENT.md)(title));
+        await refreshTree(); toast(`Created ${base(p)}. Ctrl or ⌘ click the link to open it.`);
+        return { path: p, ref: refName(p) };
+      } catch (e) { toast(e.message, { kind: 'error' }); return null; }
+    },
     onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(`Copied ${t}. Paste it anywhere to link to this block.`); },
     onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
   });
@@ -412,7 +424,15 @@ async function renderPreview() {
   renderMermaid(el, S.dark);
   hydrateCharts(el, readRelative);
   hydrateRefs(el, refEnv());
+  hydrateBreadcrumbs(el, t.path);
 }
+/* [BREADCRUMB]: where this page sits in the workspace */
+function breadcrumbHtml(p) {
+  const parts = (p || '').split('/'); const file = parts.pop();
+  const crumbs = [S.workspace ? S.workspace.split(/[\\/]/).pop() : 'Workspace', ...parts, stem(file || '')];
+  return crumbs.map((c, i) => `<span class="md-crumb"${i === crumbs.length - 1 ? ' aria-current="page"' : ''}>${esc(c)}</span>`).join('<span class="md-crumb-sep" aria-hidden="true">/</span>');
+}
+function hydrateBreadcrumbs(el, p) { for (const n of el.querySelectorAll('.md-breadcrumb')) n.innerHTML = breadcrumbHtml(p); }
 /* references between documents */
 /* reference picker and "copy reference" */
 function refName(path) {

@@ -11,6 +11,7 @@ fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws,
 const read = (f) => fs.readFileSync(path.join(ws, 'pages', f), 'utf8');
 fs.writeFileSync(path.join(ws, 'pages', 'd1.md'), '# Formatting\n\nPlain paragraph here\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd3.md'), '# Slash\n\nStart here\n');
+fs.copyFileSync(path.join(ws, 'pages', 'structure.md'), path.join(ws, 'pages', 'd4.md'));
 fs.writeFileSync(path.join(ws, 'pages', 'd2.md'), '# Blocks\n\nFirst paragraph.\n\nSecond paragraph.\n\n- one\n- two\n- three\n\nLast paragraph.\n');
 const html = read('html.md'), obs = read('obsidian.md');
 
@@ -90,6 +91,19 @@ const steps = [
   { js: "(() => { const open = !!document.querySelector('.slash-menu .slash-item'); " + key('Escape') + " document.execCommand('delete'); return open; })()", log: true, wait: 300 },
   { js: hover('First paragraph.'), wait: 300 },
   { js: drag('First paragraph.', 'Last paragraph.'), log: true, wait: 2500 },
+  // D4: structure
+  { js: "document.querySelector('[data-file=\"pages/d4.md\"]').click()", wait: 1200 },
+  { js: "(() => { const m = [...document.querySelectorAll('.rich-callout-marker')].find((x) => x.dataset.label === 'Success'); m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return !!document.querySelector('.callout-menu'); })()", log: true, wait: 300 },
+  { js: "document.querySelector('.callout-menu [data-kind=warning]').click(); true", wait: 300 },
+  { js: "(() => { const n = document.querySelectorAll('.rich-callout.is-folded').length; document.querySelector('.rich-callout-fold[aria-expanded=false]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return n + ':' + document.querySelectorAll('.rich-callout.is-folded').length; })()", log: true, wait: 300 },
+  { js: "(() => { const h = [...document.querySelectorAll('.rich-prose h2')].find((x) => x.textContent.includes('Appendix')); h.querySelector('.rich-hfold').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return [...document.querySelectorAll('.rich-prose > p')].filter((p) => p.textContent === 'Last paragraph.' && p.classList.contains('rich-fold-hidden')).length; })()", log: true, wait: 300 },
+  { js: "(() => { const h = [...document.querySelectorAll('.rich-prose h2')].find((x) => x.textContent.includes('Appendix')); h.querySelector('.rich-hfold').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return true; })()", wait: 200 },
+  { js: typeAtEnd('Last paragraph.', ''), wait: 200 },
+  ...slash('toggle', 'My toggle'),
+  { js: "(() => { const p = [...document.querySelectorAll('.rich-prose > p')].at(-1); document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.setStart(p, 0); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()", wait: 300 },
+  { js: "document.execCommand('insertText', false, '/columns'); true", wait: 350 },
+  { js: `(() => { const n = document.querySelectorAll('.slash-menu .slash-item').length; ${key('Enter')} document.execCommand('insertText', false, 'Column A'); return n > 0; })()`, log: true, wait: 400 },
+  { js: 'true', wait: 2500 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -100,10 +114,10 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 18, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, errors] = logs;
+  assert.equal(logs.length, 23, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, errors] = logs;
   assert.deepEqual(errors, []);
-  assert(rawCount >= 5 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
+  assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
   assert.equal(read('obsidian.md'), obs.replace('# Research log', '# Research log 2026')); console.log('  ✓ footnotes, maths, callouts and front matter survive an edit byte for byte');
   const [rawObs, drawn] = obsNodes.split(':').map(Number);
@@ -121,4 +135,11 @@ child.on('exit', () => {
   assert(plusOpened && dragged, JSON.stringify(logs.slice(15)));
   assert.match(d2, /^# Blocks\n\n- one\n- two\n- two\n- three\n\nSecond paragraph\.\n\nLast paragraph\. \^[a-z0-9]{6}\n\n## First paragraph\.\n$/, d2);
   console.log('  ✓ blocks: turn into from the handle menu, move down, duplicate a list item, copy link to block (^id), drag to move');
+  const d4 = read('d4.md'), d4src = fs.readFileSync(new URL('./fixture/pages/structure.md', import.meta.url), 'utf8');
+  assert(menuOpen && folds === '1:0' && hiddenBy === 1 && t1 && t2, JSON.stringify(logs.slice(17)));
+  assert(d4.includes('> [!warning]+ Shipped\n'), d4.slice(0, 600)); assert(d4.includes('> [!faq]- Folded question\n'), 'opening a folded callout does not change the file');
+  assert(d4.startsWith(d4src.slice(0, d4src.indexOf('> [!success]'))), 'the blocks before the edit are unchanged');
+  assert.match(d4, /Last paragraph\.\n\n<details open>\n<summary>My toggle<\/summary>\n\n[\s\S]*<\/details>\n\n:::: columns\n::: column\nColumn A\n:::\n::: column\n\n:::\n::::\n$/, d4);
+  console.log('  ✓ callouts: change the type from the menu; folding callouts and headings does not touch the file');
+  console.log('  ✓ /toggle and /columns insert a toggle and two columns');
 });

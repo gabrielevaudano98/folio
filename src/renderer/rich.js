@@ -6,6 +6,7 @@ import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
 import { filterInserts, runInsert, INSERTS } from './inserts.js';
 import { highlight } from './fuzzy.js';
 import { BlockHandles } from './page-blocks.js';
+import { CalloutUI, HeadingFold, TocView, BreadcrumbView, PageBreakView } from './page-ui.js';
 import { Markdown } from '@tiptap/markdown';
 import Image from '@tiptap/extension-image';
 import { Placeholder } from '@tiptap/extensions';
@@ -59,7 +60,6 @@ const FolioCodeBlock = CodeBlock.extend({
 });
 
 /* callouts and [[wiki links]] are drawn, the Markdown text stays as written */
-const KINDS = { note: 'Note', tip: 'Tip', important: 'Important', warning: 'Warning', caution: 'Caution' };
 const Decorate = Extension.create({
   name: 'folioDecorate',
   addOptions() { return { onWikiLink: null, resolveValue: null }; },
@@ -68,14 +68,6 @@ const Decorate = Extension.create({
     const build = (doc) => {
       const deco = [];
       doc.descendants((n, pos) => {
-        if (n.type.name === 'blockquote') {
-          const first = n.firstChild;
-          const m = first?.textContent.match(/^\[!(note|tip|important|warning|caution)\]/i);
-          if (m) {
-            deco.push(Decoration.node(pos, pos + n.nodeSize, { class: `rich-callout callout-${m[1].toLowerCase()}` }));
-            deco.push(Decoration.inline(pos + 2, pos + 2 + m[0].length, { class: 'rich-callout-marker', 'data-label': KINDS[m[1].toLowerCase()] }));
-          }
-        }
         if (n.isText) {
           const bid = /\s\^[A-Za-z0-9-]+\s*$/.exec(n.text);
           if (bid && pos + n.nodeSize === doc.resolve(pos).end()) deco.push(Decoration.inline(pos + bid.index, pos + n.text.length, { class: 'rich-block-id', title: 'Block id: links like [[Note#^id]] point here' }));
@@ -350,7 +342,7 @@ const SlashMenu = Extension.create({
       editor: this.editor, char: '/', pluginKey: SLASH, allowSpaces: false, startOfLine: false,
       allow: ({ state, range }) => {
         const $f = state.doc.resolve(range.from);
-        if ($f.parent.type.spec.code) return false;
+        if ($f.parent.type.spec.code || $f.parent.type.name === 'detailsSummary') return false;
         return !state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code);
       },
       items: ({ query }) => (query.length > 24 ? [] : filterInserts(query)),
@@ -437,6 +429,7 @@ const WordKeys = Extension.create({
       'Mod-Shift-<': () => e().commands.toggleSubscript(),
       'Mod-Shift-m': () => pageCmd.inlineMath(e()),
       'Mod-Alt-f': () => pageCmd.footnote(e()),
+      'Mod-Alt-Enter': () => e().chain().focus().insertContent({ type: 'pageBreak' }).run(),
       'Mod-Enter': () => pageCmd.toggleChecked(e()),
       'Mod-Shift-l': () => pageCmd.align(e(), 'left'),
       'Mod-Alt-e': () => pageCmd.align(e(), 'center'),
@@ -458,7 +451,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null }) {
   host.innerHTML = `
     <div class="ribbon" role="toolbar" aria-label="Formatting">
       <div class="rb-group">${btn('undo', 'Undo', icons.undo, keyLabel('Mod+Z'))}${btn('redo', 'Redo', icons.redo, keyLabel('Mod+Shift+Z'))}</div>
@@ -519,7 +512,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
 
-  const insertCtx = () => ({ pickImage: onPickImage, pickRef, footnote: (e) => pageCmd.footnote(e) });
+  const insertCtx = () => ({ pickImage: onPickImage, pickRef, createDoc, footnote: (e) => pageCmd.footnote(e) });
   const editor = new Editor({
     element: page,
     extensions: [
@@ -527,10 +520,12 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
         codeBlock: FolioCodeBlock.configure({ readNote, isDark, HTMLAttributes: { spellcheck: 'false' } }),
         image: FolioImage.configure({ resolve: resolveImage, inline: false, allowBase64: true }),
         raw: RawBlock,
-        views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys],
+        views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
       }),
       SmartTypography.configure({ enabled: smartTypography }),
       SlashMenu.configure({ keyLabel, ctx: insertCtx }),
+      CalloutUI.configure({ icons }),
+      HeadingFold.configure({ icons }),
       BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue }),

@@ -200,8 +200,22 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   const obs = open(fx('pages/obsidian.md'));
   assert(!obs.m.blocks.some((b) => b.raw)); ok('an Obsidian page (footnotes, maths, callouts, comments) is fully editable');
   const html = open(fx('pages/html.md')).m.blocks.filter((b) => b.raw).map((b) => b.src);
-  assert(html.some((s) => s.startsWith('<details>')) && html.some((s) => s.startsWith('<!--')) && html.some((s) => s.includes('<kbd>')));
-  ok('HTML the editor cannot hold becomes raw blocks instead of being rewritten');
+  assert(!html.some((s) => s.startsWith('<details>')) && html.some((s) => s.startsWith('<!--')) && html.some((s) => s.includes('<kbd>')));
+  ok('HTML the editor cannot hold becomes raw blocks instead of being rewritten; <details> is a toggle');
+  const st = open(fx('pages/structure.md'));
+  assert(!st.m.blocks.some((b) => b.raw), st.m.blocks.filter((b) => b.raw).map((b) => b.src).join('|'));
+  const kinds = new Set(); st.doc.descendants((n) => { kinds.add(n.type.name + (n.attrs?.heading ? n.attrs.heading : '')); });
+  for (const k of ['breadcrumb', 'toc', 'blockquote', 'details', 'details2', 'columns', 'column', 'pageBreak']) assert(kinds.has(k), k);
+  ok('toggles, toggle headings, columns, contents, breadcrumb, page breaks and callouts are editable blocks');
+  { const { parseCallout, calloutMarker } = await import('../src/renderer/callouts.js');
+    assert.deepEqual(['faq', 'tldr', 'error', 'cite', 'weird'].map((k) => parseCallout(`[!${k}] x`).type), ['question', 'abstract', 'danger', 'quote', 'note']);
+    const c = parseCallout('[!callout|💡 yellow]- Read me'); assert.deepEqual([c.emoji, c.color, c.fold, c.title, c.label], ['💡', 'yellow', '-', 'Read me', 'Callout']);
+    assert.equal(calloutMarker({ kind: 'tip', emoji: '🚀', color: 'green', fold: '+' }), '[!tip|🚀 green]+'); ok('callouts: Obsidian types and aliases, Notion icon and colour, fold'); }
+  { const { markdownIt } = await import('../src/renderer/markdown.js');
+    const h = markdownIt.render(fx('pages/structure.md'));
+    assert.match(h, /<details class="callout callout-question callout-c-orange">/); assert.match(h, /<details class="callout callout-success callout-c-green" open>/);
+    assert.match(h, /class="md-columns"[\s\S]*class="md-column"/); assert.match(h, /class="md-toc"[\s\S]*href="#appendix"/); assert.match(h, /class="md-breadcrumb"/); assert.match(h, /class="page-break"/);
+    assert.match(h, /callout-emoji[^>]*>💡/); ok('the Read view draws callouts (folded as details), columns, contents with links, breadcrumb and page breaks'); }
 
   const g = open(fx('pages/gfm.md')); const gt = fx('pages/gfm.md');
   const li = g.m.blocks.findIndex((b) => b.src.startsWith('* Star'));
@@ -253,6 +267,14 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(portableMarkdown('A [word]{color=red bg=yellow} here.\n{align=center}\n\n## T {align=right}\n'), 'A word here.\n\n## T\n'); ok('portable export removes Folio-only colour and alignment');
   assert.deepEqual(headings('# A [red]{color=red} title {align=center}\n## B %%x%%').map((h) => h.text), ['A red title', 'B']); ok('the outline shows headings without Folio syntax');
 
+  { const sb = open('Line one\nline two with **bold**\nline three');
+    assert.equal(sb.doc.firstChild.content.content.filter((n) => n.type.name === 'softBreak').length, 2); assert(!sb.doc.textContent.includes('\n') || sb.doc.firstChild.textContent.split('\n').length === 3);
+    const ed2 = sb.doc.firstChild.copy(sb.doc.firstChild.content.addToEnd(schema.text(' end')));
+    assert.equal(codec.save(sb.m, withKids([ed2])), 'Line one\nline two with **bold**\nline three end\n');
+    ok('a line that continues the paragraph is a soft break node and is written back as a newline'); }
+  { const nc = open('> [!callout|💡 yellow] Read this first\n> Body.\n\nNext.'); const q = nc.kids[0];
+    const para = q.firstChild; const changed = q.copy(q.content.replaceChild(0, para.copy(para.content.append(schema.node('paragraph', null, [schema.text('!')]).content))));
+    assert.equal(codec.save(nc.m, withKids([changed, nc.kids[1]])), '> [!callout|💡 yellow] Read this first\n> Body.!\n\nNext.'); ok('editing a Notion callout keeps its marker unescaped'); }
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
@@ -268,7 +290,8 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   ok('with no query the menu shows recent items, then every category');
   assert.equal(filterInserts('h2', { recent: [] })[0].item.id, 'h2'); assert.equal(filterInserts('todo', { recent: [] })[0].item.id, 'task');
   assert.equal(filterInserts('equation', { recent: [] })[0].item.id, 'math'); assert.equal(filterInserts('[[', { recent: [] })[0].item.id, 'link');
-  assert(filterInserts('cal', { recent: [] }).every((x) => x.item.id.startsWith('callout-'))); ok('search matches labels and aliases (h2, todo, equation, [[)');
+  assert(filterInserts('cal', { recent: [] }).slice(0, 6).every((x) => x.item.id.startsWith('callout'))); assert.equal(filterInserts('columns', { recent: [] })[0].item.id, 'columns-2'); assert.equal(filterInserts('toggle', { recent: [] })[0].item.id, 'toggle'); assert.equal(filterInserts('toc', { recent: [] })[0].item.id, 'toc');
+  ok('search matches labels and aliases (h2, todo, equation, [[, columns, toggle, toc)');
   const t = filterInserts('3x4', { recent: [] }); assert.equal(t.length, 1); assert.deepEqual(t[0].args, { rows: 3, cols: 4 }); assert.deepEqual(filterInserts('table 2×5', { recent: [] })[0].args, { rows: 2, cols: 5 });
   ok('/3x4 inserts a table of that size');
   assert.equal(filterInserts('zzzz', { recent: [] }).length, 0); ok('no match gives an empty menu');

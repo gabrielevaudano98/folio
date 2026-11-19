@@ -7,11 +7,13 @@
 //   [text]{color=red bg=yellow}          Folio colour (Pandoc span syntax; removed by portable export)
 //   paragraph line + {align=center}      Folio alignment (Pandoc attribute; heading: "## Title {align=center}")
 import { Node, Mark, mergeAttributes } from '@tiptap/core';
+import { Plugin as PmPlugin } from '@tiptap/pm/state';
 import Paragraph from '@tiptap/extension-paragraph';
 import Heading from '@tiptap/extension-heading';
 import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import TextAlign from '@tiptap/extension-text-align';
+import { Details as BaseDetails, DetailsSummary as BaseSummary, DetailsContent as BaseContent } from '@tiptap/extension-details';
 
 export const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
 export const ALIGNS = ['left', 'center', 'right', 'justify'];
@@ -199,4 +201,132 @@ export function portableMarkdown(md) {
     .replace(new RegExp(`^(#{1,6} .*?)[ \\t]+\\{align=(?:${ALIGN_ALT})\\}[ \\t]*$`, 'gm'), '$1');
 }
 
-export const pageSyntax = () => [SuperscriptMd, SubscriptMd, InlineMath, BlockMath, FootnoteRef, FootnoteInline, FootnoteDef, HiddenComment, FolioColor, Align];
+/* toggle (Notion) = <details>; a toggle heading puts the heading in the summary: <summary><h2>Title</h2></summary> */
+function closeOf(src, open, close, from) {
+  const re = new RegExp(`${open}|${close}`, 'gi'); re.lastIndex = from; let depth = 1;
+  for (let m = re.exec(src); m; m = re.exec(src)) { depth += m[0].toLowerCase().startsWith(close.replace(/\\/g, '').slice(0, 3)) ? -1 : 1; if (!depth) return m; }
+  return null;
+}
+export const Details = BaseDetails.extend({
+  addAttributes() { return { ...this.parent?.(), heading: { default: 0, parseHTML: (el) => +el.getAttribute('data-heading') || 0, renderHTML: (a) => (a.heading ? { 'data-heading': a.heading } : {}) } }; },
+  parseMarkdown: (token, h) => h.createNode('details', { open: token.open, heading: token.heading }, [
+    h.createNode('detailsSummary', null, token.summary ? [{ type: 'text', text: token.summary }] : []),
+    h.createNode('detailsContent', null, token.tokens?.length ? h.parseChildren(token.tokens) : [{ type: 'paragraph' }]),
+  ]),
+  renderMarkdown: (node, h) => {
+    const [summary, content] = node.content || [];
+    const level = node.attrs?.heading || 0;
+    const title = (summary?.content || []).map((t) => t.text || '').join('');
+    const body = content ? h.renderChildren(content.content || [], '\n\n') : '';
+    return `<details${node.attrs?.open ? ' open' : ''}>\n<summary>${level ? `<h${level}>${title}</h${level}>` : title}</summary>\n\n${body.trim()}\n\n</details>`;
+  },
+  markdownTokenizer: {
+    name: 'details', level: 'block',
+    start: (src) => { const m = /(^|\n) {0,3}<details[\s>]/i.exec(src); return m ? m.index + m[1].length : -1; },
+    tokenize(src, _t, lexer) {
+      const open = /^ {0,3}<details(\s+open)?\s*>[ \t]*\n?/i.exec(src);
+      if (!open) return undefined;
+      const end = closeOf(src, '<details[\\s>]', '</details>', open[0].length);
+      if (!end) return undefined;
+      let inner = src.slice(open[0].length, end.index);
+      const sm = /^\s*<summary>\s*(?:<h([1-6])>([\s\S]*?)<\/h\1>|([\s\S]*?))\s*<\/summary>[ \t]*\n?/i.exec(inner);
+      if (!sm || /\n\s*\n/.test(sm[0])) return undefined;
+      inner = inner.slice(sm[0].length);
+      const after = /^[ \t]*(?:\n|$)/.exec(src.slice(end.index + end[0].length));
+      return { type: 'details', raw: src.slice(0, end.index + end[0].length + (after ? after[0].length : 0)), open: !!open[1], heading: sm[1] ? +sm[1] : 0, summary: (sm[2] ?? sm[3] ?? '').trim(), tokens: lexer.blockTokens(inner.replace(/^\n+|\s+$/g, '')) };
+    },
+  },
+});
+export const DetailsSummary = BaseSummary.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
+export const DetailsContent = BaseContent.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
+
+/* :::: columns / ::: column (markdown-it-container, as in slides; the outer fence has four colons so it can hold the inner ones) */
+function containerTokenizer(name, parse) {
+  return {
+    name, level: 'block',
+    start: (src) => { const m = new RegExp(`(^|\\n) {0,3}:{3,}[ \\t]*${name}[ \\t]*\\n`).exec(src); return m ? m.index + m[1].length : -1; },
+    tokenize(src, _t, lexer) {
+      const open = new RegExp(`^ {0,3}:{3,}[ \\t]*${name}[ \\t]*\\n`).exec(src);
+      if (!open) return undefined;
+      const re = /^ {0,3}:{3,}[ \t]*([\w-]*)[ \t]*$/gm; re.lastIndex = 0;
+      const rest = src.slice(open[0].length); let depth = 1;
+      for (let m = re.exec(rest); m; m = re.exec(rest)) {
+        depth += m[1] ? 1 : -1;
+        if (!depth) { const end = open[0].length + m.index + m[0].length; const nl = src[end] === '\n' ? 1 : 0; return parse(src.slice(0, end + nl), rest.slice(0, m.index), lexer); }
+      }
+      return undefined;
+    },
+  };
+}
+export const Column = Node.create({
+  name: 'column', content: 'block+', isolating: true, defining: true,
+  parseHTML() { return [{ tag: 'div[data-column]' }]; },
+  renderHTML() { return ['div', { 'data-column': '', class: 'rich-column' }, 0]; },
+  parseMarkdown: (token, h) => h.createNode('column', null, token.tokens?.length ? h.parseChildren(token.tokens) : [{ type: 'paragraph' }]),
+  renderMarkdown: (node, h) => `::: column\n${h.renderChildren(node.content || [], '\n\n').trim()}\n:::`,
+  markdownTokenizer: containerTokenizer('column', (raw, inner, lexer) => ({ type: 'column', raw, tokens: lexer.blockTokens(inner.replace(/^\n+|\s+$/g, '')) })),
+});
+export const Columns = Node.create({
+  name: 'columns', group: 'block', content: 'column{2,5}', isolating: true,
+  parseHTML() { return [{ tag: 'div[data-columns]' }]; },
+  renderHTML() { return ['div', { 'data-columns': '', class: 'rich-columns' }, 0]; },
+  parseMarkdown: (token, h) => h.createNode('columns', null, h.parseChildren(token.tokens || [])),
+  renderMarkdown: (node, h) => `:::: columns\n${h.renderChildren(node.content || [], '\n').trim()}\n::::`,
+  markdownTokenizer: containerTokenizer('columns', (raw, inner, lexer) => {
+    const tokens = lexer.blockTokens(inner.trim());
+    return tokens.filter((t) => t.type !== 'space').every((t) => t.type === 'column') && tokens.filter((t) => t.type === 'column').length >= 2 ? { type: 'columns', raw, tokens: tokens.filter((t) => t.type === 'column') } : undefined;
+  }),
+});
+
+/* [TOC], [BREADCRUMB], page break: one-line blocks */
+function lineBlock(name, re, md, extra = {}) {
+  return Node.create({
+    name, group: 'block', atom: true, selectable: true, draggable: false, ...extra,
+    parseHTML() { return [{ tag: `div[data-${name}]` }]; },
+    renderHTML() { return ['div', { [`data-${name}`]: '' }]; },
+    parseMarkdown: (_t, h) => h.createNode(name),
+    renderMarkdown: () => md,
+    markdownTokenizer: { name, level: 'block', start: (src) => { const m = new RegExp(`(^|\\n)${re.source.slice(1)}`, 'i').exec(src); return m ? m.index + m[1].length : -1; }, tokenize(src) { const m = re.exec(src); return m ? { type: name, raw: m[0] } : undefined; } },
+  });
+}
+export const Toc = lineBlock('toc', /^ {0,3}\[TOC\][ \t]*(?:\n|$)/i, '[TOC]');
+export const Breadcrumb = lineBlock('breadcrumb', /^ {0,3}\[BREADCRUMB\][ \t]*(?:\n|$)/i, '[BREADCRUMB]');
+export const PageBreak = lineBlock('pageBreak', /^ {0,3}<div class="page-break"><\/div>[ \t]*(?:\n|$)/i, '<div class="page-break"></div>');
+
+/* A soft line break: a line that continues the same paragraph. Text never holds "\n" in the editor (the browser can turn
+   it into a hard break when it re-reads the page); it is this node, drawn as <br data-soft> and written as a plain newline. */
+export const SoftBreak = Node.create({
+  name: 'softBreak', group: 'inline', inline: true, selectable: false,
+  extendNodeSchema: (ext) => (ext.name === 'softBreak' ? { leafText: () => '\n' } : {}),
+  parseHTML() { return [{ tag: 'br[data-soft]', priority: 60 }]; },
+  renderHTML() { return ['br', { 'data-soft': '' }]; },
+  renderText: () => '\n',
+  renderMarkdown: () => '\n',
+  addProseMirrorPlugins() {
+    const type = () => this.editor.schema.nodes.softBreak;
+    return [new PmPlugin({
+      appendTransaction(trs, _old, state) {
+        if (!trs.some((t) => t.docChanged)) return null;
+        const fix = []; state.doc.descendants((n, pos, parent) => { if (n.type.spec.code || n.type.name === 'detailsSummary') return false; if (n.isText && n.text.includes('\n') && !parent.type.spec.code) fix.push([n, pos]); return true; });
+        if (!fix.length) return null;
+        const tr = state.tr;
+        for (const [n, pos] of fix.reverse()) for (let i = n.text.lastIndexOf('\n'); i >= 0; i = n.text.lastIndexOf('\n', i - 1)) tr.replaceWith(pos + i, pos + i + 1, type().create());
+        return tr;
+      },
+    })];
+  },
+});
+/* the same, on parsed JSON: text with "\n" becomes text + softBreak + text, outside code */
+export function softBreaks(node) {
+  if (!node || node.type === 'codeBlock' || node.type === 'detailsSummary') return node;
+  if (!node.content) return node;
+  const content = [];
+  for (const c of node.content) {
+    if (c.type === 'text' && c.text.includes('\n') && !(c.marks || []).some((m) => m.type === 'code')) {
+      c.text.split('\n').forEach((part, i) => { if (i) content.push({ type: 'softBreak' }); if (part) content.push({ ...c, text: part }); });
+    } else content.push(softBreaks(c));
+  }
+  return { ...node, content };
+}
+
+export const pageSyntax = () => [SoftBreak, Details.configure({ persist: true, HTMLAttributes: { class: 'rich-details' } }), DetailsSummary, DetailsContent, Columns, Column, Toc, Breadcrumb, PageBreak, SuperscriptMd, SubscriptMd, InlineMath, BlockMath, FootnoteRef, FootnoteInline, FootnoteDef, HiddenComment, FolioColor, Align];
