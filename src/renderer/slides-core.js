@@ -23,9 +23,9 @@ export const SIZES = { '16:9': [1280, 720], '4:3': [960, 720], '1:1': [1080, 108
 export const TOKENS = { paper: '--sl-bg', ink: '--sl-ink', muted: '--sl-muted', accent: '--sl-accent', card: '--sl-card', 'heading-font': '--sl-face', 'body-font': '--sl-body' };
 const FONT_NAME = /^[\w \-'",.]{1,120}$/;
 const MARP_THEME = { default: 'folio', gaia: 'paper', uncover: 'graphite' };
-const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source', 'master'];
+const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source', 'master', 'section'];
 const LOCAL = ['paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color'];
-const SPOT = ['layout', 'source', 'master']; // Folio layouts apply to one slide only
+const SPOT = ['layout', 'source', 'master', 'section']; // Folio layouts apply to one slide only
 
 const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -68,10 +68,13 @@ export function splitSlides(body) {
   return chunks;
 }
 
+const FLAG = /^\s*(master|hidden)\s*$/;
+export const COMMENT = /^\s*comment(?:\s*\(([^,)]*)(?:,\s*([^)]*))?\))?\s*:\s*([\s\S]*?)\s*$/;
 function parseComments(chunk) {
-  const directives = {}; const notes = [];
+  const directives = {}; const notes = []; const comments = [];
   const body = chunk.replace(/<!--([\s\S]*?)-->/g, (all, inner) => {
-    if (/^\s*master\s*$/.test(inner)) { directives.master = ''; return ''; }
+    const flag = inner.match(FLAG); if (flag) { directives[flag[1]] = ''; return ''; }
+    const c = inner.match(COMMENT); if (c) { comments.push({ author: (c[1] || '').trim(), date: (c[2] || '').trim(), text: c[3], raw: all }); return ''; }
     const lines = inner.trim().split(/\r?\n/);
     const parsed = lines.map((l) => l.trim().match(/^(_?)([a-zA-Z]+)\s*:\s*(.*)$/));
     if (parsed.length && parsed.every((p) => p && DIRECTIVES.includes(p[2]))) {
@@ -81,7 +84,7 @@ function parseComments(chunk) {
     notes.push(inner.trim());
     return '';
   });
-  return { body, directives, notes: notes.join('\n\n') };
+  return { body, directives, notes: notes.join('\n\n'), comments };
 }
 
 function parseBg(body) {
@@ -116,7 +119,7 @@ export function parseDeck(text, { template = null } = {}) {
   for (const [k, v] of Object.entries(fm.data)) global[k] = v;
   const carried = {};
   const slides = chunks.map((src, i) => {
-    const { body, directives, notes } = parseComments(src);
+    const { body, directives, notes, comments } = parseComments(src);
     for (const [k, v] of Object.entries(directives)) {
       if (k.startsWith('_') || SPOT.includes(k)) continue;
       if (LOCAL.includes(k)) carried[k] = v; else global[k] = v;
@@ -133,13 +136,13 @@ export function parseDeck(text, { template = null } = {}) {
     if (!eff.layout && bgs.some((b) => b.side === 'left')) layout = 'image-left';
     const title = ((content.trim() || withObjects).match(/^\s*#{1,6}\s+(.+)$/m) || [])[1]?.replace(/[*_`]/g, '') || '';
     const master = directives.master != null ? (String(directives.master).trim() || 'all') : null;
-    return { index: i, src, content: content.trim(), objects, directives, notes, bgs, layout, classes: cls, eff, title, master };
+    return { index: i, src, content: content.trim(), objects, directives, notes, comments, bgs, layout, classes: cls, eff, title, master, hidden: directives.hidden != null, section: directives.section || null };
   });
   let n = 0; for (const sl of slides) sl.number = sl.master ? null : ++n;
   const masters = [...(tpl ? tpl.masters.map((m) => ({ ...m, fromTemplate: true })) : []), ...slides.filter((sl) => sl.master)];
   const theme = MARP_THEME[global.theme] || (THEMES.some(([t]) => t === global.theme) ? global.theme : 'folio');
   const [w, h] = SIZES[global.size] || SIZES['16:9'];
-  return { fm, slides, shown: slides.filter((sl) => !sl.master), masters, global, theme, width: w, height: h, template: tpl ? true : false };
+  return { fm, slides, shown: slides.filter((sl) => !sl.master && !sl.hidden), masters, global, theme, width: w, height: h, template: tpl ? true : false };
 }
 
 /* ---------- render ---------- */
@@ -269,6 +272,32 @@ export function slideChunk(deckText, n) { const fm = parseFrontmatter(deckText);
 /** a copy of a source slide that remembers where it came from */
 export const syncedCopy = (ref, sourceChunk) => `\n<!-- source: ${ref} -->\n${syncBody(sourceChunk)}\n`;
 
+/* ---------- slide management (P8) ---------- */
+/** add or remove a bare flag comment like <!-- hidden --> */
+export function setFlag(chunk, flag, on) {
+  const re = new RegExp(`[ \\t]*<!--\\s*${flag}\\s*-->[ \\t]*\\n?`, 'g');
+  const without = chunk.replace(re, '');
+  if (!on) return without;
+  const lead = without.match(/^\n*/)[0];
+  return lead + `<!-- ${flag} -->\n` + without.slice(lead.length);
+}
+const oneLine = (t) => String(t).replace(/-->/g, '—>').replace(/\s*\n\s*/g, ' ').trim();
+export function addComment(chunk, { author = '', date = '', text }) {
+  const meta = author || date ? ` (${oneLine(author).replace(/[(),]/g, '')}${date ? ', ' + date : ''})` : '';
+  return chunk.replace(/\n*$/, '') + `\n\n<!-- comment${meta}: ${oneLine(text)} -->\n`;
+}
+/** remove the k-th comment of a slide */
+export function removeComment(chunk, k) {
+  let n = -1;
+  return chunk.replace(/[ \t]*<!--([\s\S]*?)-->[ \t]*\n?/g, (all, inner) => (COMMENT.test(inner) && ++n === k ? '' : all)).replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '\n');
+}
+/** sections: the section a slide belongs to is the last `section:` at or before it */
+export function sectionsOf(deck) {
+  const out = []; let curr = null;
+  deck.slides.forEach((sl) => { if (sl.section) { curr = { name: sl.section, start: sl.index, slides: [] }; out.push(curr); } if (curr) curr.slides.push(sl.index); });
+  return out;
+}
+
 /* ---------- write back ---------- */
 export function joinDeck(fmRaw, chunks) {
   return fmRaw + chunks.map((c, i) => (i === 0 ? c.replace(/\n+$/, '') : c.replace(/^\n+/, '\n').replace(/\n+$/, ''))).join('\n\n---\n') + '\n';
@@ -284,7 +313,7 @@ export function setDirective(chunk, key, value) {
 export function setNotes(chunk, text) {
   let out = chunk.replace(/<!--([\s\S]*?)-->\n?/g, (all, inner) => {
     const lines = inner.trim().split(/\r?\n/);
-    return /^\s*master\s*$/.test(inner) || lines.every((l) => /^_?[a-zA-Z]+\s*:/.test(l.trim()) && DIRECTIVES.includes(l.trim().replace(/^_/, '').split(':')[0].trim())) ? all : '';
+    return FLAG.test(inner) || COMMENT.test(inner) || lines.every((l) => /^_?[a-zA-Z]+\s*:/.test(l.trim()) && DIRECTIVES.includes(l.trim().replace(/^_/, '').split(':')[0].trim())) ? all : '';
   }).replace(/\n+$/, '');
   if (text.trim()) out += `\n\n<!--\n${text.trim()}\n-->`;
   return out + '\n';

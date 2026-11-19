@@ -178,6 +178,7 @@ h('fs:rename', async (from, to) => {
 });
 h('fs:trash', async (rel) => { await shell.trashItem(notes.resolve(rel)); return true; });
 h('fs:search', (q, opts) => notes.search(q, opts));
+h('app:user-name', () => { try { const n = os.userInfo().username || ''; return n.charAt(0).toUpperCase() + n.slice(1); } catch { return ''; } });
 h('fs:backlinks', (rel) => notes.backlinks(rel));
 h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));

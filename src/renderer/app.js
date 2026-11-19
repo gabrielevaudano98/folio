@@ -70,6 +70,7 @@ function surfaceCtx(type) {
     openRef,
     copyRef: (part, kind) => copyRef(S.active, part, kind),
     pickRef,
+    userName: () => folio.userName(),
     pickImage: () => folio.pickImage(S.active),
     pickMedia: (kind) => folio.pickMedia(S.active, kind),
   };

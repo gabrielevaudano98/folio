@@ -1,5 +1,5 @@
 // Folio — slides surface: thumbnails, stage, per-slide Markdown, presenter, PDF and PowerPoint export.
-import { SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
+import { setFlag, addComment, removeComment, sectionsOf, SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
 import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
@@ -18,6 +18,8 @@ export function mountSlides(host, ctx) {
       <button class="btn" type="button" data-sl="box" title="Add a text box you can place anywhere">${icons.plus} Text box</button>
       <button class="btn" type="button" data-sl="insert" aria-haspopup="menu" title="Insert shapes, lines, images, tables, charts, icons, media">${icons.plus} Insert</button>
       <button class="btn" type="button" data-sl="arrange" aria-haspopup="menu" title="Align, distribute, order, group, lock">Arrange</button>
+      <button class="btn" type="button" data-sl="review" aria-haspopup="menu" title="Find and replace, comments, accessibility">Review</button>
+      <div class="seg sl-views" role="radiogroup" aria-label="Slide view"><button type="button" role="radio" data-slv="normal" aria-checked="true">Normal</button><button type="button" role="radio" data-slv="sorter" aria-checked="false">Sorter</button><button type="button" role="radio" data-slv="outline" aria-checked="false">Outline</button></div>
       <label class="sf-check"><input type="checkbox" data-sl-design> Design</label>
       <label class="sf-check"><input type="checkbox" data-sl-format> Format</label>
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
@@ -51,7 +53,8 @@ export function mountSlides(host, ctx) {
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
-        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div></div>
+        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div><div class="sl-format sl-review" hidden role="region" aria-label="Review"></div></div>
+        <div class="sl-find" role="search" aria-label="Find and replace in this deck" hidden></div>
         <div class="sl-sync" role="status" hidden></div>
         <div class="sl-gallery" role="dialog" aria-label="Insert" hidden></div>
         <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
@@ -158,9 +161,9 @@ export function mountSlides(host, ctx) {
   function render({ keepEditor = false, keepFrame = false } = {}) {
     if (!deck) return;
     const tk = 176 / deck.width;
-    thumbs.innerHTML = deck.slides.map((s, i) => `
-      <li class="sl-thumb${s.master ? ' is-master' : ''}" data-i="${i}" draggable="true" aria-current="${i === cur}" tabindex="0" aria-label="${s.master ? `Master slide${s.master !== 'all' ? ' for ' + esc(s.master) + ' slides' : ''}` : `Slide ${s.number}`}${s.title ? ': ' + esc(s.title) : ''}">
-        <span class="sl-thumb-n">${s.master ? 'M' : s.number}</span>
+    thumbs.innerHTML = deck.slides.map((s, i) => `${s.section ? `<li class="sl-section" data-sec="${i}" role="presentation"><span>${esc(s.section)}</span><button type="button" class="sl-sec-btn" data-sec-menu="${i}" aria-label="Section ${esc(s.section)} options">…</button></li>` : ''}
+      <li class="sl-thumb${s.master ? ' is-master' : ''}${s.hidden ? ' is-hidden' : ''}" data-i="${i}" draggable="true" aria-current="${i === cur}" tabindex="0" aria-label="${s.master ? `Master slide${s.master !== 'all' ? ' for ' + esc(s.master) + ' slides' : ''}` : `Slide ${s.number}`}${s.title ? ': ' + esc(s.title) : ''}">
+        <span class="sl-thumb-n">${s.master ? 'M' : s.number}${s.hidden ? '<span class="sl-badge" title="Hidden in the presentation">hidden</span>' : ''}${s.comments.length ? `<span class="sl-badge" title="${s.comments.length} ${s.comments.length === 1 ? 'comment' : 'comments'}">${s.comments.length} ${s.comments.length === 1 ? "comment" : "comments"}</span>` : ''}</span>
         <div class="sl-thumb-box" style="width:176px;height:${deck.height * tk}px"><div class="sl-scale" style="transform:scale(${tk})">${renderSlide(deck, s)}</div></div>
       </li>`).join('');
     hydrate(thumbs);
@@ -182,7 +185,7 @@ export function mountSlides(host, ctx) {
     host.querySelector('[data-sl-size]').value = SIZES[deck.global.size] ? deck.global.size : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur-label').innerHTML = s.master ? `Master${s.master !== 'all' ? ` for <b>${esc(s.master)}</b> slides` : ' for <b>all</b> slides'}` : `Slide <b class="sl-cur">${s.number}</b> content`;
-    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign();
+    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign(); renderReview(); renderView();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.shown.length} ${deck.shown.length === 1 ? 'slide' : 'slides'}${deck.masters.length ? ` · ${deck.masters.length} ${deck.masters.length === 1 ? 'master' : 'masters'}` : ''}`);
@@ -409,6 +412,167 @@ export function mountSlides(host, ctx) {
     try { const src = await sourceOf(ref); const { fm, list } = chunks(); list.splice(cur + 1, 0, syncedCopy(ref, src)); cur += 1; commit(joinDeck(fm, list)); ctx.toast('Added a synced copy. It will offer to update when the source changes.'); }
     catch (e) { ctx.toast(e.message, { kind: 'error' }); }
   }
+  /* slide management (P8) */
+  function editAt(i, fn) { const { fm, list } = chunks(); list[i] = fn(list[i]); commit(joinDeck(fm, list)); }
+  function editMany(idx, fn) { const { fm, list } = chunks(); for (const i of idx) list[i] = fn(list[i], i); commit(joinDeck(fm, list)); }
+  function hideSlides(idx, on) { editMany(idx, (c) => setFlag(c, 'hidden', on)); ctx.toast(on ? `${idx.length === 1 ? 'Slide' : idx.length + ' slides'} hidden in the presentation.` : 'Slide shown again.'); }
+  async function sectionAt(i) {
+    const name = await ctx.prompt({ title: deck.slides[i].section ? 'Rename section' : 'Add section', label: 'Section name', value: deck.slides[i].section || '', action: 'Save' });
+    if (name == null) return; editAt(i, (c) => setDirective(c, 'section', name.trim() || null));
+  }
+  thumbs.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sec-menu]'); if (!b) return; e.stopPropagation(); const i = Number(b.dataset.secMenu);
+    const sec = sectionsOf(deck).find((x) => x.start === i);
+    ctx.showMenu(b, [
+      { label: 'Rename section…', run: () => sectionAt(i) },
+      { label: 'Hide all slides in section', run: () => hideSlides(sec.slides.filter((j) => !deck.slides[j].master), true) },
+      { label: 'Show all slides in section', run: () => hideSlides(sec.slides, false) },
+      { label: 'Remove section (keep slides)', run: () => editAt(i, (c) => setDirective(c, 'section', null)) },
+    ]);
+  }, true);
+
+  /* comments */
+  const rpane = host.querySelector('.sl-review');
+  async function commentPrompt() {
+    const text = await ctx.prompt({ title: 'Add comment', label: `Comment on slide ${deck.slides[cur].number ?? 'master'}`, value: '', action: 'Add comment' });
+    if (!text || !text.trim()) return;
+    const author = (await ctx.userName?.()) || '';
+    editAt(cur, (c) => addComment(c, { author, date: new Date().toISOString().slice(0, 10), text }));
+    showReview('comments');
+  }
+  let reviewTab = 'comments', a11yIssues = [];
+  function showReview(tab) { reviewTab = tab; rpane.hidden = false; dockRoom(); renderReview(); }
+  function renderReview() {
+    if (rpane.hidden || !deck) return;
+    const tabs = `<div class="fp-head rv-tabs"><button type="button" data-rt="comments" aria-pressed="${reviewTab === 'comments'}">Comments</button><button type="button" data-rt="a11y" aria-pressed="${reviewTab === 'a11y'}">Accessibility</button><button type="button" class="dp-x rv-close" data-rt="close" aria-label="Close review pane">Close</button></div>`;
+    if (reviewTab === 'comments') {
+      const all = deck.slides.flatMap((sl) => sl.comments.map((c, k) => ({ ...c, k, sl })));
+      rpane.innerHTML = tabs + `<div class="fp-btns"><button class="btn" type="button" data-rv="add">Add comment to this slide</button></div>` + (all.length ? `<ul class="rv-list">${all.map((c) => `<li class="${c.sl.index === cur ? 'is-cur' : ''}"><a href="#" data-go="${c.sl.index}">${c.sl.master ? 'Master' : 'Slide ' + c.sl.number}</a>${c.author || c.date ? ` <span class="rv-meta">${esc(c.author)}${c.date ? ' · ' + esc(c.date) : ''}</span>` : ''}<p>${esc(c.text)}</p><button class="dp-x" type="button" data-resolve="${c.sl.index}:${c.k}">Resolve</button></li>`).join('')}</ul>` : '<p class="fp-note">No comments. Comments are saved in the file, so they travel with the deck.</p>');
+    } else {
+      const sev = { error: 'Error', warning: 'Warning', tip: 'Tip' };
+      rpane.innerHTML = tabs + (a11yIssues.length ? `<p class="fp-note">${a11yIssues.filter((x) => x.severity === 'error').length} errors, ${a11yIssues.filter((x) => x.severity === 'warning').length} warnings.</p><ul class="rv-list">${a11yIssues.map((x, n) => `<li class="rv-${x.severity}"><span class="rv-sev">${sev[x.severity]}</span><p>${esc(x.message)}</p><span class="fp-btns"><button class="btn" type="button" data-go="${x.slide}" data-go-obj="${x.object ?? ''}">Go to slide</button>${x.kind === 'alt' && x.object != null ? `<button class="btn" type="button" data-fix="${n}">Add description…</button>` : ''}</span></li>`).join('')}</ul>` : '<p class="fp-note">No problems found. Titles, picture descriptions, contrast and text size look fine.</p>') + '<div class="fp-btns"><button class="btn" type="button" data-rv="recheck">Check again</button></div>';
+    }
+  }
+  async function runA11y() { const { checkDeck } = await import('./slides-a11y.js'); a11yIssues = checkDeck(deck); showReview('a11y'); }
+  rpane.addEventListener('click', async (e) => {
+    const t = e.target.closest('[data-rt]'); if (t) { if (t.dataset.rt === 'close') { rpane.hidden = true; dockRoom(); return; } reviewTab = t.dataset.rt; if (reviewTab === 'a11y') return runA11y(); return renderReview(); }
+    const go = e.target.closest('[data-go]'); if (go) { e.preventDefault(); select(Number(go.dataset.go)); if (go.dataset.goObj) { selected = [Number(go.dataset.goObj)]; canvas?.select(selected, { notify: true }); } return; }
+    const rs = e.target.closest('[data-resolve]'); if (rs) { const [i, k] = rs.dataset.resolve.split(':').map(Number); editAt(i, (c) => removeComment(c, k)); return; }
+    const fx = e.target.closest('[data-fix]'); if (fx) {
+      const it = a11yIssues[Number(fx.dataset.fix)];
+      const alt = await ctx.prompt({ title: 'Describe the picture', label: 'Alternative text', value: '', hint: 'What does the picture show, in one sentence?', action: 'Save' });
+      if (alt && alt.trim()) { editAt(it.slide, (c) => setObjectAttrs(c, it.object, { alt: alt.trim() })); runA11y(); }
+      return;
+    }
+    const rv = e.target.closest('[data-rv]'); if (!rv) return;
+    if (rv.dataset.rv === 'add') commentPrompt(); else runA11y();
+  });
+
+  /* find and replace across the deck */
+  const findBar = host.querySelector('.sl-find'); let hits = [], hit = -1;
+  function openFind() {
+    findBar.hidden = false;
+    findBar.innerHTML = `<input class="input" type="search" data-f="q" placeholder="Find in slides" aria-label="Find"><input class="input" type="text" data-f="r" placeholder="Replace with" aria-label="Replace with"><label class="sf-check"><input type="checkbox" data-f="case"> Match case</label><span class="sl-find-n" aria-live="polite"></span><button class="btn" type="button" data-fb="prev">Previous</button><button class="btn" type="button" data-fb="next">Next</button><button class="btn" type="button" data-fb="one">Replace</button><button class="btn" type="button" data-fb="all">Replace all</button><button class="dp-x" type="button" data-fb="close" aria-label="Close find">Close</button>`;
+    findBar.querySelector('[data-f=q]').focus();
+  }
+  const fq = () => findBar.querySelector('[data-f=q]')?.value || '';
+  const fre = () => { const q = fq(); if (!q) return null; return new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), findBar.querySelector('[data-f=case]').checked ? 'g' : 'gi'); };
+  function findAll() {
+    const re = fre(); hits = [];
+    if (re) { const { list } = chunks(); list.forEach((c, i) => { for (const m of c.matchAll(re)) hits.push({ i, at: m.index }); }); }
+    findBar.querySelector('.sl-find-n').textContent = fq() ? `${hits.length} ${hits.length === 1 ? 'match' : 'matches'}` : '';
+  }
+  function gotoHit(d) { findAll(); if (!hits.length) return; hit = (hit + d + hits.length) % hits.length; select(hits[hit].i); findBar.querySelector('.sl-find-n').textContent = `${hit + 1} of ${hits.length}`; }
+  findBar.addEventListener('input', () => { hit = -1; findAll(); });
+  findBar.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); gotoHit(e.shiftKey ? -1 : 1); } if (e.key === 'Escape') { findBar.hidden = true; stage.focus(); } });
+  findBar.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fb]'); if (!b) return; const re = fre(); const rep = findBar.querySelector('[data-f=r]').value;
+    if (b.dataset.fb === 'close') { findBar.hidden = true; return; }
+    if (b.dataset.fb === 'next' || b.dataset.fb === 'prev') return gotoHit(b.dataset.fb === 'next' ? 1 : -1);
+    if (!re) return;
+    if (b.dataset.fb === 'all') { findAll(); const n = hits.length; if (!n) return; const { fm, list } = chunks(); commit(joinDeck(fm, list.map((c) => c.replace(re, () => rep)))); findAll(); return ctx.toast(`Replaced ${n} ${n === 1 ? 'match' : 'matches'}.`); }
+    if (b.dataset.fb === 'one') { findAll(); if (!hits.length) return; const h = hits[Math.max(0, hit)] || hits[0]; const { fm, list } = chunks(); const c = list[h.i]; const m = new RegExp(re.source, re.flags.replace('g', '')).exec(c.slice(h.at)); if (!m) return; list[h.i] = c.slice(0, h.at) + rep + c.slice(h.at + m[0].length); commit(joinDeck(fm, list)); hit -= 1; gotoHit(1); }
+  });
+
+  /* reuse slides from another deck (copies) */
+  async function reuseFromDeck() {
+    const t = await ctx.pickRef?.({ kind: 'link' }); if (!t) return;
+    const { parseRef, resolveTarget } = await import('./refs-syntax.js');
+    const { target, part } = parseRef(t.replace(/^!?\[\[|\]\]$/g, '').replace(/\|.*$/, ''));
+    const env = ctx.refEnv(); const path = resolveTarget(target, env.files, env.from);
+    if (!path || !/\.slides\.md$/i.test(path)) return ctx.toast('Choose a slide deck.');
+    const src = parseFrontmatter(await env.read(path)); const all = splitSlides(src.body);
+    const m = String(part || '').match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    const pick = m ? all.slice(Number(m[1]) - 1, Number(m[2] || m[1])) : all;
+    if (!pick.length) return ctx.toast('No slides there.');
+    const { fm, list } = chunks(); list.splice(cur + 1, 0, ...pick.map((c) => '\n' + c.replace(/^\n+/, '').replace(/[ \t]*<!--\s*master(:[^>]*)?\s*-->[ \t]*\n?/g, '')));
+    cur += 1; commit(joinDeck(fm, list)); ctx.toast(`Inserted ${pick.length} ${pick.length === 1 ? 'slide' : 'slides'} from ${target}. They are copies; use “Synced copy of a slide” to keep one linked.`);
+  }
+  host.querySelector('[data-sl="review"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [
+    { label: 'Find and replace…', key: 'Ctrl+H', run: openFind },
+    { label: 'Comments', run: () => showReview('comments') },
+    { label: 'Add comment…', run: commentPrompt },
+    { label: 'Check accessibility', run: runA11y }, '-',
+    { label: 'Insert slides from another deck…', run: reuseFromDeck },
+    { label: deck.slides[cur].hidden ? 'Show this slide' : 'Hide this slide', run: () => hideSlides([cur], !deck.slides[cur].hidden) },
+  ]));
+
+  /* views: normal, sorter, outline */
+  let view = 'normal', sortSel = new Set(), sortAnchor = null;
+  const mainEl = host.querySelector('.sl-main');
+  const viewEl = document.createElement('div'); viewEl.className = 'sl-view'; viewEl.hidden = true; mainEl.after(viewEl);
+  host.querySelector('.sl-views').addEventListener('click', (e) => { const b = e.target.closest('[data-slv]'); if (b) setView(b.dataset.slv); });
+  function setView(v) {
+    view = v; for (const b of host.querySelectorAll('[data-slv]')) b.setAttribute('aria-checked', String(b.dataset.slv === v));
+    mainEl.hidden = v !== 'normal'; viewEl.hidden = v === 'normal'; host.classList.toggle('sl-alt-view', v !== 'normal');
+    if (v === 'normal') { render(); requestAnimationFrame(fit); } else renderView();
+  }
+  function renderView() {
+    if (view === 'normal' || !deck) return;
+    if (view === 'sorter') {
+      const tk = 220 / deck.width;
+      viewEl.innerHTML = `<p class="sl-view-hint">Click to select, Shift or Ctrl to select more, drag to move. Delete removes, H hides, Ctrl+D duplicates, Enter opens.</p><ol class="sl-sorter" tabindex="0" aria-label="Slide sorter">${deck.slides.map((sl, i) => `${sl.section ? `<li class="sl-sorter-sec">${esc(sl.section)}</li>` : ''}<li class="sl-sort${sortSel.has(i) ? ' is-sel' : ''}${sl.hidden ? ' is-hidden' : ''}${sl.master ? ' is-master' : ''}" data-si="${i}" draggable="true" aria-selected="${sortSel.has(i)}"><div class="sl-thumb-box" style="width:220px;height:${deck.height * tk}px"><div class="sl-scale" style="transform:scale(${tk})">${renderSlide(deck, sl)}</div></div><span>${sl.master ? 'Master' : sl.number}${sl.hidden ? ' · hidden' : ''}${sl.title ? ' · ' + esc(sl.title) : ''}</span></li>`).join('')}</ol>`;
+      hydrate(viewEl);
+    } else {
+      viewEl.innerHTML = `<p class="sl-view-hint">Edit titles here. Each line under a title is a bullet on that slide.</p><ol class="sl-outline">${deck.slides.map((sl, i) => {
+        const bullets = sl.content.split('\n').filter((l) => /^\s*[-*+]\s+\S/.test(l)).map((l) => l.replace(/^\s*[-*+]\s+/, ''));
+        return `${sl.section ? `<li class="sl-outline-sec">${esc(sl.section)}</li>` : ''}<li class="sl-outline-item${sl.hidden ? ' is-hidden' : ''}"><span class="sl-outline-n">${sl.master ? 'M' : sl.number}</span><div><input class="sl-outline-title" data-oi="${i}" value="${esc(sl.title)}" placeholder="Untitled slide" aria-label="Title of slide ${sl.number ?? 'master'}">${bullets.length ? `<ul>${bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</div></li>`;
+      }).join('')}</ol>`;
+    }
+  }
+  viewEl.addEventListener('change', (e) => {
+    const inp = e.target.closest('[data-oi]'); if (!inp) return; const i = Number(inp.dataset.oi); const t = inp.value.trim();
+    editAt(i, (c) => /^(\s*)#{1,6}\s+.*$/m.test(c) ? c.replace(/^(\s*#{1,6}\s+).*$/m, `$1${t}`) : c.replace(/^(\n*(?:[ \t]*<!--[\s\S]*?-->[ \t]*\n)*)/, `$1## ${t}\n\n`));
+  });
+  viewEl.addEventListener('click', (e) => {
+    const li = e.target.closest('[data-si]'); if (!li) return; const i = Number(li.dataset.si);
+    if (e.shiftKey && sortAnchor != null) { sortSel = new Set(Array.from({ length: Math.abs(i - sortAnchor) + 1 }, (_, k) => Math.min(i, sortAnchor) + k)); }
+    else if (e.ctrlKey || e.metaKey) { sortSel.has(i) ? sortSel.delete(i) : sortSel.add(i); sortAnchor = i; }
+    else { sortSel = new Set([i]); sortAnchor = i; }
+    renderView();
+  });
+  viewEl.addEventListener('dblclick', (e) => { const li = e.target.closest('[data-si]'); if (li) { cur = Number(li.dataset.si); setView('normal'); } });
+  let sortDrag = null;
+  viewEl.addEventListener('dragstart', (e) => { const li = e.target.closest('[data-si]'); if (!li) return; const i = Number(li.dataset.si); if (!sortSel.has(i)) sortSel = new Set([i]); sortDrag = [...sortSel].sort((a, b) => a - b); e.dataTransfer.effectAllowed = 'move'; });
+  viewEl.addEventListener('dragover', (e) => { if (sortDrag) { e.preventDefault(); viewEl.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop')); e.target.closest('[data-si]')?.classList.add('drop'); } });
+  viewEl.addEventListener('drop', (e) => { e.preventDefault(); const t = e.target.closest('[data-si]'); if (t && sortDrag) moveBlock(sortDrag, Number(t.dataset.si)); sortDrag = null; });
+  viewEl.addEventListener('dragend', () => { sortDrag = null; });
+  /** move several slides so they sit before slide `to` (or at the end when `to` is after them) */
+  function moveBlock(idx, to) {
+    if (idx.includes(to)) return;
+    const { fm, list } = chunks(); const moving = idx.map((i) => list[i]); const rest = list.filter((_, i) => !idx.includes(i));
+    let at = rest.indexOf(list[to]); if (to > idx[idx.length - 1]) at += 1;
+    rest.splice(at, 0, ...moving); sortSel = new Set(moving.map((_, k) => at + k)); commit(joinDeck(fm, rest));
+  }
+  viewEl.addEventListener('keydown', (e) => {
+    if (view !== 'sorter' || !sortSel.size || e.target.closest('input')) return;
+    const idx = [...sortSel].sort((a, b) => a - b);
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); const { fm, list } = chunks(); if (idx.length >= list.length) return ctx.toast('A deck needs at least one slide.'); sortSel = new Set(); commit(joinDeck(fm, list.filter((_, i) => !idx.includes(i)))); }
+    else if (e.key.toLowerCase() === 'h') { e.preventDefault(); hideSlides(idx, !deck.slides[idx[0]].hidden); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); const { fm, list } = chunks(); const at = idx[idx.length - 1] + 1; list.splice(at, 0, ...idx.map((i) => list[i])); sortSel = new Set(idx.map((_, k) => at + k)); commit(joinDeck(fm, list)); }
+    else if (e.key === 'Enter') { cur = idx[0]; setView('normal'); }
+  });
+
   /* design pane (P7): theme, template, colours, fonts, background, masters */
   const dpane = host.querySelector('.sl-design');
   host.querySelector('[data-sl-design]').addEventListener('change', (e) => { dpane.hidden = !e.target.checked; dockRoom(); renderDesign(); });
@@ -499,7 +663,7 @@ export function mountSlides(host, ctx) {
   /* format pane (P6) */
   const fpane = host.querySelector('.sl-format');
   host.querySelector('[data-sl-format]').addEventListener('change', (e) => { fpane.hidden = !e.target.checked; dockRoom(); renderFormat(); });
-  function dockRoom() { const open = !fpane.hidden || !dpane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
+  function dockRoom() { const open = !fpane.hidden || !dpane.hidden || !rpane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : /^#[0-9a-f]{3}$/i.test(c || '') ? '#' + c.slice(1).split('').map((x) => x + x).join('') : d);
   const fRow = (label, html) => `<label class="fp-row"><span>${label}</span>${html}</label>`;
   const num = (k, v, step = 1, min = '', max = '') => `<input class="input fp-num" type="number" data-fk="${k}" value="${v ?? ''}" step="${step}"${min !== '' ? ` min="${min}"` : ''}${max !== '' ? ` max="${max}"` : ''}>`;
@@ -796,6 +960,7 @@ export function mountSlides(host, ctx) {
   }
   stage.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea, select, .cm-editor, [contenteditable="true"]')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') { e.preventDefault(); openFind(); return; }
     if ((e.key === 'Enter' || e.key === 'F2') && selected.length === 1) { e.preventDefault(); startEdit(selected[0]); return; }
     const mod = e.ctrlKey || e.metaKey, kk = e.key.toLowerCase();
     if (mod && kk === 'c' && selected.length) { e.preventDefault(); copySel(); }
@@ -825,6 +990,10 @@ export function mountSlides(host, ctx) {
       { label: 'Duplicate', run: () => duplicateSlide(i) }, '-',
       { label: 'Copy embed reference', run: () => ctx.copyRef?.(String(i + 1), 'embed') }, { label: 'Copy link to slide', run: () => ctx.copyRef?.(String(i + 1), 'link') }, '-',
       { label: 'Move up', run: () => moveSlide(i, i - 1) }, { label: 'Move down', run: () => moveSlide(i, i + 1) }, '-',
+      { label: deck.slides[i].hidden ? 'Show slide' : 'Hide slide', run: () => hideSlides([i], !deck.slides[i].hidden) },
+      { label: deck.slides[i].section ? 'Rename section…' : 'Add section here…', run: () => sectionAt(i) },
+      ...(deck.slides[i].section ? [{ label: 'Remove section', run: () => editAt(i, (c) => setDirective(c, 'section', null)) }] : []),
+      { label: 'Add comment…', run: () => { select(i); commentPrompt(); } }, '-',
       { label: 'Delete slide', danger: true, run: () => deleteSlide(i) },
     ], { x: e.clientX, y: e.clientY });
   });

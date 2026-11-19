@@ -103,6 +103,12 @@ template: Brand.slides  # take theme, tokens, fonts and masters from another dec
 - With `template:`, the template's front matter is the base (the deck's own keys win) and the template's masters come before the deck's own.
 - Slide backgrounds: `<!-- _backgroundColor: #f2f2f2 -->` or `<!-- _backgroundImage: linear-gradient(135deg, #ffffff, #d9d9d9) -->` for one slide, the same keys in front matter for all slides, or `![bg](picture.jpg)`.
 
+### Sections, hidden slides and comments
+
+- `<!-- section: Results -->` starts a section at this slide; it runs until the next section.
+- `<!-- hidden -->` keeps a slide in the deck but leaves it out of presenting and exports. It keeps its number.
+- `<!-- comment (Ana, 2026-11-19): Check these numbers -->` is a review comment on the slide. Author and date are optional. Comments are not speaker notes; Resolve deletes the line.
+
 ### Placed objects (slides-md v2)
 
 Content is laid out by the slide's layout (flow). Objects with explicit geometry sit on top, in slide pixels on a 1280×720 canvas (960×720 for `size: 4:3`), origin top left.

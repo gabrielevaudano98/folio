@@ -147,6 +147,23 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(sg('---\nmarp: true\naccent: #111\n---\n', 'accent', null), '---\nmarp: true\n---\n'); assert.equal(sg('---\nmarp: true\n---\n', 'heading-font', 'Georgia'), '---\nmarp: true\nheading-font: Georgia\n---\n'); ok('front matter keys are set and removed');
 }
 
+// slide management (P8)
+{
+  const { parseDeck: pd, setFlag, addComment, removeComment, sectionsOf } = await import('../src/renderer/slides-core.js');
+  const { checkDeck, contrast } = await import('../src/renderer/slides-a11y.js');
+  const t = '---\nmarp: true\n---\n\n<!-- section: Intro -->\n# Hello\n\n---\n\n<!-- hidden -->\n## Secret\n\n<!-- comment (Ana, 2026-11-19): Tighten this -->\n\n---\n\n<!-- section: Results -->\n## Numbers\n\n<!--\nSpeaker note\n-->\n';
+  const d = pd(t);
+  assert.deepEqual(d.slides.map((x) => [x.hidden, x.section]), [[false, 'Intro'], [true, null], [false, 'Results']]); assert.deepEqual(d.shown.map((x) => x.index), [0, 2]); assert.deepEqual(d.slides.map((x) => x.number), [1, 2, 3]); ok('hidden slides keep their number and are left out of the show');
+  assert.deepEqual(sectionsOf(d).map((x) => [x.name, x.slides]), [['Intro', [0, 1]], ['Results', [2]]]); ok('sections run until the next section');
+  assert.deepEqual(d.slides[1].comments.map((c) => [c.author, c.date, c.text]), [['Ana', '2026-11-19', 'Tighten this']]); assert.equal(d.slides[1].notes, ''); assert.equal(d.slides[2].notes, 'Speaker note'); ok('comments are not speaker notes');
+  const c1 = addComment('## X\n', { author: 'Bo', date: '2026-11-20', text: 'Line one\nline --> two' }); assert.equal(c1, '## X\n\n<!-- comment (Bo, 2026-11-20): Line one line —> two -->\n');
+  assert.equal(removeComment(c1, 0), '## X\n'); assert.equal(setFlag('## X\n', 'hidden', true), '<!-- hidden -->\n## X\n'); assert.equal(setFlag('<!-- hidden -->\n## X\n', 'hidden', false), '## X\n'); ok('comments and flags are added and removed as single lines');
+  assert.equal(Math.round(contrast('#000000', '#ffffff')), 21); assert(contrast('#777777', '#ffffff') < 4.5);
+  const bad = pd('---\nmarp: true\nink: "#aaaaaa"\n---\n\nNo title here\n\n![](a.png)\n\n::: box #tiny x=0 y=0 w=100 h=40 size=12 color=#cccccc fill=#ffffff\nhello\n:::\n\n---\n\n## Same\n\n---\n\n## Same\n');
+  const kinds = checkDeck(bad).map((x) => x.kind).sort(); assert.deepEqual(kinds, ['alt', 'contrast', 'contrast', 'contrast', 'contrast', 'duplicate', 'duplicate', 'size', 'title']);
+  ok('the accessibility checker finds missing titles, picture descriptions, low contrast, tiny text and duplicate titles');
+}
+
 // charts
 const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows');
 const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');
