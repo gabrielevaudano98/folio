@@ -1,0 +1,131 @@
+/* Hallmark · v2.0.0 · shape: app screen · theme: custom · idea: "the page is the paper, the AI writes in the margin" · vibe: "graphite on paper, edits that glow then settle" · paper: light L98 / dark L17, neutral grey (chroma 0, by request) · accent: ink itself, black on light and white on dark, grayscale only by request · faces: system sans (SF Pro / Segoe UI Variable) + system mono · posture: Restrained · axes: light+dark/grotesk-regular/neutral · modes: light+dark · signature: live AI edits marked in the margin with a one-click undo · deal: manual (sloplint not run: script execution blocked in this environment) */
+/* Hallmark · pre-emit critique: P4 H5 E4 S4 R5 V4 · weakest: P, a native editor is a familiar argument; sharpened it by making AI edits the visible, reversible event, and by a live WYSIWYG that hides syntax off the cursor line */
+/* waive 22 (tinted neutrals): the user asked for a pure grey and black-and-white palette, so neutrals carry chroma 0; waive 23 (accent chroma): the accent is ink by request, state is carried by weight, a rule or a word */
+
+:root {
+  color-scheme: light dark;
+
+  /* paper, ink and neutrals: light */
+  --color-paper: oklch(98.2% 0 0);
+  --color-paper-2: oklch(95.6% 0 0);
+  --color-paper-3: oklch(92.4% 0 0);
+  --color-sidebar: oklch(94.6% 0 0 / 0.72);
+  --color-chrome: oklch(97.2% 0 0 / 0.86);
+  --color-ink: oklch(21% 0 0);
+  --color-ink-2: oklch(38% 0 0);
+  --color-muted: oklch(52% 0 0);
+  --color-faint: oklch(66% 0 0);
+  --color-rule: oklch(88% 0 0);
+  --color-rule-strong: oklch(81% 0 0);
+  --color-hover: oklch(21% 0 0 / 0.055);
+  --color-press: oklch(21% 0 0 / 0.09);
+  --color-code-bg: oklch(95.4% 0 0);
+
+  /* the one signal */
+  --color-accent: oklch(18% 0 0);
+  --color-accent-ink: oklch(98.5% 0 0);
+  --color-accent-soft: color-mix(in oklch, var(--color-ink) 7%, transparent);
+  --color-accent-text: var(--color-ink);
+  --color-focus: color-mix(in oklch, var(--color-ink) 55%, transparent);
+  --color-select: color-mix(in oklch, var(--color-ink) 14%, transparent);
+
+  /* states, never colour alone: every one carries a word or a sign */
+  --color-added: var(--color-ink);
+  --color-added-bg: color-mix(in oklch, var(--color-ink) 9%, transparent);
+  --color-removed: var(--color-muted);
+  --color-removed-bg: color-mix(in oklch, var(--color-ink) 3%, transparent);
+  --color-warn: var(--color-ink);
+
+  /* type */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+
+  /* app scale, 1.125 */
+  --text-2xs: 0.6875rem;  /* 11 */
+  --text-xs: 0.75rem;     /* 12 */
+  --text-sm: 0.8125rem;   /* 13 */
+  --text-ui: 0.875rem;    /* 14 */
+  --text-body: 1rem;      /* 16 */
+  --text-lg: 1.125rem;
+  --text-xl: 1.266rem;
+  --text-2xl: 1.602rem;
+  --text-3xl: 2.027rem;
+  --text-4xl: 2.566rem;
+
+  --weight-regular: 400;
+  --weight-medium: 510;
+  --weight-bold: 680;
+
+  /* space */
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px;
+  --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px;
+
+  /* shape */
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px; --radius-pill: 999px;
+  --shadow-pop: 0 0 0 0.5px oklch(20% 0 0 / 0.14), 0 12px 32px -8px oklch(20% 0 0 / 0.22);
+  --shadow-sheet: 0 0 0 0.5px oklch(20% 0 0 / 0.16), 0 24px 64px -12px oklch(20% 0 0 / 0.32);
+
+  /* layout */
+  --sidebar-w: 264px;
+  --outline-w: 224px;
+  --titlebar-h: 52px;
+  --statusbar-h: 28px;
+  --measure: 72ch;
+  --control-h: 28px;
+  --control-h-lg: 34px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+
+  /* z */
+  --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+  /* syntax, scrims and small shadows */
+  --syn-keyword: oklch(18% 0 0);
+  --syn-string: oklch(46% 0 0);
+  --syn-number: oklch(34% 0 0);
+  --syn-type: oklch(28% 0 0);
+  --syn-title: oklch(14% 0 0);
+  --color-scrim: oklch(20% 0 0 / 0.12);
+  --color-backdrop: oklch(20% 0 0 / 0.22);
+  --shadow-control: 0 0.5px 1px oklch(20% 0 0 / 0.08);
+  --shadow-seg: 0 0 0 0.5px var(--color-rule-strong), 0 1px 2px oklch(20% 0 0 / 0.08);
+  --shadow-page: 0 0 0 0.5px oklch(20% 0 0 / 0.08), 0 1px 3px oklch(20% 0 0 / 0.06), 0 8px 28px -10px oklch(20% 0 0 / 0.14);
+  --shadow-thumb: 0 1px 2px oklch(20% 0 0 / 0.25);
+
+}
+
+[data-mode="dark"] {
+  --color-paper: oklch(19.5% 0 0);
+  --color-paper-2: oklch(22.5% 0 0);
+  --color-paper-3: oklch(26% 0 0);
+  --color-sidebar: oklch(21% 0 0 / 0.68);
+  --color-chrome: oklch(20.5% 0 0 / 0.86);
+  --color-ink: oklch(93.5% 0 0);
+  --color-ink-2: oklch(80% 0 0);
+  --color-muted: oklch(66% 0 0);
+  --color-faint: oklch(52% 0 0);
+  --color-rule: oklch(30% 0 0);
+  --color-rule-strong: oklch(36% 0 0);
+  --color-hover: oklch(93% 0 0 / 0.07);
+  --color-press: oklch(93% 0 0 / 0.11);
+  --color-code-bg: oklch(23.5% 0 0);
+  --color-accent: oklch(95% 0 0);
+  --color-accent-ink: oklch(17% 0 0);
+  --color-accent-text: var(--color-ink);
+  --color-added: var(--color-ink);
+  --color-added-bg: color-mix(in oklch, var(--color-ink) 11%, transparent);
+  --color-removed: var(--color-muted);
+  --color-removed-bg: color-mix(in oklch, var(--color-ink) 4%, transparent);
+  --shadow-pop: 0 0 0 0.5px oklch(96% 0 0 / 0.12), 0 12px 32px -8px oklch(8% 0 0 / 0.5);
+  --shadow-sheet: 0 0 0 0.5px oklch(96% 0 0 / 0.14), 0 24px 64px -12px oklch(8% 0 0 / 0.6);
+  --shadow-page: 0 0 0 0.5px oklch(96% 0 0 / 0.1), 0 10px 30px -10px oklch(8% 0 0 / 0.6);
+  --syn-keyword: oklch(96% 0 0);
+  --syn-string: oklch(68% 0 0);
+  --syn-number: oklch(82% 0 0);
+  --syn-type: oklch(88% 0 0);
+  --syn-title: oklch(98% 0 0);
+}

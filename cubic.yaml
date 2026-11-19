@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://cubic.dev/schema/cubic-repository-config.schema.json
+version: 1
+
+reviews:
+  enabled: true
+  sensitivity: medium
+  incremental_commits: true
+  check_drafts: false
+  architecture_diagrams: true
+  external_contributors_require_manual_review: false
+  resolve_threads_when_addressed: true
+  auto_approve_behavior: disabled
+  auto_approve: disabled
+  ultrareview: manual
+  auto_ultrareview: custom
+  auto_ultrareview_custom_prompt: |
+    Run an ultrareview when the change touches the MCP server, file access, IPC, or a file format parser or serializer.
+  auto_ultrareview_file_patterns:
+    - src/main/**
+    - src/mcp/**
+    - src/renderer/*-core.js
+  custom_instructions: |
+    Folio is an Electron Markdown app that AI assistants edit through MCP. Read AGENTS.md for the map and invariants.
+    Prioritise, in order: data loss or unwanted rewrites of user files; security of the MCP server and the Electron
+    process boundary; correctness of the slides-md, board-md and sheet-md formats; accessibility; then style.
+  ignore:
+    files:
+      - package-lock.json
+      - dist/**
+      - release/**
+      - LICENSE
+    head_branches:
+      - dependabot/**
+    max_changed_lines: 8000
+  custom_rules:
+    - name: Lossless Markdown round-trip
+      description: |
+        Any change to a parser or serializer (slides-core, board-core, sheet-core, rich.js getMarkdown) must keep
+        unchanged documents byte-identical and must come with a round-trip test in test/formats.test.mjs.
+        Flag code that rewrites a file on open, or reformats text the user did not touch.
+      include:
+        - src/renderer/**
+        - test/**
+    - name: Workspace and MCP security
+      description: |
+        Every filesystem path must go through notes.resolve(). The MCP HTTP server must bind 127.0.0.1, require the
+        bearer token and check Host and Origin. Write tools must be blocked when allowWrite is false.
+        Electron windows keep contextIsolation and sandbox on, and never load remote content.
+      include:
+        - src/main/**
+        - src/mcp/**
+    - name: Design tokens only
+      description: |
+        In CSS, colours, fonts, radii, shadows and durations come from tokens.css. The palette is grey only.
+        Flag literal colours outside token blocks, uppercase letter-spaced labels, emoji used as icons,
+        missing focus-visible styles, and animations that ignore prefers-reduced-motion.
+      include:
+        - src/renderer/**/*.css
+        - src/renderer/**/*.js
+    - name: Attribution and license
+      description: |
+        The attribution "Based on Folio by Gabriele Vaudano" must stay in NOTICE, README.md and the About window.
+        New dependencies must have a license compatible with AGPL-3.0 (MIT, BSD, ISC, Apache-2.0, MPL-2.0, LGPL, GPL-3.0, AGPL-3.0).
+      file_paths:
+        - NOTICE
+        - CONTRIBUTING.md
+
+pr_descriptions:
+  generate: true
+  instructions: |
+    Say which document types are affected (page, slides, board, sheet, MCP) and how the change was tested.
+  skip_if_author_description: true
+
+issues:
+  fix_with_cubic_buttons: true
+  pr_comment_fixes: true
+  coding_agent_provider: cubic
+  auto_fix: on_demand

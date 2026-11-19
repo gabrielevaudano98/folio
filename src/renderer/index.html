@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" data-mode="light">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: https: blob:; font-src 'self' data:; connect-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Folio, a Markdown editor your AI assistants can read and edit through MCP.">
+  <title>Folio</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="app" id="app" data-sidebar="open" data-outline="open" data-mode-view="split">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Workspace">
+      <div class="sidebar-top drag">
+        <div class="traffic-space"></div>
+        <button class="icon-btn no-drag" type="button" id="btn-new" aria-label="New note" data-tip="New note (⌘N)"></button>
+      </div>
+
+      <button class="workspace-switch no-drag" type="button" id="workspace-switch" aria-haspopup="menu">
+        <span class="workspace-name" id="workspace-name">No folder</span>
+        <span class="workspace-chev" aria-hidden="true"></span>
+      </button>
+
+      <label class="sidebar-search">
+        <span class="search-glyph" aria-hidden="true"></span>
+        <input id="sidebar-search" type="search" placeholder="Search notes" aria-label="Search all notes" autocomplete="off" spellcheck="false">
+        <kbd class="kbd" id="search-kbd">⌘⇧F</kbd>
+      </label>
+
+      <div class="sidebar-scroll" id="sidebar-scroll">
+        <section class="side-section" id="section-files">
+          <h2 class="side-head">Notes</h2>
+          <div class="tree" id="tree" role="tree" aria-label="Notes"></div>
+        </section>
+        <section class="side-section" id="section-results" hidden>
+          <h2 class="side-head" id="results-head">Results</h2>
+          <div class="results" id="results"></div>
+        </section>
+      </div>
+
+      <button class="ai-status no-drag" type="button" id="ai-status" aria-label="AI connections">
+        <span class="ai-status-icon" aria-hidden="true"></span>
+        <span class="ai-status-text">
+          <span class="ai-status-title" id="ai-status-title">AI access</span>
+          <span class="ai-status-sub" id="ai-status-sub">Starting…</span>
+        </span>
+      </button>
+    </aside>
+
+    <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>
+
+    <!-- Main -->
+    <main class="main" id="main">
+      <header class="titlebar drag" id="titlebar">
+        <button class="icon-btn no-drag" type="button" id="btn-sidebar" aria-label="Toggle sidebar" data-tip="Sidebar (⌘\)"></button>
+        <nav class="tabs no-drag" id="tabs" role="tablist" aria-label="Open notes"></nav>
+        <div class="titlebar-spacer"></div>
+        <div class="segmented no-drag" role="radiogroup" aria-label="View" id="view-switch">
+          <button type="button" role="radio" data-view="edit" aria-checked="false" aria-label="Write" data-tip="Write (⌘1)"></button>
+          <button type="button" role="radio" data-view="split" aria-checked="true" aria-label="Split" data-tip="Split (⌘2)"></button>
+          <button type="button" role="radio" data-view="preview" aria-checked="false" aria-label="Read" data-tip="Read (⌘3)"></button>
+        </div>
+        <button class="icon-btn no-drag" type="button" id="btn-outline" aria-label="Toggle outline" data-tip="Outline (⌘⇧O)"></button>
+        <button class="icon-btn no-drag" type="button" id="btn-more" aria-label="More actions" aria-haspopup="menu" data-tip="More"></button>
+        <div class="winctl-space"></div>
+      </header>
+
+      <div class="ai-banner" id="ai-banner" role="status" hidden>
+        <span class="ai-banner-mark" aria-hidden="true"></span>
+        <p class="ai-banner-text" id="ai-banner-text"></p>
+        <button class="btn btn-quiet" type="button" id="ai-banner-review">Review</button>
+        <button class="btn btn-quiet" type="button" id="ai-banner-undo">Undo</button>
+        <button class="icon-btn" type="button" id="ai-banner-close" aria-label="Dismiss"></button>
+      </div>
+
+      <div class="workspace" id="workspace">
+        <section class="pane pane-rich" id="pane-rich" aria-label="Document"></section>
+        <section class="pane pane-editor" id="pane-editor" aria-label="Editor"><div class="editor-host" id="editor"></div></section>
+        <div class="pane-divider" id="pane-divider" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"></div>
+        <section class="pane pane-preview" id="pane-preview" aria-label="Preview"><article class="prose" id="preview"></article></section>
+        <section class="pane pane-surface" id="pane-surface" aria-label="Visual editor"></section>
+        <aside class="outline" id="outline" aria-label="Outline">
+          <h2 class="side-head">On this page</h2>
+          <ol class="outline-list" id="outline-list"></ol>
+        </aside>
+
+        <div class="empty" id="empty-state" hidden></div>
+      </div>
+
+      <footer class="statusbar" id="statusbar">
+        <span id="st-path" class="st-path"></span>
+        <span class="statusbar-spacer"></span>
+        <span id="st-save"></span>
+        <span id="st-words"></span>
+        <span id="st-time"></span>
+        <span id="st-cursor"></span>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Overlays -->
+  <div class="palette-scrim" id="palette" hidden>
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="palette-field">
+        <span class="search-glyph" aria-hidden="true"></span>
+        <input id="palette-input" type="text" autocomplete="off" spellcheck="false" aria-controls="palette-list" aria-autocomplete="list" role="combobox" aria-expanded="true">
+      </div>
+      <ul class="palette-list" id="palette-list" role="listbox"></ul>
+      <p class="palette-hint" id="palette-hint"></p>
+    </div>
+  </div>
+
+  <dialog class="sheet" id="sheet-ai" aria-labelledby="ai-title"></dialog>
+  <dialog class="sheet sheet-wide" id="sheet-diff" aria-labelledby="diff-title"></dialog>
+  <dialog class="sheet" id="sheet-settings" aria-labelledby="settings-title"></dialog>
+  <dialog class="sheet sheet-small" id="sheet-prompt" aria-labelledby="prompt-title"></dialog>
+
+  <div class="menu" id="menu" popover role="menu"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="tip" id="tip" role="tooltip" hidden></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

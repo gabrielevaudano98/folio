@@ -1,0 +1,38 @@
+Folio
+Copyright (C) 2026 Gabriele Vaudano
+https://github.com/gabrielevaudano98/folio
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License, version 3, as published by
+the Free Software Foundation. See the LICENSE file.
+
+ADDITIONAL TERMS UNDER SECTION 7(b) OF THE AGPL-3.0 (attribution)
+
+Anyone who conveys this program, a modified version of it, or a work based on
+it, or who makes it available to users over a network, must preserve the
+following author attribution, unaltered, in all of these places:
+
+  1. this NOTICE file;
+  2. the README (or equivalent first page of documentation);
+  3. any "About" window, credits screen or help page of the user interface.
+
+  The attribution:  "Based on Folio by Gabriele Vaudano
+                     (https://github.com/gabrielevaudano98/folio)"
+
+Modified versions must also be marked as changed, as required by section 5(a),
+and their complete corresponding source must be offered under the AGPL-3.0, as
+required by sections 6 and 13.
+
+CONTRIBUTING BACK
+
+The license requires your changes to be public. The project asks, in addition,
+that you open a pull request against the `main` branch of the repository above
+so the improvement reaches everyone. See CONTRIBUTING.md.
+
+THIRD-PARTY SOFTWARE
+
+Folio bundles open-source libraries under their own licenses (MIT, Apache-2.0,
+ISC, BSD), among them Electron, CodeMirror, TipTap, markdown-it, Mermaid,
+KaTeX, highlight.js, pptxgenjs, JSZip, hot-formula-parser, dagre and the Model
+Context Protocol SDK. Their notices are kept in node_modules and in the built
+application's license files.
