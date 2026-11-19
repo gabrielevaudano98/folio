@@ -27,6 +27,17 @@ Any document can point at a part of another one. References are plain text, so t
 - Synced slide copies: a slide that starts with `<!-- source: Pitch.slides#2 -->` is a copy of that slide. Folio shows when the source has changed and offers Update (replace this slide with the source) or Unlink (remove the comment).
 - MCP tools: `resolve_ref`, `get_backlinks`, `find_broken_links`.
 
+## Pages
+
+A page is plain Markdown (CommonMark, GFM, Obsidian syntax). The Write view never reformats what you did not touch:
+
+- Opening a page does not change the file.
+- Editing a block rewrites only that block (a paragraph, a heading, a whole list or table). Every other byte stays as written, including blank lines, bullet markers and front matter.
+- A rewritten list keeps the bullet marker (`*`, `+`, `-`) and numbering style (`1.` or `1)`) the page already uses.
+- Markdown the Write view cannot edit without loss (footnotes, maths, raw HTML, foldable callouts, link definitions) is shown drawn, marked "Kept as written", and edited as source (double-click, Enter, or "Edit source"). It is written back exactly as typed.
+
+Assistants editing a page through MCP can rely on the same rule: unchanged blocks keep their text.
+
 ## slides-md
 
 A superset of [Marp](https://marp.app) Markdown. A Marp deck opens as is.

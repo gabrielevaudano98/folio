@@ -181,9 +181,13 @@ Today `getMarkdown()` re-serializes the whole document on every keystroke, so on
 
 ## Decisions to confirm
 
-- **D-1 Colour and alignment.** Markdown has no colour or alignment. Option A: support via small HTML (`<span data-color>`, `<p align>`), readable in GitHub, ignored by Obsidian. Option B: leave out to keep files pure. Proposal: A, behind the bubble menu, grey-first palette.
-- **D-2 New dependencies.** `docx` (export) and `mammoth` (import) for D11, both MIT. KaTeX and highlight.js are already in.
-- **D-3 Order.** D0 first is not optional. Proposed sequence: D0 → D1 → D3 → D2 → D4 → D5 → D6 → D7 → D8 → D9 → D10 → D11 → D12 → D13 → D14.
+- **D-1 Colour and alignment — decided: Folio-flavoured Markdown.** Folio reads attribute syntax that other editors treat as plain text, and **Export → Markdown (portable)** removes it so the exported `.md` shows no Folio markup. Syntax (Pandoc-compatible): inline `[text]{color=red bg=yellow}`, block attributes on the line after a block `{align=center}`. Built in D1, export in D11.
+- **D-2 Dependencies — decided: reuse everything that can be reused.** Already in and reused: markdown-it and its plugins (oracle for D0, preview), `diff` (block diff in D0), KaTeX, highlight.js, Mermaid, DOMPurify, TipTap extensions (subscript, superscript, text-align, text-style, typography are installed and unused today). To add when their step starts: `docx` (export) and `mammoth` (import) for D11, `@tiptap/suggestion` for the `/` and `@` menus (D3, D5), `@tiptap/extension-drag-handle` for D2, `chrono-node` for natural-language dates (D5), `turndown` + `turndown-plugin-gfm` for HTML paste (D11). All MIT.
+- **D-3 Order.** D0 → D1 → D3 → D2 → D4 → D5 → D6 → D7 → D8 → D9 → D10 → D11 → D12 → D13 → D14.
+
+## Progress
+
+- **D0 — done.** `page-core.js` splits a page into top-level blocks, checks each against markdown-it (the oracle), keeps what the editor cannot hold as raw blocks, and on save splices only changed blocks. Fixed real data loss: before D0 any edit turned footnotes into links (`Text[^1](note)`), escaped HTML (`&lt;details&gt;`) and broke foldable callouts. Corpus: `test/fixture/pages/` (GFM, Obsidian, HTML, CriticMarkup, Notion and Google Docs exports); tests in `test/formats.test.mjs` and `test/pages.test.mjs`.
 
 ## Not planned
 

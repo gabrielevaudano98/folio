@@ -839,6 +839,21 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .sh-chart-head .select { width: 7.5rem; height: 30px; font-size: var(--text-sm); }
 
 /* rich editor: drawn blocks */
+.rich-raw { position: relative; margin: 0 0 1em; padding: var(--space-2xs) var(--space-sm); border-radius: var(--radius-md); outline: 0.5px solid transparent; outline-offset: 0; }
+.rich-raw:hover, .rich-raw.raw-editing { outline-color: var(--color-rule-strong); }
+.rich-raw.raw-selected { outline: 1.5px solid var(--color-ink); }
+.rich-raw-bar { position: absolute; top: 4px; right: 6px; z-index: 1; display: flex; align-items: center; gap: var(--space-xs); font-size: var(--text-xs); color: var(--color-muted); opacity: 0; transition: opacity var(--dur-micro) var(--ease-out); }
+.rich-raw:hover .rich-raw-bar, .rich-raw.raw-editing .rich-raw-bar, .rich-raw.raw-selected .rich-raw-bar, .rich-raw-bar:focus-within { opacity: 1; }
+.rich-raw-bar .btn { height: 24px; font-size: var(--text-xs); }
+.rich-raw-preview.prose { max-width: none; margin: 0; padding: 0; }
+.rich-raw-preview > :first-child { margin-top: 0; }
+.rich-raw-preview > :last-child { margin-bottom: 0; }
+.rich-raw-src[hidden] { display: none; }
+.rich-raw .rich-raw-plain { margin: 0; padding: 0; background: none; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); white-space: pre-wrap; }
+.rich-raw.raw-editing .rich-raw-preview { display: none; }
+.rich-raw-src { display: block; width: 100%; min-height: 3em; margin: var(--space-lg) 0 0; padding: var(--space-xs) var(--space-sm); border: 0; border-radius: var(--radius-sm); background: var(--color-code-bg); color: var(--color-ink); font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.5; resize: none; overflow: hidden; }
+.rich-raw-src:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .rich-raw-bar { transition: none; } }
 .rich-code { position: relative; margin: 0 0 1em; }
 .rich-code pre { margin: 0; }
 .rich-code-bar { display: flex; align-items: center; justify-content: space-between; min-height: 0; font-size: var(--text-xs); color: var(--color-muted); }
