@@ -1,0 +1,24 @@
+name: Roadmap sync
+
+# Creates the labels, milestones and issues listed in .github/roadmap.json.
+# Runs when that file changes on main; skips anything that already exists.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/roadmap.json', 'scripts/seed-issues.mjs']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/seed-issues.mjs "$GITHUB_REPOSITORY"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
