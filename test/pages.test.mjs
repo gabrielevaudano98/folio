@@ -11,6 +11,7 @@ fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws,
 const read = (f) => fs.readFileSync(path.join(ws, 'pages', f), 'utf8');
 fs.writeFileSync(path.join(ws, 'pages', 'd1.md'), '# Formatting\n\nPlain paragraph here\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd3.md'), '# Slash\n\nStart here\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd2.md'), '# Blocks\n\nFirst paragraph.\n\nSecond paragraph.\n\n- one\n- two\n- three\n\nLast paragraph.\n');
 const html = read('html.md'), obs = read('obsidian.md');
 
 const typeAtEnd = (text, add) => `(() => { const p = [...document.querySelectorAll('.rich-prose p, .rich-prose h1')].find((x) => x.textContent === ${JSON.stringify(text)}); if (!p) return false;
@@ -27,6 +28,17 @@ const slash = (q, text) => [
   { js: `document.execCommand('insertParagraph'); document.execCommand('insertText', false, '/${q}'); true`, wait: 350 },
   { js: `(() => { const n = document.querySelectorAll('.slash-menu .slash-item').length; ${key('Enter')} ${text ? `document.execCommand('insertText', false, ${JSON.stringify(text)});` : ''} return n > 0; })()`, log: true, wait: 400 },
 ];
+const keyDown = (k, mods) => `document.querySelector('.rich-prose').dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true, cancelable: true, ...${JSON.stringify(mods)} })); true`;
+const findEl = (text) => `[...document.querySelectorAll('.rich-prose p, .rich-prose h1, .rich-prose h2, .rich-prose li')].find((x) => x.textContent.startsWith(${JSON.stringify(text)}))`;
+const hover = (text) => `(() => { const el = ${findEl(text)}; const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.left + 20, clientY: r.top + 6 })); return true; })()`;
+// drag the block under the handle and drop it just below the element starting with `to`
+const drag = (from, to) => `(() => { const dt = new DataTransfer(); const grip = document.querySelector('.block-grip');
+  grip.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  const el = ${findEl(to)}; const r = el.getBoundingClientRect(); const x = r.left + 10, y = r.bottom + 6;
+  const prose = document.querySelector('.rich-prose');
+  prose.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y }));
+  prose.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y }));
+  grip.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt })); return true; })()`;
 const steps = [
   { size: [1400, 900], wait: 1200 },
   { js: "document.querySelector('[data-dir=\"pages\"]').click()", wait: 500 },
@@ -63,6 +75,21 @@ const steps = [
   { js: "document.execCommand('insertParagraph'); document.execCommand('insertText', false, '/zzz'); true", wait: 300 },
   { js: "!!document.querySelector('.slash-menu .slash-empty') || [document.querySelector('.slash-menu')?.outerHTML?.slice(0, 300), getSelection().anchorNode?.parentElement?.outerHTML?.slice(0, 200)]", log: true, wait: 100 },
   { js: "document.querySelector('.rich-prose').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); !document.querySelector('.slash-menu')", log: true, wait: 2500 },
+  // D2: blocks
+  { js: "document.querySelector('[data-file=\"pages/d2.md\"]').click()", wait: 1200 },
+  { js: hover('First paragraph.'), wait: 300 },
+  { js: "document.querySelector('.block-grip').click(); document.querySelector('.block-menu [data-turn=h2]').click(); true", wait: 300 },
+  { js: typeAtEnd('Second paragraph.', ''), wait: 200 },
+  { js: keyDown('ArrowDown', { ctrlKey: true, shiftKey: true }), wait: 200 },
+  { js: typeAtEnd('two', ''), wait: 200 },
+  { js: keyDown('d', { ctrlKey: true }), wait: 200 },
+  { js: typeAtEnd('Last paragraph.', ''), wait: 200 },
+  { js: keyDown('l', { ctrlKey: true, altKey: true }), wait: 300 },
+  { js: hover('Last paragraph.', true), wait: 300 },
+  { js: "document.querySelector('.block-plus').click(); true", wait: 400 },
+  { js: "(() => { const open = !!document.querySelector('.slash-menu .slash-item'); " + key('Escape') + " document.execCommand('delete'); return open; })()", log: true, wait: 300 },
+  { js: hover('First paragraph.'), wait: 300 },
+  { js: drag('First paragraph.', 'Last paragraph.'), log: true, wait: 2500 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -73,8 +100,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 16, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, errors] = logs;
+  assert.equal(logs.length, 18, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 5 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -90,4 +117,8 @@ child.on('exit', () => {
   assert.equal(d3.split('\n').find((l) => l.startsWith('|')).split('|').length - 2, 4); assert.match(d3, /\n---\n/, d3); assert.match(d3, /\n> \[!tip\]/, d3);
   console.log('  ✓ the / menu turns a line into a heading and inserts a 3 × 4 table, a divider and a callout');
   console.log('  ✓ the / menu shows when nothing matches and closes with Esc');
+  const d2 = read('d2.md');
+  assert(plusOpened && dragged, JSON.stringify(logs.slice(15)));
+  assert.match(d2, /^# Blocks\n\n- one\n- two\n- two\n- three\n\nSecond paragraph\.\n\nLast paragraph\. \^[a-z0-9]{6}\n\n## First paragraph\.\n$/, d2);
+  console.log('  ✓ blocks: turn into from the handle menu, move down, duplicate a list item, copy link to block (^id), drag to move');
 });

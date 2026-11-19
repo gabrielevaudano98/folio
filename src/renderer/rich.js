@@ -5,6 +5,7 @@ import Typography from '@tiptap/extension-typography';
 import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
 import { filterInserts, runInsert, INSERTS } from './inserts.js';
 import { highlight } from './fuzzy.js';
+import { BlockHandles } from './page-blocks.js';
 import { Markdown } from '@tiptap/markdown';
 import Image from '@tiptap/extension-image';
 import { Placeholder } from '@tiptap/extensions';
@@ -76,6 +77,8 @@ const Decorate = Extension.create({
           }
         }
         if (n.isText) {
+          const bid = /\s\^[A-Za-z0-9-]+\s*$/.exec(n.text);
+          if (bid && pos + n.nodeSize === doc.resolve(pos).end()) deco.push(Decoration.inline(pos + bid.index, pos + n.text.length, { class: 'rich-block-id', title: 'Block id: links like [[Note#^id]] point here' }));
           const re = /\[\[([^\]\n]+)\]\]/g; let m;
           while ((m = re.exec(n.text))) {
             const embed = n.text[m.index - 1] === '!';
@@ -455,7 +458,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null }) {
   host.innerHTML = `
     <div class="ribbon" role="toolbar" aria-label="Formatting">
       <div class="rb-group">${btn('undo', 'Undo', icons.undo, keyLabel('Mod+Z'))}${btn('redo', 'Redo', icons.redo, keyLabel('Mod+Shift+Z'))}</div>
@@ -528,6 +531,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       }),
       SmartTypography.configure({ enabled: smartTypography }),
       SlashMenu.configure({ keyLabel, ctx: insertCtx }),
+      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue }),
       Markdown.configure({ markedOptions: { gfm: true } }),

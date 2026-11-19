@@ -5,6 +5,7 @@ export const icons = {
   viewWrite: p('<path d="M2.75 13.25h2.5l7.4-7.4a1.77 1.77 0 0 0-2.5-2.5l-7.4 7.4z"/><path d="M9.25 4.25l2.5 2.5"/><path d="M9 13.25h4.25"/>'),
   viewSplit: p('<rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M8 2.75v10.5"/><path d="M3.75 6h2.25M3.75 8.5h2.25M10 6h2.25M10 8.5h2.25"/>'),
   viewRead: p('<path d="M8 4.25C6.6 3.2 4.6 2.75 2 2.75v9.5c2.6 0 4.6.45 6 1.5 1.4-1.05 3.4-1.5 6-1.5v-9.5c-2.6 0-4.6.45-6 1.5z"/><path d="M8 4.25v9.5"/>'),
+  grip: p('<circle cx="6" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="12" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="12" r=".9" fill="currentColor" stroke="none"/>'),
   superscript: p('<path d="m2.5 5.5 6 7M8.5 5.5l-6 7"/><path d="M10.75 4.25a1.25 1.25 0 1 1 2.2.8L10.75 7.5h2.75" stroke-width="1.2"/>'),
   subscript: p('<path d="m2.5 3.5 6 7M8.5 3.5l-6 7"/><path d="M10.75 10.25a1.25 1.25 0 1 1 2.2.8l-2.2 2.45h2.75" stroke-width="1.2"/>'),
   sigma: p('<path d="M12 3.25H4.25L8.5 8l-4.25 4.75H12"/>'),

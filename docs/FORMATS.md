@@ -44,6 +44,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Hidden comment | `%%only in the file%%` | Not shown in Read view or exports. |
 | Callout | `> [!tip] Title` then `> body` | note, tip, important, warning, caution, and Obsidian types. `[!tip]-` starts folded. |
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
+| Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
 | Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |
 | Alignment (Folio) | a paragraph, then `{align=center}` on the next line; a heading: `## Title {align=right}` | left, center, right, justify. |
 

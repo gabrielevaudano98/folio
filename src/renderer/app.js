@@ -129,6 +129,7 @@ async function boot() {
     resolveValue: (raw) => resolveRef(raw, refEnv()).then((r) => r.value),
     smartTypography: () => S.settings.smartTypography !== false,
     pickRef: (o) => pickRef(o),
+    onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(`Copied ${t}. Paste it anywhere to link to this block.`); },
     onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
   });
   $('#pane-rich').addEventListener('paste', async (e) => {
