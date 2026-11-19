@@ -50,6 +50,12 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Table of contents | `[TOC]` on its own line | Live list of the page's headings. |
 | Breadcrumb | `[BREADCRUMB]` on its own line | Where the page sits in the workspace. Folio only. |
 | Page break | `<div class="page-break"></div>` | A new page in print and PDF export. |
+| Image with width and caption | `![Alt|400](assets/photo.png "Caption")` | Width in pixels after `|` (Obsidian); the title is the caption. |
+| Video, audio | `![Demo](assets/clip.mp4)`, `![](assets/talk.mp3)` | Image syntax with a media file: mp4, webm, mov, m4v; mp3, m4a, wav, ogg, aac, flac. |
+| PDF | `![Annual report](assets/report.pdf)` | A card that opens the file. |
+| Web embed | `![](https://www.youtube.com/watch?v=…)` | YouTube, Vimeo, Loom, Figma, Google Maps and Drive, Miro, X, CodePen, Gist, Spotify, SoundCloud, Excalidraw, Canva: a card that opens in the browser (Folio does not load other sites inside the page). |
+| Web bookmark, file | a paragraph that is only a link: `[https://site.com](https://site.com)`, `[budget.xlsx](assets/budget.xlsx)` | Drawn as a card. |
+| Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen from the block's menu. |
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
 | Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
 | Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |

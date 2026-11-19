@@ -130,6 +130,9 @@ async function boot() {
     smartTypography: () => S.settings.smartTypography !== false,
     pickRef: (o) => pickRef(o),
     breadcrumb: () => breadcrumbHtml(S.active),
+    pickMedia: (kind) => folio.pickMedia(S.active, kind).catch((e) => { toast(e.message, { kind: 'error' }); return null; }),
+    askUrl: (title) => prompt({ title, label: 'Address', placeholder: 'https://', action: 'Insert' }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
+    openMedia: (src) => openMedia(src),
     createDoc: async ({ type, name, content }) => {
       if (!S.workspace || !S.active) return null;
       const folder = dirOf(S.active), ext = type === 'md' ? '.md' : `.${type}.md`;
@@ -410,6 +413,11 @@ async function renderPreview() {
     }
     img.loading = 'lazy'; img.decoding = 'async';
   }
+  for (const m of el.querySelectorAll('video[data-src], audio[data-src]')) {
+    const src = m.dataset.src;
+    if (/^(https?:|data:|file:)/.test(src)) m.src = src;
+    else folio.absUrl(normalize(dir ? `${dir}/${decodeURI(src).replace(/^\.\//, '')}` : decodeURI(src))).then((u) => (m.src = u)).catch(() => {});
+  }
   for (const a of el.querySelectorAll('a[data-wikilink]')) {
     if (!resolveWiki(a.dataset.wikilink)) a.classList.add('missing');
   }
@@ -425,6 +433,13 @@ async function renderPreview() {
   hydrateCharts(el, readRelative);
   hydrateRefs(el, refEnv());
   hydrateBreadcrumbs(el, t.path);
+}
+/* open an attached file (relative to the page) with the system's app, or a web address in the browser */
+function openMedia(src) {
+  if (!src) return;
+  if (/^(https?|mailto):/i.test(src)) return folio.openExternal(src);
+  const d = dirOf(S.active || ''); const rel = normalize(d ? `${d}/${decodeURI(src).replace(/^\.\//, '')}` : decodeURI(src));
+  return folio.openFile(rel).catch((e) => toast(`Could not open ${base(rel)}. ${e.message}`, { kind: 'error' }));
 }
 /* [BREADCRUMB]: where this page sits in the workspace */
 function breadcrumbHtml(p) {
@@ -1309,6 +1324,7 @@ function bindChrome() {
     if (/^(https?|mailto):/.test(href)) return folio.openExternal(href);
     const rel = normalize((dirOf(S.active) ? dirOf(S.active) + '/' : '') + decodeURI(href.split('#')[0]));
     if (S.files.includes(rel)) openFile(rel);
+    else if (href) openMedia(href);
   });
 
   // empty states

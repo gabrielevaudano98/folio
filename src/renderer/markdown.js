@@ -10,6 +10,7 @@ import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import { icons } from './icons.js';
 import { parseCallout, CALLOUT_TYPES } from './callouts.js';
+import { mediaKind, webProvider } from './page-syntax.js';
 import container from 'markdown-it-container';
 
 const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -76,6 +77,36 @@ md.core.ruler.after('block', 'callouts', (state) => {
     } else {
       tk[i].attrJoin('class', cls);
       tk.splice(i + 1, 0, html(`<div class="callout-title">${head}</div>`));
+    }
+  }
+});
+
+// Images and media (page-syntax.js): ![Alt|400](src "Caption"), video, audio, PDF, web embeds; a lone link is a card
+const fileName = (src) => decodeURI(src.split(/[?#]/)[0].split('/').pop() || 'file').replace(/^(?=[a-z]*\d)[a-z0-9]{8}-/, '');
+md.renderer.rules.image = (tk, i) => {
+  const t = tk[i]; const src = t.attrGet('src') || ''; const title = t.attrGet('title') || '';
+  const m = /^([\s\S]*?)\|(\d+)(?:x(\d+))?$/.exec(t.content || '');
+  const alt = m ? m[1] : t.content || '';
+  const kind = mediaKind(src);
+  let out;
+  if (kind === 'video' || kind === 'audio') out = `<${kind} class="md-media" controls preload="metadata" data-src="${escape(src)}"${kind === 'video' && alt ? ` aria-label="${escape(alt)}"` : ''}></${kind}>`;
+  else if (kind === 'pdf' || kind === 'file') out = `<a class="md-card md-file" href="${escape(src)}"><span class="md-card-title">${escape(alt || fileName(src))}</span><span class="md-card-sub">${kind === 'pdf' ? 'PDF' : 'File'} · ${escape(fileName(src))}</span></a>`;
+  else if (kind === 'web') { const w = webProvider(src); out = `<a class="md-card md-embed" href="${escape(src)}">${w.thumb ? `<img class="md-card-thumb" src="${escape(w.thumb)}" alt="">` : ''}<span class="md-card-title">${escape(alt || w.name)}</span><span class="md-card-sub">${escape(w.name)} · ${escape(w.host)}</span></a>`; }
+  else out = `<img src="${escape(src)}" alt="${escape(alt)}"${title ? ` title="${escape(title)}"` : ''}${m ? ` style="width:${+m[2]}px${m[3] ? `;height:${+m[3]}px` : ''}"` : ''}>`;
+  return t.meta?.figure && title ? `<figure class="md-figure">${out}<figcaption>${escape(title)}</figcaption></figure>` : out;
+};
+md.core.ruler.push('folio_cards', (state) => {
+  const tk = state.tokens;
+  for (let i = 1; i < tk.length - 1; i++) {
+    if (tk[i].type !== 'inline' || tk[i - 1].type !== 'paragraph_open') continue;
+    const kids = tk[i].children || [];
+    if (kids.length === 1 && kids[0].type === 'image') { kids[0].meta = { ...(kids[0].meta || {}), figure: true }; if (kids[0].attrGet('title') || mediaKind(kids[0].attrGet('src') || '') !== 'image') { tk[i - 1].hidden = true; tk[i + 1].hidden = true; } continue; }
+    if (kids.length === 3 && kids[0].type === 'link_open' && kids[1].type === 'text' && kids[2].type === 'link_close') {
+      const href = kids[0].attrGet('href') || '';
+      if (/\.(md|markdown)(#.*)?$/i.test(href) || href.startsWith('#') || /^mailto:/i.test(href)) continue;
+      const web = /^https?:/i.test(href);
+      tk[i - 1].attrJoin('class', web ? 'md-bookmark' : 'md-filecard');
+      tk[i - 1].attrSet('data-host', web ? href.replace(/^https?:\/\/(?:www\.)?([^/]+).*$/i, '$1') : fileName(href));
     }
   }
 });
@@ -175,7 +206,7 @@ export function render(text) {
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
   if (meta?.length) html = `<dl class="frontmatter" data-line="0">${meta.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
   return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align'],
+    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align', 'data-host', 'controls', 'preload'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],
     FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form'],
   });

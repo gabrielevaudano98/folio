@@ -8,7 +8,6 @@ import { highlight } from './fuzzy.js';
 import { BlockHandles } from './page-blocks.js';
 import { CalloutUI, HeadingFold, TocView, BreadcrumbView, PageBreakView } from './page-ui.js';
 import { Markdown } from '@tiptap/markdown';
-import Image from '@tiptap/extension-image';
 import { Placeholder } from '@tiptap/extensions';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { icons } from './icons.js';
@@ -16,12 +15,58 @@ import CodeBlock from '@tiptap/extension-code-block';
 import { Plugin, PluginKey, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { renderMermaid, hydrateCharts, render } from './markdown.js';
+import hljs from 'highlight.js/lib/common';
 import { pageExtensions, FolioRaw } from './page-schema.js';
-import { InlineMath, BlockMath, FootnoteRef, FootnoteInline, FootnoteDef, COLORS, Align } from './page-syntax.js';
+import { InlineMath, BlockMath, FootnoteRef, FootnoteInline, FootnoteDef, COLORS, Align, PageImage, mediaKind, webProvider } from './page-syntax.js';
 import { createPageCodec } from './page-core.js';
 
 /* code blocks: mermaid and chart blocks show the drawing, the source opens on demand */
 const VISUAL = ['mermaid', 'chart'];
+/* languages offered in a code block's menu (any other name typed in the file is kept) */
+const LANGS = [['', 'Plain text'], ['js', 'JavaScript'], ['ts', 'TypeScript'], ['json', 'JSON'], ['python', 'Python'], ['bash', 'Shell'], ['html', 'HTML'], ['css', 'CSS'], ['sql', 'SQL'], ['yaml', 'YAML'], ['markdown', 'Markdown'], ['java', 'Java'], ['kotlin', 'Kotlin'], ['swift', 'Swift'], ['go', 'Go'], ['rust', 'Rust'], ['c', 'C'], ['cpp', 'C++'], ['csharp', 'C#'], ['php', 'PHP'], ['ruby', 'Ruby'], ['xml', 'XML'], ['diff', 'Diff'], ['ini', 'INI / TOML'], ['mermaid', 'Diagram (Mermaid)'], ['chart', 'Chart']];
+
+/* syntax colours in code blocks: highlight.js (as the Read view) turned into decorations; the text is never touched */
+const HL = new PluginKey('codeHighlight');
+const hlCache = new Map();
+function highlightRanges(code, lang) {
+  const key = lang + '\u0000' + code; if (hlCache.has(key)) return hlCache.get(key);
+  let ranges = [];
+  try {
+    const html = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+    const tpl = document.createElement('template'); tpl.innerHTML = html;
+    let off = 0;
+    const walk = (node, cls) => {
+      for (const ch of node.childNodes) {
+        if (ch.nodeType === 3) { const len = ch.nodeValue.length; if (cls) ranges.push([off, off + len, cls]); off += len; }
+        else if (ch.nodeType === 1) walk(ch, [cls, ch.className].filter(Boolean).join(' '));
+      }
+    };
+    walk(tpl.content, '');
+  } catch { ranges = []; }
+  if (hlCache.size > 400) hlCache.clear();
+  hlCache.set(key, ranges); return ranges;
+}
+const CodeHighlight = Extension.create({
+  name: 'codeHighlight',
+  addProseMirrorPlugins() {
+    const build = (doc) => {
+      const deco = [];
+      doc.descendants((n, pos) => {
+        if (n.type.name !== 'codeBlock') return true;
+        const lang = (n.attrs.language || '').toLowerCase();
+        if (!lang || VISUAL.includes(lang) || !hljs.getLanguage(lang) || n.content.size > 60000) return false;
+        for (const [a, b, cls] of highlightRanges(n.textContent, lang)) deco.push(Decoration.inline(pos + 1 + a, pos + 1 + b, { class: cls }));
+        return false;
+      });
+      return DecorationSet.create(doc, deco);
+    };
+    return [new Plugin({
+      key: HL,
+      state: { init: (_, st) => build(st.doc), apply: (tr, old) => (tr.docChanged ? build(tr.doc) : old) },
+      props: { decorations: (st) => HL.getState(st) },
+    })];
+  },
+});
 const FolioCodeBlock = CodeBlock.extend({
   addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false }; },
   addNodeView() {
@@ -44,9 +89,16 @@ const FolioCodeBlock = CodeBlock.extend({
         lang = n.attrs.language || '';
         const visual = VISUAL.includes(lang);
         dom.classList.toggle('is-visual', visual); dom.classList.toggle('is-editing', !visual || editing);
-        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : (lang ? `<span>${lang}</span>` : '');
+        const known = LANGS.some(([v]) => v === lang);
+        const select = `<select class="rich-code-lang" aria-label="Code language">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select;
         if (visual) draw(n.textContent); else preview.innerHTML = '';
       };
+      bar.addEventListener('change', (e) => {
+        const sel = e.target.closest('select'); if (!sel || typeof getPos !== 'function') return;
+        editor.view.dispatch(editor.state.tr.setNodeMarkup(getPos(), undefined, { ...node.attrs, language: sel.value || null }));
+        editor.commands.focus();
+      });
       bar.addEventListener('mousedown', (e) => {
         if (!e.target.closest('button')) return;
         e.preventDefault(); editing = !editing; sync(node);
@@ -68,6 +120,13 @@ const Decorate = Extension.create({
     const build = (doc) => {
       const deco = [];
       doc.descendants((n, pos) => {
+        if (n.type.name === 'paragraph' && n.childCount === 1 && n.firstChild.isText) {
+          const link = n.firstChild.marks.find((m) => m.type.name === 'link'); const href = link?.attrs.href || '';
+          if (link && href && !/\.(md|markdown)(#.*)?$/i.test(href)) {
+            const web = /^https?:/i.test(href);
+            deco.push(Decoration.node(pos, pos + n.nodeSize, { class: web ? 'rich-bookmark' : 'rich-filecard', 'data-host': web ? href.replace(/^https?:\/\/(?:www\.)?([^/]+).*$/i, '$1') : href.split('/').pop() }));
+          }
+        }
         if (n.isText) {
           const bid = /\s\^[A-Za-z0-9-]+\s*$/.exec(n.text);
           if (bid && pos + n.nodeSize === doc.resolve(pos).end()) deco.push(Decoration.inline(pos + bid.index, pos + n.text.length, { class: 'rich-block-id', title: 'Block id: links like [[Note#^id]] point here' }));
@@ -280,16 +339,62 @@ const MarkdownLinkInput = Extension.create({
 });
 
 /* images keep their relative src in Markdown, the view resolves it to a file URL */
-const FolioImage = Image.extend({
-  addOptions() { return { ...this.parent?.(), resolve: null }; },
+/* images and media (page-syntax.js): an image you can resize and caption; video and audio players; PDF, file and web cards */
+const FolioImage = PageImage.extend({
+  addOptions() { return { ...this.parent?.(), resolve: null, openFile: null, openUrl: null }; },
   addNodeView() {
-    return ({ node }) => {
-      const img = document.createElement('img');
-      img.alt = node.attrs.alt || ''; img.title = node.attrs.title || ''; img.decoding = 'async';
-      const src = node.attrs.src || '';
-      if (/^(https?:|data:|file:|blob:)/.test(src)) img.src = src;
-      else Promise.resolve(this.options.resolve?.(src)).then((u) => { if (u) img.src = u; });
-      return { dom: img };
+    return ({ node, editor, getPos }) => {
+      const opts = this.options;
+      const kind = mediaKind(node.attrs.src || '');
+      const dom = document.createElement('figure'); dom.className = `rich-figure rich-media-${kind}`; dom.contentEditable = 'false';
+      const setSrc = (el, src) => { if (/^(https?:|data:|file:|blob:)/.test(src)) el.src = src; else Promise.resolve(opts.resolve?.(src)).then((u) => { if (u) el.src = u; }); };
+      const commit = (attrs) => { const pos = typeof getPos === 'function' ? getPos() : null; if (pos != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs })); };
+      const name = (node.attrs.src || '').split(/[/?#]/).filter(Boolean).pop()?.replace(/^(?=[a-z]*\d)[a-z0-9]{8}-/, '') || 'file';
+      let body;
+      if (kind === 'video' || kind === 'audio') {
+        body = document.createElement(kind); body.controls = true; body.preload = 'metadata'; body.className = 'rich-media-el'; setSrc(body, node.attrs.src || '');
+      } else if (kind === 'image') {
+        body = document.createElement('div'); body.className = 'rich-img-wrap';
+        const img = document.createElement('img'); img.alt = node.attrs.alt || ''; img.decoding = 'async'; setSrc(img, node.attrs.src || '');
+        const w = parseInt(node.attrs.size, 10); if (w) img.style.width = `${w}px`;
+        const grip = document.createElement('span'); grip.className = 'rich-img-resize'; grip.setAttribute('aria-hidden', 'true'); grip.title = 'Drag to resize';
+        grip.addEventListener('pointerdown', (e) => {
+          e.preventDefault(); grip.setPointerCapture(e.pointerId);
+          const start = e.clientX, from = img.getBoundingClientRect().width, max = dom.parentElement?.getBoundingClientRect().width || 2000;
+          const move = (ev) => { img.style.width = `${Math.round(Math.min(max, Math.max(60, from + ev.clientX - start)))}px`; };
+          const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); const nw = Math.round(img.getBoundingClientRect().width); commit({ size: nw >= max - 2 ? null : String(nw) }); };
+          grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up);
+        });
+        body.append(img, grip);
+      } else {
+        const web = kind === 'web' ? webProvider(node.attrs.src) : null;
+        body = document.createElement('div'); body.className = `rich-card rich-card-${kind}`; body.tabIndex = 0; body.setAttribute('role', 'link');
+        const label = web ? (node.attrs.alt || web.name) : (node.attrs.alt || name);
+        body.innerHTML = `${web?.thumb ? `<img class="rich-card-thumb" alt="" src="${web.thumb}">` : `<span class="rich-card-ic" aria-hidden="true">${kind === 'web' ? icons.link : icons.doc}</span>`}<span class="rich-card-text"><span class="rich-card-title"></span><span class="rich-card-sub"></span></span>`;
+        body.querySelector('.rich-card-title').textContent = label;
+        body.querySelector('.rich-card-sub').textContent = web ? `${web.name} · ${web.host} · Ctrl or ⌘ click to open` : `${kind === 'pdf' ? 'PDF' : 'File'} · ${name} · Ctrl or ⌘ click to open`;
+        body.setAttribute('aria-label', `${label}. Open`);
+        const open = () => (kind === 'web' ? opts.openUrl?.(node.attrs.src) : opts.openFile?.(node.attrs.src));
+        body.addEventListener('click', (e) => { if (e.metaKey || e.ctrlKey) open(); });
+        body.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) open(); });
+      }
+      const cap = document.createElement('figcaption'); cap.className = 'rich-caption';
+      const paintCap = () => { cap.textContent = node.attrs.title || ''; cap.dataset.empty = node.attrs.title ? '' : 'Add a caption'; };
+      cap.addEventListener('dblclick', () => {
+        const input = document.createElement('input'); input.className = 'rich-src-input rich-caption-input'; input.value = node.attrs.title || ''; input.placeholder = 'Caption'; input.setAttribute('aria-label', 'Caption');
+        cap.replaceChildren(input); input.focus();
+        const done = (save) => { if (save) commit({ title: input.value.trim() || null }); else paintCap(); };
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); done(true); } if (e.key === 'Escape') { e.preventDefault(); done(false); } });
+        input.addEventListener('blur', () => done(true));
+      });
+      paintCap();
+      dom.append(body, cap);
+      return {
+        dom,
+        selectNode() { dom.classList.add('media-selected'); }, deselectNode() { dom.classList.remove('media-selected'); },
+        stopEvent: (e) => !!e.target.closest?.('.rich-img-resize, .rich-caption input, video, audio'),
+        ignoreMutation: () => true,
+      };
     };
   },
 });
@@ -451,7 +556,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null }) {
   host.innerHTML = `
     <div class="ribbon" role="toolbar" aria-label="Formatting">
       <div class="rb-group">${btn('undo', 'Undo', icons.undo, keyLabel('Mod+Z'))}${btn('redo', 'Redo', icons.redo, keyLabel('Mod+Shift+Z'))}</div>
@@ -512,18 +617,19 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
 
-  const insertCtx = () => ({ pickImage: onPickImage, pickRef, createDoc, footnote: (e) => pageCmd.footnote(e) });
+  const insertCtx = () => ({ pickImage: onPickImage, pickRef, createDoc, pickMedia, askUrl, footnote: (e) => pageCmd.footnote(e) });
   const editor = new Editor({
     element: page,
     extensions: [
       ...pageExtensions({
         codeBlock: FolioCodeBlock.configure({ readNote, isDark, HTMLAttributes: { spellcheck: 'false' } }),
-        image: FolioImage.configure({ resolve: resolveImage, inline: false, allowBase64: true }),
+        image: FolioImage.configure({ resolve: resolveImage, inline: false, allowBase64: true, openFile: (src) => openMedia?.(src), openUrl: (u) => openMedia?.(u) }),
         raw: RawBlock,
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
       }),
       SmartTypography.configure({ enabled: smartTypography }),
       SlashMenu.configure({ keyLabel, ctx: insertCtx }),
+      CodeHighlight,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
       BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),

@@ -201,7 +201,15 @@ h('fs:pick-image', async (noteRel) => {
 });
 h('fs:pick-media', async (noteRel, kind) => {
   const font = kind === 'font';
-  const r = await dialog.showOpenDialog(win, { title: font ? 'Add a font file' : 'Insert video or audio', properties: ['openFile'], filters: font ? [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] : [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
+  const FILTERS = {
+    font: [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }],
+    video: [{ name: 'Video', extensions: ['mp4', 'webm', 'mov', 'm4v'] }],
+    audio: [{ name: 'Audio', extensions: ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }],
+    pdf: [{ name: 'PDF', extensions: ['pdf'] }],
+    file: [],
+  };
+  const TITLES = { font: 'Add a font file', video: 'Insert a video', audio: 'Insert audio', pdf: 'Insert a PDF', file: 'Attach a file' };
+  const r = await dialog.showOpenDialog(win, { title: TITLES[kind] || 'Insert video or audio', properties: ['openFile'], filters: FILTERS[kind] ?? [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
   await fs.mkdir(dir, { recursive: true });
@@ -211,6 +219,8 @@ h('fs:pick-media', async (noteRel, kind) => {
 });
 h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel).split(path.sep).join('/'));
 h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal(url); });
+/* open a file of the workspace (an attached PDF, a document) with the system's app */
+h('shell:open-file', async (rel) => { const abs = notes.resolve(rel); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
 
 h('export:html', async (rel, html) => {

@@ -13,6 +13,7 @@ import Heading from '@tiptap/extension-heading';
 import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import TextAlign from '@tiptap/extension-text-align';
+import Image from '@tiptap/extension-image';
 import { Details as BaseDetails, DetailsSummary as BaseSummary, DetailsContent as BaseContent } from '@tiptap/extension-details';
 
 export const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
@@ -328,5 +329,43 @@ export function softBreaks(node) {
   }
   return { ...node, content };
 }
+
+/* Images and media share Markdown's image syntax, as in Obsidian:
+     ![Alt|400](assets/photo.png "Caption")   width 400 px (Obsidian), caption from the title
+     ![Demo](assets/clip.mp4)                 video; .mp3 .m4a .wav … audio; .pdf a PDF card
+     ![](https://www.youtube.com/watch?v=…)   a web embed card (YouTube, Vimeo, Loom, Figma, Maps …) */
+const IMG = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i;
+export function mediaKind(src = '') {
+  const s = src.split(/[?#]/)[0];
+  if (/^data:image\//.test(src) || IMG.test(s)) return 'image';
+  if (/\.(mp4|webm|mov|m4v|ogv)$/i.test(s)) return 'video';
+  if (/\.(mp3|m4a|wav|ogg|oga|aac|flac)$/i.test(s)) return 'audio';
+  if (/\.pdf$/i.test(s)) return 'pdf';
+  if (/^https?:/i.test(src)) return webProvider(src) ? 'web' : 'image';
+  return 'file';
+}
+const PROVIDERS = [
+  ['YouTube', /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/i, (id) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`],
+  ['Vimeo', /vimeo\.com\/(\d+)/i], ['Loom', /loom\.com\/(?:share|embed)\/(\w+)/i], ['Figma', /figma\.com\/(?:file|design|proto|board)\//i],
+  ['Google Maps', /(?:google\.[a-z.]+\/maps|maps\.app\.goo\.gl)/i], ['Google Drive', /(?:docs|drive)\.google\.com\//i], ['Miro', /miro\.com\/app\/board/i],
+  ['X', /(?:twitter|x)\.com\/\w+\/status\/\d+/i], ['CodePen', /codepen\.io\/[\w-]+\/pen\//i], ['GitHub Gist', /gist\.github\.com\//i], ['Spotify', /open\.spotify\.com\//i],
+  ['SoundCloud', /soundcloud\.com\//i], ['Excalidraw', /excalidraw\.com\//i], ['Canva', /canva\.com\/design\//i],
+];
+export function webProvider(url = '') {
+  for (const [name, re, thumb] of PROVIDERS) { const m = re.exec(url); if (m) return { name, thumb: thumb && m[1] ? thumb(m[1]) : null, host: url.replace(/^https?:\/\/(?:www\.)?([^/]+).*$/i, '$1') }; }
+  return null;
+}
+export const PageImage = Image.extend({
+  addAttributes() { return { ...this.parent?.(), size: { default: null, renderHTML: () => ({}), parseHTML: () => null } }; },
+  parseMarkdown: (token, h) => {
+    const m = /^([\s\S]*?)\|(\d+(?:x\d+)?)$/.exec(token.text || '');
+    return h.createNode('image', { src: token.href, title: token.title || null, alt: m ? m[1] : token.text, size: m ? m[2] : null });
+  },
+  renderMarkdown: (node) => {
+    const a = node.attrs || {};
+    const alt = (a.alt || '') + (a.size ? `|${a.size}` : '');
+    return `![${alt}](${a.src || ''}${a.title ? ` "${String(a.title).replace(/"/g, '\\"')}"` : ''})`;
+  },
+});
 
 export const pageSyntax = () => [SoftBreak, Details.configure({ persist: true, HTMLAttributes: { class: 'rich-details' } }), DetailsSummary, DetailsContent, Columns, Column, Toc, Breadcrumb, PageBreak, SuperscriptMd, SubscriptMd, InlineMath, BlockMath, FootnoteRef, FootnoteInline, FootnoteDef, HiddenComment, FolioColor, Align];

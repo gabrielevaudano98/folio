@@ -12,6 +12,10 @@ const read = (f) => fs.readFileSync(path.join(ws, 'pages', f), 'utf8');
 fs.writeFileSync(path.join(ws, 'pages', 'd1.md'), '# Formatting\n\nPlain paragraph here\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd3.md'), '# Slash\n\nStart here\n');
 fs.copyFileSync(path.join(ws, 'pages', 'structure.md'), path.join(ws, 'pages', 'd4.md'));
+fs.writeFileSync(path.join(ws, 'pages', 'd4c.md'), '# Code\n\n```js\nconst answer = 42; // the answer\n```\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd4b.md'), '# Media\n\n![Team|400](assets/team.png "Old caption")\n\nAfter.\n');
+fs.mkdirSync(path.join(ws, 'pages', 'assets'), { recursive: true });
+fs.copyFileSync(new URL('../build/icon.png', import.meta.url), path.join(ws, 'pages', 'assets', 'team.png'));
 fs.writeFileSync(path.join(ws, 'pages', 'd2.md'), '# Blocks\n\nFirst paragraph.\n\nSecond paragraph.\n\n- one\n- two\n- three\n\nLast paragraph.\n');
 const html = read('html.md'), obs = read('obsidian.md');
 
@@ -104,6 +108,17 @@ const steps = [
   { js: "document.execCommand('insertText', false, '/columns'); true", wait: 350 },
   { js: `(() => { const n = document.querySelectorAll('.slash-menu .slash-item').length; ${key('Enter')} document.execCommand('insertText', false, 'Column A'); return n > 0; })()`, log: true, wait: 400 },
   { js: 'true', wait: 2500 },
+  // D4b: resize an image and edit its caption
+  { js: "document.querySelector('[data-file=\"pages/d4b.md\"]').click()", wait: 1500 },
+  { js: `(() => { const g = document.querySelector('.rich-img-resize'); const r = g.getBoundingClientRect(); const x = r.left + 4, y = r.top + 10;
+    g.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, clientX: x, clientY: y }));
+    g.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: x - 150, clientY: y }));
+    g.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: x - 150, clientY: y })); return true; })()`, log: true, wait: 400 },
+  { js: "(() => { const c = document.querySelector('.rich-caption'); c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); const i = c.querySelector('input'); i.value = 'New caption'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return true; })()", log: true, wait: 2500 },
+  // D4c: syntax colours and the language menu
+  { js: "document.querySelector('[data-file=\"pages/d4c.md\"]').click()", wait: 1500 },
+  { js: "[document.querySelectorAll('.rich-code .hljs-keyword').length, document.querySelectorAll('.rich-code .hljs-number').length, document.querySelectorAll('.rich-code .hljs-comment').length].join(':')", log: true, wait: 100 },
+  { js: "(() => { const s = document.querySelector('.rich-code-lang'); s.value = 'python'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()", log: true, wait: 2500 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -114,8 +129,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 23, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, errors] = logs;
+  assert.equal(logs.length, 27, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -142,4 +157,8 @@ child.on('exit', () => {
   assert.match(d4, /Last paragraph\.\n\n<details open>\n<summary>My toggle<\/summary>\n\n[\s\S]*<\/details>\n\n:::: columns\n::: column\nColumn A\n:::\n::: column\n\n:::\n::::\n$/, d4);
   console.log('  ✓ callouts: change the type from the menu; folding callouts and headings does not touch the file');
   console.log('  ✓ /toggle and /columns insert a toggle and two columns');
+  assert(resized && captioned); assert.match(read('d4b.md'), /^# Media\n\n!\[Team\|250\]\(assets\/team\.png "New caption"\)\n\nAfter\.\n$/, read('d4b.md'));
+  console.log('  ✓ dragging the image handle writes its width (|250) and the caption is edited in place');
+  assert.equal(colours, '1:1:1'); assert(langSet); assert.equal(read('d4c.md'), '# Code\n\n```python\nconst answer = 42; // the answer\n```\n');
+  console.log('  ✓ code blocks are coloured as in the Read view and the language menu writes the fence language');
 });

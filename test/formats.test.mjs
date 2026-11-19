@@ -275,6 +275,23 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   { const nc = open('> [!callout|💡 yellow] Read this first\n> Body.\n\nNext.'); const q = nc.kids[0];
     const para = q.firstChild; const changed = q.copy(q.content.replaceChild(0, para.copy(para.content.append(schema.node('paragraph', null, [schema.text('!')]).content))));
     assert.equal(codec.save(nc.m, withKids([changed, nc.kids[1]])), '> [!callout|💡 yellow] Read this first\n> Body.!\n\nNext.'); ok('editing a Notion callout keeps its marker unescaped'); }
+  { const md = open(fx('pages/media.md'));
+    assert(!md.m.blocks.some((b) => b.raw)); assert.equal(codec.save(md.m, md.doc), fx('pages/media.md'));
+    const imgs = []; md.doc.descendants((n) => { if (n.type.name === 'image') imgs.push(n.attrs); });
+    assert.deepEqual([imgs[0].src, imgs[0].alt, imgs[0].size, imgs[0].title], ['assets/team.png', 'Team photo', '400', 'The team in Turin']);
+    const { mediaKind, webProvider } = await import('../src/renderer/page-syntax.js');
+    assert.deepEqual(imgs.map((a) => mediaKind(a.src)), ['image', 'image', 'video', 'audio', 'pdf', 'web']);
+    assert.equal(webProvider('https://youtu.be/dQw4w9WgXcQ').thumb, 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'); assert.equal(webProvider('https://example.com'), null);
+    const k = md.kids.findIndex((n) => n.type.name === 'image' && n.attrs.size === '400');
+    const resized = codec.save(md.m, withKids(md.kids.map((n, i) => (i === k ? n.type.create({ ...n.attrs, size: '250', title: 'New caption' }) : n))));
+    assert.equal(resized, fx('pages/media.md').replace('![Team photo|400](assets/team.png "The team in Turin")', '![Team photo|250](assets/team.png "New caption")'));
+    ok('images keep width (|400) and caption; video, audio, PDF and web embeds use the image syntax; resizing rewrites one line');
+    const { markdownIt } = await import('../src/renderer/markdown.js'); const h = markdownIt.render(fx('pages/media.md'));
+    assert.match(h, /<figure class="md-figure"><img src="assets\/team.png" alt="Team photo" title="The team in Turin" style="width:400px"><figcaption>The team in Turin<\/figcaption><\/figure>/);
+    assert.match(h, /<video class="md-media" controls preload="metadata" data-src="assets\/demo.mp4"/); assert.match(h, /<audio class="md-media"/);
+    assert.match(h, /class="md-card md-file" href="assets\/report-2026.pdf"/); assert.match(h, /class="md-card md-embed"[\s\S]*img.youtube.com/);
+    assert.match(h, /<p class="md-bookmark" data-host="folio.app"/); assert.match(h, /<p class="md-filecard" data-host="budget.xlsx"/);
+    ok('the Read view draws figures with captions, players, PDF and embed cards, bookmarks and file cards'); }
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
