@@ -271,91 +271,131 @@
     ],
     [
       "v1.2 Slides Studio",
-      "[S0] Slides model: placed boxes, shapes and image geometry",
+      "[P0] Slides model: placed objects, ids, geometry",
       [
         "area:slides"
       ],
-      "Parse/serialise ::: box, ::: shape and image {x y w h}. Lossless round-trip tests; untouched decks byte-identical. Update FORMATS.md. See docs/SLIDES-PLAN.md."
+      "Parse/serialise ::: box, ::: shape, image {x y w h}, object ids, section/hidden/transition comments. Lossless round-trip tests; untouched decks byte-identical. Update FORMATS.md. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S1] Slides canvas: select, drag, resize, rotate, snap",
+      "[P1] Slides canvas: select, drag, resize, rotate, snap",
       [
         "area:slides"
       ],
-      "Moveable + Selecto. Marquee, modifiers, arrow nudge, smart guides. One minimal text edit per transform; undo/redo. See docs/SLIDES-PLAN.md."
+      "Moveable + Selecto. Marquee, modifiers, arrow nudge, smart guides, zoom/pan. One minimal text edit per transform; undo/redo. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S2] Slides arrange: align, distribute, z-order, group, lock",
+      "[P2] Slides arrange: align, distribute, z-order, group, lock, selection pane",
       [
         "area:slides"
       ],
-      "Arrange menu parity with PowerPoint; duplicate, copy/paste across slides; place a flow block. See docs/SLIDES-PLAN.md."
+      "Arrange menu parity with PowerPoint; duplicate, copy/paste across slides; place a flow block; guides, grid, ruler. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S3] Slides text: inline rich editing inside boxes",
+      "[P3] Slides text: inline rich editing inside boxes",
       [
         "area:slides"
       ],
-      "TipTap per box: font, size, colour, alignment, spacing, lists, autofit, vertical align. See docs/SLIDES-PLAN.md."
+      "TipTap per box: font, size, colour, alignment, spacing, lists, columns, autofit, vertical align, WordArt effects. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S4] Slides insert: shapes, connectors, images, tables, charts, media, maths",
+      "[P4] Cross-document links: link, value, embed, synced copy",
       [
         "area:slides"
       ],
-      "Insert ribbon parity with Google Slides; image crop/replace/mask; connectors follow shapes. See docs/SLIDES-PLAN.md."
+      "Reference syntax [[doc#part]], {{value}}, ![[embed]], {sync}. Resolver, dependency index with live refresh, backlinks panel and graph, rename rewrites inbound links, broken-link check, [[ picker, external sheet references. Docs: SLIDES-PLAN.md. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S5] Slides format pane, themes, masters, editable layouts",
+      "[P5] Slides insert: shapes, connectors, images, tables, charts, media, equations, 3D",
       [
         "area:slides"
       ],
-      "Fill, gradient, border, shadow, opacity, radius; theme/master editing; backgrounds; slide size. See docs/SLIDES-PLAN.md."
+      "Insert ribbon parity with PowerPoint/Google Slides; connectors follow shapes; icons (Lucide/Tabler); video, audio, screen recording; glTF models. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S6] Slides sorter, sections, transitions and animations",
+      "[P6] Slides format pane, picture tools, merge shapes, edit points",
       [
         "area:slides"
       ],
-      "Sorter grid, hide/skip, build order timeline; export animations to PPTX where supported. See docs/SLIDES-PLAN.md."
+      "Fill, gradient, border, shadow, glow, opacity, radius; crop to shape, corrections, remove background; boolean shape ops; freeform and edit points. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S7] Presenter view parity",
+      "[P7] Themes, masters, layouts, backgrounds, shared .theme documents",
       [
         "area:slides"
       ],
-      "Timer, next slide, notes, laser, pen, black/white screen, rehearsal. See docs/SLIDES-PLAN.md."
+      "Theme fonts/colours, variants, editable masters with placeholders, backgrounds, slide size, font embedding, theme: [[Brand.theme]]. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S8] PPTX import (pptxtojson) and 1:1 PPTX export",
+      "[P8] Slide management: sorter, outline, sections, hide, reuse, comments, a11y checker",
       [
         "area:slides"
       ],
-      "Reference deck survives import then export visually unchanged; Google Slides via PPTX. See docs/SLIDES-PLAN.md."
+      "Sorter grid, outline view, sections, hide slide, reuse slides from other decks, find/replace, notes page, comments, compare, accessibility checker, spellcheck. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S9] MCP tools for slide geometry",
+      "[P9] SmartArt and Designer",
       [
         "area:slides"
       ],
-      "add_slide_element, move_element, restyle_slide; agent builds a positioned deck end to end. See docs/SLIDES-PLAN.md."
+      "Diagram generators from lists (process, cycle, hierarchy, matrix, pyramid, timeline, funnel, Venn), convert to free shapes, layout suggestions, building blocks. See docs/SLIDES-PLAN.md."
     ],
     [
       "v1.2 Slides Studio",
-      "[S10] Slides polish: a11y, performance, visual regression",
+      "[P10] Transitions, animations and Morph",
       [
         "area:slides"
       ],
-      "Keyboard-only editing, 200-slide decks, 60 fps drag, devShot visual diffs in CI. See docs/SLIDES-PLAN.md."
+      "20+ transitions, Morph by object id, entrance/emphasis/exit/motion paths, animation pane and timeline, triggers, build by paragraph/series, animation painter. See docs/SLIDES-PLAN.md."
+    ],
+    [
+      "v1.2 Slides Studio",
+      "[P11] Interactivity: hyperlinks, actions, Zoom, custom shows, kiosk",
+      [
+        "area:slides"
+      ],
+      "Links and actions on any object, slide/section/summary zoom, custom shows, buttons, loop and kiosk mode. See docs/SLIDES-PLAN.md."
+    ],
+    [
+      "v1.2 Slides Studio",
+      "[P12] Present and record: presenter view, ink, narration, captions, audience Q&A",
+      [
+        "area:slides"
+      ],
+      "Timer, next slide, notes, pen/highlighter/laser, magnifier, rehearse timings, narration, live captions, Q&A and polls over LAN with QR code. See docs/SLIDES-PLAN.md."
+    ],
+    [
+      "v1.2 Slides Studio",
+      "[P13] Interop: PPTX with native animations, PPTX import, handouts, video/GIF",
+      [
+        "area:slides"
+      ],
+      "1:1 PPTX export incl. transitions and animations (XML post-processing), pptxtojson import, handouts and notes pages, PNG/SVG/GIF/video, Google Slides via PPTX. See docs/SLIDES-PLAN.md."
+    ],
+    [
+      "v1.2 Slides Studio",
+      "[P14] MCP and AI for slides and links",
+      [
+        "area:slides"
+      ],
+      "add_object, move_object, restyle, resolve_ref, get_backlinks, find_broken_links, rewrite_links; alt text, notes, translate, Designer ideas. See docs/SLIDES-PLAN.md."
+    ],
+    [
+      "v1.2 Slides Studio",
+      "[P15] Slides polish: a11y, performance, visual regression",
+      [
+        "area:slides"
+      ],
+      "Keyboard-only editing, screen reader names, 200-slide decks, 60 fps drag, screenshot diffs in CI. WCAG 2.2 AA. See docs/SLIDES-PLAN.md."
     ]
   ]
 }

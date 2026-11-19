@@ -1,57 +1,135 @@
-# Slides Studio — plan to PowerPoint-level editing
+# Slides Studio — plan v2
 
-Goal: the slides editor becomes a full WYSIWYG canvas. The user can put anything anywhere and has full control.
-The file stays plain, readable slides-md that an AI can write, and remains lossless when round-tripped through the visual editor.
+Goal: a slides editor with PowerPoint and Google Slides capabilities and full user control, where the file stays plain `slides-md` that an AI can read and write, and where results can be linked across Folio documents.
 
 ## Principles
 
-1. **The file is the truth.** Every action in the canvas is a minimal text edit on the `.slides.md`, the same rule as boards and sheets. Slides that were not touched keep their bytes.
-2. **Two kinds of content on a slide.** *Flow* content is ordinary Markdown laid out by the slide's layout, which is today's behaviour. *Placed* content is boxes with explicit geometry. A slide can mix the two, and dragging a flow block "places" it.
-3. **Real DOM, not a bitmap canvas.** Text stays selectable, accessible and editable with the same TipTap engine as pages. Geometry is in slide units (1280×720), so it maps 1:1 to PPTX.
-4. **Reuse before building.** Use maintained MIT libraries for the hard interaction parts. Use PPTist (AGPL-3.0, Vue) as the behavioural reference: its licence is compatible with ours, and any code we port gets credited.
+1. **The file is the truth.** Every action in the canvas is a minimal text edit. Slides that were not touched keep their bytes (the same rule as boards and sheets).
+2. **Flow and placed content.** Flow content is Markdown laid out by the slide layout (today's behaviour). Placed content has explicit geometry. A slide can mix both, and dragging a flow block places it.
+3. **Real DOM, 1280×720 units.** Text stays selectable, accessible and editable with the same TipTap engine as pages. Geometry maps 1:1 to PPTX.
+4. **Everything is an object with an id.** Objects get stable ids, which animations, Morph, links and the MCP tools all use.
+5. **Reuse before building.** Maintained MIT libraries for the hard interaction parts. PPTist (AGPL-3.0, same licence as Folio) is the behavioural reference, and any ported code is credited.
+6. **Honest export.** What PPTX cannot hold is stated in the UI, not silently dropped.
 
-## Format extension (slides-md v2)
+## Format extensions (slides-md v2)
 
 ```markdown
-::: box x=80 y=160 w=520 h=300 rotate=0 z=2 fill=#f2f2f2 radius=12
+::: box #title x=80 y=160 w=520 h=300 rotate=0 z=2 fill=#f2f2f2 radius=12 anim="fade-up@click"
 ## Placed title
 Any Markdown: lists, images, charts, tables.
 :::
 
-::: shape type=arrow-right x=640 y=300 w=200 h=80 fill=#111 :::
+::: shape #arrow type=arrow-right x=640 y=300 w=200 h=80 fill=#111 link="[[Pitch.slides#5]]"
 
-![Photo](assets/a.jpg){x=700 y=120 w=480 h=320 crop=0,0,1,0.8}
+::: smartart type=process
+- Research
+- Design
+- Build
+:::
+
+![Photo](assets/a.jpg){x=700 y=120 w=480 h=320 crop=0,0,1,.8 alt="Team photo"}
+
+<!-- transition: morph 0.8s -->
+<!-- hidden -->
+<!-- section: Results -->
 ```
 
-- Units are slide pixels on a 1280×720 canvas. `size: 4:3` scales them.
-- Marp compatibility: Marp shows placed boxes as normal flow content, so a deck still presents in Marp, just without free positioning. This gets documented in FORMATS.md.
+Marp keeps working: it shows placed boxes as flow content. The loss of positioning in Marp is documented in FORMATS.md.
+
+## Cross-document links (Folio references)
+
+Any document can point at, embed or compute from any other document in the workspace.
+
+| Kind | Syntax | Behaviour |
+|---|---|---|
+| **Link** | `[[Budget.sheet#Summary!B7]]` | Click to open the target and jump to the part. |
+| **Value** | `{{Budget.sheet#Summary!B7}}` | Shows the computed result inline (text, number, formatted). Updates when the source changes. |
+| **Embed** | `![[System.board]]`, `![[Pitch.slides#5]]`, `![[Budget.sheet#Summary!A1:D9]]` | Renders the target part in place: a board, a slide, a sheet range as a table, a page section. |
+| **Synced copy** | `![[Pitch.slides#5]]{sync}` | Like Google's linked slides: a copy that shows "Source changed: Update / Unlink". |
+| **Chart** | ` ```chart ` with `source: /Budget.sheet#Summary!A1:D9` | Already shipped. Joins the same resolver. |
+
+Selectors by type: page `#Heading` or `^block-id`; slides `#3` or `#object-id`; board `#node-id`; sheet `#Sheet!A1:C9` or a named range.
+
+Rules:
+- References are plain text, so an AI can read them. An MCP tool resolves them on demand.
+- Paths are relative to the document, or start with `/` for the workspace root.
+- **Dependency index** in the main process (extends the chokidar watcher). A change in a source re-renders dependents. Cycles are detected and reported.
+- **Rename and move rewrite inbound links** as minimal edits, in one undoable step.
+- **Backlinks panel** and a **link graph** view. A **broken-link check** per document and per workspace.
+- **Insert by picking**: type `[[` or `@`, fuzzy-search documents and their parts. "Copy link to selection" on any slide, object, node or cell range, then paste as link, embed, value or copy.
+- **Sheets reference sheets**: `='Budget.sheet'!Summary!B7` (external references, with cycle detection).
+- **Export bakes values.** PPTX, PDF and HTML contain the resolved results, and "Break link" freezes one.
+- **Shared themes**: a deck can use `theme: [[Brand.theme]]`, so masters, fonts and colours live in one document.
+- **Deck from page**: `source: [[Notes]]` builds slides from a page's headings, kept in sync.
 
 ## Libraries
 
 | Need | Library | Licence |
 |---|---|---|
-| Drag, resize, rotate, snap guides, group transforms | [Moveable](https://github.com/daybrush/moveable) (vanilla) | MIT |
+| Drag, resize, rotate, snap guides, groups | [Moveable](https://github.com/daybrush/moveable) | MIT |
 | Marquee and multi-select | [Selecto](https://github.com/daybrush/selecto) | MIT |
-| Text inside boxes | TipTap (already in Folio) | MIT |
-| Shapes | Folio board shape library (already built) | ours |
-| PPTX export | pptxgenjs (already in Folio) | MIT |
+| Text in boxes | TipTap (in Folio) | MIT |
+| Shapes, connectors, auto-layout | Board library and dagre (in Folio) | ours / MIT |
+| Boolean shape ops (union, subtract, intersect) | [paper.js](https://github.com/paperjs/paper.js) or polygon-clipping | MIT |
+| Icons | Lucide, Tabler, Phosphor (bundled sets) | MIT |
+| Animations, motion paths | Web Animations API with SVG `offset-path` (no dependency) | native |
+| PPTX export | pptxgenjs (in Folio) + our XML post-processing for animations and Morph | MIT |
 | PPTX import | [pptxtojson](https://github.com/pipipi-pikachu/pptxtojson) | MIT |
+| Image background removal | @imgly/background-removal (runs locally) | AGPL-3.0: check before adopting |
+| 3D models | model-viewer / three.js (glTF) | MIT |
+| Video and GIF export | ffmpeg.wasm or the system ffmpeg | LGPL |
+| Speech (captions, coach) | Web Speech API / local Whisper, to be evaluated | — |
+| Spelling | Electron's built-in spellchecker | — |
 | Behaviour reference | [PPTist](https://github.com/pipipi-pikachu/PPTist) | AGPL-3.0 |
 
-## Phases (each one ships, is tested and closes its issue)
+## What PowerPoint and Google Slides have, and where it lands
+
+| Area | Features | Phase |
+|---|---|---|
+| **Home** | Layouts, reset slide, sections, fonts, paragraph, columns, text direction, quick styles, find/replace, selection pane | P2, P3, P8 |
+| **Insert** | Text box, WordArt, shapes, lines and connectors, icons, images, screenshots, photo album, tables, charts, equations, symbols, video, audio, screen recording, 3D models, header/footer, date, slide number | P5 |
+| **Insert, links** | Hyperlinks, Action buttons, Slide/Section/Summary Zoom | P11 |
+| **Design** | Themes and variants, slide size, background format, Designer | P7, P9 |
+| **Transitions** | 20+ transitions with options, duration, sound, advance on click or after N s, Morph | P10 |
+| **Animations** | Entrance, emphasis, exit, motion paths, animation pane, triggers, delay, repeat, by paragraph, chart build, animation painter | P10 |
+| **Slide Show** | From start/current, custom shows, kiosk/loop, rehearse timings, record narration, subtitles, presenter view, hide slide | P8, P11, P12 |
+| **Review** | Spelling, accessibility checker, alt text, comments, translate, compare | P8, P14 |
+| **View** | Outline, slide sorter, notes page, master views, guides, grid, ruler, zoom, greyscale, multiple windows | P8 |
+| **Master** | Slide master, layouts, placeholders, theme fonts and colours | P7 |
+| **Picture** | Crop to shape, aspect, corrections, colour, artistic effects, remove background, compress, replace, alt text | P6 |
+| **Shape tools** | Merge shapes, edit points, freeform, ink to shape, rulers | P6 |
+| **SmartArt** | Convert bullets to SmartArt, process/cycle/hierarchy/matrix/pyramid/list layouts | P9 |
+| **Google Slides** | Linked charts and slides, smart chips and `@` mentions, audience Q&A, pen and laser, captions, "building blocks" (timeline, agenda), publish to web | P4, P9, P12, P13 |
+| **Output** | PDF, handouts, notes pages, images, GIF, video, PPTX, outline | P13 |
+| **Team** | Comments, version history, compare | P8, P14 |
+
+## Phases
+
+Each phase ships, is tested (round-trip tests, smoke test, screenshots) and closes its issue.
 
 | # | Phase | Done when |
 |---|---|---|
-| S0 | **Model**: parse and serialise `::: box`, `::: shape` and image geometry; lossless round-trip tests; FORMATS.md | Round-trip corpus passes; old decks are byte-identical |
-| S1 | **Canvas**: select, drag, resize, rotate, marquee, shift/alt modifiers, arrow-key nudge, smart guides and snapping to edges, centres and other boxes | Every transform writes one minimal edit; undo/redo |
-| S2 | **Arrange**: align, distribute, z-order, group/ungroup, lock, duplicate, copy/paste across slides, "place" a flow block | Same as PowerPoint's Arrange menu |
-| S3 | **Text in boxes**: inline TipTap with font, size, colour, highlight, alignment, line spacing, lists, autofit/shrink-on-overflow, vertical align | Edit text on the canvas without opening code |
-| S4 | **Insert**: shapes and lines/arrows (connectors that follow), images (crop, replace, mask), tables, charts, icons, video/audio, maths, text box | Insert ribbon matches Google Slides |
-| S5 | **Format pane**: fill, gradient, border, shadow, opacity, radius, padding; theme and master editing; editable layouts; backgrounds; slide size | Every visual property is reachable without code |
-| S6 | **Slide operations**: sorter grid, sections, hide/skip, duplicate, transitions, element animations with build order and a timeline | Animations play in present mode and export to PPTX where supported |
-| S7 | **Present**: presenter view with timer, next slide and notes, laser pointer, pen, black/white screen, rehearsal | Parity with PowerPoint's presenter view |
-| S8 | **Interop**: PPTX export at 1:1 geometry, PPTX import through pptxtojson into slides-md, Google Slides through PPTX, PDF | Import, then export, of a reference deck looks the same |
-| S9 | **AI and MCP**: tools such as `add_slide_element`, `move_element` and `restyle_slide`; the AI sees geometry as text | An agent can build a positioned deck end to end |
-| S10 | **Polish**: accessibility (keyboard-only editing, screen reader names), performance on 200-slide decks, visual regression shots in CI | No regressions; 60 fps drag |
+| **P0** | **Model.** Parse and serialise boxes, shapes, geometry, object ids, section/hidden/transition comments. FORMATS.md, round-trip tests. | Old decks are byte-identical; a corpus round-trips. |
+| **P1** | **Canvas.** Select, drag, resize, rotate, marquee, modifiers, arrow nudge, smart guides and snapping, zoom and pan, undo/redo. | Each transform writes one minimal edit. |
+| **P2** | **Arrange.** Align, distribute, z-order, group, lock, duplicate, copy/paste across slides, place a flow block, selection pane, guides, grid and ruler. | The Arrange menu matches PowerPoint. |
+| **P3** | **Text.** Inline TipTap in boxes: font, size, colour, highlight, alignment, spacing, lists, columns, autofit, vertical align, WordArt effects. | Edit text on the canvas without code. |
+| **P4** | **Links engine.** Reference syntax, resolver, dependency index, link, value, embed and synced copy, backlinks, rename rewrite, broken-link check, `[[` picker, external sheet references. | A slide shows a live sheet value, an embedded board and a linked slide; rename keeps them intact. |
+| **P5** | **Insert.** Shapes and connectors that follow, images, tables (merge cells, styles), charts (more types), icons, equations, code, video, audio, screen recording, 3D (glTF). | The Insert ribbon covers PowerPoint's. |
+| **P6** | **Format and tools.** Fill, gradient, border, shadow, glow, reflection, opacity, radius. Picture crop to shape, corrections, remove background, replace. Merge shapes, edit points, freeform, ink to shape. | Every visual property is reachable without code. |
+| **P7** | **Themes and masters.** Theme fonts and colours, variants, editable masters and layouts with placeholders, backgrounds, slide size, font embedding, shared `.theme` documents. | A brand lives in one document used by many decks. |
+| **P8** | **Slide management.** Sorter, outline view, sections, hide slide, reuse slides from other decks, find/replace, notes page, comments, version history and compare (text diff), accessibility checker, spellcheck, multiple windows. | Large decks stay manageable. |
+| **P9** | **SmartArt and Designer.** Diagram generators from lists (process, cycle, hierarchy, matrix, pyramid, timeline, funnel, Venn) that can be converted to free shapes; layout suggestions from rules, then AI; building blocks (agenda, timeline, comparison). | "Convert to SmartArt" and "Design ideas" both work offline. |
+| **P10** | **Motion.** Transitions (20+) and Morph by object id; entrance, emphasis, exit and motion-path animations; animation pane with timeline, triggers, delay, repeat, build by paragraph or chart series, animation painter. | Animations play in present mode and survive a round-trip through the file. |
+| **P11** | **Interactivity.** Hyperlinks and actions on any object, Zoom (slide, section, summary), custom shows, buttons, kiosk and loop. | A deck can be navigated non-linearly. |
+| **P12** | **Present and record.** Presenter view (timer, next slide, notes), pen, highlighter and laser, magnifier, black and white screen, rehearse timings, narration recording, live captions, audience Q&A and polls over the local network with a QR code. | Parity with presenter view and Google's audience tools. |
+| **P13** | **Interop.** PPTX export at 1:1 geometry with native animations and transitions (our XML post-processing), PPTX import via pptxtojson, handouts and notes pages, PNG/SVG/GIF/video, PDF, Google Slides through PPTX. | A reference deck survives import then export. |
+| **P14** | **AI and MCP.** Geometry tools (`add_object`, `move_object`, `restyle`), link tools (`resolve_ref`, `get_backlinks`, `find_broken_links`, `rewrite_links`), alt-text and notes generation, translate deck, Designer ideas via the AI. | An agent builds a positioned, linked deck end to end. |
+| **P15** | **Polish.** Keyboard-only editing, screen reader names, 200-slide performance, 60 fps drag, visual regression screenshots in CI. | No regressions; WCAG 2.2 AA. |
 
-Order: S0 → S1 → S2 → S3 come first, because that is "put things where I want". S4–S5 make it complete, S6–S8 bring parity, and S9–S10 add the edge.
+Order: P0 → P1 → P2 → P3 is "put things where I want". P4 comes next because links change the data model for everything after it. P5–P9 make it complete, P10–P12 add motion and delivery, and P13–P15 bring parity and polish.
+
+## Not planned (and why)
+
+- **Real-time co-authoring.** Folio works on files, so teams share through Git or a synced folder. A CRDT layer (Yjs) can come later.
+- **Real SmartArt (`.dgm`) export.** SmartArt exports as grouped native shapes, which look the same and stay editable.
+- **Cloud-only extras** (Copilot, Cameo, stock-photo search, password protection). The MCP connection covers AI, and stock images arrive through the user's own AI tools.

@@ -16,9 +16,13 @@ Make what exists trustworthy: fidelity, tests, signed builds, updates.
 
 ## v1.2 Slides Studio
 
-PowerPoint-level WYSIWYG slides: put anything anywhere, full formatting, PPTX parity. Full plan: [SLIDES-PLAN.md](SLIDES-PLAN.md).
+PowerPoint and Google Slides capabilities with full user control, in plain slides-md, with links between Folio documents. Full plan and feature coverage: [SLIDES-PLAN.md](SLIDES-PLAN.md).
 
-- **S0 Model** · **S1 Canvas** · **S2 Arrange** · **S3 Text in boxes** · **S4 Insert** · **S5 Format & masters** · **S6 Sorter & animations** · **S7 Presenter** · **S8 PPTX import/export** · **S9 MCP geometry tools** · **S10 Polish**
+- **P0** Model · **P1** Canvas · **P2** Arrange · **P3** Text in boxes
+- **P4** Cross-document links (link, value, embed, synced copy)
+- **P5** Insert · **P6** Format and picture tools · **P7** Themes and masters · **P8** Slide management
+- **P9** SmartArt and Designer · **P10** Transitions, animations, Morph · **P11** Interactivity and Zoom
+- **P12** Present and record · **P13** PPTX interop · **P14** MCP and AI · **P15** Polish
 
 ## v1.2 Editors
 
