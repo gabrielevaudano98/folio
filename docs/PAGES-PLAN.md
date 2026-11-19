@@ -99,7 +99,7 @@ Legend: ✅ already in Folio · 🟡 partial · ⬜ to build. Source: N = Notion
 
 Kept from today: `Mod+B/I/U/K/E`, `Mod+Shift+S` strike, `Mod+Shift+H` highlight, `Mod+Alt+0…3` styles, `Mod+L` checklist, `Tab`/`Shift+Tab` indent.
 
-Added: `Mod+Alt+4…6` H4–H6 · `Mod+Shift+7/8/9` numbered, bulleted, checklist (Docs) · `Mod+.` / `Mod+,` superscript, subscript (Docs) · `Mod+Shift+M` inline maths · `Mod+Enter` toggle checkbox (Notion) · `Mod+D` duplicate block · `Mod+Shift+↑/↓` move block (Notion) · `Mod+/` turn into · `Mod+Alt+M` comment (Docs) · `Mod+Shift+E` suggest mode · `Mod+F` / `Mod+H` find, replace · `Mod+Shift+C` counts (Docs) · `Mod+Shift+V` paste as plain text · `Mod+Alt+Enter` page break · `Mod+Shift+L` copy link to block.
+Added: `Mod+Alt+4…6` H4–H6 · `Mod+Shift+7/8/9` numbered, bulleted, checklist (Docs) · `Mod+.` / `Mod+,` superscript, subscript (Docs) · `Mod+Shift+M` inline maths · `Mod+Enter` toggle checkbox (Notion) · `Mod+D` duplicate block · `Mod+Shift+↑/↓` move block (Notion) · `Mod+/` turn into · `Mod+Alt+M` comment (Docs) · `Mod+Shift+E` suggest mode · `Mod+F` / `Mod+H` find, replace · `Mod+Shift+C` counts (Docs) · `Mod+Shift+V` paste as plain text · `Mod+Alt+Enter` page break · `Mod+Alt+L` copy link to block.
 
 Markdown typed at line start (Notion, Docs, Obsidian): `# `…`###### `, `- ` `* ` `+ `, `1. `, `[] `, `[x] `, `> `, `>> ` toggle, `> [!` callout, ```` ``` ````, `$$`, `---`, `|a|b|` + Enter table. Inline: `**`, `*`, `~~`, `==`, `` ` ``, `$…$`, `[^`.
 
@@ -188,6 +188,9 @@ Today `getMarkdown()` re-serializes the whole document on every keystroke, so on
 ## Progress
 
 - **D0 — done.** `page-core.js` splits a page into top-level blocks, checks each against markdown-it (the oracle), keeps what the editor cannot hold as raw blocks, and on save splices only changed blocks. Fixed real data loss: before D0 any edit turned footnotes into links (`Text[^1](note)`), escaped HTML (`&lt;details&gt;`) and broke foldable callouts. Corpus: `test/fixture/pages/` (GFM, Obsidian, HTML, CriticMarkup, Notion and Google Docs exports); tests in `test/formats.test.mjs` and `test/pages.test.mjs`.
+- **D1 — done.** `page-syntax.js`: superscript, subscript, inline and block maths (KaTeX, Pandoc `$` rules), footnotes (reference, inline, definition), `%%hidden comments%%`, colour `[text]{color= bg=}` and alignment `{align=}` (TipTap TextAlign reused). Editor: KaTeX views edited in place, footnotes with hover text and Ctrl/⌘-click to the note, Footnote command that adds the note at the end (Word), colour popover with Notion's nine colours, alignment group, H1–H6, bubble with Turn into, underline, inline link editor. Smart quotes and dashes (setting), `[text](url)` typed becomes a link, `$$` + space starts a maths block. Read view and exports draw colour and alignment and hide comments. Export as portable Markdown. Format guide for AIs has a Pages section (`get_format_guide type=page`). An Obsidian page is now fully editable (no raw blocks).
+  Shortcuts that differ from the plan because the app menu owns them: superscript `Mod+Shift+.`, subscript `Mod+Shift+,`, centre `Mod+Alt+E` (`Mod+.` and `Mod+Shift+E` are menu commands). Copy link to block (D2) moves to `Mod+Alt+L`, since `Mod+Shift+L` is now align left.
+  Not reused: `@tiptap/extension-mathematics` needs KaTeX ≤ 0.18 (Folio has 0.19); its Markdown design is reused in Folio's own nodes.
 
 ## Not planned
 

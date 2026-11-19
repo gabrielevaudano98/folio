@@ -30,7 +30,7 @@ const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 const BRIDGE_FILE = () => path.join(app.getPath('userData'), 'mcp-bridge.json');
 const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
-  lineWidth: 72, spellcheck: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true,
+  lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
 };
 let settings = { ...defaults };
@@ -398,6 +398,7 @@ function buildMenu() {
       { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
       { type: 'separator' },
       { label: 'Export as HTML…', click: cmd('export-html') },
+      { label: 'Export as Portable Markdown…', click: cmd('export-md') },
       { label: 'Export as PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export-pdf') },
       ...(isMac ? [] : [{ type: 'separator' }, { label: 'Settings…', accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
     ] },

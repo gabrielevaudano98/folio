@@ -9,11 +9,17 @@ const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud');
 fs.cpSync(new URL('./fixture', import.meta.url), ws, { recursive: true }); fs.mkdirSync(ud);
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47593 }));
 const read = (f) => fs.readFileSync(path.join(ws, 'pages', f), 'utf8');
+fs.writeFileSync(path.join(ws, 'pages', 'd1.md'), '# Formatting\n\nPlain paragraph here\n');
 const html = read('html.md'), obs = read('obsidian.md');
 
 const typeAtEnd = (text, add) => `(() => { const p = [...document.querySelectorAll('.rich-prose p, .rich-prose h1')].find((x) => x.textContent === ${JSON.stringify(text)}); if (!p) return false;
   document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.selectNodeContents(p); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
   document.execCommand('insertText', false, ${JSON.stringify(add)}); return true; })()`;
+// select characters [a, b) of the paragraph or heading whose text starts with `text`
+const select = (text, a, b) => `(() => { const el = [...document.querySelectorAll('.rich-prose p, .rich-prose h1')].find((x) => x.textContent.startsWith(${JSON.stringify(text)}));
+  document.querySelector('.rich-prose').focus(); const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  const at = (n) => { for (const t of nodes) { if (n <= t.length) return [t, n]; n -= t.length; } const l = nodes.at(-1); return [l, l.length]; };
+  const r = document.createRange(); r.setStart(...at(${a})); r.setEnd(...at(${b})); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })();`;
 const steps = [
   { size: [1400, 900], wait: 1200 },
   { js: "document.querySelector('[data-dir=\"pages\"]').click()", wait: 500 },
@@ -26,6 +32,20 @@ const steps = [
     a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return true; })()`, log: true, wait: 2500 },
   { js: "document.querySelector('[data-file=\"pages/obsidian.md\"]').click()", wait: 1200 },
   { js: typeAtEnd('Research log', ' 2026'), log: true, wait: 2500 },
+  { js: "document.querySelectorAll('.rich-folioRaw').length + ':' + document.querySelectorAll('.rich-fn, .rich-math, .rich-blockMath, .rich-fn-def').length", log: true, wait: 100 },
+  ...(process.env.DEBUG ? [{ js: "[...document.querySelectorAll('.rich-raw')].map((x) => x.textContent)", log: true, wait: 100 }] : []),
+  // D1: format from the ribbon, check the Markdown on disk
+  { js: "document.querySelector('[data-file=\"pages/d1.md\"]').click()", wait: 1200 },
+  { js: select('Plain paragraph here', 0, 5), wait: 200 },
+  { js: "document.querySelector('.ribbon [data-cmd=colour]').click(); document.querySelector('#rb-colours [data-colour=red]').click(); true", log: true, wait: 400 },
+  { js: select('Plain paragraph here', 6, 15), wait: 200 },
+  { js: "document.querySelector('.ribbon [data-cmd=superscript]').click(); document.querySelector('.ribbon [data-cmd=alignCenter]').click(); true", log: true, wait: 400 },
+  { js: select('Plain paragraph here', 20, 20), wait: 200 },
+  { js: "document.querySelector('.ribbon [data-cmd=footnote]').click(); document.execCommand('insertText', false, 'Source.'); true", log: true, wait: 400 },
+  ...(process.env.DEBUG ? [{ js: "document.querySelector('.rich-prose').innerHTML", log: true, wait: 100 }] : []),
+  { js: select('Formatting', 10, 10), wait: 200 },
+  { js: "document.querySelector('.ribbon [data-cmd=inlineMath]').click(); true", wait: 400 },
+  { js: "(() => { const i = document.querySelector('.rich-math input'); if (!i) return false; i.value = 'x^2'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return true; })()", log: true, wait: 2500 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -35,11 +55,16 @@ const timer = setTimeout(() => child.kill(), 90000);
 child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
-  console.log('\npages');
-  assert.equal(logs.length, 5, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, errors] = logs;
+  console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
+  assert.equal(logs.length, 10, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 5 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
   assert.equal(read('obsidian.md'), obs.replace('# Research log', '# Research log 2026')); console.log('  ✓ footnotes, maths, callouts and front matter survive an edit byte for byte');
+  const [rawObs, drawn] = obsNodes.split(':').map(Number);
+  assert.equal(rawObs, 0); assert(drawn >= 5, obsNodes); console.log('  ✓ footnotes and maths are drawn and editable in the Write view');
+  assert(c1 && c2 && c3 && mathDone, JSON.stringify(logs));
+  assert.equal(read('d1.md'), '# Formatting$x^2$\n\n[Plain]{color=red} <sup>paragraph</sup> here[^1]\n{align=center}\n\n[^1]: Source.\n');
+  console.log('  ✓ colour, superscript, centre, footnote and maths from the ribbon write Folio Markdown');
 });

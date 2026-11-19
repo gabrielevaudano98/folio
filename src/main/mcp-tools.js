@@ -28,8 +28,8 @@ export const TOOLS = [
     description: 'Return the heading structure of a note with line numbers.',
     input: { path: z.string() } },
   { name: 'get_format_guide', title: 'Get format guide', write: false, annotations: ro,
-    description: 'Return the syntax of Folio document types: slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets).',
-    input: { type: z.enum(['slides', 'board', 'sheet', 'all']).optional() } },
+    description: 'Return the syntax of Folio document types: pages (.md: footnotes, maths, colour, alignment, hidden comments), slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets).',
+    input: { type: z.enum(['page', 'slides', 'board', 'sheet', 'all']).optional() } },
   { name: 'get_sheet_values', title: 'Get sheet values', write: false, annotations: ro,
     description: 'Evaluate every formula in a .sheet.md note and return each sheet as a grid of computed values, with cell addresses.',
     input: { path: z.string(), sheet: z.string().optional().describe('Sheet name; all sheets when omitted') } },
@@ -90,7 +90,7 @@ export async function runTool(notes, name, a, hooks = {}) {
     case 'get_outline': return notes.outline(a.path);
     case 'get_format_guide': {
       if (!a.type || a.type === 'all') return FORMATS;
-      const title = { slides: '## slides-md', board: '## board-md', sheet: '## sheet-md' }[a.type];
+      const title = { page: '## Pages', slides: '## slides-md', board: '## board-md', sheet: '## sheet-md' }[a.type];
       const start = FORMATS.indexOf(title); const next = FORMATS.indexOf('\n## ', start + 4);
       return FORMATS.slice(start, next < 0 ? undefined : next);
     }

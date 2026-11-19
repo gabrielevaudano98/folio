@@ -2,6 +2,7 @@
 import { diffLines } from 'diff';
 import { createEditor } from './editor.js';
 import { createRich } from './rich.js';
+import { portableMarkdown } from './page-syntax.js';
 import { mountSlides } from './slides.js';
 import { NEW_DECK } from './slides-core.js';
 import { mountBoard } from './board.js';
@@ -114,6 +115,7 @@ async function boot() {
     readNote: (src) => readRelative(src),
     isDark: () => S.dark,
     onWikiLink: async (name) => { const f = resolveWiki(name); if (f) return openFile(f); if (await confirmSheet({ title: `Create “${name}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
+    smartTypography: () => S.settings.smartTypography !== false,
     onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
   });
   $('#pane-rich').addEventListener('paste', async (e) => {
@@ -792,6 +794,7 @@ function openSettings() {
       </div></section>
       <section class="group"><h3>Writing</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">Check spelling</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="spellcheck" ${s.spellcheck ? 'checked' : ''} aria-label="Check spelling"></label></div>
+        <div class="row"><div class="row-main"><span class="row-title">Smart quotes and dashes</span><span class="row-sub">Typing " -- ... becomes “ – … in the Write view</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="Smart quotes and dashes"></label></div>
       </div></section>
       <section class="group"><h3>About</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">Based on Folio by Gabriele Vaudano. Free software under the GNU AGPL-3.0: you may change and share it, keeping this attribution and publishing your changes.</span></div>
@@ -822,6 +825,7 @@ const COMMANDS = [
   { id: 'focus', title: 'Focus mode', key: 'Mod+.', run: toggleFocus },
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
   { id: 'export-html', title: 'Export as HTML…', run: () => exportAs('html') },
+  { id: 'export-md', title: 'Export as portable Markdown…', run: () => exportAs('md') },
   { id: 'export-pptx', title: 'Export slides as PowerPoint…', run: () => (curType() === 'slides' ? exportAs('pptx') : toast('Open a slides document first.')) },
   { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
@@ -845,12 +849,29 @@ const COMMANDS = [
   { id: 'image', title: 'Insert image…', run: () => (isRich() ? rich.run('image') : folio.pickImage(S.active).then((r) => r && editor.insert(`![image](${r})`)).catch((e) => toast(e.message, { kind: 'error' }))) },
   { id: 'mermaid', title: 'Insert diagram (Mermaid)', run: () => insertMd('\n```mermaid\nflowchart LR\n  A[Idea] --> B[Draft] --> C[Shipped]\n```\n') },
   { id: 'callout', title: 'Insert callout', run: () => insertMd('\n> [!NOTE]\n> \n') },
+  { id: 'superscript', title: 'Format: superscript', key: 'Mod+Shift+.', run: () => pageFmt('superscript', '<sup>', '</sup>') },
+  { id: 'subscript', title: 'Format: subscript', key: 'Mod+Shift+,', run: () => pageFmt('subscript', '<sub>', '</sub>') },
+  { id: 'math', title: 'Insert maths (inline)', key: 'Mod+Shift+M', run: () => pageFmt('inlineMath', '$', '$') },
+  { id: 'math-block', title: 'Insert maths block', run: () => (isRich() ? rich.run('blockMath') : editor.insert('\n$$\n\n$$\n')) },
+  { id: 'footnote', title: 'Insert footnote', key: 'Mod+Alt+F', run: () => (isRich() ? rich.run('footnote') : editor.insert('[^1]')) },
+  { id: 'hidden-comment', title: 'Format: hidden comment', run: () => pageFmt('hiddenComment', '%%', '%%') },
+  { id: 'colour', title: 'Format: text colour…', run: () => (isRich() ? rich.run('colour') : pageFmt(null, '[', ']{color=red}')) },
+  { id: 'align-left', title: 'Align left', key: 'Mod+Shift+L', run: () => isRich() && rich.run('alignLeft') },
+  { id: 'align-center', title: 'Centre', key: 'Mod+Alt+E', run: () => isRich() && rich.run('alignCenter') },
+  { id: 'align-right', title: 'Align right', key: 'Mod+Shift+R', run: () => isRich() && rich.run('alignRight') },
+  { id: 'align-justify', title: 'Justify', key: 'Mod+Shift+J', run: () => isRich() && rich.run('alignJustify') },
   { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; showWelcome(); } },
 ];
 function fmt(id, n) {
   if (isRich()) { if (id === 'heading') return rich.editor.chain().focus().toggleHeading({ level: n }).run(); return rich.run(id); }
   if (id === 'heading') return editor.run('heading', n);
   return editor.run(id);
+}
+/* page formatting from the palette: the Write view runs the command, the source view wraps the selection */
+function pageFmt(id, before, after) {
+  if (isRich() && id) return rich.run(id);
+  if (!isRich() && editor.wrap) return editor.wrap(before, after);
+  return insertMd(before + after);
 }
 function insertMd(md) {
   if (isRich()) { rich.editor.chain().focus().insertContent(md, { contentType: 'markdown' }).run(); return; }
@@ -903,6 +924,12 @@ function runPalette(i = pal.sel) { const it = pal.items[i]; if (!it) return; clo
 async function exportAs(kind) {
   const t = activeTab(); if (!t) return toast('Open a note to export it.');
   const s = curSurface();
+  if (kind === 'md') {
+    if (curType() !== 'md') return toast('Portable Markdown export is for pages.');
+    try { const out = await folio.exportBinary(t.path, 'md', new TextEncoder().encode(portableMarkdown(t.text))); if (out) toast(`Exported to ${base(out)}. Folio colour and alignment were removed.`); }
+    catch (e) { toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+    return;
+  }
   if (s) { if (kind === 'pdf' && s.exportPdf) return s.exportPdf(); if (kind === 'pptx' && s.exportPptx) return s.exportPptx(); if (kind === 'html') return toast('HTML export is for pages. Use PDF for this document.'); }
   const prose = stylesCss.slice(stylesCss.indexOf('/* ---------- preview prose')).split('/* ---------- palette')[0];
   const css = tokensCss + '\nbody{margin:0;font-family:var(--font-sans);color:var(--color-ink);background:var(--color-paper);-webkit-print-color-adjust:exact}' + prose + '\n.copy-code{display:none}.prose{padding:48px 24px}@media print{.prose{padding:0}}';

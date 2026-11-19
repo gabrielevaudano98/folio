@@ -398,6 +398,27 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .hljs-deletion { color: var(--color-removed); }
 .hljs-meta { color: var(--color-muted); }
 
+/* page content colour and alignment ([text]{color=…}, {align=…}): preview, exports and the Write view */
+[data-color="gray"] { color: var(--content-gray); }
+[data-bg="gray"] { background: var(--content-gray-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="brown"] { color: var(--content-brown); }
+[data-bg="brown"] { background: var(--content-brown-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="orange"] { color: var(--content-orange); }
+[data-bg="orange"] { background: var(--content-orange-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="yellow"] { color: var(--content-yellow); }
+[data-bg="yellow"] { background: var(--content-yellow-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="green"] { color: var(--content-green); }
+[data-bg="green"] { background: var(--content-green-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="blue"] { color: var(--content-blue); }
+[data-bg="blue"] { background: var(--content-blue-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="purple"] { color: var(--content-purple); }
+[data-bg="purple"] { background: var(--content-purple-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="pink"] { color: var(--content-pink); }
+[data-bg="pink"] { background: var(--content-pink-bg); border-radius: 3px; padding: 0 0.12em; }
+[data-color="red"] { color: var(--content-red); }
+[data-bg="red"] { background: var(--content-red-bg); border-radius: 3px; padding: 0 0.12em; }
+.prose [data-align="center"] { text-align: center; } .prose [data-align="right"] { text-align: right; } .prose [data-align="justify"] { text-align: justify; }
+
 /* ---------- palette ---------- */
 .palette-scrim { position: fixed; inset: 0; z-index: var(--z-modal); display: flex; justify-content: center; padding-top: 14vh; background: var(--color-scrim); }
 [data-mode="dark"] .palette { background: var(--color-paper-2); }
@@ -839,6 +860,37 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .sh-chart-head .select { width: 7.5rem; height: 30px; font-size: var(--text-sm); }
 
 /* rich editor: drawn blocks */
+/* page editor: hidden comments, maths, footnotes */
+.rich-hidden-comment, .md-hidden-comment { color: var(--color-faint); background: repeating-linear-gradient(90deg, var(--color-rule) 0 3px, transparent 3px 6px) bottom / 100% 1px no-repeat; }
+.prose .md-hidden-comment { display: none; }
+.rich-math { display: inline-block; padding: 0 0.1em; border-radius: var(--radius-xs); cursor: default; }
+.rich-math:hover, .rich-math.ProseMirror-selectednode { background: var(--color-hover); }
+.rich-math.is-empty::before { content: "Maths"; color: var(--color-faint); }
+.rich-src-input { font: inherit; font-family: var(--font-mono); font-size: 0.9em; padding: 0 0.3em; border: 0; border-radius: var(--radius-xs); background: var(--color-code-bg); color: var(--color-ink); min-width: 4ch; }
+.rich-src-input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.rich-fn { font-size: 0.72em; line-height: 0; vertical-align: super; padding: 0 0.15em; border-radius: var(--radius-xs); color: var(--color-ink-2); cursor: default; font-variant-numeric: tabular-nums; }
+.rich-fn::before { content: "["; color: var(--color-faint); } .rich-fn::after { content: "]"; color: var(--color-faint); }
+.rich-fn.is-inline::before, .rich-fn.is-inline::after { content: none; }
+.rich-fn:hover, .rich-fn.ProseMirror-selectednode { background: var(--color-hover); }
+.rich-fn-def { display: flex; gap: 0.6em; margin: 0 0 0.35em; font-size: var(--text-sm); color: var(--color-ink-2); }
+.rich-fn-def:first-of-type, :not(.rich-fn-def) + .rich-fn-def { margin-top: 1.4em; padding-top: 0.8em; border-top: 0.5px solid var(--color-rule); }
+.rich-fn-label { flex-shrink: 0; min-width: 1.6em; color: var(--color-muted); font-variant-numeric: tabular-nums; user-select: none; }
+.rich-fn-body { flex: 1; min-width: 0; }
+.rb-pop { position: fixed; z-index: var(--z-dropdown); padding: var(--space-xs); border-radius: var(--radius-lg); background: var(--color-paper); box-shadow: var(--shadow-pop); display: grid; gap: var(--space-2xs); }
+.rb-pop[hidden] { display: none; }
+.rb-pop-title { font-size: var(--text-xs); color: var(--color-muted); padding: 0 var(--space-3xs); }
+.rb-swatches { display: grid; grid-template-columns: repeat(10, 24px); gap: 2px; }
+.rb-swatch { width: 24px; height: 24px; border: 0; border-radius: var(--radius-sm); background: transparent; display: grid; place-items: center; font-weight: var(--weight-medium); cursor: pointer; }
+.rb-swatch:hover { background: var(--color-hover); } .rb-swatch:focus-visible { outline: 2px solid var(--color-focus); }
+.rb-swatch[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--color-ink); }
+.rb-swatch .sw { display: block; width: 16px; height: 16px; border-radius: 3px; box-shadow: inset 0 0 0 0.5px var(--color-rule-strong); }
+.bubble-link { display: flex; align-items: center; gap: var(--space-2xs); padding: 0 var(--space-3xs); }
+.bubble-link[hidden] { display: none; }
+.bubble-link input { width: 260px; height: 26px; border: 0; border-radius: var(--radius-sm); padding: 0 var(--space-xs); background: var(--color-paper-2); color: var(--color-ink); font: inherit; font-size: var(--text-sm); }
+.bubble-link input:focus-visible { outline: 2px solid var(--color-focus); }
+.bubble.is-link > :not(.bubble-link) { display: none; }
+.bubble-select { height: 26px; border: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: var(--text-sm); border-radius: var(--radius-sm); padding: 0 var(--space-3xs); }
+.bubble-select:hover { background: var(--color-hover); }
 .rich-raw { position: relative; margin: 0 0 1em; padding: var(--space-2xs) var(--space-sm); border-radius: var(--radius-md); outline: 0.5px solid transparent; outline-offset: 0; }
 .rich-raw:hover, .rich-raw.raw-editing { outline-color: var(--color-rule-strong); }
 .rich-raw.raw-selected { outline: 1.5px solid var(--color-ink); }

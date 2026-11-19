@@ -72,6 +72,45 @@ md.core.ruler.after('block', 'callouts', (state) => {
   }
 });
 
+// Folio page syntax: [text]{color=red bg=yellow}, %%hidden comments%%, {align=center} after a paragraph or heading
+const PALETTE = 'gray|brown|orange|yellow|green|blue|purple|pink|red';
+md.inline.ruler.before('link', 'folio_color', (state, silent) => {
+  const m = state.src.slice(state.pos).match(new RegExp(`^\\[((?:\\\\.|[^\\[\\]\\\\\\n])+)\\]\\{((?:\\s*(?:color|bg)=(?:${PALETTE}))+)\\s*\\}`));
+  if (!m) return false;
+  if (!silent) {
+    const a = {}; for (const x of m[2].matchAll(/(color|bg)=(\w+)/g)) a[x[1]] = x[2];
+    const open = state.push('folio_color_open', 'span', 1);
+    if (a.color) open.attrSet('data-color', a.color); if (a.bg) open.attrSet('data-bg', a.bg);
+    const max = state.posMax; state.pos += 1; state.posMax = state.pos + m[1].length;
+    state.md.inline.tokenize(state); state.posMax = max;
+    state.push('folio_color_close', 'span', -1);
+  }
+  state.pos += m[0].length - (silent ? 0 : 1 + m[1].length);
+  return true;
+});
+md.inline.ruler.before('emphasis', 'folio_hidden', (state, silent) => {
+  const m = state.src.slice(state.pos).match(/^%%([^%\n](?:[^\n]*?[^%\n])?)%%/);
+  if (!m) return false;
+  state.pos += m[0].length; // hidden: nothing is drawn
+  return true;
+});
+md.core.ruler.after('inline', 'folio_align', (state) => {
+  const tk = state.tokens;
+  for (let i = 0; i < tk.length - 1; i++) {
+    const t = tk[i], inline = tk[i + 1];
+    if (inline.type !== 'inline' || !inline.children?.length) continue;
+    const kids = inline.children, last = kids.at(-1);
+    if (last.type !== 'text') continue;
+    if (t.type === 'paragraph_open' && kids.length >= 2 && kids.at(-2).type === 'softbreak') {
+      const m = last.content.match(/^\{align=(left|center|right|justify)\}\s*$/);
+      if (m) { kids.splice(-2, 2); t.attrSet('data-align', m[1]); }
+    } else if (t.type === 'heading_open') {
+      const m = last.content.match(/\s+\{align=(left|center|right|justify)\}\s*$/);
+      if (m) { last.content = last.content.slice(0, m.index); inline.content = inline.content.replace(/\s+\{align=\w+\}\s*$/, ''); t.attrSet('data-align', m[1]); }
+    }
+  }
+});
+
 // [[Wiki links]] and [[Note|label]]
 md.inline.ruler.before('link', 'wikilink', (state, silent) => {
   const src = state.src.slice(state.pos);
@@ -103,7 +142,7 @@ export function render(text) {
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
   if (meta?.length) html = `<dl class="frontmatter" data-line="0">${meta.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
   return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-spec', 'target', 'aria-hidden'],
+    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],
     FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form'],
   });
@@ -114,7 +153,7 @@ export function headings(text) {
   text.split('\n').forEach((l, i) => {
     if (/^\s*(```|~~~)/.test(l)) fence = !fence;
     const m = !fence && l.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
-    if (m) out.push({ level: m[1].length, text: m[2].replace(/[*_`]/g, ''), line: i });
+    if (m) out.push({ level: m[1].length, text: m[2].replace(/\s+\{align=\w+\}$/, '').replace(/\[([^\]]+)\]\{[^}]*\}/g, '$1').replace(/%%[^%]*%%/g, '').replace(/[*_`]/g, '').trim(), line: i });
   });
   return out;
 }

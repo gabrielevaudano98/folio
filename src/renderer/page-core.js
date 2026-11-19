@@ -107,12 +107,16 @@ export function createPageCodec(md) {
     const content = [];
     for (const b of blocks) {
       let nodes = null;
-      if (!b.gap) {
+      {
         try {
-          const refDefs = DEF.test(b.src) ? '' : used(b.src, false), defs = DEF.test(b.src) ? '' : [refDefs, used(b.src, true)].filter(Boolean).join('\n\n');
+          const isDef = DEF.test(b.src);
+          const refDefs = isDef ? '' : used(b.src, false), defs = isDef ? '' : [refDefs, used(b.src, true)].filter(Boolean).join('\n\n');
           const parsed = md.parse(refDefs ? `${b.src}\n\n${refDefs}` : b.src).content || [];
           const back = serialize(parsed, style);
-          if (parsed.length && !parsed.some((n) => n.type === 'folioRaw') && draw(back, defs) === draw(b.src, defs)) nodes = parsed;
+          // a definition draws nothing on its own: draw it with references to its labels
+          const refs = isDef ? [...b.src.matchAll(/^ {0,3}\[(\^?[^\]\n]+)\]:/gm)].map((m) => `[${m[1]}]`).join(' ') : '';
+          const look = (t) => (refs ? draw(`${refs}\n\n${t}`) : draw(t, defs));
+          if (parsed.length && !parsed.some((n) => n.type === 'folioRaw') && look(back) === look(b.src)) nodes = parsed;
         } catch { nodes = null; }
       }
       b.raw = !nodes;
