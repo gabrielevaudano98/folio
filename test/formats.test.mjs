@@ -10,6 +10,9 @@ import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, add
 import { getSchema } from '@tiptap/core';
 import { MarkdownManager } from '@tiptap/markdown';
 import { pageExtensions } from '../src/renderer/page-schema.js';
+import { portableMarkdown } from '../src/renderer/page-syntax.js';
+import { headings } from '../src/renderer/markdown.js';
+import { Window } from 'happy-dom';
 import { createPageCodec, splitBlocks } from '../src/renderer/page-core.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
@@ -166,8 +169,10 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   const bad = pd('---\nmarp: true\nink: "#aaaaaa"\n---\n\nNo title here\n\n![](a.png)\n\n::: box #tiny x=0 y=0 w=100 h=40 size=12 color=#cccccc fill=#ffffff\nhello\n:::\n\n---\n\n## Same\n\n---\n\n## Same\n');
   const kinds = checkDeck(bad).map((x) => x.kind).sort(); assert.deepEqual(kinds, ['alt', 'contrast', 'contrast', 'contrast', 'contrast', 'duplicate', 'duplicate', 'size', 'title']);
   ok('the accessibility checker finds missing titles, picture descriptions, low contrast, tiny text and duplicate titles');
-// pages: lossless Markdown in the page editor
+// pages: lossless Markdown in the page editor (with a DOM, as in the app: TipTap reads inline HTML only when it has one)
 {
+  const win = new Window(); win.document.write('<!DOCTYPE html><html><body></body></html>');
+  Object.assign(globalThis, { window: win, document: win.document, DOMParser: win.DOMParser });
   const ext = pageExtensions(); const schema = getSchema(ext);
   const codec = createPageCodec(new MarkdownManager({ extensions: ext, markedOptions: { gfm: true } }));
   const open = (text) => { const m = codec.load(text); const doc = schema.nodeFromJSON(m.json); assert(codec.bind(m, doc)); return { m, doc, kids: Array.from({ length: doc.childCount }, (_, i) => doc.child(i)) }; };
@@ -190,11 +195,10 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   ok(`page corpus (${corpus.length} files): opening is byte-identical, editing a paragraph rewrites only that paragraph`);
 
   const obs = open(fx('pages/obsidian.md'));
-  const raw = obs.m.blocks.filter((b) => b.raw).map((b) => b.src);
-  assert(raw.some((s) => s.startsWith('[^1]:')) && raw.some((s) => s.includes('[^1]')) && raw.some((s) => s.startsWith('$$')));
+  assert(!obs.m.blocks.some((b) => b.raw)); ok('an Obsidian page (footnotes, maths, callouts, comments) is fully editable');
   const html = open(fx('pages/html.md')).m.blocks.filter((b) => b.raw).map((b) => b.src);
-  assert(html.some((s) => s.startsWith('<details>')) && html.some((s) => s.startsWith('<!--')));
-  ok('footnotes, maths and HTML the editor cannot hold become raw blocks instead of being rewritten');
+  assert(html.some((s) => s.startsWith('<details>')) && html.some((s) => s.startsWith('<!--')) && html.some((s) => s.includes('<kbd>')));
+  ok('HTML the editor cannot hold becomes raw blocks instead of being rewritten');
 
   const g = open(fx('pages/gfm.md')); const gt = fx('pages/gfm.md');
   const li = g.m.blocks.findIndex((b) => b.src.startsWith('* Star'));
@@ -210,9 +214,9 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   const del = codec.save(g.m, withKids(g.kids.filter((_, i) => i !== g.m.first[1])));
   assert(!del.includes('A first paragraph')); assert(del.includes(g.m.blocks[2].src) && del.startsWith(g.m.blocks[0].src)); ok('deleting a block removes only that block');
 
-  const r = obs.kids.findIndex((n) => n.type.name === 'folioRaw' && n.attrs.source.startsWith('$$'));
-  const edRaw = codec.save(obs.m, withKids(obs.kids.map((n, i) => (i === r ? n.type.create({ source: '$$\nx = 1\n$$' }) : n))));
-  assert(edRaw.includes('\n$$\nx = 1\n$$\n')); assert(edRaw.includes('[^1]: The footnote text')); ok('a raw block edited as source is written back as typed');
+  const hp = open(fx('pages/html.md')); const r = hp.kids.findIndex((n) => n.type.name === 'folioRaw' && n.attrs.source.startsWith('<p align'));
+  const edRaw = codec.save(hp.m, withKids(hp.kids.map((n, i) => (i === r ? n.type.create({ source: '<p align="right">Moved</p>' }) : n))));
+  assert.equal(edRaw, fx('pages/html.md').replace('<p align="center">Centred paragraph</p>', '<p align="right">Moved</p>')); ok('a raw block edited as source is written back as typed');
 
   const fmText = fx('pages/obsidian.md'); const fmEd = open(fmText);
   const h = fmEd.kids.slice(); h[0] = schema.node('heading', { level: 1 }, [schema.text('Renamed')]);
@@ -221,8 +225,35 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert(!obs.m.json.content.some((n) => n.type === 'paragraph' && !n.content?.length)); ok('loading adds no empty paragraphs');
   const trail = open(fx('pages/obsidian.md')); const withTrail = withKids([...trail.kids, para('')]); const t2 = codec.load(fx('pages/obsidian.md'));
   assert(codec.bind(t2, withTrail)); assert.equal(codec.save(t2, withTrail), fx('pages/obsidian.md')); ok('the editor\'s trailing empty paragraph belongs to no block');
+  // D1 syntax: each form reads and writes back unchanged, and is a real node or mark
+  const forms = {
+    'Water H<sub>2</sub>O and E = mc<sup>2</sup>.': ['subscript', 'superscript'],
+    'Euler $e^{i\\pi} + 1 = 0$ is neat.': ['inlineMath'],
+    '$$\n\\frac{a}{b}\n$$': ['blockMath'],
+    'A claim[^n1] and a note^[Said in place.].\n\n[^n1]: The source, with **bold**.': ['footnoteRef', 'footnoteInline', 'footnoteDef'],
+    'Visible %%only for me%% text.': ['hiddenComment'],
+    'A [red word]{color=red} and [marked]{color=blue bg=yellow}.': ['folioColor'],
+    'Centred paragraph\n{align=center}': ['textAlign:center'],
+    '## Right heading {align=right}': ['textAlign:right'],
+    'Prices $5 and $10 stay text.': [],
+  };
+  for (const [src, want] of Object.entries(forms)) {
+    const { m, doc } = open(src);
+    assert.equal(codec.save(m, doc), src); assert(!m.blocks.some((b) => b.raw), `${src} should not be raw`);
+    const seen = new Set(); doc.descendants((n) => { seen.add(n.type.name); n.marks.forEach((k) => seen.add(k.type.name)); if (n.attrs?.textAlign) seen.add('textAlign:' + n.attrs.textAlign); });
+    for (const w of want) assert(seen.has(w), `${src} → ${w}`);
+    if (!want.length) assert(!seen.has('inlineMath'));
+  }
+  ok('superscript, subscript, maths, footnotes, hidden comments, colour and alignment read and write back unchanged');
+  const made = schema.node('doc', null, [schema.node('paragraph', { textAlign: 'center' }, [schema.text('Hi ', []), schema.text('there', [schema.marks.folioColor.create({ color: 'green' })]), schema.text(' x', [schema.marks.superscript.create()])])]);
+  assert.equal(codec.save(codec.load(''), made), 'Hi [there]{color=green} <sup>x</sup>\n{align=center}\n'); ok('colour, alignment and superscript made in the editor write Folio Markdown');
+  assert.equal(portableMarkdown('A [word]{color=red bg=yellow} here.\n{align=center}\n\n## T {align=right}\n'), 'A word here.\n\n## T\n'); ok('portable export removes Folio-only colour and alignment');
+  assert.deepEqual(headings('# A [red]{color=red} title {align=center}\n## B %%x%%').map((h) => h.text), ['A red title', 'B']); ok('the outline shows headings without Folio syntax');
+
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
+  for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
+  await win.happyDOM.close();
 }
 
 // charts

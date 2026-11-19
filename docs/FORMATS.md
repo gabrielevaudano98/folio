@@ -29,12 +29,32 @@ Any document can point at a part of another one. References are plain text, so t
 
 ## Pages
 
-A page is plain Markdown (CommonMark, GFM, Obsidian syntax). The Write view never reformats what you did not touch:
+A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extensions. Write it as you would anywhere else.
+
+| What | Markdown | Notes |
+| --- | --- | --- |
+| Bold, italic, strike, code, link | `**b**` `*i*` `~~s~~` `` `c` `` `[text](url)` | |
+| Underline | `<u>text</u>` | |
+| Highlight | `==text==` | |
+| Superscript, subscript | `E = mc<sup>2</sup>`, `H<sub>2</sub>O` | |
+| Inline maths | `$e^{i\pi} + 1 = 0$` | KaTeX. No space after the opening `$` or before the closing one, no digit right after it, so `$5 and $10` stays text. |
+| Maths block | `$$` on its own line, the formula, `$$` | |
+| Footnote | `Claim[^1]` and, anywhere, `[^1]: Source text.` | Labels can be words: `[^source]`. |
+| Inline footnote | `Claim^[Source text.]` | |
+| Hidden comment | `%%only in the file%%` | Not shown in Read view or exports. |
+| Callout | `> [!tip] Title` then `> body` | note, tip, important, warning, caution, and Obsidian types. `[!tip]-` starts folded. |
+| Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
+| Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |
+| Alignment (Folio) | a paragraph, then `{align=center}` on the next line; a heading: `## Title {align=right}` | left, center, right, justify. |
+
+Colour and alignment use Pandoc attribute syntax. Other editors show them as plain text; **Export as portable Markdown** removes them.
+
+The Write view never reformats what you did not touch:
 
 - Opening a page does not change the file.
 - Editing a block rewrites only that block (a paragraph, a heading, a whole list or table). Every other byte stays as written, including blank lines, bullet markers and front matter.
 - A rewritten list keeps the bullet marker (`*`, `+`, `-`) and numbering style (`1.` or `1)`) the page already uses.
-- Markdown the Write view cannot edit without loss (footnotes, maths, raw HTML, foldable callouts, link definitions) is shown drawn, marked "Kept as written", and edited as source (double-click, Enter, or "Edit source"). It is written back exactly as typed.
+- Markdown the Write view cannot edit without loss (raw HTML, link reference definitions) is shown drawn, marked "Kept as written", and edited as source (double-click, Enter, or "Edit source"). It is written back exactly as typed.
 
 Assistants editing a page through MCP can rely on the same rule: unchanged blocks keep their text.
 

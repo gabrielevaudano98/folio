@@ -7,6 +7,7 @@ import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Image from '@tiptap/extension-image';
 import Highlight from '@tiptap/extension-highlight';
 import CodeBlock from '@tiptap/extension-code-block';
+import { AlignedParagraph, AlignedHeading, pageSyntax } from './page-syntax.js';
 
 /* Markdown the editor cannot hold without loss. It is shown drawn, edited as source, and written back byte for byte. */
 export const FolioRaw = Node.create({
@@ -21,14 +22,17 @@ export const FolioRaw = Node.create({
   renderMarkdown(node) { return node.attrs?.source ?? ''; },
 });
 
-export function pageExtensions({ codeBlock = CodeBlock, image = Image.configure({ inline: false, allowBase64: true }), raw = FolioRaw, link = {} } = {}) {
+export function pageExtensions({ codeBlock = CodeBlock, image = Image.configure({ inline: false, allowBase64: true }), raw = FolioRaw, link = {}, views = [] } = {}) {
+  const byName = new Map(views.map((v) => [v.name, v]));
   return [
-    StarterKit.configure({ link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener' }, ...link }, codeBlock: false }),
+    StarterKit.configure({ link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener' }, ...link }, codeBlock: false, paragraph: false, heading: false }),
+    AlignedParagraph, AlignedHeading,
     codeBlock,
     TableKit.configure({ table: { resizable: false } }),
     TaskList, TaskItem.configure({ nested: true }),
     image,
     Highlight,
+    ...pageSyntax().map((e) => byName.get(e.name) || e),
     raw,
   ];
 }
