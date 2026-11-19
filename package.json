@@ -68,6 +68,7 @@
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^12.3.0",
     "moveable": "^0.53.0",
+    "polygon-clipping": "^0.15.7",
     "pptxgenjs": "^4.0.1",
     "selecto": "^1.26.3",
     "zod": "^4.6.7"

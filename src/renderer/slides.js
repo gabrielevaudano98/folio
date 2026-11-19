@@ -6,7 +6,7 @@ import { hydrateCharts } from './markdown.js';
 import { mountCanvas } from './slides-canvas.js';
 import { LIBRARY, shapeSvg, defaultSize } from './board-core.js';
 import { startTextEdit } from './slides-text.js';
-import { scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
+import { pathBlock, polygonsBlock, simplify, parsePoints, pointsText, replaceImageSrc, parseFill, MASKS, SHADOWS, scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -18,6 +18,7 @@ export function mountSlides(host, ctx) {
       <button class="btn" type="button" data-sl="box" title="Add a text box you can place anywhere">${icons.plus} Text box</button>
       <button class="btn" type="button" data-sl="insert" aria-haspopup="menu" title="Insert shapes, lines, images, tables, charts, icons, media">${icons.plus} Insert</button>
       <button class="btn" type="button" data-sl="arrange" aria-haspopup="menu" title="Align, distribute, order, group, lock">Arrange</button>
+      <label class="sf-check"><input type="checkbox" data-sl-format> Format</label>
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
       <label class="sf-check"><input type="checkbox" data-sl-grid> Grid</label>
       <div class="sf-sep"></div>
@@ -49,7 +50,7 @@ export function mountSlides(host, ctx) {
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
-        <div class="sl-layers" hidden aria-label="Objects on this slide"></div>
+        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div></div>
         <div class="sl-sync" role="status" hidden></div>
         <div class="sl-gallery" role="dialog" aria-label="Insert" hidden></div>
         <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
@@ -135,7 +136,7 @@ export function mountSlides(host, ctx) {
       frame, stage, width: deck.width, height: deck.height, selected,
       getChunk: () => chunks().list[cur],
       edit(fn) { const { fm, list } = chunks(); list[cur] = fn(list[cur]); commit(joinDeck(fm, list)); },
-      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); syncFmt(); },
+      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); syncFmt(); renderFormat(); drawVertices(); },
     });
     }
     host.querySelector('[data-sl-layout]').value = s.layout;
@@ -143,7 +144,7 @@ export function mountSlides(host, ctx) {
     host.querySelector('[data-sl-size]').value = deck.global.size === '4:3' ? '4:3' : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur').textContent = cur + 1;
-    renderLayers(); syncFmt(); checkSync();
+    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.slides.length} ${deck.slides.length === 1 ? 'slide' : 'slides'}`);
@@ -220,6 +221,9 @@ export function mountSlides(host, ctx) {
       item('Group', many, () => { const g = nextGroup(objs); patchSel(selected.map((i) => [i, { group: g }])); }),
       item('Ungroup', grouped, () => patchSel(selected.map((i) => [i, { group: null }]))),
       item('Lock', one, () => patchSel(selected.map((i) => [i, { lock: 'true' }]))), '-',
+      ...(() => { const ok = many && selected.every((i) => ['shape', 'box', 'path', 'image'].includes(objs[i]?.kind)); return [
+        item('Merge shapes: union', ok, () => mergeSel('union')), item('Merge shapes: intersect', ok, () => mergeSel('intersection')),
+        item('Merge shapes: subtract', ok, () => mergeSel('difference')), item('Merge shapes: combine', ok, () => mergeSel('xor')), '-']; })(),
       item('Copy', one, () => copySel()), item('Cut', one, () => { copySel(); deleteSel(); }), { label: 'Paste', run: () => pasteSel(), disabled: !clip.length },
       item('Duplicate', one, () => { copySel(); pasteSel(); }),
       item('Delete', one, () => deleteSel()),
@@ -258,7 +262,7 @@ export function mountSlides(host, ctx) {
     if (locked(o)) return renderLayers();
     canvas?.select(selected, { notify: false }); renderLayers();
   });
-  host.querySelector('[data-sl-layers]').addEventListener('change', (e) => { host.querySelector('.sl-layers').hidden = !e.target.checked; renderLayers(); });
+  host.querySelector('[data-sl-layers]').addEventListener('change', (e) => { host.querySelector('.sl-layers').hidden = !e.target.checked; dockRoom(); renderLayers(); });
   host.querySelector('[data-sl-grid]').addEventListener('change', (e) => { frame.classList.toggle('sl-grid', e.target.checked); canvas?.setGrid(e.target.checked ? 40 : 0); });
   host.querySelector('[data-sl="arrange"]').addEventListener('click', (e) => arrangeMenu(e.currentTarget));
   /* text on the canvas (P3) */
@@ -367,6 +371,197 @@ export function mountSlides(host, ctx) {
     try { const src = await sourceOf(ref); const { fm, list } = chunks(); list.splice(cur + 1, 0, syncedCopy(ref, src)); cur += 1; commit(joinDeck(fm, list)); ctx.toast('Added a synced copy. It will offer to update when the source changes.'); }
     catch (e) { ctx.toast(e.message, { kind: 'error' }); }
   }
+  /* format pane (P6) */
+  const fpane = host.querySelector('.sl-format');
+  host.querySelector('[data-sl-format]').addEventListener('change', (e) => { fpane.hidden = !e.target.checked; dockRoom(); renderFormat(); });
+  function dockRoom() { const open = !fpane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
+  const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : /^#[0-9a-f]{3}$/i.test(c || '') ? '#' + c.slice(1).split('').map((x) => x + x).join('') : d);
+  const fRow = (label, html) => `<label class="fp-row"><span>${label}</span>${html}</label>`;
+  const num = (k, v, step = 1, min = '', max = '') => `<input class="input fp-num" type="number" data-fk="${k}" value="${v ?? ''}" step="${step}"${min !== '' ? ` min="${min}"` : ''}${max !== '' ? ` max="${max}"` : ''}>`;
+  const col = (k, v, d) => `<input class="sf-color" type="color" data-fk="${k}" value="${hex(v, d)}">`;
+  const sel = (k, v, opts) => `<select class="rb-select fp-sel" data-fk="${k}">${opts.map(([val, l]) => `<option value="${val}"${String(v ?? '') === val ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+  const range = (k, v, min, max, step) => `<input class="fp-range" type="range" data-fk="${k}" min="${min}" max="${max}" step="${step}" value="${v}">`;
+  const adjOf = (a) => Object.fromEntries(String(a.adjust || '').split(',').map((x) => x.split(':')).filter((x) => x.length === 2).map(([k, v]) => [k.trim(), parseFloat(v)]));
+  function renderFormat() {
+    if (fpane.hidden) return;
+    const objs = objsNow(); const picked = selected.map((i) => objs[i]).filter(Boolean);
+    if (!picked.length) { fpane.innerHTML = '<div class="fp-head">Format</div><p class="fp-empty">Select an object on the slide to format it.</p>'; return; }
+    const o = picked[0], a = o.attrs, g = geometry(o), kinds = new Set(picked.map((x) => x.kind));
+    const only = (k) => kinds.size === 1 && kinds.has(k);
+    const fill = parseFill(a.fill) || { kind: 'none' };
+    const ft = fill.kind === 'solid' ? (fill.color === 'none' ? 'none' : 'solid') : fill.kind;
+    const adj = adjOf(a); const crop = (a.crop || '0,0,1,1').split(',').map(Number);
+    let h = `<div class="fp-head">Format <span class="fp-sub">${picked.length > 1 ? `${picked.length} objects` : esc(o.id || o.kind)}</span></div>`;
+    if (picked.length === 1 && o.kind !== 'line') h += `<section class="fp-sec"><h3>Position and size</h3><div class="fp-grid">${fRow('X', num('x', g.x))}${fRow('Y', num('y', g.y))}${fRow('Width', num('w', g.w, 1, 1))}${fRow('Height', num('h', g.h, 1, 1))}${fRow('Rotate', num('rotate', g.rotate || 0, 1, -360, 360))}</div></section>`;
+    if ([...kinds].some((k) => k === 'box' || k === 'shape' || k === 'path')) {
+      h += `<section class="fp-sec"><h3>Fill</h3>${fRow('Type', sel('fill-type', ft, [['none', 'None'], ['solid', 'Solid'], ['linear', 'Linear gradient'], ['radial', 'Radial gradient']]))}`;
+      if (ft === 'solid') h += fRow('Colour', col('fill-1', fill.color, '#f2f2f2'));
+      if (ft === 'linear' || ft === 'radial') h += `<div class="fp-grid">${fRow('From', col('fill-1', fill.stops[0], '#111111'))}${fRow('To', col('fill-2', fill.stops.at(-1), '#888888'))}${ft === 'linear' ? fRow('Angle', num('fill-angle', fill.angle, 15, -360, 360)) : ''}</div>`;
+      h += '</section>';
+    }
+    if ([...kinds].some((k) => ['box', 'shape', 'image', 'line', 'path'].includes(k))) {
+      h += `<section class="fp-sec"><h3>${only('line') ? 'Line' : 'Border'}</h3><div class="fp-grid">${fRow('Colour', col('stroke', a.stroke, '#1a1a1a'))}${fRow('Width', num(only('line') ? 'width' : 'border', a[only('line') ? 'width' : 'border'] ?? '', 0.5, 0, 40))}</div>${fRow('Dashed', `<input type="checkbox" data-fk="dash"${a.dash === 'true' ? ' checked' : ''}>`)}`;
+      if (only('line')) h += `<div class="fp-grid">${fRow('Start', sel('tail', a.tail || '', [['', 'None'], ['arrow', 'Arrow']]))}${fRow('End', sel('head', a.head || '', [['', 'None'], ['arrow', 'Arrow']]))}</div>${fRow('Route', sel('route', a.route || '', [['', 'Straight'], ['elbow', 'Elbow']]))}`;
+      if (kinds.has('box') || kinds.has('image')) h += fRow('Corners', num('radius', a.radius ?? '', 1, 0, 400));
+      h += '</section>';
+    }
+    h += `<section class="fp-sec"><h3>Effects</h3>${fRow('Shadow', sel('shadow', a.shadow || '', [['', 'None'], ...Object.keys(SHADOWS).map((k) => [k, k[0].toUpperCase() + k.slice(1)])]))}${fRow('Opacity', range('opacity', g.opacity ?? 1, 0, 1, 0.05))}`;
+    if ([...kinds].some((k) => ['image', 'icon', 'shape', 'path'].includes(k))) h += `<div class="fp-btns"><button class="btn" type="button" data-fa="flip-h">Flip horizontal</button><button class="btn" type="button" data-fa="flip-v">Flip vertical</button></div>`;
+    h += '</section>';
+    if (only('image')) {
+      h += `<section class="fp-sec"><h3>Picture</h3>${fRow('Crop to shape', sel('mask', a.mask || '', [['', 'None'], ...Object.keys(MASKS).map((k) => [k, k[0].toUpperCase() + k.slice(1)])]))}
+        <div class="fp-grid">${fRow('Crop left %', num('crop-l', Math.round(crop[0] * 100), 1, 0, 95))}${fRow('Crop top %', num('crop-t', Math.round(crop[1] * 100), 1, 0, 95))}${fRow('Crop right %', num('crop-r', Math.round((1 - crop[0] - crop[2]) * 100), 1, 0, 95))}${fRow('Crop bottom %', num('crop-b', Math.round((1 - crop[1] - crop[3]) * 100), 1, 0, 95))}</div>
+        ${fRow('Brightness', range('adj-brightness', adj.brightness ?? 1, 0, 2, 0.05))}${fRow('Contrast', range('adj-contrast', adj.contrast ?? 1, 0, 2, 0.05))}${fRow('Saturation', range('adj-saturate', adj.saturate ?? 1, 0, 2, 0.05))}${fRow('Greyscale', range('adj-grayscale', adj.grayscale ?? 0, 0, 1, 0.05))}${fRow('Blur', range('adj-blur', adj.blur ?? 0, 0, 20, 0.5))}
+        ${fRow('Fit', sel('fit', a.fit || '', [['', 'Fill the frame'], ['contain', 'Show all']]))}
+        <label class="fp-row fp-wide"><span>Alt text</span><input class="input" type="text" data-fk="alt" value="${esc(a.alt ?? o.alt ?? '')}" placeholder="Describe the picture for screen readers"></label>
+        <div class="fp-btns"><button class="btn" type="button" data-fa="replace">Replace…</button><button class="btn" type="button" data-fa="natural">Reset size</button><button class="btn" type="button" data-fa="reset-adjust">Reset adjustments</button></div></section>`;
+    }
+    if (only('path') && a.points) h += `<section class="fp-sec"><h3>Free shape</h3>${fRow('Closed', `<input type="checkbox" data-fk="closed"${a.closed === 'true' ? ' checked' : ''}>`)}${fRow('Smooth', `<input type="checkbox" data-fk="smooth"${a.smooth === 'true' ? ' checked' : ''}>`)}<p class="fp-note">Drag the square handles to move points. Double-click one to remove it.</p></section>`;
+    if (only('icon')) h += `<section class="fp-sec"><h3>Icon</h3>${fRow('Colour', col('color', a.color, '#1a1a1a'))}${fRow('Line weight', range('weight', a.weight || 2, 0.5, 4, 0.25))}<div class="fp-btns"><button class="btn" type="button" data-fa="icon">Change icon…</button></div></section>`;
+    if (only('media')) h += `<section class="fp-sec"><h3>Playback</h3>${fRow('Loop', `<input type="checkbox" data-fk="loop"${a.loop === 'true' ? ' checked' : ''}>`)}${fRow('Muted', `<input type="checkbox" data-fk="muted"${a.muted === 'true' ? ' checked' : ''}>`)}${fRow('Start when the slide shows', `<input type="checkbox" data-fk="autoplay"${a.autoplay === 'true' ? ' checked' : ''}>`)}</section>`;
+    const focusKey = document.activeElement?.closest?.('.sl-format') ? document.activeElement.dataset.fk : null;
+    fpane.innerHTML = h;
+    if (focusKey) fpane.querySelector(`[data-fk="${focusKey}"]`)?.focus();
+  }
+  function fpWrite(k, el) {
+    const objs = objsNow(); const v = el.type === 'checkbox' ? (el.checked ? 'true' : null) : el.value;
+    const each = (fn) => patchSel(selected.filter((i) => objs[i]).map((i) => [i, fn(objs[i], objs[i].attrs)]).filter(([, p]) => p));
+    if (['x', 'y', 'w', 'h', 'rotate'].includes(k)) return each(() => ({ [k]: v === '' ? null : Math.round(parseFloat(v) * 10) / 10 }));
+    if (k.startsWith('fill-')) {
+      const t = fpane.querySelector('[data-fk="fill-type"]').value;
+      const c1 = fpane.querySelector('[data-fk="fill-1"]')?.value || '#111111', c2 = fpane.querySelector('[data-fk="fill-2"]')?.value || '#888888', ang = fpane.querySelector('[data-fk="fill-angle"]')?.value || 90;
+      const fill = t === 'none' ? 'none' : t === 'solid' ? c1 : t === 'linear' ? `linear(${c1},${c2},${ang})` : `radial(${c1},${c2})`;
+      return each((o) => (['box', 'shape', 'path'].includes(o.kind) ? { fill } : null));
+    }
+    if (k.startsWith('crop-')) {
+      const p = (n) => Math.max(0, Math.min(95, parseFloat(fpane.querySelector(`[data-fk="crop-${n}"]`).value) || 0)) / 100;
+      const l = p('l'), t = p('t'), r = p('r'), b = p('b');
+      const crop = l + r >= 0.95 || t + b >= 0.95 ? null : (l || t || r || b) ? [l, t, 1 - l - r, 1 - t - b].map((x) => Math.round(x * 1000) / 1000).join(',') : null;
+      return each((o) => (o.kind === 'image' ? { crop } : null));
+    }
+    if (k.startsWith('adj-')) {
+      return each((o, a) => {
+        const cur = adjOf(a); const name = k.slice(4); cur[name] = parseFloat(v);
+        const neutral = { brightness: 1, contrast: 1, saturate: 1, grayscale: 0, blur: 0 };
+        const s2 = Object.entries(cur).filter(([n, x]) => x !== neutral[n]).map(([n, x]) => `${n}:${x}`).join(',');
+        return { adjust: s2 || null };
+      });
+    }
+    if (k === 'opacity') return each(() => ({ opacity: parseFloat(v) >= 1 ? null : parseFloat(v) }));
+    return each(() => ({ [k]: v === '' ? null : v }));
+  }
+  fpane.addEventListener('change', (e) => { const el = e.target.closest('[data-fk]'); if (el) fpWrite(el.dataset.fk, el); });
+  fpane.addEventListener('input', (e) => {
+    const el = e.target.closest('input[type=range][data-fk]'); if (!el) return;
+    // live preview while dragging a slider, written on change
+    const k = el.dataset.fk; const v = parseFloat(el.value);
+    for (const i of selected) { const node = frame.querySelector(`.sl-obj[data-obj="${i}"]`); if (!node) continue;
+      if (k === 'opacity') node.style.opacity = v;
+      else if (k.startsWith('adj-')) { const img = node.querySelector('img') || node; const cur = adjOf(objsNow()[i].attrs); cur[k.slice(4)] = v; img.style.filter = Object.entries(cur).map(([n, x]) => (n === 'blur' ? `blur(${x}px)` : `${n}(${x})`)).join(' '); }
+    }
+  });
+  fpane.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-fa]'); if (!b) return;
+    const objs = objsNow(); const act = b.dataset.fa;
+    if (act === 'flip-h' || act === 'flip-v') {
+      const ax = act === 'flip-h' ? 'h' : 'v';
+      return patchSel(selected.filter((i) => objs[i]).map((i) => { const f = objs[i].attrs.flip || ''; const has = f.includes(ax); const nf = (has ? f.replace(ax, '') : f + ax).split('').sort().join(''); return [i, { flip: nf || null }]; }));
+    }
+    const i = selected[0]; const o = objs[i];
+    if (act === 'replace') { const src = await ctx.pickImage?.(); if (src) editChunk2((c) => replaceImageSrc(c, i, src)); }
+    if (act === 'natural') {
+      const url = await ctx.resolveImage(o.src);
+      const dim = await new Promise((res) => { const im = new Image(); im.onload = () => res([im.naturalWidth, im.naturalHeight]); im.onerror = () => res(null); im.src = url; });
+      if (dim) { const g = geometry(o); const k2 = Math.min(1, (deck.width * 0.8) / dim[0], (deck.height * 0.8) / dim[1]); patchSel([[i, { w: Math.round(dim[0] * k2), h: Math.round(dim[1] * k2), crop: null, x: g.x, y: g.y }]]); }
+    }
+    if (act === 'reset-adjust') patchSel([[i, { adjust: null, mask: null, crop: null }]]);
+    if (act === 'icon') iconGallery((name) => patchSel([[i, { name }]]));
+  });
+
+  /* merge shapes, freeform drawing, edit points (P6) */
+  async function mergeSel(op) {
+    const { merge } = await import('./slides-merge.js');
+    const objs = objsNow(); const picked = [...selected].sort((a, b) => a - b); const list0 = picked.map((i) => objs[i]);
+    let res; try { res = merge(list0, op); } catch (e) { return ctx.toast(`Could not merge these shapes. ${e.message}`, { kind: 'error' }); }
+    if (!res.length) return ctx.toast(op === 'intersection' ? 'These shapes do not overlap, so nothing is left.' : 'Nothing is left after that operation.');
+    const a = list0[0].attrs;
+    const keep = ['fill', 'stroke', 'border', 'shadow', 'opacity', 'dash'].filter((k) => a[k] != null).map((k) => ` ${k}=${/[\s"']/.test(a[k]) ? `"${a[k]}"` : a[k]}`).join('') || ' fill=#e8e8e8';
+    const gone = new Set(list0.map((o) => o.id).filter(Boolean));
+    editChunk2((c) => {
+      const nid = nextId(c, 'path');
+      let t = picked.slice().reverse().reduce((acc, i) => removeObject(acc, i), c);
+      // connectors that pointed at a merged object now point at the merged shape
+      const lines = scanObjects(t).map((ln, i) => [ln, i]).filter(([ln]) => ln.kind === 'line').reverse();
+      for (const [ln, i] of lines) {
+        const hit = (k) => ln.attrs[k] && gone.has(String(ln.attrs[k]).split('.')[0]);
+        if (hit('from') && hit('to')) { t = removeObject(t, i); continue; }
+        const p2 = {}; for (const k of ['from', 'to']) if (hit(k)) p2[k] = nid;
+        if (Object.keys(p2).length) t = setObjectAttrs(t, i, p2);
+      }
+      t = addObject(t, polygonsBlock(nid, res, keep));
+      selected = [scanObjects(t).length - 1]; return t;
+    });
+    ctx.toast('Merged into one shape. Undo with Ctrl+Z.');
+  }
+  let drawing = null;
+  function startDraw() {
+    if (drawing) return;
+    ctx.toast('Draw on the slide with the mouse. Release to finish, Escape to cancel.');
+    canvas?.select([], { notify: true });
+    const veil = document.createElement('div'); veil.className = 'sl-draw'; frame.appendChild(veil);
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg'); const pl = document.createElementNS(svgNS, 'polyline'); svg.appendChild(pl); veil.appendChild(svg);
+    const k = () => parseFloat(frame.style.getPropertyValue('--k')) || 1;
+    let pts = [];
+    const stop = () => { veil.remove(); drawing = null; removeEventListener('keydown', esc2, true); };
+    const esc2 = (e) => { if (e.key === 'Escape') { e.preventDefault(); stop(); } };
+    addEventListener('keydown', esc2, true);
+    veil.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); try { veil.setPointerCapture(e.pointerId); } catch {} const r = frame.getBoundingClientRect();
+      const at = (ev) => [(ev.clientX - r.left) / k(), (ev.clientY - r.top) / k()];
+      pts = [at(e)];
+      veil.onpointermove = (ev) => { pts.push(at(ev)); pl.setAttribute('points', pts.map((p) => p.map((v) => v * k()).join(',')).join(' ')); };
+      veil.onpointerup = () => {
+        stop();
+        const simple = simplify(pts, 2.5);
+        if (simple.length < 2 || Math.hypot(simple.at(-1)[0] - simple[0][0], simple.at(-1)[1] - simple[0][1]) + simple.length < 6) return;
+        const closed = simple.length > 3 && Math.hypot(simple.at(-1)[0] - simple[0][0], simple.at(-1)[1] - simple[0][1]) < 24;
+        const ptsOut = closed ? simple.slice(0, -1) : simple;
+        editChunk2((c) => { const t = addObject(c, pathBlock(nextId(c, 'path'), ptsOut, closed ? ' closed=true smooth=true fill=#e8e8e8' : ' smooth=true')); selected = [scanObjects(t).length - 1]; return t; });
+      };
+    });
+    drawing = veil;
+  }
+  /* vertex handles for a selected points path: drag to move a point, double-click to delete it */
+  let vtx = [];
+  function drawVertices() {
+    vtx.forEach((h) => h.remove()); vtx = [];
+    if (selected.length !== 1 || textEdit) return;
+    const o = objsNow()[selected[0]]; if (!o || o.kind !== 'path' || !o.attrs.points || locked(o)) return;
+    const g = geometry(o); const pts = parsePoints(o.attrs.points); const k = parseFloat(frame.style.getPropertyValue('--k')) || 1;
+    if (g.rotate) return;
+    pts.forEach(([px, py], j) => {
+      const h = document.createElement('div'); h.className = 'sl-vtx'; h.title = 'Drag to move, double-click to remove';
+      h.style.left = `${(g.x + px * g.w) * k}px`; h.style.top = `${(g.y + py * g.h) * k}px`;
+      h.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation(); try { h.setPointerCapture(e.pointerId); } catch {} const r = frame.getBoundingClientRect(); let last = null;
+        h.onpointermove = (ev) => { last = [(ev.clientX - r.left) / k, (ev.clientY - r.top) / k]; h.style.left = `${last[0] * k}px`; h.style.top = `${last[1] * k}px`; };
+        h.onpointerup = () => {
+          h.onpointermove = h.onpointerup = null; if (!last) return;
+          const abs = pts.map(([qx, qy]) => [g.x + qx * g.w, g.y + qy * g.h]); abs[j] = last;
+          rewritePath(selected[0], abs);
+        };
+      });
+      h.addEventListener('dblclick', (e) => { e.stopPropagation(); if (pts.length <= 2) return; const abs = pts.map(([qx, qy]) => [g.x + qx * g.w, g.y + qy * g.h]); abs.splice(j, 1); rewritePath(selected[0], abs); });
+      frame.appendChild(h); vtx.push(h);
+    });
+  }
+  function rewritePath(i, abs) {
+    const xs = abs.map((p) => p[0]), ys = abs.map((p) => p[1]);
+    const x = Math.min(...xs), y = Math.min(...ys), w = Math.max(1, Math.max(...xs) - x), h = Math.max(1, Math.max(...ys) - y);
+    patchSel([[i, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), points: pointsText(abs.map(([px, py]) => [(px - x) / w, (py - y) / h])) }]]);
+  }
+
   /* insert (P5) */
   const gallery = host.querySelector('.sl-gallery');
   function placeBlock(make, w = 360, h = 160) {
@@ -393,7 +588,7 @@ export function mountSlides(host, ctx) {
       placeBlock(({ x, y, id }) => `::: shape #${id('shape')} type=${sh} x=${x} y=${y} w=${w} h=${h} fill=#e8e8e8\n\n\n:::`, w, h);
     };
   }
-  async function iconGallery() {
+  async function iconGallery(onPick) {
     const { searchIcons, iconSvg } = await import('./slides-icons.js');
     gallery.innerHTML = `<div class="slg-head">Icons <span class="slg-sub">Lucide</span></div><input class="input slg-search" type="search" placeholder="Search icons, e.g. rocket, chart, user" aria-label="Search icons"><div class="slg-grid slg-icons" role="listbox" aria-label="Icons"></div>`;
     gallery.hidden = false;
@@ -408,6 +603,7 @@ export function mountSlides(host, ctx) {
     q.addEventListener('input', show); await show(); q.focus();
     gallery.onclick = (e) => {
       const b = e.target.closest('[data-icon]'); if (!b) return; closeGallery();
+      if (onPick) return onPick(b.dataset.icon);
       placeBlock(({ x, y, id }) => `::: icon #${id('icon')} name=${b.dataset.icon} x=${x} y=${y} w=120 h=120 :::`, 120, 120);
     };
   }
@@ -444,7 +640,8 @@ export function mountSlides(host, ctx) {
     ctx.showMenu(anchor, [
       { label: 'Text box', run: () => addObjectBlock('box') },
       { label: 'Shape…', run: shapeGallery },
-      { label: 'Icon…', run: iconGallery }, '-',
+      { label: 'Icon…', run: () => iconGallery() }, '-',
+      { label: 'Freeform (draw)', run: startDraw },
       { label: 'Line', run: () => line('', 320, 0) },
       { label: 'Arrow', run: () => line(' head=arrow', 320, 0) },
       { label: 'Connector between two objects', run: connectSelected, disabled: selected.length !== 2 }, '-',

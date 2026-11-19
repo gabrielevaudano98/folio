@@ -7,7 +7,7 @@ import mark from 'markdown-it-mark';
 import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
-import { extractObjects, geometry, textStyle, linePoints, linePath } from './slides-objects.js';
+import { extractObjects, geometry, textStyle, linePoints, linePath, fillCss, fillSvg, frameCss, flipCss, adjustCss, safeColor, parsePoints, pointsPath } from './slides-objects.js';
 import { shapeSvg } from './board-core.js';
 import { refsPlugin } from './refs-syntax.js';
 
@@ -148,22 +148,27 @@ export function renderSlide(deck, s, { number = true } = {}) {
     const g = geometry(o);
     if (o.kind === 'line') return lineHtml(o, n, byId);
     const st = [`left:${g.x}px`, `top:${g.y}px`, `width:${g.w}px`, `height:${g.h}px`, `z-index:${10 + g.z}`];
-    if (g.rotate) st.push(`transform:rotate(${g.rotate}deg)`);
+    const a = o.attrs;
+    const tf = [g.rotate ? `rotate(${g.rotate}deg)` : '', o.kind === 'image' || o.kind === 'icon' ? flipCss(a) : ''].filter(Boolean);
+    if (tf.length) st.push(`transform:${tf.join(' ')}`);
     if (g.opacity != null) st.push(`opacity:${g.opacity}`);
-    const a = o.attrs; const cls = ['sl-obj', 'sl-' + o.kind]; if (['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase())) cls.push('is-locked');
+    st.push(...frameCss(o));
+    const cls = ['sl-obj', 'sl-' + o.kind]; if (['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase())) cls.push('is-locked');
     const ref = ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`;
     if (o.kind === 'image') {
+      const adj = adjustCss(a.adjust); const imgF = adj.length ? `filter:${adj.join(' ')};` : '';
+      if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`, 'overflow:hidden');
+      if (a.border || a.stroke) st.push(`outline:${parseFloat(a.border) || 1}px solid ${safeColor(a.stroke) || 'currentColor'}`, `outline-offset:-${parseFloat(a.border) || 1}px`);
       const crop = (a.crop || '').split(',').map(Number);
-      if (crop.length === 4 && crop.every((v) => !Number.isNaN(v))) { const [cx, cy, cw, ch] = crop; st.push('overflow:hidden'); return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><img class="sl-img" data-src="${escape(o.src)}" alt="${escape(a.alt || o.alt || '')}" style="position:absolute;width:${100 / cw}%;height:${100 / ch}%;left:${(-cx / cw) * 100}%;top:${(-cy / ch) * 100}%;object-fit:fill"></div>`; }
-      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><img class="sl-img" data-src="${escape(o.src)}" alt="${escape(a.alt || o.alt || '')}" style="object-fit:${a.fit || 'cover'}"></div>`;
+      if (crop.length === 4 && crop.every((v) => !Number.isNaN(v))) { const [cx, cy, cw, ch] = crop; st.push('overflow:hidden'); return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><img class="sl-img" data-src="${escape(o.src)}" alt="${escape(a.alt || o.alt || '')}" style="position:absolute;width:${100 / cw}%;height:${100 / ch}%;left:${(-cx / cw) * 100}%;top:${(-cy / ch) * 100}%;object-fit:fill;${imgF}"></div>`; }
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><img class="sl-img" data-src="${escape(o.src)}" alt="${escape(a.alt || o.alt || '')}" style="object-fit:${a.fit === 'contain' ? 'contain' : 'cover'};${imgF}"></div>`;
     }
-    if (a.fill && o.kind === 'box') st.push(`background:${escape(a.fill)}`);
-    if (a.color) st.push(`color:${escape(a.color)}`);
+    if (a.fill && o.kind === 'box') { const bg = fillCss(a.fill); if (bg) st.push(`background:${bg}`); }
+    if (safeColor(a.color)) st.push(`color:${safeColor(a.color)}`);
     if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`);
     const ts = textStyle(a);
     if (a.fit === 'shrink') cls.push('is-fit');
     if (o.kind === 'box') st.push(...ts);
-    if (a.border) st.push(`border:${parseFloat(a.border) || 1}px solid ${escape(a.stroke || 'currentColor')}`);
     const inner = DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
     if (o.kind === 'icon') {
       return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><span class="sl-icon-svg" data-icon="${escape(a.name || 'circle')}" data-sw="${escape(a.weight || '2')}"></span></div>`;
@@ -173,9 +178,20 @@ export function renderSlide(deck, s, { number = true } = {}) {
       const opts = `${a.loop === 'true' ? ' loop' : ''}${a.muted === 'true' ? ' muted' : ''}${a.autoplay === 'true' ? ' data-autoplay="1"' : ''}`;
       return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${audio ? `<audio class="sl-media-el" controls preload="metadata" data-src="${escape(a.src || '')}"${opts}></audio>` : `<video class="sl-media-el" controls preload="metadata" playsinline data-src="${escape(a.src || '')}"${a.poster ? ` data-poster="${escape(a.poster)}"` : ''}${opts}></video>`}</div>`;
     }
+    if (o.kind === 'path') {
+      const gid = `sp-${s.index}-${n}`; const fl = fillSvg(a.fill, gid);
+      const closed = a.d ? true : a.closed === 'true';
+      const d = a.d ? String(a.d).replace(/[^MLCZQHVmlczqhv\d.,\s-]/g, '') : pointsPath(parsePoints(a.points), closed, a.smooth === 'true');
+      const sw = a.border != null && a.border !== '' ? parseFloat(a.border) || 0 : 2.5;
+      const flip = flipCss(a);
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 1 1" preserveAspectRatio="none" width="${g.w}" height="${g.h}"${flip ? ` style="transform:${flip}"` : ''}>${fl.defs}<path d="${d}" style="fill:${closed ? fl.fill || 'var(--sl-ink)' : 'none'};${closed && !fl.fill ? 'fill-opacity:.12;' : ''}stroke:${safeColor(a.stroke) || 'var(--sl-ink)'};stroke-width:${sw}px" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"${a.dash === 'true' ? ` stroke-dasharray="${sw * 3} ${sw * 2}"` : ''}/></svg></div>`;
+    }
     if (o.kind === 'shape') {
-      const svg = shapeSvg({ shape: a.type || 'rect', w: g.w, h: g.h, style: { fill: a.fill } }, 'sl-shape-fill');
-      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}">${svg}</svg><div class="sl-obj-text" style="${ts.join(';')}">${inner}</div></div>`;
+      const gid = `sg-${s.index}-${n}`; const fl = fillSvg(a.fill, gid);
+      const svg = shapeSvg({ shape: a.type || 'rect', w: g.w, h: g.h, style: { fill: fl.fill } }, 'sl-shape-fill' + (fl.fill ? ' has-fill' : ''));
+      const sv = [safeColor(a.stroke) ? `--sh-stroke:${safeColor(a.stroke)}` : '', a.border != null && a.border !== '' ? `--sh-sw:${parseFloat(a.border) || 0}` : '', a.dash === 'true' ? '--sh-dash:8 6' : ''].filter(Boolean).join(';');
+      const flip = flipCss(a);
+      return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><svg viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}"${sv || flip ? ` style="${sv}${flip ? `;transform:${flip}` : ''}"` : ''}>${fl.defs}${svg}</svg><div class="sl-obj-text" style="${ts.join(';')}">${inner}</div></div>`;
     }
     return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${inner}</div>`;
   }).join('');

@@ -6,7 +6,7 @@ import { parseWorkbook, serializeWorkbook, evaluator, shiftFormula } from '../sr
 import { findRefs, resolveTarget, rewriteRefs } from '../src/renderer/refs-syntax.js';
 import { resolveRef } from '../src/renderer/refs.js';
 import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter } from '../src/renderer/slides-core.js';
-import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle, linePoints, linePath } from '../src/renderer/slides-objects.js';
+import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle, linePoints, linePath, parseFill, fillCss, fillSvg, adjustCss, frameCss, safeColor, replaceImageSrc, pathBlock, polygonsBlock, simplify, pointsPath, parsePoints } from '../src/renderer/slides-objects.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -118,6 +118,21 @@ assert.equal(movedRefs.split('\n').filter((l, i) => l !== meeting.split('\n')[i]
   const moved = setObjectAttrs(ins.src, 'a', { y: 100 }); const d2 = parseDeck(joinDeck(fm.raw, [moved]));
   const s2 = d2.slides[0]; const by2 = Object.fromEntries(s2.objects.filter((o) => o.id && o.kind !== 'line').map((o) => [o.id, geometry(o)]));
   assert.deepEqual(linePoints(s2.objects[2], by2)[0], [360, 160]); assert.equal(moved.split('\n').filter((l, i) => l !== ins.src.split('\n')[i]).length, 1); ok('moving an object moves its connector without rewriting the connector');
+}
+
+// format (P6)
+assert.equal(fillCss('#f2f2f2'), '#f2f2f2'); assert.equal(fillCss('linear(#111,#888,45)'), 'linear-gradient(45deg, #111, #888)'); assert.equal(fillCss('radial(#fff,#000)'), 'radial-gradient(circle, #fff, #000)');
+assert.equal(fillCss('red;background:url(x)'), null); assert.equal(safeColor('expression(alert(1))'), null); ok('fills accept colours and gradients and refuse anything else');
+assert.match(fillSvg('linear(#111,#888,90)', 'g1').defs, /<linearGradient id="g1" x1="0" y1="0.5" x2="1" y2="0.5">/); assert.equal(fillSvg('linear(#111,#888,90)', 'g1').fill, 'url(#g1)'); ok('shapes get SVG gradients');
+assert.deepEqual(adjustCss('brightness:1.2,grayscale:1,blur:3,evil:9,contrast:99'), ['brightness(1.2)', 'grayscale(1)', 'blur(3px)', 'contrast(3)']); ok('picture adjustments are clamped and filtered');
+assert.deepEqual(frameCss({ kind: 'box', attrs: { shadow: 'soft', border: '2', stroke: '#333', dash: 'true' } }), ['filter:drop-shadow(0 6px 18px rgba(0,0,0,.18))', 'border:2px dashed #333']); assert.deepEqual(frameCss({ kind: 'image', attrs: { mask: 'circle' } }), ['clip-path:circle(50% at 50% 50%)']); ok('shadows, borders and picture masks');
+assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, 'assets/b.png'), '![Cover](assets/b.png "t"){x=1 y=2 w=3 h=4}'); ok('replacing a picture keeps its alt text, title and geometry');
+{
+  const blk = pathBlock('p1', [[100, 100], [300, 100], [200, 300]], ' closed=true'); assert.equal(blk, '::: path #p1 x=100 y=100 w=200 h=200 points="0,0 1,0 0.5,1" closed=true :::');
+  const [o] = scanObjects(blk); assert.equal(o.kind, 'path'); assert.deepEqual(parsePoints(o.attrs.points), [[0, 0], [1, 0], [0.5, 1]]); ok('free shapes store points relative to their box');
+  assert.equal(pointsPath([[0, 0], [1, 0], [0.5, 1]], true, false), 'M0,0 L1,0 L0.5,1 Z'); assert.match(pointsPath([[0, 0], [1, 0], [0.5, 1]], true, true), /^M0,0 C/); ok('points become straight or smooth paths');
+  assert.equal(simplify([[0, 0], [1, 0.1], [2, 0], [3, 0.1], [10, 0]], 1).length, 2); assert(simplify(Array.from({ length: 41 }, (_, i) => [Math.sin((i / 40) * 2 * Math.PI) * 60, Math.cos((i / 40) * 2 * Math.PI) * 60]), 2.5).length >= 6); ok('drawn strokes are simplified, closed loops keep their shape');
+  assert.equal(polygonsBlock('m', [[[[0, 0], [100, 0], [100, 50], [0, 50], [0, 0]]]]), '::: path #m x=0 y=0 w=100 h=50 d="M0,0L1,0L1,1L0,1L0,0Z" :::'); ok('merged outlines become an even-odd path');
 }
 
 // charts

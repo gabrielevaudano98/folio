@@ -178,7 +178,7 @@ export function mountCanvas(o) {
     return best;
   }
   function dragEnd(e, el, which, h) {
-    e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId);
+    e.preventDefault(); e.stopPropagation(); try { h.setPointerCapture(e.pointerId); } catch {}
     const i = indexOf(el); const rect = frame.getBoundingClientRect(); const kk = k();
     let pt = null;
     const move = (ev) => {

@@ -108,6 +108,9 @@ Optional label
 - Icons: `::: icon #id name=rocket x= y= w= h= color=#111 weight=2 :::` (any [Lucide](https://lucide.dev) icon name).
 - Video and audio: `::: media #id src=assets/clip.mp4 x= y= w= h= poster=assets/still.jpg loop=true muted=true :::`.
 - Tables, charts, equations and code are boxes with a Markdown table, a ` ```chart ` block, `$$ … $$` or a code block inside.
+- Format attributes (any placed object): `fill=#f2f2f2`, `fill=none`, `fill=linear(#111,#888,90)` (angle in degrees, as in CSS), `fill=radial(#fff,#ccc)`; `stroke=#333 border=2 dash=true` (boxes, shapes, pictures, free shapes); `shadow=soft|medium|hard|glow`; `opacity=0.6`; `flip=h|v|hv`.
+- Picture attributes: `mask=circle|ellipse|rounded|diamond|hexagon|triangle|star` (crop to shape), `crop=x,y,w,h` (visible part, fractions), `adjust=brightness:1.1,contrast:1.2,saturate:0.8,grayscale:1,blur:2`, `radius=12`, `alt="…"`.
+- Free shapes: `::: path #id x= y= w= h= points="0,0 1,0 0.5,1" closed=true smooth=true :::` with points as fractions of the box (drawn with Insert, Freeform; points editable on the slide), or `d="M…Z"` for an outline made by Merge shapes (even-odd).
 - Arrange attributes: `group=name` (objects with the same group are selected and moved together), `lock=true` (cannot be selected on the canvas).
 - Only top-level objects are placed. Containers nested in a box (`::: note`, `::: card`) are ordinary content. Objects inside code fences are text.
 - Editing the canvas rewrites only the opener line (or the image line) of the moved object. Everything else is untouched.

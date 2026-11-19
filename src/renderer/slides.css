@@ -86,8 +86,9 @@
 .slide .sl-box > :first-child { margin-top: 0; }
 .slide .sl-box > :last-child { margin-bottom: 0; }
 .slide .sl-shape svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.slide .sl-shape .sl-shape-fill { fill: var(--sl-ink); fill-opacity: .12; stroke: var(--sl-ink); stroke-width: 2; }
-.slide .sl-shape .b-line { fill: none; stroke: var(--sl-ink); stroke-width: 2; }
+.slide .sl-shape .sl-shape-fill { fill: var(--sl-ink); fill-opacity: .12; stroke: var(--sh-stroke, var(--sl-ink)); stroke-width: var(--sh-sw, 2); stroke-dasharray: var(--sh-dash, none); }
+.slide .sl-shape .sl-shape-fill.has-fill { fill-opacity: 1; }
+.slide .sl-shape .b-line { fill: none; stroke: var(--sh-stroke, var(--sl-ink)); stroke-width: var(--sh-sw, 2); }
 .slide .sl-obj-text { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px; }
 .slide .sl-obj-text > * { margin: 0; }
 .slide .sl-image .sl-img { width: 100%; height: 100%; }
@@ -104,3 +105,5 @@
 .slide .sl-media { padding: 0; background: #000; border-radius: 8px; }
 .slide .sl-media .sl-media-el { width: 100%; height: 100%; display: block; object-fit: contain; }
 .slide .sl-media audio.sl-media-el { height: 100%; background: transparent; }
+.slide .sl-path { padding: 0; overflow: visible; }
+.slide .sl-path svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
