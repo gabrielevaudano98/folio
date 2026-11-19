@@ -2,6 +2,9 @@
 import { Editor, Extension, InputRule } from '@tiptap/core';
 import katex from 'katex';
 import Typography from '@tiptap/extension-typography';
+import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
+import { filterInserts, runInsert, INSERTS } from './inserts.js';
+import { highlight } from './fuzzy.js';
 import { Markdown } from '@tiptap/markdown';
 import Image from '@tiptap/extension-image';
 import { Placeholder } from '@tiptap/extensions';
@@ -333,6 +336,79 @@ export const pageCmd = {
   },
   hiddenComment(editor) { return editor.chain().focus().toggleMark('hiddenComment').run(); },
 };
+/* The / menu: everything you can insert or turn a block into (inserts.js), Notion style */
+const SLASH = new PluginKey('slashMenu');
+const SlashMenu = Extension.create({
+  name: 'slashMenu',
+  addOptions() { return { ctx: () => ({}), keyLabel: (k) => k }; },
+  addProseMirrorPlugins() {
+    const opts = this.options;
+    return [Suggestion({
+      editor: this.editor, char: '/', pluginKey: SLASH, allowSpaces: false, startOfLine: false,
+      allow: ({ state, range }) => {
+        const $f = state.doc.resolve(range.from);
+        if ($f.parent.type.spec.code) return false;
+        return !state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code);
+      },
+      items: ({ query }) => (query.length > 24 ? [] : filterInserts(query)),
+      command: ({ editor, range, props }) => {
+        editor.chain().focus().deleteRange(range).run();
+        Promise.resolve(runInsert(editor, props, opts.ctx())).catch((e) => console.error(e));
+      },
+      render: () => slashRenderer(opts),
+    })];
+  },
+});
+function slashRenderer(opts) {
+  let el, list, items = [], sel = 0, props = null, view = null;
+  const iconOf = (it) => (it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
+  const paint = () => {
+    let html = '', group = null;
+    items.forEach((x, i) => {
+      if (x.group !== group) { if (group !== null) html += '</div>'; group = x.group; html += `<div class="slash-group" role="group" aria-label="${group}"><div class="slash-head" aria-hidden="true">${group}</div>`; }
+      const k = x.item.key ? `<kbd>${opts.keyLabel(x.item.key)}</kbd>` : '';
+      html += `<div class="slash-item" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${k}</div>`;
+    });
+    if (group !== null) html += '</div>';
+    list.innerHTML = html || (props?.loading ? '' : '<div class="slash-empty">No matches. Keep typing, or press Esc.</div>');
+    view?.dom.setAttribute('aria-activedescendant', items.length ? `slash-${sel}` : '');
+    list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  };
+  const place = () => {
+    const r = props?.clientRect?.(); if (!r || !el) return;
+    const h = Math.min(el.offsetHeight || 360, 360), below = innerHeight - r.bottom - 8;
+    el.style.left = Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8)) + 'px';
+    el.style.top = (below >= h || below >= r.top ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+  };
+  const choose = (i) => { const x = items[i]; if (x) props.command(x); };
+  return {
+    onStart(p) {
+      props = p; view = p.editor.view; items = p.items; sel = 0;
+      el = document.createElement('div'); el.className = 'slash-menu';
+      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="Insert or turn into"></div><div class="slash-foot" aria-hidden="true">↑↓ to move · Enter to choose · Esc to close</div>';
+      list = el.firstChild; document.body.append(el);
+      view.dom.setAttribute('aria-controls', 'slash-list'); view.dom.setAttribute('aria-expanded', 'true');
+      list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
+      list.addEventListener('mousemove', (e) => { const it = e.target.closest('.slash-item'); if (it && +it.dataset.i !== sel) { sel = +it.dataset.i; list.querySelectorAll('.slash-item').forEach((n) => n.setAttribute('aria-selected', String(+n.dataset.i === sel))); view.dom.setAttribute('aria-activedescendant', `slash-${sel}`); } });
+      paint(); place();
+    },
+    onUpdate(p) { props = p; items = p.items; sel = Math.min(sel, Math.max(0, items.length - 1)); if (!p.query) sel = Math.min(sel, items.length - 1); paint(); place(); },
+    onKeyDown({ event }) {
+      if (event.key === 'Escape') { exitSuggestion(view, SLASH); return true; }
+      if (!items.length) return false;
+      const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+      if (step) { sel = (sel + step + items.length) % items.length; paint(); return true; }
+      if (event.key === 'Home' || event.key === 'End') { sel = event.key === 'Home' ? 0 : items.length - 1; paint(); return true; }
+      if (event.key === 'Enter' || event.key === 'Tab') { choose(sel); return true; }
+      return false;
+    },
+    onExit() {
+      el?.remove(); el = null;
+      view?.dom.removeAttribute('aria-controls'); view?.dom.removeAttribute('aria-activedescendant'); view?.dom.setAttribute('aria-expanded', 'false');
+    },
+  };
+}
+
 const NoAlignKeys = Align.extend({ addKeyboardShortcuts() { return {}; } });
 
 /* shortcuts from Word, Google Docs and Notion that ProseMirror does not ship (menu accelerators keep theirs) */
@@ -379,7 +455,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null }) {
   host.innerHTML = `
     <div class="ribbon" role="toolbar" aria-label="Formatting">
       <div class="rb-group">${btn('undo', 'Undo', icons.undo, keyLabel('Mod+Z'))}${btn('redo', 'Redo', icons.redo, keyLabel('Mod+Shift+Z'))}</div>
@@ -440,6 +516,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
 
+  const insertCtx = () => ({ pickImage: onPickImage, pickRef, footnote: (e) => pageCmd.footnote(e) });
   const editor = new Editor({
     element: page,
     extensions: [
@@ -450,6 +527,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys],
       }),
       SmartTypography.configure({ enabled: smartTypography }),
+      SlashMenu.configure({ keyLabel, ctx: insertCtx }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue }),
       Markdown.configure({ markedOptions: { gfm: true } }),
@@ -638,6 +716,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     },
     focus(where) { editor.commands.focus(where); },
     run,
+    insert(id) { const item = INSERTS.find((i) => i.id === id); return item ? runInsert(editor, { item }, insertCtx()) : false; },
     headings() { const out = []; editor.state.doc.descendants((n, pos) => { if (n.type.name === 'heading') out.push(pos); }); return out; },
     scrollToHeading(i) {
       const pos = api.headings()[i]; if (pos == null) return;

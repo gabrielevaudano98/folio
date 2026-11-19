@@ -12,6 +12,7 @@ import { MarkdownManager } from '@tiptap/markdown';
 import { pageExtensions } from '../src/renderer/page-schema.js';
 import { portableMarkdown } from '../src/renderer/page-syntax.js';
 import { headings } from '../src/renderer/markdown.js';
+import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
 import { createPageCodec, splitBlocks } from '../src/renderer/page-core.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
@@ -169,6 +170,8 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   const bad = pd('---\nmarp: true\nink: "#aaaaaa"\n---\n\nNo title here\n\n![](a.png)\n\n::: box #tiny x=0 y=0 w=100 h=40 size=12 color=#cccccc fill=#ffffff\nhello\n:::\n\n---\n\n## Same\n\n---\n\n## Same\n');
   const kinds = checkDeck(bad).map((x) => x.kind).sort(); assert.deepEqual(kinds, ['alt', 'contrast', 'contrast', 'contrast', 'contrast', 'duplicate', 'duplicate', 'size', 'title']);
   ok('the accessibility checker finds missing titles, picture descriptions, low contrast, tiny text and duplicate titles');
+}
+
 // pages: lossless Markdown in the page editor (with a DOM, as in the app: TipTap reads inline HTML only when it has one)
 {
   const win = new Window(); win.document.write('<!DOCTYPE html><html><body></body></html>');
@@ -254,6 +257,21 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
   await win.happyDOM.close();
+}
+
+// the / menu registry
+{
+  assert(INSERTS.every((i) => CATEGORIES.includes(i.cat) && (i.turn || i.run) && i.label && (i.icon || i.badge)));
+  assert.equal(new Set(INSERTS.map((i) => i.id)).size, INSERTS.length); ok('every insert has a category, an action and an icon, and a unique id');
+  const all = filterInserts('', { recent: ['math', 'h2'] });
+  assert.deepEqual(all.slice(0, 2).map((x) => [x.group, x.item.id]), [['Recent', 'math'], ['Recent', 'h2']]); assert.equal(all.filter((x) => x.group !== 'Recent').length, INSERTS.length);
+  ok('with no query the menu shows recent items, then every category');
+  assert.equal(filterInserts('h2', { recent: [] })[0].item.id, 'h2'); assert.equal(filterInserts('todo', { recent: [] })[0].item.id, 'task');
+  assert.equal(filterInserts('equation', { recent: [] })[0].item.id, 'math'); assert.equal(filterInserts('[[', { recent: [] })[0].item.id, 'link');
+  assert(filterInserts('cal', { recent: [] }).every((x) => x.item.id.startsWith('callout-'))); ok('search matches labels and aliases (h2, todo, equation, [[)');
+  const t = filterInserts('3x4', { recent: [] }); assert.equal(t.length, 1); assert.deepEqual(t[0].args, { rows: 3, cols: 4 }); assert.deepEqual(filterInserts('table 2×5', { recent: [] })[0].args, { rows: 2, cols: 5 });
+  ok('/3x4 inserts a table of that size');
+  assert.equal(filterInserts('zzzz', { recent: [] }).length, 0); ok('no match gives an empty menu');
 }
 
 // charts

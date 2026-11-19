@@ -2,6 +2,8 @@
 import { diffLines } from 'diff';
 import { createEditor } from './editor.js';
 import { createRich } from './rich.js';
+import { fuzzy, highlight } from './fuzzy.js';
+import { INSERTS } from './inserts.js';
 import { portableMarkdown } from './page-syntax.js';
 import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide } from './slides-core.js';
@@ -126,6 +128,7 @@ async function boot() {
     onWikiLink: async (name) => { const f = resolveWiki(name); if (f) return openRef(f, parseRef(name).part); if (await confirmSheet({ title: `Create “${name}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
     resolveValue: (raw) => resolveRef(raw, refEnv()).then((r) => r.value),
     smartTypography: () => S.settings.smartTypography !== false,
+    pickRef: (o) => pickRef(o),
     onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
   });
   $('#pane-rich').addEventListener('paste', async (e) => {
@@ -995,6 +998,17 @@ const COMMANDS = [
   { id: 'align-justify', title: 'Justify', key: 'Mod+Shift+J', run: () => isRich() && rich.run('alignJustify') },
   { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; showWelcome(); } },
 ];
+/* everything the / menu offers is in the palette too (the Write view inserts it, the source view types its Markdown) */
+for (const it of INSERTS) {
+  const title = `${it.turn ? 'Turn into' : 'Insert'}: ${it.label}`;
+  if (COMMANDS.some((c) => c.title.toLowerCase().replace(/…$/, '') === title.toLowerCase())) continue;
+  COMMANDS.push({ id: 'ins-' + it.id, title, key: it.key, run: () => {
+    if (curType() !== 'md') return toast('This inserts into pages.');
+    if (isRich()) return rich.insert(it.id);
+    if (it.md != null) return insertMd(it.md);
+    toast('Switch to the Write view to insert this.');
+  } });
+}
 function fmt(id, n) {
   if (isRich()) { if (id === 'heading') return rich.editor.chain().focus().toggleHeading({ level: n }).run(); return rich.run(id); }
   if (id === 'heading') return editor.run('heading', n);
@@ -1011,16 +1025,6 @@ function insertMd(md) {
   editor.insert(md);
 }
 let pal = { mode: 'commands', items: [], sel: 0, opener: null };
-function fuzzy(q, s) {
-  if (!q) return { score: 1, marks: [] };
-  const ql = q.toLowerCase(), sl = s.toLowerCase();
-  const idx = sl.indexOf(ql);
-  if (idx >= 0) return { score: 100 - idx + (idx === 0 ? 50 : 0), marks: [[idx, idx + q.length]] };
-  let i = 0, score = 0; const marks = [];
-  for (let j = 0; j < sl.length && i < ql.length; j++) if (sl[j] === ql[i]) { marks.push([j, j + 1]); score += j > 0 && /[\s/_-]/.test(sl[j - 1]) ? 6 : 1; i++; }
-  return i === ql.length ? { score, marks } : null;
-}
-function highlight(s, marks) { let out = '', last = 0; for (const [a, b] of marks) { out += esc(s.slice(last, a)) + '<b>' + esc(s.slice(a, b)) + '</b>'; last = b; } return out + esc(s.slice(last)); }
 function openPalette(mode = 'commands') {
   pal = { mode, items: [], sel: 0, opener: document.activeElement };
   const input = $('#palette-input');
