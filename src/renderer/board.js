@@ -370,6 +370,7 @@ export function mountBoard(host, ctx) {
       { label: 'Edit label', key: 'Enter', run: () => editLabel([...sel][0]) },
       { label: 'Duplicate', key: 'Mod+D', run: duplicate }, { label: 'Copy', key: 'Mod+C', run: copy }, '-',
       { label: 'Bring to front', run: () => zorder(1) }, { label: 'Send to back', run: () => zorder(-1) }, '-',
+      ...(g ? [{ label: 'Copy link to shape', run: () => ctx.copyRef?.(g.dataset.id, 'link') }, { label: 'Copy embed reference', run: () => ctx.copyRef?.(g.dataset.id, 'embed') }, '-'] : []),
       { label: 'Delete', danger: true, key: 'Delete', run: remove },
     ], at);
   });

@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import FORMATS from '../../docs/FORMATS.md';
 import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
-import { resolveRef } from '../renderer/refs.js';
+import { resolveRef, loadExternals } from '../renderer/refs.js';
 
 export const SERVER_INFO = { name: 'folio', version: '1.1.0' };
 
@@ -105,10 +105,12 @@ export async function runTool(notes, name, a, hooks = {}) {
       return FORMATS.slice(start, next < 0 ? undefined : next);
     }
     case 'get_sheet_values': {
-      const sheets = parseWorkbook(await notes.read(a.path)).filter((b) => b.type === 'sheet' && (!a.sheet || b.name.toLowerCase() === a.sheet.toLowerCase()));
+      const src = await notes.read(a.path);
+      const external = await loadExternals(src, { files: await notes.allFiles(), from: notes.relOf(notes.resolve(a.path)), read: (p) => notes.read(p), seen: [notes.relOf(notes.resolve(a.path))] });
+      const sheets = parseWorkbook(src).filter((b) => b.type === 'sheet' && (!a.sheet || b.name.toLowerCase() === a.sheet.toLowerCase()));
       if (!sheets.length) throw new Error(a.sheet ? `No sheet named ${a.sheet}` : 'No tables found in this note.');
       return sheets.map((s) => {
-        const ev = evaluator(s); const cols = Math.max(...s.rows.map((r) => r.length));
+        const ev = evaluator(s, { external }); const cols = Math.max(...s.rows.map((r) => r.length));
         return { sheet: s.name, columns: Array.from({ length: cols }, (_, c) => colName(c)), rows: s.rows.map((row, r) => ({ row: r + 1, values: Array.from({ length: cols }, (_, c) => { const v = ev.value(r, c); return v instanceof Date ? v.toISOString().slice(0, 10) : v ?? ''; }) })) };
       });
     }

@@ -1,13 +1,13 @@
 // Folio references — resolve a reference to a value or an embed, and fill placeholders in rendered HTML.
 import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
-import { parseWorkbook, evaluator, parseAddr, colName, display } from './sheet-core.js';
+import { parseWorkbook, evaluator, parseAddr, colName, display, formulaRefs } from './sheet-core.js';
 import { splitBoardDoc, parseBoard, autoLayout, shapeSvg, edgePath, labelBox } from './board-core.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 export class RefError extends Error {}
 
 /* ---------- sheets ---------- */
-function sheetPart(text, part) {
+function sheetPart(text, part, external) {
   const sheets = parseWorkbook(text).filter((b) => b.type === 'sheet');
   if (!sheets.length) throw new RefError('no sheet in this document');
   let name = '', range = part;
@@ -16,7 +16,7 @@ function sheetPart(text, part) {
   else if (part && !/^\$?[A-Z]+\$?\d+(:\$?[A-Z]+\$?\d+)?$/i.test(part)) { name = part; range = ''; }
   const s = name ? sheets.find((x) => x.name.toLowerCase() === name.toLowerCase()) : sheets[0];
   if (!s) throw new RefError(`no sheet named ${name}`);
-  const ev = evaluator(s); const m = s.meta || {}; const fmtOf = (r, c) => m.cells?.[`${colName(c)}${r + 1}`]?.format ?? m.cols?.[colName(c)]?.format ?? '';
+  const ev = evaluator(s, { external }); const m = s.meta || {}; const fmtOf = (r, c) => m.cells?.[`${colName(c)}${r + 1}`]?.format ?? m.cols?.[colName(c)]?.format ?? '';
   const cell = (r, c) => { const v = ev.value(r, c); return ev.isError(v) ? String(v) : display(v, fmtOf(r, c)); };
   if (!range) { const cols = Math.max(...s.rows.map((r) => r.length)); return { sheet: s, grid: s.rows.map((_, r) => Array.from({ length: cols }, (__, c) => cell(r, c))) }; }
   const [a, b] = range.split(':').map(parseAddr);
@@ -65,7 +65,8 @@ export function boardSvg(text, part = '') {
  * Resolve one reference.
  * @returns {Promise<{path, kind, value?: string, html?: string, open: {path, part}}>}
  */
-export async function resolveRef(raw, { files, from, read, renderMarkdown, renderSlideHtml }) {
+export async function resolveRef(raw, env) {
+  const { files, from, read, renderMarkdown, renderSlideHtml } = env;
   const { target, part } = parseRef(raw);
   const path = resolveTarget(target, files, from);
   if (!path) throw new RefError(`“${target}” not found`);
@@ -73,7 +74,8 @@ export async function resolveRef(raw, { files, from, read, renderMarkdown, rende
   const kind = docKind(path);
   const open = { path, part };
   if (kind === 'sheet') {
-    const r = sheetPart(text, part);
+    const external = await loadExternals(text, { files, from: path, read, renderMarkdown, renderSlideHtml, seen: env_seen(env, path) });
+    const r = sheetPart(text, part, external);
     return r.value != null ? { path, kind, value: r.value, html: `<span>${esc(r.value)}</span>`, open } : { path, kind, value: r.grid.flat().join(' '), html: tableHtml(r.grid), open };
   }
   if (kind === 'slides') {
@@ -91,6 +93,39 @@ export async function resolveRef(raw, { files, from, read, renderMarkdown, rende
   }
   const md = section(text, part);
   return { path, kind, value: firstLine(md), html: renderMarkdown ? renderMarkdown(md) : `<pre>${esc(md)}</pre>`, open };
+}
+
+function env_seen(env, path) { const seen = new Set(env.seen || []); if (seen.has(path)) throw new RefError('circular reference'); seen.add(path); return seen; }
+
+/** raw value(s) behind a reference, for formulas: a number or text for one cell, a 2D array for a range */
+async function rawValue(raw, env) {
+  const { target, part } = parseRef(raw);
+  const path = resolveTarget(target, env.files, env.from);
+  if (!path) throw new RefError('#REF!');
+  if (docKind(path) !== 'sheet') return (await resolveRef(raw, env)).value;
+  const text = await env.read(path);
+  const external = await loadExternals(text, { ...env, from: path, seen: env_seen(env, path) });
+  const sheets = parseWorkbook(text).filter((b) => b.type === 'sheet');
+  let name = '', range = part; const bang = part.lastIndexOf('!');
+  if (bang >= 0) { name = part.slice(0, bang).replace(/^'|'$/g, ''); range = part.slice(bang + 1); }
+  const sh = name ? sheets.find((x) => x.name.toLowerCase() === name.toLowerCase()) : sheets[0];
+  if (!sh) throw new RefError('#REF!');
+  const ev = evaluator(sh, { external });
+  const [a, b] = range.split(':').map(parseAddr); if (!a) throw new RefError('#REF!');
+  if (!b) return ev.value(a[0], a[1]);
+  const out = []; for (let r = a[0]; r <= b[0]; r++) { const row = []; for (let c = a[1]; c <= b[1]; c++) row.push(ev.value(r, c)); out.push(row); }
+  return out;
+}
+
+/** resolve every {{ref}} used in the formulas of a sheet document: Map raw → value or { error } */
+export async function loadExternals(text, env) {
+  const refs = formulaRefs(text); if (!refs.length) return null;
+  const map = new Map();
+  await Promise.all(refs.map(async (raw) => {
+    try { map.set(raw, await rawValue(raw, env)); }
+    catch (e) { map.set(raw, { error: '#REF!' }); }
+  }));
+  return map;
 }
 
 /** fill .ref-value and .ref-embed placeholders under root; returns the list of references with their status */

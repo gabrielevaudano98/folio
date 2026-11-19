@@ -1,5 +1,5 @@
 // Folio — slides surface: thumbnails, stage, per-slide Markdown, presenter, PDF and PowerPoint export.
-import { parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
+import { syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
 import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
@@ -49,6 +49,7 @@ export function mountSlides(host, ctx) {
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
         <div class="sl-layers" hidden aria-label="Objects on this slide"></div>
+        <div class="sl-sync" role="status" hidden></div>
         <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
         <div class="sl-edit">
           <div class="sl-edit-col"><div class="sl-edit-head"><span>Slide ${'<b class="sl-cur">1</b>'} content</span><span class="sl-hint">Markdown. <code>::: left</code> / <code>::: right</code>, <code>::: card</code>, <code>![bg right](img)</code></span></div><div class="sl-cm"></div></div>
@@ -138,7 +139,7 @@ export function mountSlides(host, ctx) {
     host.querySelector('[data-sl-size]').value = deck.global.size === '4:3' ? '4:3' : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur').textContent = cur + 1;
-    renderLayers(); syncFmt();
+    renderLayers(); syncFmt(); checkSync();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.slides.length} ${deck.slides.length === 1 ? 'slide' : 'slides'}`);
@@ -328,6 +329,40 @@ export function mountSlides(host, ctx) {
   }
   frame.addEventListener('dblclick', (e) => { const el = e.target.closest('.sl-obj'); if (el) startEdit(Number(el.dataset.obj)); });
 
+  /* synced copies of slides from this or another deck */
+  const syncBar = host.querySelector('.sl-sync'); let syncSeq = 0;
+  async function sourceOf(ref) {
+    const { parseRef, resolveTarget } = await import('./refs-syntax.js');
+    const env = ctx.refEnv(); const { target, part } = parseRef(ref);
+    const path = target ? resolveTarget(target, env.files, env.from) : env.from;
+    if (!path) throw new Error(`${target} not found`);
+    const chunk = slideChunk(await env.read(path), parseInt(part, 10) || 1);
+    if (chunk == null) throw new Error(`no slide ${part} in ${target}`);
+    return chunk;
+  }
+  async function checkSync() {
+    const n = ++syncSeq; const s0 = deck?.slides[cur]; const ref = s0?.eff.source;
+    if (!ref) { syncBar.hidden = true; return; }
+    let msg, changed = false;
+    try { const src = await sourceOf(ref); changed = syncBody(src) !== syncBody(chunks().list[cur]); msg = changed ? `This slide is a synced copy of <b>${esc(ref)}</b>. It differs from the source.` : `Synced copy of <b>${esc(ref)}</b>. Up to date.`; }
+    catch (e) { msg = `Synced copy of <b>${esc(ref)}</b>, but the source cannot be found (${esc(e.message)}).`; }
+    if (n !== syncSeq) return;
+    syncBar.hidden = false; syncBar.classList.toggle('is-changed', changed);
+    syncBar.innerHTML = `<span>${msg}</span>${changed ? '<button class="btn" type="button" data-sync="update">Update from source</button>' : ''}<button class="btn" type="button" data-sync="open">Open source</button><button class="btn" type="button" data-sync="unlink">Unlink</button>`;
+  }
+  syncBar.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-sync]'); if (!b) return; const ref = deck.slides[cur].eff.source;
+    if (b.dataset.sync === 'unlink') editChunk2((c) => setDirective(c, 'source', null));
+    if (b.dataset.sync === 'update') { const src = await sourceOf(ref); editChunk2(() => syncedCopy(ref, src)); ctx.toast('Slide updated from its source.'); }
+    if (b.dataset.sync === 'open') { const { parseRef, resolveTarget } = await import('./refs-syntax.js'); const env = ctx.refEnv(); const { target, part } = parseRef(ref); ctx.openRef(target ? resolveTarget(target, env.files, env.from) : env.from, part); }
+  });
+  async function reuseSlide() {
+    const t = await ctx.pickRef?.({ kind: 'link' }); if (!t) return;
+    const ref = t.replace(/^!?\[\[|\]\]$/g, '').replace(/\|.*$/, '');
+    if (!/#\d+$/.test(ref)) return ctx.toast('Choose a slide of a deck as the part.');
+    try { const src = await sourceOf(ref); const { fm, list } = chunks(); list.splice(cur + 1, 0, syncedCopy(ref, src)); cur += 1; commit(joinDeck(fm, list)); ctx.toast('Added a synced copy. It will offer to update when the source changes.'); }
+    catch (e) { ctx.toast(e.message, { kind: 'error' }); }
+  }
   function restore(from, to) {
     if (!from.length) return;
     to.push(text); restoring = true; commit(from.pop()); restoring = false;
@@ -361,6 +396,7 @@ export function mountSlides(host, ctx) {
     ctx.showMenu(null, [
       { label: 'New slide after', run: () => addSlide('default', i + 1) },
       { label: 'Duplicate', run: () => duplicateSlide(i) }, '-',
+      { label: 'Copy embed reference', run: () => ctx.copyRef?.(String(i + 1), 'embed') }, { label: 'Copy link to slide', run: () => ctx.copyRef?.(String(i + 1), 'link') }, '-',
       { label: 'Move up', run: () => moveSlide(i, i - 1) }, { label: 'Move down', run: () => moveSlide(i, i + 1) }, '-',
       { label: 'Delete slide', danger: true, run: () => deleteSlide(i) },
     ], { x: e.clientX, y: e.clientY });
@@ -381,7 +417,7 @@ export function mountSlides(host, ctx) {
   host.querySelector('[data-sl-paginate]').addEventListener('change', (e) => { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, 'paginate', String(e.target.checked)), list)); });
   let notesTimer;
   notesEl.addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(() => editChunk((c) => setNotes(c, notesEl.value)), 350); });
-  host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) }))));
+  host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: 'Synced copy of a slide…', run: reuseSlide }]));
   host.querySelector('[data-sl="present"]').addEventListener('click', () => present(cur));
   host.querySelector('[data-sl="export"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [
     { label: 'PowerPoint (.pptx)…', run: () => exportPptx() },
@@ -462,8 +498,9 @@ export function mountSlides(host, ctx) {
       if (idx !== cur) { cur = idx; render(); }
     },
     present: () => present(cur),
+    insertText(t) { const { fm, list } = chunks(); list[cur] = addObject(list[cur], t); commit(joinDeck(fm, list)); },
     gotoSlide(i) { if (deck && i >= 0) select(i, { reveal: false }); },
-    refresh() { if (deck) render({ keepEditor: true }); },
+    refresh() { if (deck) { render({ keepEditor: true }); checkSync(); } },
     exportPdf, exportPptx,
     focus() { thumbs.querySelector('[aria-current="true"]')?.focus(); },
   };

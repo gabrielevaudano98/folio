@@ -101,6 +101,13 @@ stacked: true
 
 ---
 
+<!-- source: Pitch.slides#2 -->
+## A copy that drifted
+
+Old text
+
+---
+
 ## Placed objects
 
 ::: box #claim x=80 y=200 w=520 h=240 fill=#f2f2f2 radius=12

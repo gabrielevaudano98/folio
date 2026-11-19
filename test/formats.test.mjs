@@ -94,6 +94,19 @@ const meeting = fx('Projects/Meeting notes.md');
 const movedRefs = rewriteRefs(meeting, 'Projects/Meeting notes.md', 'Budget.sheet.md', 'Finance/Plan 2027.sheet.md', files);
 assert.match(movedRefs, /\[\[Plan 2027\.sheet#Costs!H6\|the total\]\]/); assert.match(movedRefs, /\{\{\/Finance\/Plan 2027\.sheet\.md#Costs!H6\}\}/);
 assert.equal(movedRefs.split('\n').filter((l, i) => l !== meeting.split('\n')[i]).length, 1); ok('renaming a document rewrites only the references to it, in the style they were written');
+{
+  const { loadExternals } = await import('../src/renderer/refs.js');
+  const { formulaRefs, evaluator: ev2, parseWorkbook: pw } = await import('../src/renderer/sheet-core.js');
+  const calc = '## Plan\n\n| A | B |\n| --- | --- |\n| Budget | ={{Budget.sheet#Costs!H6}} |\n| Double | =B2*2 |\n| Q1 sum | =SUM({{Budget.sheet#Costs!D2:D5}}) |\n| Missing | ={{Nope#A1}} |\n';
+  assert.deepEqual(formulaRefs(calc), ['Budget.sheet#Costs!H6', 'Budget.sheet#Costs!D2:D5', 'Nope#A1']);
+  const ext = await loadExternals(calc, { files, from: 'Calc.sheet.md', read: async (p) => fx(p), seen: ['Calc.sheet.md'] });
+  const e2 = ev2(pw(calc).find((b) => b.type === 'sheet'), { external: ext });
+  assert.equal(e2.value(1, 1), 28050); assert.equal(e2.value(2, 1), 56100); assert.equal(e2.value(3, 1), 6690); assert.equal(e2.value(4, 1), '#REF!');
+  ok('sheet formulas can use values and ranges from other documents');
+  const loop = { 'A.sheet.md': '## S\n\n| x |\n| --- |\n| ={{B.sheet#S!A2}} |\n', 'B.sheet.md': '## S\n\n| x |\n| --- |\n| ={{A.sheet#S!A2}} |\n' };
+  const extA = await loadExternals(loop['A.sheet.md'], { files: Object.keys(loop), from: 'A.sheet.md', read: async (p) => loop[p], seen: ['A.sheet.md'] });
+  assert.equal(ev2(pw(loop['A.sheet.md']).find((b) => b.type === 'sheet'), { external: extA }).value(1, 0), '#REF!'); ok('a reference loop between sheets is reported, not followed forever');
+}
 
 // charts
 const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows');

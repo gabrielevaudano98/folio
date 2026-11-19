@@ -1,5 +1,5 @@
 // Folio — sheet surface: an Excel-style grid over sheet-md.
-import { parseWorkbook, serializeWorkbook, evaluator, display, colName, colIndex, addr, parseAddr, shiftFormula, FORMATS } from './sheet-core.js';
+import { parseWorkbook, serializeWorkbook, evaluator, display, colName, colIndex, addr, parseAddr, shiftFormula, FORMATS, formulaRefs } from './sheet-core.js';
 import { chartHtml, CHART_TYPES, specToText } from './chart.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -72,7 +72,16 @@ export function mountSheet(host, ctx) {
   const width = (c) => meta().cols?.[colName(c)]?.width || (c === 0 ? 140 : DEFAULT_W);
 
   /* ---------- io ---------- */
+  let external = null, extKey = '', extSeq = 0;
   function load(t) { text = t; blocks = parseWorkbook(t); si = Math.min(si, sheets().length - 1); }
+  /** values for {{refs}} in formulas, fetched from other documents; re-renders when they arrive */
+  function syncExternals(force = false) {
+    const key = formulaRefs(text).join('\n');
+    if (!key) { external = null; extKey = ''; return; }
+    if (key === extKey && !force) return;
+    extKey = key; const n = ++extSeq;
+    import('./refs.js').then(({ loadExternals }) => loadExternals(text, { ...ctx.refEnv(), seen: [ctx.getPath()] })).then((m) => { if (n === extSeq) { external = m; render(); } }).catch(() => {});
+  }
   function commit({ history = true } = {}) {
     if (history) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; }
     text = serializeWorkbook(blocks);
@@ -81,7 +90,8 @@ export function mountSheet(host, ctx) {
 
   /* ---------- render ---------- */
   function render() {
-    ev = evaluator(sheet());
+    syncExternals();
+    ev = evaluator(sheet(), { external });
     const [nr, nc] = extent();
     const header = meta().header !== false;
     table.querySelector('colgroup').innerHTML = `<col style="width:46px">${Array.from({ length: nc }, (_, c) => `<col style="width:${width(c)}px">`).join('')}`;
@@ -532,7 +542,13 @@ export function mountSheet(host, ctx) {
       { label: 'Cut', key: 'Mod+X', run: () => document.execCommand('cut') }, { label: 'Copy', key: 'Mod+C', run: () => document.execCommand('copy') }, { label: 'Paste', key: 'Mod+V', run: () => document.execCommand('paste') }, '-',
       { label: 'Insert row above', run: () => insertRows(r0) }, { label: 'Insert column left', run: () => insertCols(c0) },
       { label: 'Delete row', run: () => deleteRows(r0, r1 - r0 + 1) }, { label: 'Delete column', run: () => deleteCols(c0, c1 - c0 + 1) }, '-',
-      { label: 'Sort A to Z', run: () => sortBy(c0, 1) }, { label: 'Sort Z to A', run: () => sortBy(c0, -1) },
+      { label: 'Sort A to Z', run: () => sortBy(c0, 1) }, { label: 'Sort Z to A', run: () => sortBy(c0, -1) }, '-',
+      ...(() => {
+        const nm = /^[\w-]+$/.test(sheets()[si].name) ? sheets()[si].name : `'${sheets()[si].name}'`;
+        const part = `${nm}!${addr(r0, c0)}${r1 > r0 || c1 > c0 ? ':' + addr(r1, c1) : ''}`;
+        const one = r1 === r0 && c1 === c0;
+        return [one ? { label: 'Copy live value reference', run: () => ctx.copyRef?.(part, 'value') } : { label: 'Copy embed reference', run: () => ctx.copyRef?.(part, 'embed') }, { label: 'Copy link to cells', run: () => ctx.copyRef?.(part, 'link') }];
+      })(),
     ], { x: e.clientX, y: e.clientY });
   });
 
@@ -557,6 +573,7 @@ export function mountSheet(host, ctx) {
     setText(t) { if (t === text) return; load(t); render(); },
     setMode() { requestAnimationFrame(drawSel); },
     selectAtLine() {},
+    refresh() { syncExternals(true); },
     gotoCell(part) {
       const bang = part.lastIndexOf('!'); const name = bang >= 0 ? part.slice(0, bang).replace(/^'|'$/g, '') : '';
       const cell = (bang >= 0 ? part.slice(bang + 1) : part).split(':')[0];

@@ -178,6 +178,8 @@ h('fs:rename', async (from, to) => {
 });
 h('fs:trash', async (rel) => { await shell.trashItem(notes.resolve(rel)); return true; });
 h('fs:search', (q, opts) => notes.search(q, opts));
+h('fs:backlinks', (rel) => notes.backlinks(rel));
+h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));
 h('fs:save-image', async (noteRel, name, bytes) => {
   const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');

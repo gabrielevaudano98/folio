@@ -5,7 +5,7 @@ import { createRich } from './rich.js';
 import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
-import { parseRef, resolveTarget } from './refs-syntax.js';
+import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
 import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
@@ -68,6 +68,8 @@ function surfaceCtx(type) {
     isDark: () => S.dark,
     refEnv,
     openRef,
+    copyRef: (part, kind) => copyRef(S.active, part, kind),
+    pickRef,
   };
 }
 const curType = () => app.dataset.doc || 'md';
@@ -356,7 +358,7 @@ function renderTabsDirty() {
 async function saveTab(t) {
   if (t.text === t.saved) return;
   const text = t.text;
-  try { await folio.write(t.path, text); t.saved = text; if (t.path === S.active) setSaveState('Saved'); renderTabsDirty(); }
+  try { await folio.write(t.path, text); t.saved = text; if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); } renderTabsDirty(); }
   catch (e) { toast(`Could not save ${base(t.path)}. ${e.message}`, { kind: 'error', action: ['Retry', () => saveTab(t)] }); setSaveState('Not saved'); }
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
@@ -403,6 +405,76 @@ async function renderPreview() {
   hydrateRefs(el, refEnv());
 }
 /* references between documents */
+/* reference picker and "copy reference" */
+function refName(path) {
+  const short = path.split('/').pop().replace(/\.(md|markdown|mdx|txt)$/i, '');
+  return resolveTarget(short, S.files, S.active || '') === path ? short : '/' + path;
+}
+function refText(kind, path, part = '', label = '') {
+  const body = refName(path) + (part ? '#' + part : '');
+  return kind === 'value' ? `{{${body}}}` : kind === 'embed' ? `![[${body}]]` : `[[${body}${label ? '|' + label : ''}]]`;
+}
+async function partsOf(path) {
+  const text = tabOf(path)?.text ?? await folio.read(path).catch(() => '');
+  const kind = docKind(path);
+  if (kind === 'sheet') { const { parseWorkbook } = await import('./sheet-core.js'); return parseWorkbook(text).filter((b) => b.type === 'sheet').map((b) => ({ value: `${b.name}!A1`, label: `Sheet ${b.name} (edit the cell or range)` })); }
+  if (kind === 'slides') { const { parseDeck } = await import('./slides-core.js'); return parseDeck(text).slides.map((sl, i) => ({ value: String(i + 1), label: `Slide ${i + 1}${sl.title ? ': ' + sl.title : ''}` })); }
+  if (kind === 'board') { const { splitBoardDoc, parseBoard } = await import('./board-core.js'); return parseBoard(splitBoardDoc(text).code).nodes.filter((n) => !n.implicit).map((n) => ({ value: n.id, label: `${n.label} (${n.id})` })); }
+  return headings(text).map((h) => ({ value: h.text.replace(/[*_`]/g, ''), label: `${'  '.repeat(h.level - 1)}${h.text}` }));
+}
+function pickRef({ kind = 'link' } = {}) {
+  return new Promise((resolve) => {
+    const d = $('#sheet-prompt');
+    const docs = S.files.filter((f) => f !== S.active);
+    d.innerHTML = `<form method="dialog" class="prompt-form ref-form">
+      <div class="sheet-head"><div><h2 id="prompt-title">Insert reference</h2><p>Point at another document, a part of it, or a live result.</p></div></div>
+      <div class="sheet-body">
+        <div class="field"><label for="ref-doc">Document</label><input class="input" id="ref-doc" list="ref-docs" autocomplete="off" spellcheck="false" placeholder="Type to search"><datalist id="ref-docs">${docs.map((f) => `<option value="${esc(f)}">${esc(stem(f))}</option>`).join('')}</datalist></div>
+        <div class="field"><label for="ref-part-pick">Part</label><select class="rb-select" id="ref-part-pick"><option value="">Whole document</option></select>
+          <input class="input" id="ref-part" spellcheck="false" placeholder="Optional, e.g. Costs!H6 or 3" aria-label="Part"></div>
+        <fieldset class="field ref-kinds"><legend>Show as</legend>
+          <label><input type="radio" name="ref-kind" value="link"${kind === 'link' ? ' checked' : ''}> Link</label>
+          <label><input type="radio" name="ref-kind" value="value"${kind === 'value' ? ' checked' : ''}> Live value</label>
+          <label><input type="radio" name="ref-kind" value="embed"${kind === 'embed' ? ' checked' : ''}> Embed</label></fieldset>
+        <p class="ref-preview" id="ref-preview" aria-live="polite"></p>
+      </div>
+      <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Insert</button></div></form>`;
+    const docEl = $('#ref-doc', d), pick = $('#ref-part-pick', d), partEl = $('#ref-part', d), prev = $('#ref-preview', d);
+    const path = () => S.files.includes(docEl.value) ? docEl.value : resolveTarget(docEl.value, S.files, S.active || '');
+    const current = () => { const p = path(); if (!p) return null; return refText(d.querySelector('[name=ref-kind]:checked').value, p, partEl.value.trim()); };
+    let seq = 0;
+    const preview = async () => {
+      const t = current(); const n = ++seq;
+      if (!t) { prev.textContent = docEl.value ? 'No document with that name.' : ''; return; }
+      prev.innerHTML = `<code>${esc(t)}</code>`;
+      try { const r = await resolveRef(t.replace(/^!?\[\[|\]\]$|^\{\{|\}\}$/g, '').replace(/\|.*$/, ''), refEnv()); if (n === seq) prev.innerHTML = `<code>${esc(t)}</code> <span>shows ${esc(String(r.value).slice(0, 80))}</span>`; }
+      catch (e) { if (n === seq) prev.innerHTML = `<code>${esc(t)}</code> <span class="ref-preview-err">${esc(e.message)}</span>`; }
+    };
+    docEl.addEventListener('change', async () => {
+      const p = path(); pick.innerHTML = '<option value="">Whole document</option>'; partEl.value = '';
+      if (p) { for (const o of await partsOf(p)) pick.insertAdjacentHTML('beforeend', `<option value="${esc(o.value)}">${esc(o.label)}</option>`); }
+      preview();
+    });
+    docEl.addEventListener('input', preview);
+    pick.addEventListener('change', () => { partEl.value = pick.value; preview(); if (docKind(path() || '') === 'sheet' && pick.value) { partEl.focus(); partEl.setSelectionRange(partEl.value.indexOf('!') + 1, partEl.value.length); } });
+    partEl.addEventListener('input', preview);
+    d.querySelectorAll('[name=ref-kind]').forEach((r) => r.addEventListener('change', preview));
+    const done = (v) => { d.close(); resolve(v); };
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); const t = current(); if (!t) { prev.textContent = 'Choose a document first.'; docEl.focus(); return; } done(t); };
+    d.querySelector('[data-cancel]').onclick = () => done(null);
+    d.oncancel = () => resolve(null);
+    d.showModal(); docEl.focus();
+  });
+}
+async function insertRef(kind) {
+  const t = await pickRef({ kind }); if (!t) return;
+  const type = curType();
+  if (type === 'md') { if (isRich()) rich.editor.chain().focus().insertContent({ type: 'text', text: t }).run(); else editor.insert(t); }
+  else if (type === 'slides' && app.dataset.modeView !== 'code') curSurface()?.insertText?.(t);
+  else editor.insert(t);
+  toast('Reference inserted.');
+}
+function copyRef(path, part, kind) { const t = refText(kind, path, part); folio.copy(t); toast(`Copied ${t}`); }
 function refEnv() {
   return {
     files: S.files, from: S.active || '',
@@ -442,7 +514,35 @@ function renderOutline() {
     ? currentHeads.map((h, i) => `<li><a href="#" data-line="${h.line}" data-i="${i}" style="--lvl:${Math.min(h.level, 4)}">${esc(h.text)}</a></li>`).join('')
     : '<li class="outline-empty">Headings appear here as you write them.</li>';
   markOutlineCurrent();
+  if (activeTab()?.path !== blPath) renderBacklinks();
 }
+let blSeq = 0, blPath = null;
+const backlinksSoon = debounce(() => renderBacklinks(), 600);
+async function renderBacklinks() {
+  const t = activeTab(); const seq = ++blSeq; if (!t) return; blPath = t.path;
+  const [bl, broken] = await Promise.all([folio.backlinks(t.path).catch(() => []), folio.brokenLinks(t.path).catch(() => [])]);
+  if (seq !== blSeq) return;
+  const kindLabel = { link: 'link', value: 'value', embed: 'embed' };
+  $('#backlinks').innerHTML = bl.length ? bl.map((b) => `<li><a href="#" data-bl="${esc(b.path)}" data-bl-line="${b.line}" title="${esc(b.text)}"><span class="bl-name">${esc(stem(b.path))}</span><span class="bl-kind">${kindLabel[b.kind] || b.kind}</span><span class="bl-ref">${esc(b.ref)}</span></a></li>`).join('')
+    : '<li class="outline-empty">No other document links here yet.</li>';
+  const st = $('#st-links'); st.hidden = !bl.length && !broken.length;
+  st.textContent = [bl.length ? `${bl.length} ${bl.length === 1 ? 'link' : 'links'} here` : '', broken.length ? `${broken.length} broken` : ''].filter(Boolean).join(' · ');
+  st.onclick = () => showMenu(st, [
+    ...(bl.length ? [{ head: 'Linked from' }, ...bl.map((b) => ({ label: `${stem(b.path)}: ${b.ref}`, run: () => openFile(b.path, { line: b.line }) }))] : []),
+    ...(broken.length ? [{ head: 'Broken references here' }, ...broken.map((b) => ({ label: `Line ${b.line}: ${b.ref}`, run: () => openFile(t.path, { line: b.line }) }))] : []),
+  ]);
+  const box = $('#broken-links'); box.hidden = !broken.length;
+  box.innerHTML = broken.length ? `<b>${broken.length} broken ${broken.length === 1 ? 'reference' : 'references'}</b>${broken.map((b) => `<a href="#" data-bl="${esc(t.path)}" data-bl-line="${b.line}">Line ${b.line}: ${esc(b.ref)}</a>`).join('')}` : '';
+}
+$('#outline-list').addEventListener('contextmenu', (e) => {
+  const a = e.target.closest('a[data-i]'); if (!a || curType() !== 'md') return; e.preventDefault();
+  const h = currentHeads[Number(a.dataset.i)]; const part = h.text.replace(/[*_`]/g, '');
+  showMenu(null, [{ label: 'Copy link to this section', run: () => copyRef(S.active, part, 'link') }, { label: 'Copy embed reference', run: () => copyRef(S.active, part, 'embed') }], { x: e.clientX, y: e.clientY });
+});
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-bl]'); if (!a) return; e.preventDefault();
+  openFile(a.dataset.bl, { line: Number(a.dataset.blLine) });
+});
 function markOutlineCurrent(line) {
   if (curType() !== 'md') return;
   if (isRich() && line == null) { const c = rich.currentHeading(); $$('#outline-list a').forEach((a) => a.setAttribute('aria-current', String(Number(a.dataset.i) === c))); return; }
@@ -871,6 +971,9 @@ const COMMANDS = [
   { id: 'table', title: 'Insert table', run: () => (isRich() ? rich.run('table') : editor.insert('\n| Column | Column |\n| --- | --- |\n|  |  |\n')) },
   { id: 'image', title: 'Insert image…', run: () => (isRich() ? rich.run('image') : folio.pickImage(S.active).then((r) => r && editor.insert(`![image](${r})`)).catch((e) => toast(e.message, { kind: 'error' }))) },
   { id: 'mermaid', title: 'Insert diagram (Mermaid)', run: () => insertMd('\n```mermaid\nflowchart LR\n  A[Idea] --> B[Draft] --> C[Shipped]\n```\n') },
+  { id: 'insert-ref', title: 'Insert reference to another document…', key: 'Mod+Shift+K', run: () => insertRef('link') },
+  { id: 'insert-value', title: 'Insert live value from another document…', run: () => insertRef('value') },
+  { id: 'insert-embed', title: 'Embed part of another document…', run: () => insertRef('embed') },
   { id: 'callout', title: 'Insert callout', run: () => insertMd('\n> [!NOTE]\n> \n') },
   { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; showWelcome(); } },
 ];
@@ -1216,6 +1319,7 @@ function bindChrome() {
   document.addEventListener('keydown', (e) => {
     const m = e.metaKey || e.ctrlKey;
     if (m && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openPalette('commands'); }
+    if (m && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); insertRef('link'); }
     if (m && e.key === 'Enter' && curType() === 'slides') { e.preventDefault(); curSurface()?.present(); }
     if (e.key === 'Escape' && app.classList.contains('focus') && $('#palette').hidden) toggleFocus();
   });
@@ -1232,8 +1336,9 @@ function dragResize(handle, onMove) {
 }
 
 function bindIpc() {
-  folio.onTreeChanged(() => refreshTree());
+  folio.onTreeChanged(() => { refreshTree(); backlinksSoon(); });
   folio.onFileChanged(({ path: p, content }) => {
+    if (p !== S.active) backlinksSoon();
     if (p !== S.active && /\{\{|!\[\[|```chart/.test(activeTab()?.text || '')) { renderPreview(); curSurface()?.refresh?.(); }
     const t = tabOf(p); if (!t || content === t.saved) return;
     if (t.text === t.saved) { t.saved = content; if (p === S.active) { setActiveText(content); renderPreview(); renderOutline(); } else t.text = content; }

@@ -18,9 +18,9 @@ export const LAYOUTS = [
 ];
 export const THEMES = [['folio', 'Folio'], ['graphite', 'Graphite'], ['paper', 'Paper']];
 const MARP_THEME = { default: 'folio', gaia: 'paper', uncover: 'graphite' };
-const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider'];
+const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source'];
 const LOCAL = ['paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color'];
-const SPOT = ['layout']; // Folio layouts apply to one slide only
+const SPOT = ['layout', 'source']; // Folio layouts apply to one slide only
 
 const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -181,6 +181,15 @@ export function renderSlide(deck, s, { number = true } = {}) {
     ${number && e.paginate === 'true' ? `<span class="sl-num">${s.index + 1}</span>` : ''}
   </section>`;
 }
+
+/* ---------- synced copies ---------- */
+const SOURCE_LINE = /^[ \t]*<!--\s*source\s*:[^>]*-->[ \t]*\n?/m;
+/** the content of a slide without its `source` directive, for comparing a copy with its source */
+export const syncBody = (chunk) => chunk.replace(SOURCE_LINE, '').replace(/^\n+|\s+$/g, '');
+/** slide n (1-based) of a deck as source text */
+export function slideChunk(deckText, n) { const fm = parseFrontmatter(deckText); return splitSlides(fm.body)[n - 1] ?? null; }
+/** a copy of a source slide that remembers where it came from */
+export const syncedCopy = (ref, sourceChunk) => `\n<!-- source: ${ref} -->\n${syncBody(sourceChunk)}\n`;
 
 /* ---------- write back ---------- */
 export function joinDeck(fmRaw, chunks) {

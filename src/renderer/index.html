@@ -84,6 +84,9 @@
         <aside class="outline" id="outline" aria-label="Outline">
           <h2 class="side-head">On this page</h2>
           <ol class="outline-list" id="outline-list"></ol>
+          <h2 class="side-head side-head-links">Linked from</h2>
+          <ul class="links-list" id="backlinks"></ul>
+          <div class="links-broken" id="broken-links" hidden></div>
         </aside>
 
         <div class="empty" id="empty-state" hidden></div>
@@ -92,6 +95,7 @@
       <footer class="statusbar" id="statusbar">
         <span id="st-path" class="st-path"></span>
         <span class="statusbar-spacer"></span>
+        <button class="st-links" type="button" id="st-links" hidden aria-haspopup="menu"></button>
         <span id="st-save"></span>
         <span id="st-words"></span>
         <span id="st-time"></span>

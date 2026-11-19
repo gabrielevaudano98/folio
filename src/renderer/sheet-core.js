@@ -122,13 +122,27 @@ function extraFunctions(p) {
   p.setFunction('TODAY', () => new Date(new Date().toDateString()));
 }
 
-export function evaluator(sheet) {
+/** references to other documents used in formulas: ={{Budget.sheet#Costs!H6}}*2 */
+export function formulaRefs(text) {
+  const out = new Set();
+  for (const m of String(text).matchAll(/\|\s*=[^|\n]*/g)) for (const r of m[0].matchAll(/\{\{([^}\n]+?)\}\}/g)) out.add(r[1].trim());
+  return [...out];
+}
+const withRefs = (f) => f.replace(/\{\{([^}\n]+?)\}\}/g, (m, r) => `REF("${r.trim().replace(/"/g, '')}")`);
+
+export function evaluator(sheet, { external = null } = {}) {
   const rows = sheet.rows;
   const cache = new Map(), busy = new Set();
   const pool = [];
   const parserAt = (depth) => {
     if (pool[depth]) return pool[depth];
     const p = new Parser(); extraFunctions(p);
+    p.setFunction('REF', ([raw]) => {
+      const v = external?.get(String(raw));
+      if (v === undefined) throw Error(external ? '#REF!' : '#BUSY!');
+      if (v && v.error) throw Error(v.error);
+      return v;
+    });
     p.on('callCellValue', (c, done) => done(val(c.row.index, c.column.index, depth + 1)));
     p.on('callRangeValue', (s, e, done) => {
       const out = [];
@@ -146,7 +160,7 @@ export function evaluator(sheet) {
     busy.add(k);
     let v;
     try {
-      const res = parserAt(depth).parse(raw.slice(1));
+      const res = parserAt(depth).parse(withRefs(raw.slice(1)));
       v = res.error ? { error: res.error } : res.result;
     } catch (e) { v = { error: String(e.message || e).startsWith('#') ? e.message : '#ERROR!' }; }
     busy.delete(k);
