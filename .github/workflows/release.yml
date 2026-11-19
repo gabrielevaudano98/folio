@@ -35,7 +35,16 @@ jobs:
       - run: npm ci
       - name: Build macOS (universal .dmg and .zip)
         if: runner.os == 'macOS'
-        run: npm run dist:mac -- --publish never
+        shell: bash
+        run: |
+          # Without signing secrets the variables are empty strings, which electron-builder
+          # reads as a path (the project folder). Unset them and sign ad hoc instead.
+          if [ -z "$CSC_LINK" ]; then
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            npm run dist:mac -- --publish never -c.mac.identity=-
+          else
+            npm run dist:mac -- --publish never
+          fi
         env:
           # Optional secrets to sign and notarize. Without them the app is ad-hoc signed.
           CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
@@ -43,7 +52,6 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CERT_P12_BASE64 != '' }}
       - name: Build Windows (installers x64 and arm64, portable)
         if: runner.os == 'Windows'
         run: npm run dist:win -- --publish never
