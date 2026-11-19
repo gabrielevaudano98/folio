@@ -147,3 +147,65 @@ export function nextId(text, prefix = 'box') {
   while (used.has(`${prefix}-${n}`)) n++;
   return `${prefix}-${n}`;
 }
+
+/* ---------- arrange (P2): pure geometry helpers ---------- */
+const box = (g) => ({ l: g.x, t: g.y, r: g.x + g.w, b: g.y + g.h });
+export const locked = (o) => ['true', '1', 'yes'].includes(String(o.attrs.lock || '').toLowerCase());
+export const groupOf = (o) => o.attrs.group || null;
+
+/** align the picked objects to each other (2+), or to the slide (1). modes: left center right top middle bottom */
+export function alignPatches(objs, picked, mode, slide) {
+  const gs = picked.map((i) => ({ i, g: geometry(objs[i]) }));
+  const bb = gs.length > 1
+    ? { l: Math.min(...gs.map((s) => s.g.x)), t: Math.min(...gs.map((s) => s.g.y)), r: Math.max(...gs.map((s) => s.g.x + s.g.w)), b: Math.max(...gs.map((s) => s.g.y + s.g.h)) }
+    : { l: 0, t: 0, r: slide.width, b: slide.height };
+  return gs.map(({ i, g }) => {
+    const p = {};
+    if (mode === 'left') p.x = bb.l; else if (mode === 'right') p.x = bb.r - g.w; else if (mode === 'center') p.x = (bb.l + bb.r) / 2 - g.w / 2;
+    if (mode === 'top') p.y = bb.t; else if (mode === 'bottom') p.y = bb.b - g.h; else if (mode === 'middle') p.y = (bb.t + bb.b) / 2 - g.h / 2;
+    for (const k of Object.keys(p)) p[k] = Math.round(p[k]);
+    return [i, p];
+  }).filter(([i, p]) => Object.entries(p).some(([k, v]) => v !== geometry(objs[i])[k]));
+}
+
+/** spread 3+ objects so the gaps between them are equal ('h' or 'v') */
+export function distributePatches(objs, picked, axis) {
+  if (picked.length < 3) return [];
+  const key = axis === 'h' ? 'x' : 'y', size = axis === 'h' ? 'w' : 'h';
+  const gs = picked.map((i) => ({ i, g: geometry(objs[i]) })).sort((a, b) => a.g[key] - b.g[key]);
+  const first = gs[0].g[key], last = gs[gs.length - 1].g[key] + gs[gs.length - 1].g[size];
+  const gap = (last - first - gs.reduce((s, o) => s + o.g[size], 0)) / (gs.length - 1);
+  let pos = first;
+  return gs.map(({ i, g }) => { const v = Math.round(pos); pos += g[size] + gap; return [i, { [key]: v }]; })
+    .filter(([i, p]) => p[key] !== geometry(objs[i])[key]);
+}
+
+/** stacking: 'front' | 'back' | 'forward' | 'backward' */
+export function zPatches(objs, picked, op) {
+  const zs = objs.map((o) => geometry(o).z); const set = new Set(picked);
+  if (op === 'front') { const top = Math.max(...zs); return picked.map((i, n) => [i, { z: top + 1 + n }]); }
+  if (op === 'back') { const low = Math.min(...zs); return picked.map((i, n) => [i, { z: low - picked.length + n }]); }
+  const out = [];
+  for (const i of picked) {
+    const z = zs[i];
+    const others = zs.map((v, j) => [v, j]).filter(([, j]) => !set.has(j));
+    const next = op === 'forward' ? others.filter(([v]) => v >= z).sort((a, b) => a[0] - b[0])[0] : others.filter(([v]) => v <= z).sort((a, b) => b[0] - a[0])[0];
+    if (next) out.push([i, { z: op === 'forward' ? next[0] + 1 : next[0] - 1 }]);
+  }
+  return out;
+}
+
+/** a new, free group name */
+export function nextGroup(objs) { const used = new Set(objs.map((o) => o.attrs.group)); let n = 1; while (used.has(`group-${n}`)) n++; return `group-${n}`; }
+
+/** shift every x= and y= in copied object source (paste offset) and give it a fresh id */
+export function retarget(src, text, dx = 24, dy = 24) {
+  const kind = (src.match(/^\s*:::\s*(\w+)/) || [])[1] || 'image';
+  const id = nextId(text, kind);
+  let out = src.split('\n');
+  const head = out[0];
+  let h = head.replace(/ #[\w-]+/, '');
+  h = /^\s*:::/.test(h) ? h.replace(/^(\s*:::\s*\w+)/, `$1 #${id}`) : h;
+  h = h.replace(/\b(x|y)=(-?[\d.]+)/g, (m, a, v) => `${a}=${Math.round(parseFloat(v) + (a === 'x' ? dx : dy))}`);
+  out[0] = h; return out.join('\n');
+}

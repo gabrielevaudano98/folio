@@ -4,7 +4,7 @@ import { createEditor } from './editor.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
 import { mountCanvas } from './slides-canvas.js';
-import { scanObjects, addObject, nextId } from './slides-objects.js';
+import { scanObjects, addObject, nextId, setMany, setObjectAttrs, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -15,6 +15,9 @@ export function mountSlides(host, ctx) {
       <button class="btn" type="button" data-sl="add">${icons.plus} New slide</button>
       <button class="btn" type="button" data-sl="box" title="Add a text box you can place anywhere">${icons.plus} Text box</button>
       <button class="btn" type="button" data-sl="shape" title="Add a shape you can place anywhere">${icons.plus} Shape</button>
+      <button class="btn" type="button" data-sl="arrange" aria-haspopup="menu" title="Align, distribute, order, group, lock">Arrange</button>
+      <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
+      <label class="sf-check"><input type="checkbox" data-sl-grid> Grid</label>
       <div class="sf-sep"></div>
       <label class="sf-field"><span>Layout</span><select class="rb-select" data-sl-layout>${LAYOUTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
       <label class="sf-field"><span>Theme</span><select class="rb-select sf-narrow" data-sl-theme>${THEMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
@@ -27,6 +30,7 @@ export function mountSlides(host, ctx) {
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
+        <div class="sl-layers" hidden aria-label="Objects on this slide"></div>
         <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
         <div class="sl-edit">
           <div class="sl-edit-col"><div class="sl-edit-head"><span>Slide ${'<b class="sl-cur">1</b>'} content</span><span class="sl-hint">Markdown. <code>::: left</code> / <code>::: right</code>, <code>::: card</code>, <code>![bg right](img)</code></span></div><div class="sl-cm"></div></div>
@@ -100,13 +104,14 @@ export function mountSlides(host, ctx) {
       frame, stage, width: deck.width, height: deck.height, selected,
       getChunk: () => chunks().list[cur],
       edit(fn) { const { fm, list } = chunks(); list[cur] = fn(list[cur]); commit(joinDeck(fm, list)); },
-      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); },
+      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); },
     });
     host.querySelector('[data-sl-layout]').value = s.layout;
     host.querySelector('[data-sl-theme]').value = deck.theme;
     host.querySelector('[data-sl-size]').value = deck.global.size === '4:3' ? '4:3' : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur').textContent = cur + 1;
+    renderLayers();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.slides.length} ${deck.slides.length === 1 ? 'slide' : 'slides'}`);
@@ -158,13 +163,83 @@ export function mountSlides(host, ctx) {
     selected = [scanObjects(list[cur]).length - 1];
     commit(joinDeck(fm, list));
   }
+  /* arrange (P2) */
+  const objsNow = () => scanObjects(chunks().list[cur]);
+  function patchSel(patches) { if (patches.length) editChunk2((c) => setMany(c, patches)); }
+  function editChunk2(fn) { const { fm, list } = chunks(); list[cur] = fn(list[cur]); commit(joinDeck(fm, list)); }
+  function arrangeMenu(anchor) {
+    const objs = objsNow(); const n = selected.length; const one = n >= 1, many = n >= 2, three = n >= 3;
+    const slide = { width: deck.width, height: deck.height };
+    const item = (label, ok, run) => ({ label, run, disabled: !ok });
+    const grouped = selected.some((i) => groupOf(objs[i]));
+    ctx.showMenu(anchor, [
+      item(many ? 'Align left' : 'Align to slide: left', one, () => patchSel(alignPatches(objs, selected, 'left', slide))),
+      item(many ? 'Align center' : 'Align to slide: center', one, () => patchSel(alignPatches(objs, selected, 'center', slide))),
+      item(many ? 'Align right' : 'Align to slide: right', one, () => patchSel(alignPatches(objs, selected, 'right', slide))),
+      item(many ? 'Align top' : 'Align to slide: top', one, () => patchSel(alignPatches(objs, selected, 'top', slide))),
+      item(many ? 'Align middle' : 'Align to slide: middle', one, () => patchSel(alignPatches(objs, selected, 'middle', slide))),
+      item(many ? 'Align bottom' : 'Align to slide: bottom', one, () => patchSel(alignPatches(objs, selected, 'bottom', slide))), '-',
+      item('Distribute horizontally', three, () => patchSel(distributePatches(objs, selected, 'h'))),
+      item('Distribute vertically', three, () => patchSel(distributePatches(objs, selected, 'v'))), '-',
+      item('Bring to front', one, () => patchSel(zPatches(objs, selected, 'front'))),
+      item('Bring forward', one, () => patchSel(zPatches(objs, selected, 'forward'))),
+      item('Send backward', one, () => patchSel(zPatches(objs, selected, 'backward'))),
+      item('Send to back', one, () => patchSel(zPatches(objs, selected, 'back'))), '-',
+      item('Group', many, () => { const g = nextGroup(objs); patchSel(selected.map((i) => [i, { group: g }])); }),
+      item('Ungroup', grouped, () => patchSel(selected.map((i) => [i, { group: null }]))),
+      item('Lock', one, () => patchSel(selected.map((i) => [i, { lock: 'true' }]))), '-',
+      item('Copy', one, () => copySel()), item('Cut', one, () => { copySel(); deleteSel(); }), { label: 'Paste', run: () => pasteSel(), disabled: !clip.length },
+      item('Duplicate', one, () => { copySel(); pasteSel(); }),
+      item('Delete', one, () => deleteSel()),
+    ]);
+  }
+  let clip = [];
+  function copySel() {
+    const text0 = chunks().list[cur];
+    clip = selected.map((i) => objectSource(text0, i)).filter(Boolean);
+    navigator.clipboard?.writeText(clip.join('\n\n')).catch(() => {});
+  }
+  function deleteSel() { const gone = [...selected].sort((a, b) => b - a); selected = []; editChunk2((c) => gone.reduce((t, i) => removeObject(t, i), c)); }
+  function pasteSel() {
+    if (!clip.length) return ctx.toast('Nothing to paste. Copy an object first.');
+    let n0 = 0;
+    editChunk2((c) => { n0 = scanObjects(c).length; return clip.reduce((t, src) => addObject(t, retarget(src, t)), c); });
+    selected = clip.map((_, j) => n0 + j); canvas?.select(selected, { notify: false });
+  }
+  function renderLayers() {
+    const pane = host.querySelector('.sl-layers'); if (pane.hidden) return;
+    const objs = objsNow();
+    const rows = objs.map((o, i) => ({ o, i, z: geometry(o).z })).sort((a, b) => b.z - a.z || b.i - a.i);
+    pane.innerHTML = `<div class="sl-layers-head">Objects</div>` + (rows.length ? rows.map(({ o, i }) => `
+      <div class="sl-layer" role="button" tabindex="0" data-i="${i}" aria-pressed="${selected.includes(i)}">
+        <span class="sl-layer-name">${esc(o.id || o.kind + ' ' + (i + 1))}</span>
+        ${groupOf(o) ? `<span class="sl-layer-tag">${esc(groupOf(o))}</span>` : ''}
+        <button class="sl-layer-lock" type="button" data-lock="${i}" aria-label="${locked(o) ? 'Unlock' : 'Lock'} ${esc(o.id || o.kind)}" aria-pressed="${locked(o)}">${locked(o) ? 'Locked' : 'Lock'}</button>
+      </div>`).join('') : '<p class="sl-layers-empty">No placed objects yet. Add a text box or shape.</p>');
+  }
+  host.querySelector('.sl-layers').addEventListener('click', (e) => {
+    const lk = e.target.closest('[data-lock]');
+    if (lk) { const i = Number(lk.dataset.lock); const o = objsNow()[i]; patchSel([[i, { lock: locked(o) ? null : 'true' }]]); return; }
+    const row = e.target.closest('[data-i]'); if (!row) return;
+    const i = Number(row.dataset.i); const o = objsNow()[i];
+    selected = e.shiftKey ? [...new Set([...selected, i])] : [i];
+    if (locked(o)) return renderLayers();
+    canvas?.select(selected, { notify: false }); renderLayers();
+  });
+  host.querySelector('[data-sl-layers]').addEventListener('change', (e) => { host.querySelector('.sl-layers').hidden = !e.target.checked; renderLayers(); });
+  host.querySelector('[data-sl-grid]').addEventListener('change', (e) => { frame.classList.toggle('sl-grid', e.target.checked); canvas?.setGrid(e.target.checked ? 40 : 0); });
+  host.querySelector('[data-sl="arrange"]').addEventListener('click', (e) => arrangeMenu(e.currentTarget));
   function restore(from, to) {
     if (!from.length) return;
     to.push(text); restoring = true; commit(from.pop()); restoring = false;
   }
   stage.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea, select, .cm-editor')) return;
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); restore(e.shiftKey ? redo : undo, e.shiftKey ? undo : redo); }
+    const mod = e.ctrlKey || e.metaKey, kk = e.key.toLowerCase();
+    if (mod && kk === 'c' && selected.length) { e.preventDefault(); copySel(); }
+    else if (mod && kk === 'x' && selected.length) { e.preventDefault(); copySel(); deleteSel(); }
+    else if (mod && kk === 'v') { e.preventDefault(); pasteSel(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); restore(e.shiftKey ? redo : undo, e.shiftKey ? undo : redo); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); restore(redo, undo); }
   });
   host.querySelector('[data-sl="box"]').addEventListener('click', () => addObjectBlock('box'));

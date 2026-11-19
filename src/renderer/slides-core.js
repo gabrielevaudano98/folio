@@ -146,7 +146,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
     const st = [`left:${g.x}px`, `top:${g.y}px`, `width:${g.w}px`, `height:${g.h}px`, `z-index:${10 + g.z}`];
     if (g.rotate) st.push(`transform:rotate(${g.rotate}deg)`);
     if (g.opacity != null) st.push(`opacity:${g.opacity}`);
-    const a = o.attrs; const cls = ['sl-obj', 'sl-' + o.kind];
+    const a = o.attrs; const cls = ['sl-obj', 'sl-' + o.kind]; if (['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase())) cls.push('is-locked');
     const ref = ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`;
     if (o.kind === 'image') {
       const crop = (a.crop || '').split(',').map(Number);

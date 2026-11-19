@@ -969,7 +969,7 @@ function confirmSheet({ title, body, action, danger }) {
 function showMenu(anchor, items, at) {
   const m = $('#menu');
   m.innerHTML = items.map((it, i) => it === '-' ? '<div class="menu-sep" role="separator"></div>' : it.head ? `<div class="menu-head">${esc(it.head)}</div>`
-    : `<button class="menu-item ${it.danger ? 'danger' : ''}" type="button" role="menuitem" data-mi="${i}"><span class="menu-label">${esc(it.label)}</span>${it.key ? `<kbd>${esc(keyLabel(it.key))}</kbd>` : ''}</button>`).join('');
+    : `<button class="menu-item ${it.danger ? 'danger' : ''}" type="button" role="menuitem" data-mi="${i}"${it.disabled ? ' disabled aria-disabled="true"' : ''}><span class="menu-label">${esc(it.label)}</span>${it.key ? `<kbd>${esc(keyLabel(it.key))}</kbd>` : ''}</button>`).join('');
   m.onclick = (e) => { const b = e.target.closest('[data-mi]'); if (!b) return; m.hidePopover(); items[Number(b.dataset.mi)].run(); };
   m.showPopover();
   const r = at ? { left: at.x, bottom: at.y, right: at.x } : anchor.getBoundingClientRect();

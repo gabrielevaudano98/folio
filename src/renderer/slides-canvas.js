@@ -3,7 +3,7 @@
 // Every gesture ends in ONE call to ctx.edit(fn), which rewrites only the moved objects' opener lines.
 import Moveable from 'moveable';
 import Selecto from 'selecto';
-import { setMany, removeObject, scanObjects, objectSource, addObject, geometry, nextId } from './slides-objects.js';
+import { setMany, removeObject, scanObjects, objectSource, addObject, geometry, nextId, groupOf } from './slides-objects.js';
 
 const num = (v) => Math.round(v * 10) / 10;
 const whole = (v) => Math.round(v);
@@ -72,7 +72,7 @@ export function mountCanvas(o) {
 
   const selecto = new Selecto({
     container: stage, rootContainer: stage, dragContainer: frame,
-    selectableTargets: ['.sl-obj'], selectByClick: true, selectFromInside: false, hitRate: 0,
+    selectableTargets: ['.sl-obj:not(.is-locked)'], selectByClick: true, selectFromInside: false, hitRate: 0,
     toggleContinueSelect: ['shift'], preventDefault: false,
   });
   selecto.on('dragStart', (e) => {
@@ -87,7 +87,10 @@ export function mountCanvas(o) {
 
   let sel = [];
   function set(next, { notify = true } = {}) {
-    sel = next.filter((i) => byIndex(i));
+    const all = scanObjects(o.getChunk());
+    const grp = new Set(next.map((i) => groupOf(all[i] || { attrs: {} })).filter(Boolean));
+    next = [...new Set([...next, ...all.map((ob, i) => (grp.has(groupOf(ob)) ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b);
+    sel = next.filter((i) => byIndex(i) && !byIndex(i).classList.contains('is-locked'));
     const els = sel.map(byIndex);
     moveable.target = els.length ? els : null;
     moveable.elementGuidelines = objEls().filter((el) => !els.includes(el));
@@ -140,6 +143,7 @@ export function mountCanvas(o) {
 
   return {
     select: set,
+    setGrid(n) { moveable.snapGridWidth = n; moveable.snapGridHeight = n; moveable.updateRect(); },
     selection: () => sel,
     update: () => moveable.updateRect(),
     destroy() { stage.removeEventListener('keydown', onKey); selecto.destroy(); moveable.destroy(); },
