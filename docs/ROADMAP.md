@@ -24,6 +24,14 @@ PowerPoint and Google Slides capabilities with full user control, in plain slide
 - **P9** SmartArt and Designer · **P10** Transitions, animations, Morph · **P11** Interactivity and Zoom
 - **P12** Present and record · **P13** PPTX interop · **P14** MCP and AI · **P15** Polish
 
+## v1.2 Pages Studio
+
+Notion, Google Docs, Word and Obsidian capabilities in plain Markdown: `/` and `@` menus, `[[` links and embeds, draggable blocks, callouts, maths, footnotes, comments and suggestions. Full plan: [PAGES-PLAN.md](PAGES-PLAN.md).
+
+- **D0** Fidelity foundation · **D1** Inline formatting · **D2** Blocks · **D3** `/` menu · **D4** New blocks
+- **D5** Links, mentions, chips · **D6** Tables · **D7** Navigation · **D8** Properties · **D9** Templates
+- **D10** Comments and suggestions · **D11** Paste, import, export · **D12** Backlinks · **D13** MCP · **D14** Polish
+
 ## v1.2 Editors
 
 Deeper visual editing for slides, boards and sheets.
