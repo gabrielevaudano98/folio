@@ -32,6 +32,12 @@ La sintassi completa dei formati è in [`docs/FORMATS.md`](docs/FORMATS.md).
 - Indice ("On this page") con sezione corrente, modalità Focus `⌘.`
 - Esporta in **PDF** e **HTML**
 
+**Slide** (`.slides.md`, compatibili Marp)
+- Editor visuale stile PowerPoint: oggetti posizionati liberamente (testo, forme, linee e connettori, icone, immagini, video, tabelle, grafici, equazioni, diagrammi SmartArt, forme libere), allinea/distribuisci/raggruppa, pannello Formato, unione di forme
+- **Template**: galleria con 8 template (colori, font, sfondi, master con segnaposto per titolo e testo, varianti di colore), template tuoi nella cartella `Templates/`, "Salva come template". Guida: [docs/TEMPLATES.md](docs/TEMPLATES.md)
+- Master, sezioni, slide nascoste, ordinamento, struttura, commenti, trova e sostituisci, controllo accessibilità, Design ideas, riferimenti vivi ad altri documenti
+- Presentazione, esportazione PDF e PowerPoint
+
 **Anteprima**
 - GitHub Flavored Markdown, task cliccabili (aggiornano il sorgente), tabelle, note a piè di pagina
 - Callout `> [!NOTE]`, `[!TIP]`, `[!WARNING]`…

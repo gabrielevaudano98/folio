@@ -2,6 +2,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import FORMATS from '../../docs/FORMATS.md';
+import TEMPLATES from '../../docs/TEMPLATES.md';
 import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
 import { resolveRef, loadExternals } from '../renderer/refs.js';
 
@@ -10,7 +11,7 @@ export const SERVER_INFO = { name: 'folio', version: '1.1.0' };
 export const INSTRUCTIONS = `Folio is the user's Markdown workspace. Paths are relative to the open folder and use forward slashes.
 Read a note before editing it. Prefer edit_note (exact find-and-replace) over write_note for small changes so the user's formatting survives.
 Every change you make is shown live to the user in Folio with a one-click undo. Use get_open_note to see what the user is looking at right now.
-Besides pages (.md) Folio has slides (name.slides.md, Marp compatible), boards (name.board.md, diagrams as text) and sheets (name.sheet.md, Markdown tables with Excel formulas). Call get_format_guide before creating or editing those, and get_sheet_values to read computed sheet values. Documents can reference each other: [[Doc#part]] links, {{Doc#part}} shows a live value (e.g. {{Budget.sheet#Summary!B7}}), ![[Doc#part]] embeds a sheet range, slide, board or page section. Use resolve_ref to see what a reference shows.`;
+Besides pages (.md) Folio has slides (name.slides.md, Marp compatible), boards (name.board.md, diagrams as text) and sheets (name.sheet.md, Markdown tables with Excel formulas). Call get_format_guide before creating or editing those, and get_sheet_values to read computed sheet values. Documents can reference each other: [[Doc#part]] links, {{Doc#part}} shows a live value (e.g. {{Budget.sheet#Summary!B7}}), ![[Doc#part]] embeds a sheet range, slide, board or page section. Use resolve_ref to see what a reference shows. Slide decks can use a template (template: Templates/Name.slides); get_format_guide with type template explains how to build one.`;
 
 const ro = { readOnlyHint: true, openWorldHint: false };
 const rw = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
@@ -29,8 +30,8 @@ export const TOOLS = [
     description: 'Return the heading structure of a note with line numbers.',
     input: { path: z.string() } },
   { name: 'get_format_guide', title: 'Get format guide', write: false, annotations: ro,
-    description: 'Return the syntax of Folio document types: slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets).',
-    input: { type: z.enum(['slides', 'board', 'sheet', 'all']).optional() } },
+    description: 'Return the syntax of Folio document types: slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/).',
+    input: { type: z.enum(['slides', 'board', 'sheet', 'template', 'all']).optional() } },
   { name: 'get_sheet_values', title: 'Get sheet values', write: false, annotations: ro,
     description: 'Evaluate every formula in a .sheet.md note and return each sheet as a grid of computed values, with cell addresses.',
     input: { path: z.string(), sheet: z.string().optional().describe('Sheet name; all sheets when omitted') } },
@@ -99,7 +100,8 @@ export async function runTool(notes, name, a, hooks = {}) {
     case 'search_notes': return notes.search(a.query, a);
     case 'get_outline': return notes.outline(a.path);
     case 'get_format_guide': {
-      if (!a.type || a.type === 'all') return FORMATS;
+      if (a.type === 'template') return TEMPLATES;
+      if (!a.type || a.type === 'all') return FORMATS + '\n\n' + TEMPLATES;
       const title = { slides: '## slides-md', board: '## board-md', sheet: '## sheet-md' }[a.type];
       const start = FORMATS.indexOf(title); const next = FORMATS.indexOf('\n## ', start + 4);
       return FORMATS.slice(start, next < 0 ? undefined : next);

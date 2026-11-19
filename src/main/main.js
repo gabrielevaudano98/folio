@@ -447,6 +447,7 @@ function buildMenu() {
       { label: 'About Folio', click: () => app.showAboutPanel() },
       { label: 'Source code and license', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio') },
       { label: 'Report a problem', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/issues/new/choose') },
+      { label: 'Building slide templates', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/TEMPLATES.md') },
       { label: 'File formats', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/FORMATS.md') },
     ] },
   ];

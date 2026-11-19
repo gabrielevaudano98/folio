@@ -40,6 +40,7 @@ async function suite(client, root, label) {
   await client.callTool({ name: 'create_note', arguments: { path: `Broken${label.length}.md`, content: 'See {{Nowhere#A1}}\n' } });
   const br = JSON.parse(text(await client.callTool({ name: 'find_broken_links', arguments: { path: `Broken${label.length}.md` } })));
   assert.equal(br.length, 1); assert.equal(br[0].ref, '{{Nowhere#A1}}'); ok('find_broken_links reports a missing target');
+  const tg = text(await client.callTool({ name: 'get_format_guide', arguments: { type: 'template' } })); assert.match(tg, /Building a Folio slide template/); assert.match(tg, /placeholder=title/); ok('get_format_guide explains how to build a template');
   const esc = await client.callTool({ name: 'read_note', arguments: { path: '../../etc/passwd' } });
   assert(esc.isError && /escapes/.test(text(esc))); ok('refuses paths outside the workspace');
   const exe = await client.callTool({ name: 'write_note', arguments: { path: 'evil.sh', content: 'x' } });

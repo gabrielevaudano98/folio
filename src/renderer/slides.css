@@ -132,3 +132,11 @@
 .slide .sm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; padding: 0; }
 .slide .sl-smartart.is-sm-editing { background: var(--sl-bg); padding: 12px 16px; overflow: auto; outline: 2px solid var(--sl-ink); }
 .slide .sl-smartart.is-sm-editing > :not(.ProseMirror) { display: none; }
+/* layout placeholders (templates) */
+.slide .sl-phs { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.slide .sl-ph { position: absolute; display: flex; flex-direction: column; overflow: hidden; }
+.slide .sl-ph > :first-child { margin-top: 0; }
+.slide .sl-ph > :last-child { margin-bottom: 0; }
+.slide .sl-ph-title h1, .slide .sl-ph-title h2, .slide .sl-ph-title h3 { margin: 0; font-size: 1em; }
+.slide .sl-body.has-ph:empty { display: none; }
+.slide .sl-obj.is-placeholder { outline: 2px dashed color-mix(in oklch, var(--sl-ink) 35%, transparent); outline-offset: -2px; }

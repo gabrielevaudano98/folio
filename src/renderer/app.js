@@ -3,7 +3,7 @@ import { diffLines } from 'diff';
 import { createEditor } from './editor.js';
 import { createRich } from './rich.js';
 import { mountSlides } from './slides.js';
-import { NEW_DECK, renderSlide } from './slides-core.js';
+import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
 import { mountBoard } from './board.js';
@@ -70,6 +70,7 @@ function surfaceCtx(type) {
     openRef,
     copyRef: (part, kind) => copyRef(S.active, part, kind),
     pickRef,
+    templateGallery, ensureTemplate, saveTemplate,
     userName: () => folio.userName(),
     pickImage: () => folio.pickImage(S.active),
     pickMedia: (kind) => folio.pickMedia(S.active, kind),
@@ -634,9 +635,13 @@ async function newNote(folder = dirOf(S.active || ''), type) {
   const { name } = res; type = res.type;
   const ext = type === 'md' ? '.md' : `.${type}.md`;
   const file = (folder ? folder + '/' : '') + (/\.(md|markdown|mdx|txt)$/i.test(name) ? name : name + ext);
+  let tpl = null;
+  if (type === 'slides') { tpl = await templateGallery({ mode: 'new' }); if (tpl == null) return; }
   try {
-    const title = stem(file);
-    const p = await folio.create(file, (NEW_CONTENT[type] || NEW_CONTENT.md)(title));
+    const title = stem(file).replace(/\.slides$/i, '');
+    let content = (NEW_CONTENT[type] || NEW_CONTENT.md)(stem(file));
+    if (tpl && tpl !== 'blank') { const T = await import('./slides-templates.js'); await ensureTemplate(tpl); content = T.newDeckFrom(tpl, title); }
+    const p = await folio.create(file, content);
     if (folder) S.expanded.add(folder);
     await refreshTree(); await openFile(p);
     if (type === 'md' && !isRich()) editor.view.dispatch({ selection: { anchor: editor.view.state.doc.length } });
@@ -667,6 +672,46 @@ function newDocSheet({ folder, type = 'md' }) {
     d.querySelector('[data-cancel]').onclick = () => done(null);
     d.oncancel = () => resolve(null);
     d.showModal(); input.select();
+  });
+}
+/* slide templates: gallery, workspace copies, saving */
+async function ensureTemplate(t) {
+  const T = await import('./slides-templates.js'); const path = T.workspacePath(t);
+  if (!S.files.includes(path)) { await folio.create(path, t.text); await refreshTree(); }
+  return path;
+}
+async function saveTemplate(name, text) {
+  const T = await import('./slides-templates.js');
+  let path = `${T.TEMPLATE_DIR}/${name.replace(/[\\/:*?"<>|]/g, '-')}.slides.md`; let n = 2;
+  while (S.files.includes(path)) path = `${T.TEMPLATE_DIR}/${name.replace(/[\\/:*?"<>|]/g, '-')} ${n++}.slides.md`;
+  await folio.create(path, text); await refreshTree(); return path;
+}
+async function templateGallery({ mode = 'new' } = {}) {
+  const T = await import('./slides-templates.js');
+  const list = await T.listTemplates(refEnv());
+  return new Promise((resolve) => {
+    const d = $('#sheet-prompt'); d.classList.add('sheet-wide');
+    const tags = [...new Set(list.flatMap((t) => t.tags))].sort();
+    d.innerHTML = `<form method="dialog" class="tp-form">
+      <div class="sheet-head"><div><h2 id="prompt-title">${mode === 'new' ? 'Choose a template' : 'Change template'}</h2><p>${mode === 'new' ? 'A template sets colours, fonts, backgrounds and slide layouts. You can change it later in Design.' : 'The deck keeps its slides and takes the colours, fonts, backgrounds and layouts of the template.'}</p></div></div>
+      <div class="sheet-body">
+        <div class="tp-filter"><input class="input" type="search" data-tq placeholder="Search templates" aria-label="Search templates"><select class="rb-select" data-tt aria-label="Filter by style"><option value="">All styles</option>${tags.map((x) => `<option>${esc(x)}</option>`).join('')}</select></div>
+        <div class="tp-grid" role="radiogroup" aria-label="Templates">
+          ${mode === 'new' ? '<label class="tp-card"><input type="radio" name="tp" value="blank"><span class="tp-prev tp-blank">Blank deck</span><span class="tp-name">Blank</span><span class="tp-desc">The plain Folio look, no template file.</span></label>' : ''}
+          ${list.map((t, i) => `<label class="tp-card" data-tags="${esc(t.tags.join(','))}" data-name="${esc((t.name + ' ' + t.description).toLowerCase())}"><input type="radio" name="tp" value="${i}"${i === 0 && mode !== 'new' ? ' checked' : ''}><span class="tp-prev">${T.previewHtml(t, 200)}</span><span class="tp-name">${esc(t.name)}${t.builtin ? '' : ' <em>yours</em>'}</span><span class="tp-desc">${esc(t.description)}</span>${t.variants.length ? `<span class="tp-vars" aria-label="Colour variants">${[t, ...t.variants].map((v) => { const tk = v.tokens || {}; const tok = v.tokens ? tk : Object.fromEntries(['paper', 'accent', 'ink'].map((k) => [k, (parseFrontmatter(t.text).data[k] || '')])); return `<i style="background:${esc(tok.accent || '#888')};border-color:${esc(tok.paper || '#fff')}"></i>`; }).join('')}</span>` : ''}</label>`).join('')}
+        </div>
+        <p class="fp-note">Make your own: build a deck, then Design, Save as template. Templates live in the ${T.TEMPLATE_DIR} folder. <a href="#" data-guide>How to build a template</a></p>
+      </div>
+      <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">${mode === 'new' ? 'Create' : 'Apply template'}</button></div></form>`;
+    if (mode === 'new') d.querySelector('input[value="0"]').checked = true;
+    const filter = () => { const q = d.querySelector('[data-tq]').value.trim().toLowerCase(), tg = d.querySelector('[data-tt]').value; for (const c of d.querySelectorAll('.tp-card[data-name]')) c.hidden = (q && !c.dataset.name.includes(q)) || (tg && !c.dataset.tags.split(',').includes(tg)); };
+    d.querySelector('[data-tq]').addEventListener('input', filter); d.querySelector('[data-tt]').addEventListener('change', filter);
+    d.querySelector('[data-guide]').addEventListener('click', (e) => { e.preventDefault(); folio.openExternal?.('https://github.com/gabrielevaudano98/folio/blob/main/docs/TEMPLATES.md'); });
+    const done = (v) => { d.close(); d.classList.remove('sheet-wide'); resolve(v); };
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); const v = d.querySelector('input[name=tp]:checked')?.value; done(v == null ? null : v === 'blank' ? 'blank' : list[Number(v)]); };
+    d.querySelector('[data-cancel]').onclick = () => done(null);
+    d.oncancel = () => { d.classList.remove('sheet-wide'); resolve(null); };
+    d.showModal();
   });
 }
 async function newFolder(parent = '') {

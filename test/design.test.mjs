@@ -45,6 +45,6 @@ child.on('exit', () => {
   assert.deepEqual(plainSlide, [true, false, '2']); console.log('  ✓ other slides get only the masters for all slides, and numbers skip masters');
   assert.match(bar, /^2 \/ 2/); console.log('  ✓ presenting skips master slides');
   const text = fs.readFileSync(file, 'utf8');
-  assert.match(text, /^---\nmarp: true\ntemplate: Brand\.slides\ntitle: Quarterly report\naccent: #aa2200\nbackgroundImage: linear-gradient\(135deg, #ffffff, #d9d9d9\)\n---\n/); console.log('  ✓ the Design pane writes colours and an all-slides background to front matter');
+  assert.match(text, /^---\nmarp: true\ntemplate: Brand\.slides\ntitle: Quarterly report\naccent: "#aa2200"\nbackgroundImage: linear-gradient\(135deg, #ffffff, #d9d9d9\)\n---\n/); console.log('  ✓ the Design pane writes colours and an all-slides background to front matter');
   assert.doesNotMatch(text, /_backgroundImage/); console.log('  ✓ applying to all slides removes the slide-level background');
 });

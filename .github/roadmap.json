@@ -396,6 +396,14 @@
         "area:slides"
       ],
       "Keyboard-only editing, screen reader names, 200-slide decks, 60 fps drag, screenshot diffs in CI. WCAG 2.2 AA. See docs/SLIDES-PLAN.md."
+    ],
+    [
+      "v1.2 Slides Studio",
+      "[P7b] Slide templates: gallery, placeholders, variants, your own templates",
+      [
+        "area:slides"
+      ],
+      "Template gallery when creating a deck and in Design; 8 built-in templates; layout placeholders (title/subtitle/body) in masters; master: layout only; colour schemes and font pairs; Save as template into Templates/; guide in docs/TEMPLATES.md, also via MCP get_format_guide type template."
     ]
   ]
 }

@@ -181,6 +181,33 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   for (const [, , body] of BLOCKS) assert.equal(pd('---\nmarp: true\n---\n\n' + body).slides.length, 1); ok('building blocks are single slides');
 }
 
+// templates and placeholders
+{
+  const T = await import('../src/renderer/slides-templates.js');
+  const { parseDeck: pd, placeholdersFor, splitTitle, mastersFor } = await import('../src/renderer/slides-core.js');
+  assert.equal(T.BUILTIN.length, 8);
+  for (const text of T.BUILTIN) {
+    const info = T.templateInfo(text); const d = pd(text);
+    assert(info.name && info.description && info.variants.length === 2, info.name);
+    assert.deepEqual(d.masters.map((m) => m.master), ['all', 'title', 'section'], info.name);
+    assert(d.shown.length >= 3, info.name); assert(d.global.paper && d.global.accent && d.global['heading-font'], info.name);
+    for (const v of info.variants) assert.equal(Object.keys(v.tokens).length, 5, `${info.name} ${v.name}`);
+  }
+  ok('the 8 built-in templates have tokens, variants, masters for all/title/section and sample slides');
+  const swiss = T.BUILTIN.find((x) => T.templateInfo(x).name === 'Swiss');
+  const deckText = T.newDeckFrom({ ...T.templateInfo(swiss), text: swiss, builtin: true }, 'Launch plan');
+  assert.match(deckText, /^---\nmarp: true\ntemplate: Templates\/Swiss\.slides\ntitle: Launch plan\n---\n/); assert.match(deckText, /# Launch plan/); assert.doesNotMatch(deckText, /<!-- master/); ok('a new deck links the template and copies its sample slides');
+  const d = pd(deckText, { template: swiss });
+  const ttl = d.slides.find((x) => x.layout === 'title'), body = d.slides.find((x) => x.layout === 'default'), two = d.slides.find((x) => x.layout === 'two-columns');
+  assert.deepEqual(Object.keys(placeholdersFor(d, ttl)).sort(), ['subtitle', 'title']); assert.deepEqual(mastersFor(d, ttl).map((m) => m.master), ['title']); ok('title only: the title master replaces the all-slides master');
+  assert.deepEqual(Object.keys(placeholdersFor(d, body)).sort(), ['body', 'title']); assert.deepEqual(Object.keys(placeholdersFor(d, two)), []); assert.deepEqual(mastersFor(d, two).map((m) => m.master), ['all']); ok('content slides use the title and body placeholders; two-column slides keep their layout and the decorations');
+  assert.deepEqual(splitTitle('Intro\n\n## Title\n\n- a'), { title: '## Title', rest: 'Intro\n\n- a' }); assert.deepEqual(splitTitle('```\n# not\n```\nx'), { title: '', rest: '```\n# not\n```\nx' }); ok('the title is the first heading outside code');
+  const applied = T.applyTemplate('---\nmarp: true\ntheme: graphite\naccent: "#ff0000"\ntitle: Mine\n---\n\n# Hi\n', { ...T.templateInfo(swiss), text: swiss, builtin: true });
+  assert.equal(applied, '---\nmarp: true\ntitle: Mine\ntemplate: Templates/Swiss.slides\n---\n\n# Hi\n'); ok('applying a template removes the deck\'s own design keys and keeps its slides');
+  const saved = T.templateFromDeck(deckText, { name: 'Mine', description: 'For me' }, swiss); const si = T.templateInfo(saved); const sd = pd(saved);
+  assert.equal(si.name, 'Mine'); assert.equal(sd.global.accent, '#e3120b'); assert.equal(sd.masters.length, 3); assert(sd.shown.length >= 3); assert.equal(si.variants.length, 2); ok('Save as template keeps the effective design, the masters and sample slides');
+}
+
 // charts
 const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows');
 const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');

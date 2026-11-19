@@ -6,6 +6,7 @@ import { hydrateCharts } from './markdown.js';
 import { mountCanvas } from './slides-canvas.js';
 import { SMART_TYPES, smartArt } from './slides-smartart.js';
 import { designIdeas, BLOCKS } from './slides-designer.js';
+import { SCHEMES, FONT_PAIRS, templateInfo, applyTemplate, templateFromDeck } from './slides-templates.js';
 import { LIBRARY, shapeSvg, defaultSize } from './board-core.js';
 import { startTextEdit } from './slides-text.js';
 import { pathBlock, polygonsBlock, simplify, parsePoints, pointsText, replaceImageSrc, parseFill, MASKS, SHADOWS, scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
@@ -597,8 +598,10 @@ export function mountSlides(host, ctx) {
       <section class="fp-sec"><h3>Theme</h3>
         ${fRow('Theme', `<select class="rb-select fp-sel" data-dk="theme">${THEMES.map(([v, l]) => `<option value="${v}"${deck.theme === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`)}
         <div class="fp-row"><span>Template</span><span class="dp-tpl">${g.template ? `<b>${esc(g.template)}</b>` : 'None'}</span></div>
-        <div class="fp-btns"><button class="btn" type="button" data-da="template">${g.template ? 'Change template…' : 'Use another deck as template…'}</button>${g.template ? '<button class="btn" type="button" data-da="untemplate">Remove</button>' : ''}</div>
-        <p class="fp-note">A template deck gives this deck its theme, colours, fonts and masters.</p></section>
+        <div class="fp-btns"><button class="btn btn-primary" type="button" data-da="gallery">Browse templates…</button>${g.template ? '<button class="btn" type="button" data-da="untemplate">Remove</button>' : ''}<button class="btn" type="button" data-da="template">Use a deck…</button><button class="btn" type="button" data-da="save-template">Save as template…</button></div>
+        <p class="fp-note">A template gives this deck its colours, fonts, backgrounds and slide layouts. ${g.template ? 'Edit the template file to change every deck that uses it.' : ''}</p></section>
+      <section class="fp-sec"><h3>Colour schemes</h3><div class="dp-schemes">${[...(tplText ? templateInfo(tplText).variants : []), ...SCHEMES.map(([name, tokens]) => ({ name, tokens }))].map((v, n) => `<button type="button" class="dp-scheme" data-scheme="${n}" title="${esc(v.name)}" aria-label="Colour scheme ${esc(v.name)}"><i style="background:${v.tokens.paper}"></i><i style="background:${v.tokens.ink}"></i><i style="background:${v.tokens.accent}"></i><span>${esc(v.name)}</span></button>`).join('')}</div></section>
+      <section class="fp-sec"><h3>Font pairs</h3><div class="dp-fonts">${FONT_PAIRS.map(([h, b], n) => `<button type="button" class="dp-font" data-fpair="${n}"><b style="font-family:'${h}'">${esc(h)}</b><span style="font-family:'${b}'">${h === b ? 'Body too' : esc(b)}</span></button>`).join('')}</div></section>
       <section class="fp-sec"><h3>Colours</h3>${colour('paper', 'Background', '#fcfcfc')}${colour('ink', 'Text', '#1f1f1f')}${colour('muted', 'Secondary text', '#666666')}${colour('accent', 'Accent and links', '#1f1f1f')}${colour('card', 'Cards', '#f2f2f2')}</section>
       <section class="fp-sec"><h3>Fonts</h3>${fRow('Headings', fontSel('heading-font'))}${fRow('Body', fontSel('body-font'))}
         ${fileFonts.length ? `<p class="fp-note">Font files: ${fileFonts.map((f) => esc(f.split('/').pop())).join(', ')}</p>` : ''}
@@ -637,6 +640,11 @@ export function mountSlides(host, ctx) {
   });
   dpane.addEventListener('click', async (e) => {
     const r = e.target.closest('[data-dreset]'); if (r) return setFm(r.dataset.dreset, null);
+    const sc = e.target.closest('[data-scheme]'); if (sc) {
+      const all = [...(tplText ? templateInfo(tplText).variants : []), ...SCHEMES.map(([name, tokens]) => ({ name, tokens }))]; const v = all[Number(sc.dataset.scheme)];
+      let { fm, list } = chunks(); for (const [k, val] of Object.entries(v.tokens)) fm = setGlobal(fm, k, val); commit(joinDeck(fm, list)); return ctx.toast(`Colour scheme “${v.name}” applied.`);
+    }
+    const fp = e.target.closest('[data-fpair]'); if (fp) { const [h, b] = FONT_PAIRS[Number(fp.dataset.fpair)]; let { fm, list } = chunks(); fm = setGlobal(setGlobal(fm, 'heading-font', h), 'body-font', b); return commit(joinDeck(fm, list)); }
     const m = e.target.closest('[data-dm]'); if (m) return select(Number(m.dataset.dm));
     const b = e.target.closest('[data-da]'); if (!b) return;
     const a = b.dataset.da;
@@ -647,6 +655,17 @@ export function mountSlides(host, ctx) {
       return setFm('template', target);
     }
     if (a === 'untemplate') return setFm('template', null);
+    if (a === 'gallery') {
+      const t = await ctx.templateGallery?.({ mode: 'apply' }); if (!t || t === 'blank') return;
+      await ctx.ensureTemplate(t); commit(applyTemplate(text, t)); tplRef = null; loadTemplate(true); return ctx.toast(`Template “${t.name}” applied. Undo with Ctrl+Z.`);
+    }
+    if (a === 'save-template') {
+      const name = await ctx.prompt({ title: 'Save as template', label: 'Template name', value: deck.global.title || 'My template', action: 'Next' }); if (!name || !name.trim()) return;
+      const description = await ctx.prompt({ title: 'Save as template', label: 'One line describing when to use it', value: '', action: 'Save template', allowEmpty: true });
+      if (description == null) return;
+      const path = await ctx.saveTemplate(name.trim(), templateFromDeck(text, { name: name.trim(), description: description.trim() }, tplText));
+      return ctx.toast(`Saved as ${path}. It now appears in the template gallery.`);
+    }
     if (a === 'font') { const f = await ctx.pickMedia?.('font'); if (!f) return; const cur0 = String(deck.global.fonts || '').split(',').map((x) => x.trim()).filter(Boolean); return setFm('fonts', [...new Set([...cur0, f])].join(', ')); }
     if (a === 'bg-image') { const src = await ctx.pickImage?.(); if (src) setBg('image', { src }); return; }
     if (a === 'bg-all') {

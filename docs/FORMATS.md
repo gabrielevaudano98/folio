@@ -84,6 +84,8 @@ Right column
 
 ### Themes, masters and templates
 
+How to build a template, step by step: [TEMPLATES.md](TEMPLATES.md).
+
 Front matter can set theme tokens; Marp ignores them:
 
 ```yaml
@@ -100,6 +102,7 @@ template: Brand.slides  # take theme, tokens, fonts and masters from another dec
 ```
 
 - A slide starting with `<!-- master -->` is a master: its placed objects and background appear behind every slide. `<!-- master: title -->` applies only to slides with that layout. Masters are not numbered, presented or exported, and the flow text on a master is a note for the author.
+- Placeholders: in a master, `::: box placeholder=title|subtitle|body x= y= w= h= size= …` places and styles the slide's first heading (title) and the rest of its text (body, or subtitle when there is no body placeholder). `<!-- master: title only -->` leaves out the all-slides master on title slides. A master's own background applies to its slides.
 - With `template:`, the template's front matter is the base (the deck's own keys win) and the template's masters come before the deck's own.
 - Slide backgrounds: `<!-- _backgroundColor: #f2f2f2 -->` or `<!-- _backgroundImage: linear-gradient(135deg, #ffffff, #d9d9d9) -->` for one slide, the same keys in front matter for all slides, or `![bg](picture.jpg)`.
 
