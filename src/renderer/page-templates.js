@@ -19,10 +19,21 @@ export function formatDate(d, fmt = 'YYYY-MM-DD') {
     mm: pad(d.getMinutes()), ss: pad(d.getSeconds()), A: d.getHours() < 12 ? 'AM' : 'PM', a: d.getHours() < 12 ? 'am' : 'pm' };
   return fmt.replace(/\[([^\]]*)\]|YYYY|YY|MMMM|MMM|MM|M|dddd|ddd|DD|D|HH|H|hh|h|mm|ss|A|a/g, (m, lit) => (lit != null ? lit : String(tok[m])));
 }
+/* people answers become links, so the page points at the person */
+const kindOf = (spec, v) => (/\|\s*people\s*$/i.test(spec) && v && !/^\[\[/.test(v) ? `[[${v}]]` : v);
 const shift = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
 /** fill the variables; {{cursor}} becomes CURSOR so the editor can put the caret there */
-export function fillTemplate(text, { title = 'Untitled', now = new Date() } = {}) {
+/** questions a template asks before it is used: {{ask:Project name}}, {{ask:Owner|people}}, {{ask:Due|date}}, {{ask:Notes|long}} */
+export function askVars(text) {
+  const out = [], seen = new Set();
+  for (const m of String(text).matchAll(/\{\{\s*ask\s*:\s*([^}|]*?)\s*(?:\|\s*([a-z]+)\s*)?\}\}/gi)) {
+    const label = m[1].trim(); if (!label || seen.has(label)) continue; seen.add(label);
+    out.push({ label, kind: (m[2] || 'text').toLowerCase() });
+  }
+  return out;
+}
+export function fillTemplate(text, { title = 'Untitled', now = new Date(), answers = null, keepAsk = false } = {}) {
   return String(text).replace(/\{\{\s*([a-z]+)(?:\s*:\s*([^}]*?))?\s*\}\}/gi, (all, name, fmt) => {
     switch (name.toLowerCase()) {
       case 'title': return title;
@@ -33,6 +44,7 @@ export function fillTemplate(text, { title = 'Untitled', now = new Date() } = {}
       case 'tomorrow': return formatDate(shift(now, 1), fmt || 'YYYY-MM-DD');
       case 'weekday': return formatDate(now, fmt || 'dddd');
       case 'cursor': return CURSOR;
+      case 'ask': { const label = String(fmt || '').split('|')[0].trim(); if (keepAsk) return `[${label}]`; const v = answers?.[label]; return v == null ? '' : kindOf(String(fmt || ''), v); }
       default: return all;
     }
   });

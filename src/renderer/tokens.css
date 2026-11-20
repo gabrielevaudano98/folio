@@ -69,6 +69,7 @@
   /* layout */
   --sidebar-w: 264px;
   --outline-w: 224px;
+  --dock-w-review: 320px;
   --titlebar-h: 52px;
   --statusbar-h: 28px;
   --measure: 72ch;

@@ -114,6 +114,7 @@ export function mountHistory(host, api) {
     const cmp = `<label class="hv-cmp">Compare with <select data-compare>${opts.map(([id, l]) => `<option value="${esc(id)}" ${st.compare === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     if (st.view === 'version') { bar.innerHTML = `<span class="hv-bar-text">${esc(dayLabel(v.t))}, ${esc(timeOf(v.t))} · ${esc(who(v))}</span>`; doc.innerHTML = body(text); return; }
     const b = await baseFor();
+    if (b.old === b.new) { bar.innerHTML = `<span class="hv-bar-text">No differences.</span>${cmp}`; doc.innerHTML = body(b.new); return; }
     st.parts = wordParts(b.old, b.new, diffWords); st.hunks = countHunks(st.parts); st.hunk = Math.min(st.hunk, Math.max(0, st.hunks - 1));
     const canPut = b.mode === 'current';
     let h = -1, inRun = false;

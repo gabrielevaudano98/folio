@@ -86,12 +86,19 @@
         <div class="pane-divider" id="pane-divider" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"></div>
         <section class="pane pane-preview" id="pane-preview" aria-label="Preview"><article class="prose" id="preview"></article></section>
         <section class="pane pane-surface" id="pane-surface" aria-label="Visual editor"></section>
-        <aside class="outline" id="outline" aria-label="Outline">
-          <h2 class="side-head">On this page</h2>
-          <ol class="outline-list" id="outline-list"></ol>
-          <h2 class="side-head side-head-links">Linked from</h2>
-          <ul class="links-list" id="backlinks"></ul>
-          <div class="links-broken" id="broken-links" hidden></div>
+        <aside class="outline" id="outline" aria-label="Side panel">
+          <div class="dock-tabs" role="tablist" aria-label="Side panel">
+            <button type="button" role="tab" id="dock-tab-outline" data-dock="outline" aria-selected="true" aria-controls="dock-outline">Outline</button>
+            <button type="button" role="tab" id="dock-tab-review" data-dock="review" aria-selected="false" aria-controls="dock-review">Review<span class="dock-badge" id="dock-badge" hidden></span></button>
+          </div>
+          <div class="dock-panel dock-outline" id="dock-outline" role="tabpanel" aria-labelledby="dock-tab-outline">
+            <h2 class="side-head">On this page</h2>
+            <ol class="outline-list" id="outline-list"></ol>
+            <h2 class="side-head side-head-links">Linked from</h2>
+            <ul class="links-list" id="backlinks"></ul>
+            <div class="links-broken" id="broken-links" hidden></div>
+          </div>
+          <div class="dock-panel dock-review" id="dock-review" role="tabpanel" aria-labelledby="dock-tab-review" hidden></div>
         </aside>
 
         <div class="empty" id="empty-state" hidden></div>

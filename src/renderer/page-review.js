@@ -16,33 +16,34 @@ const when = (d) => {
 const initials = (n) => (n || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 const short = (t, n = 80) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
 
-export function mountReview(host, editor, { icons, author = () => '', keyLabel = (k) => k, onToggle }) {
+export function mountReview(host, editor, { icons, author = () => '', keyLabel = (k) => k, onToggle, dock = null, onCount = null }) {
   const scroll = host.querySelector('.rich-scroll');
   const main = document.createElement('div'); main.className = 'rich-main';
   scroll.replaceWith(main); main.append(scroll);
   const pane = document.createElement('aside'); pane.className = 'review-pane'; pane.setAttribute('aria-label', 'Comments and suggestions'); pane.hidden = true;
-  main.append(pane);
-  let filter = 'all', items = [], timer = 0, focusDraft = false;
+  (dock || main).append(pane);
+  let autoShown = false, filter = 'all', items = [], timer = 0, focusDraft = false;
   const ic = (n) => icons[n] || '';
 
   const visible = () => !pane.hidden;
-  const show = (on, persist = true) => { pane.hidden = !on; if (persist) savePref(on ? 'auto' : 'hidden'); onToggle?.(on); };
+  const mode = () => (!editor.isEditable ? 'view' : editor.storage.suggestMode?.on ? 'suggest' : 'edit');
+  const show = (on, persist = true) => { if (persist) autoShown = false; pane.hidden = !on; if (persist) savePref(on ? 'auto' : 'hidden'); dock && dock.dispatchEvent(new CustomEvent('review-toggle', { detail: on })); onToggle?.(on); };
   const sel = () => editor.state.selection;
   const activeIndex = () => { const { from, to } = sel(); return items.findIndex((x) => (x.kind === 'thread' ? (from <= x.end && to >= x.from) : from <= x.to && to >= x.from)); };
 
   function render() {
     items = docReview(editor.state.doc);
     const threads = items.filter((x) => x.kind === 'thread'), changes = items.filter((x) => x.kind !== 'thread' && x.kind !== 'hl');
-    if (pref() === 'auto' && (threads.length || changes.length) && pane.hidden && !focusDraft) show(true, false);
+    if (pref() === 'auto' && (threads.length || changes.length) && pane.hidden && !focusDraft) { show(true, false); autoShown = true; }
+    else if (autoShown && !threads.length && !changes.length && !pane.hidden && !focusDraft) { show(false, false); autoShown = false; }
+    onCount?.(threads.length + changes.length);
     const list = items.filter((x) => x.kind !== 'hl' && (filter === 'all' || (filter === 'comments') === (x.kind === 'thread')));
     const act = activeIndex();
-    const suggesting = !!editor.storage.suggestMode?.on;
     pane.innerHTML = `<div class="rv-head">
-        <div class="rv-title"><span>Review</span><span class="rv-count">${threads.length} ${threads.length === 1 ? 'comment' : 'comments'} · ${changes.length} ${changes.length === 1 ? 'suggestion' : 'suggestions'}</span></div>
-        <button type="button" class="rb" data-rv="close" aria-label="Hide the review pane" data-tip="Hide">${ic('close')}</button>
+        <div class="rv-title"><span class="rv-count">${threads.length} ${threads.length === 1 ? 'comment' : 'comments'} · ${changes.length} ${changes.length === 1 ? 'suggestion' : 'suggestions'}</span></div>
       </div>
       <div class="rv-tools">
-        <label class="rv-switch"><input type="checkbox" data-rv="suggest"${suggesting ? ' checked' : ''}><span>Suggesting</span></label>
+        <div class="rv-mode" role="radiogroup" aria-label="Mode" data-mode="${mode()}">${[['edit', 'Editing', 'Change the text directly'], ['suggest', 'Suggesting', 'Your changes become suggestions'], ['view', 'Viewing', 'Read only']].map(([k, l, t]) => `<button type="button" role="radio" aria-checked="${mode() === k}" data-mode-set="${k}" title="${t}">${l}</button>`).join('')}</div>
         <div class="rv-filter" role="radiogroup" aria-label="Show">${[['all', 'All'], ['comments', 'Comments'], ['changes', 'Suggestions']].map(([k, l]) => `<button type="button" role="radio" aria-checked="${filter === k}" data-filter="${k}">${l}</button>`).join('')}</div>
       </div>
       ${changes.length ? `<div class="rv-bulk"><button type="button" class="btn btn-quiet" data-rv="acceptAll">${ic('check')}<span>Accept all</span></button><button type="button" class="btn btn-quiet" data-rv="rejectAll">${ic('close')}<span>Reject all</span></button></div>` : ''}
@@ -85,6 +86,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
 
   pane.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
   pane.addEventListener('click', (e) => {
+    const ms = e.target.closest('[data-mode-set]'); if (ms) { api.mode(ms.dataset.modeSet); return; }
     const f = e.target.closest('[data-filter]'); if (f) { filter = f.dataset.filter; render(); return; }
     const rv = e.target.closest('[data-rv]')?.dataset.rv;
     if (rv === 'close') { show(false); editor.commands.focus(); return; }
@@ -139,7 +141,13 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
       focusDraft = true; show(true); editor.view.dispatch(tr); render();
       return true;
     },
-    suggest(on = !editor.storage.suggestMode.on) { editor.storage.suggestMode.on = on; host.classList.toggle('is-suggesting', on); render(); onToggle?.(visible()); return on; },
+    mode(m) {
+      if (m === 'view') { editor.storage.suggestMode.on = false; editor.setEditable(false); }
+      else { editor.setEditable(true); editor.storage.suggestMode.on = m === 'suggest'; }
+      host.classList.toggle('is-suggesting', m === 'suggest'); host.classList.toggle('is-viewing', m === 'view');
+      render(); onToggle?.(visible()); return m;
+    },
+    suggest(on = !editor.storage.suggestMode.on) { if (!editor.isEditable) editor.setEditable(true); host.classList.remove('is-viewing'); editor.storage.suggestMode.on = on; host.classList.toggle('is-suggesting', on); render(); onToggle?.(visible()); return on; },
     /* the next or previous change or comment after the cursor */
     step(dir) {
       const list = items.filter((x) => x.kind !== 'hl'); if (!list.length) return false;

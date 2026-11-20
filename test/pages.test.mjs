@@ -31,6 +31,9 @@ fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| 
 fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd8.md'), '---\ntitle: Weekly\ntags: [alpha]\ndone: false\n---\n# Weekly\n\nText #beta here.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd9.md'), '# Plan\n\nIntro.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd16.md'), '# Untitled\n\n');
+fs.mkdirSync(path.join(ws, 'Templates'), { recursive: true });
+fs.writeFileSync(path.join(ws, 'Templates', 'Ask.md'), '# Ask\n\nProject {{ask:Project name}}\n\nOwner: {{ask:Owner|people}}\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd15.md'), '# History\n\nFirst draft of the text.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd11.md'), '# Paste\n\nStart here\n\n{++new idea++} and {==noted==}{>>Ada, 2026-11-20 14:05: Check<<}\n');
 const exportDir = path.join(tmp, 'out'); fs.mkdirSync(exportDir);
@@ -239,6 +242,14 @@ const steps = [
   { js: "(() => { const d = document.querySelector('#sheet-prompt'); d.querySelector('[data-format=docx]').click(); d.querySelector('[data-size=Letter]').click(); d.querySelector('[data-landscape=true]').click(); const rev = !d.querySelector('[data-review]').hidden; d.querySelector('button[type=submit]').click(); return rev; })()", log: true, wait: 3500 },
   { js: "document.querySelector('#btn-more').click(); true", wait: 400 },
   { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.startsWith('Import')).click(); true", wait: 3000 },
+  // D16: the right dock (Outline | Review), the Viewing mode, an empty page offering a start, a template that asks questions
+  { js: "document.querySelector('[data-file=\\\"pages/d10.md\\\"]').click()", wait: 1500 },
+  { js: "document.querySelector('#dock-tab-review').click(); true", wait: 500 },
+  { js: "(() => { const a = [document.querySelector('#dock-review').hidden, document.querySelector('#dock-outline').hidden, getComputedStyle(document.querySelector('#outline')).display !== 'none']; document.querySelector('[data-mode-set=view]').click(); return [...a, document.querySelector('.rich-prose').getAttribute('contenteditable')]; })()", log: true, wait: 400 },
+  { js: "(() => { document.querySelector('[data-mode-set=edit]').click(); document.querySelector('#dock-tab-outline').click(); return [document.querySelector('.rich-prose').getAttribute('contenteditable'), document.querySelector('#dock-outline').hidden]; })()", log: true, wait: 400 },
+  { js: "document.querySelector('[data-file=\\\"pages/d16.md\\\"]').click()", wait: 1500 },
+  { js: "(() => { const c = [...document.querySelectorAll('.start-card')]; const ask = c.find((x) => x.textContent.includes('Ask')); const seen = [!!document.querySelector('.start-with:not([hidden])'), c.length]; ask.click(); return seen; })()", log: true, wait: 800 },
+  { js: "(() => { const q = [...document.querySelectorAll('#sheet-prompt [data-q]')]; if (q.length !== 2) return q.length; q[0].value = 'Atlas'; q[1].value = 'Ada'; document.querySelector('#sheet-prompt form').requestSubmit(); return 2; })()", log: true, wait: 1500 },
   // D15: version history — edit, open the history, see the change, restore the first version
   { js: "document.querySelector('[data-file=\\\"pages/d15.md\\\"]').click()", wait: 1500 },
   { js: "(() => { const p = [...document.querySelectorAll('.rich-prose p')].find((x) => x.textContent.startsWith('First draft')); document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.selectNodeContents(p); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; })()", wait: 400 },
@@ -261,8 +272,8 @@ child.on('exit', async () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 70, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, pasteWord, pasteMd, exportSheet, histOpen, histDiff, histNamed, histRestored, errors] = logs;
+  assert.equal(logs.length, 74, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, pasteWord, pasteMd, exportSheet, dockLog, dockBack, startLog, askLog, histOpen, histDiff, histNamed, histRestored, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -344,6 +355,10 @@ child.on('exit', async () => {
   assert.equal(savedView[0].replace(/\d+$/, ''), 'All of mine'); assert(savedView[1].includes('Lean canvas'), savedView[1]);
   console.log('  ✓ gallery: a starred template opens under Favourites; a community template downloads into Templates/ and shows under My templates');
 
+  assert.deepEqual(dockLog, [false, true, true, 'false'], JSON.stringify(dockLog)); assert.deepEqual(dockBack, ['true', false], JSON.stringify(dockBack));
+  assert.deepEqual(startLog, [true, startLog[1]], JSON.stringify(startLog)); assert(startLog[1] >= 3); assert.equal(askLog, 2);
+  assert(read('d16.md').includes('Project Atlas') && read('d16.md').includes('Owner: [[Ada]]'), read('d16.md'));
+  console.log('  ✓ side dock: Outline and Review share one column; Viewing makes the page read-only; an empty page offers Start with, and a template with {{ask:…}} asks first');
   assert.deepEqual(histOpen[0], true); assert(histOpen[1] >= 3, JSON.stringify(histOpen));
   assert(histDiff[0] >= 1 && histDiff[1] && histDiff[2] >= 1, JSON.stringify(histDiff)); assert.equal(histNamed, true);
   assert.deepEqual(histRestored, [true, false], JSON.stringify(histRestored));

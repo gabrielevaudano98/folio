@@ -640,7 +640,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -948,7 +948,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   host.insertBefore(host.querySelector('.find-bar'), host.querySelector('.rich-scroll'));
 
   /* comments and suggestions (CriticMarkup) in a pane beside the page */
-  const review = mountReview(host, editor, { icons, author, keyLabel, onToggle: () => syncToolbar() });
+  const review = mountReview(host, editor, { icons, author, keyLabel, onToggle: () => syncToolbar(), dock: reviewDock, onCount: onReviewCount });
   editor.view.dom.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.code === 'KeyM') { e.preventDefault(); review.comment(); }
   });

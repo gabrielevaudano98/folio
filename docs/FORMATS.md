@@ -264,3 +264,7 @@ A template is a page in `Templates/` (folders are categories). It can describe i
 ## Version history
 
 Not a document format: versions live beside the documents in `<workspace>/.folio/history/` — `objects/ab/cdef….gz` (SHA-256 of the text, gzip) and `files/<sha1(path), 20 chars>.json` (`{path, versions:[{id,t,size,words,delta,by,reason,name?,note?}]}`). Dot folders are ignored by the tree, search, tags and backlinks. Round-trip: `test/history.test.mjs` (snapshot, rename, retention, diff and revert) and the UI test (edit → version → name → restore).
+
+### Template questions
+
+In a template, `{{ask:Label}}` asks for a value when the template is used: `|people` writes the answer as `[[Name]]`, `|date` uses a date picker, `|long` a multi-line box. The same label is asked once. Round-trip: `test/formats.test.mjs` (template questions).

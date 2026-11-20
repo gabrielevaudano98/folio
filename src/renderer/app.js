@@ -12,7 +12,7 @@ import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { renameTag } from './page-props.js';
-import { listTemplates, fillTemplate, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
+import { listTemplates, fillTemplate, askVars, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
 import { openGallery } from './template-gallery.js';
 import { popupMenu } from './page-table.js';
 import { mountBoard } from './board.js';
@@ -132,6 +132,8 @@ async function boot() {
 
   rich = createRich($('#pane-rich'), {
     keyLabel,
+    reviewDock: $('#dock-review'),
+    onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
     onChange: (md) => onEditorChange(md, false, 'rich'),
     resolveImage: resolveImg,
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
@@ -236,12 +238,28 @@ function layoutPanes() {
   const ws = $('#workspace');
   const narrow = window.innerWidth < 1100;
   app.classList.toggle('narrow', narrow);
-  const outline = app.dataset.outline === 'open' && !narrow && !app.classList.contains('focus') ? 'var(--outline-w)' : '0';
+  const review = app.dataset.dock === 'review';
+  const outline = app.dataset.outline === 'open' && !narrow && !app.classList.contains('focus') ? (review ? 'var(--dock-w-review)' : 'var(--outline-w)') : '0';
   const v = app.dataset.modeView;
   if (curType() !== 'md') { ws.style.setProperty('--cols', v === 'split' ? `minmax(0, ${splitRatio}fr) 1px minmax(0, ${1 - splitRatio}fr)` : 'minmax(0, 1fr)'); return; }
   ws.style.setProperty('--cols', v === 'split' ? `minmax(0, ${splitRatio}fr) 1px minmax(0, ${1 - splitRatio}fr) ${outline}` : `minmax(0, 1fr) ${outline}`);
 }
 window.addEventListener('resize', layoutPanes);
+/* the right dock: Outline and Review share one column (Google Docs side panel), never two */
+function setDock(tab, { focus = false } = {}) {
+  app.dataset.dock = tab;
+  for (const b of $$('#outline .dock-tabs [role=tab]')) b.setAttribute('aria-selected', String(b.dataset.dock === tab));
+  $('#dock-outline').hidden = tab !== 'outline'; $('#dock-review').hidden = tab !== 'review';
+  if (tab === 'review' && app.dataset.outline !== 'open') { app.dataset.outline = 'open'; $('#btn-outline').setAttribute('aria-pressed', 'true'); }
+  layoutPanes(); rich?.sync?.();
+  if (focus) $(`#dock-tab-${tab}`).focus();
+}
+$('#dock-review').addEventListener('review-toggle', (e) => { if (e.detail !== (app.dataset.dock === 'review')) setDock(e.detail ? 'review' : 'outline'); });
+$('#outline .dock-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dock]'); if (!b) return;
+  if (b.dataset.dock === 'review') { rich.review().show(true); if (app.dataset.dock !== 'review') setDock('review'); } else { rich.review().show(false); if (app.dataset.dock !== 'outline') setDock('outline'); }
+});
+$('#outline .dock-tabs').addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); $(`#dock-tab-${app.dataset.dock === 'review' ? 'outline' : 'review'}`).click(); } });
 
 function setView(v, { persist = true } = {}) {
   const type = curType();
@@ -660,6 +678,24 @@ const communityText = new Map();
 const templateText = async (t) => (t.path ? await textOf(t.path) : t.url ? communityText.get(t.url) ?? communityText.set(t.url, await folio.fetchTemplate(t.url)).get(t.url) : t.text);
 /* a template ready to use: variables filled, its own `template:` description removed */
 const filled = (raw, opts) => fillTemplate(withoutMeta(raw), opts);
+/* a template with questions ({{ask:…}}) shows a short form first; null means the person cancelled */
+async function askFilled(t, opts) {
+  const raw = await templateText(t); const qs = askVars(withoutMeta(raw));
+  if (!qs.length) return filled(raw, opts);
+  const people = S.files.filter((f) => /^People\//.test(f)).map((f) => stem(f));
+  const answers = await new Promise((resolve) => {
+    const d = $('#sheet-prompt'); d.classList.remove('sheet-small');
+    const field = (q, i) => `<div class="field"><label for="ask-${i}">${esc(q.label)}</label>${q.kind === 'long' ? `<textarea class="input" id="ask-${i}" rows="3" data-q="${esc(q.label)}"></textarea>` : `<input class="input" id="ask-${i}" data-q="${esc(q.label)}" type="${q.kind === 'date' ? 'date' : 'text'}" autocomplete="off"${q.kind === 'people' ? ' list="ask-people"' : ''}>`}</div>`;
+    d.innerHTML = `<form method="dialog" class="prompt-form"><div class="sheet-head"><div><h2 id="prompt-title">${esc(t.name)}</h2><p>A few details to fill in. You can leave any empty.</p></div></div>
+      <div class="sheet-body">${qs.map(field).join('')}<datalist id="ask-people">${people.map((n) => `<option value="${esc(n)}">`).join('')}</datalist></div>
+      <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Create</button></div></form>`;
+    const done = (v) => { d.close(); resolve(v); };
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); done(Object.fromEntries([...d.querySelectorAll('[data-q]')].map((i) => [i.dataset.q, i.value.trim()]))); };
+    d.querySelector('[data-cancel]').onclick = () => done(null); d.oncancel = () => resolve(null);
+    d.showModal(); d.querySelector('[data-q]').focus();
+  });
+  return answers ? filled(raw, { ...opts, answers }) : null;
+}
 function pickTemplate({ title = 'Insert template', note = 'Its properties join this page’s and its text goes at the cursor.', action = 'Insert' } = {}) {
   return new Promise((resolve) => {
     const d = $('#sheet-prompt'); const list = listTemplates(S.files);
@@ -680,7 +716,7 @@ function pickTemplate({ title = 'Insert template', note = 'Its properties join t
 }
 async function applyTemplate(t, pos = null) {
   if (!t || curType() !== 'md') return;
-  const text = filled(await templateText(t), { title: stem(S.active || 'Untitled') });
+  const text = await askFilled(t, { title: stem(S.active || 'Untitled') }); if (text == null) return;
   rememberTemplate(t);
   if (isRich()) { rich.insertTemplate(text, pos); return; }
   const tab = activeTab(); const { fm, body } = splitTemplate(text);
@@ -704,7 +740,8 @@ async function newPageFromTemplate(t, name) {
   let title = templateFileName(name || t.name), file = (folder ? folder + '/' : '') + title + '.md', n = 1;
   while (S.files.includes(file)) file = (folder ? folder + '/' : '') + `${title} ${++n}.md`;
   title = stem(file);
-  const text = filled(await templateText(t), { title }).split(CURSOR).join('');
+  const text0 = await askFilled(t, { title }); if (text0 == null) return;
+  const text = text0.split(CURSOR).join('');
   const p = await folio.create(file, text); rememberTemplate(t);
   if (folder) S.expanded.add(folder); await refreshTree(); await openFile(p);
 }
@@ -719,7 +756,7 @@ async function templateGallery(mode = 'insert') {
       try { return { items: communityItems(JSON.parse(await folio.fetchTemplate(url)), url) }; } catch (e) { return { items: null, error: e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }; }
     },
     text: templateText,
-    preview: async (raw, t) => { const text = filled(raw, { title: page || t.name }).split(CURSOR).join(''); const { body } = splitTemplate(text); return { text, html: render(page ? intoPage(body) : body) }; },
+    preview: async (raw, t) => { const text = filled(raw, { title: page || t.name, keepAsk: true }).split(CURSOR).join(''); const { body } = splitTemplate(text); return { text, html: render(page ? intoPage(body) : body) }; },
     favs: S.settings.templateFavs || [], recent: S.settings.templateRecent || [],
     setFavs: (ids) => saveSetting({ templateFavs: ids }),
     use: async (t, { as, name }) => { try { if (as === 'here') await applyTemplate(t); else await newPageFromTemplate(t, name); } catch (e) { toast(e.message, { kind: 'error' }); } },
@@ -910,7 +947,43 @@ $('#pane-preview').addEventListener('scroll', () => {
 }, { passive: true });
 
 /* ============ status ============ */
+/* a new, empty page offers a start (Notion): a few templates, the gallery, an import */
+let startEl = null;
+/* sits under the last block of the page (the editor stretches to fill the sheet, so it cannot simply follow it) */
+function placeStart() {
+  const pm = rich.editor.view.dom, last = pm.lastElementChild, pageEl = startEl.parentElement; if (!last) return;
+  startEl.style.top = `${Math.round(last.getBoundingClientRect().bottom - pageEl.getBoundingClientRect().top + 16)}px`;
+}
+const emptyPage = (text) => !/\S/.test(text.replace(/^---[\s\S]*?\n---[ \t]*(?:\n|$)/, '').replace(/^#{1,6}[ \t].*$/m, ''));
+function updateStart() {
+  const t = activeTab();
+  const on = !!t && curType() === 'md' && isRich() && S.workspace && !t.path.startsWith(TEMPLATE_DIR + '/') && emptyPage(t.text);
+  if (!on) { if (startEl) startEl.hidden = true; return; }
+  if (!startEl) {
+    startEl = document.createElement('div'); startEl.className = 'start-with'; startEl.setAttribute('role', 'group'); startEl.setAttribute('aria-label', 'Start with');
+    $('#pane-rich .rich-page').append(startEl);
+    startEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-start]'); if (!b) return;
+      const k = b.dataset.start;
+      if (k === 'empty') { rich.focus?.(); rich.editor.commands.focus('end'); }
+      else if (k === 'gallery') templateGallery('insert');
+      else if (k === 'import') importDocument();
+      else { const tpl = listTemplates(S.files).find((x) => x.id === k); if (tpl) applyTemplate(tpl); }
+    });
+  }
+  const all = listTemplates(S.files), recent = (S.settings.templateRecent || []);
+  const byId = (id) => all.find((x) => x.id === id || x.name === id);
+  const picks = []; for (const id of [...recent, ...all.filter((x) => x.source === 'mine').map((x) => x.id), 'Meeting notes', 'Project brief', 'Decision log', 'Status report']) { const x = byId(id); if (x && !picks.includes(x)) picks.push(x); if (picks.length === 4) break; }
+  startEl.hidden = false; placeStart();
+  const sig = picks.map((x) => x.id).join('|'); if (startEl.dataset.sig === sig) return; startEl.dataset.sig = sig;
+  startEl.innerHTML = `<p class="start-title">Start with</p><div class="start-grid">
+    <button type="button" class="start-card" data-start="empty">${icons.file || ''}<span class="start-name">Empty page</span><span class="start-sub">Just start writing</span></button>
+    ${picks.map((x) => `<button type="button" class="start-card" data-start="${esc(x.id)}"><span class="start-glyph" aria-hidden="true">${esc(x.icon || '📄')}</span><span class="start-name">${esc(x.name)}</span><span class="start-sub">${esc(x.desc || x.category || '')}</span></button>`).join('')}
+    <button type="button" class="start-card start-more" data-start="gallery">${icons.template || icons.plus || ''}<span class="start-name">All templates…</span><span class="start-sub">Browse the gallery</span></button>
+    <button type="button" class="start-card start-more" data-start="import">${icons.upload || icons.plus || ''}<span class="start-name">Import…</span><span class="start-sub">Word or HTML</span></button></div>`;
+}
 function renderStatus() {
+  updateStart();
   const t = activeTab();
   if (!t) { ['#st-path', '#st-words', '#st-time', '#st-cursor'].forEach((s) => ($(s).textContent = '')); return; }
   const words = (t.text.replace(/^---[\s\S]*?---/, '').replace(/```[\s\S]*?```/g, '').match(/[\p{L}\p{N}’'-]+/gu) || []).length;
@@ -969,7 +1042,8 @@ async function newNote(folder = dirOf(S.active || ''), type, fromTemplate = fals
   try {
     const title = stem(file);
     const tpl = type === 'md' && res.template ? res.template : null;
-    const content = tpl ? filled(await templateText(tpl), { title }).split(CURSOR).join('') : (NEW_CONTENT[type] || NEW_CONTENT.md)(title);
+    const asked = tpl ? await askFilled(tpl, { title }) : null; if (tpl && asked == null) return;
+    const content = tpl ? asked.split(CURSOR).join('') : (NEW_CONTENT[type] || NEW_CONTENT.md)(title);
     const p = await folio.create(file, content);
     if (folder) S.expanded.add(folder);
     await refreshTree(); await openFile(p);
@@ -1775,8 +1849,8 @@ function bindChrome() {
       const box = tb.closest('[data-line]'); const b = JSON.parse(decodeURIComponent(box.dataset.spec));
       const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === (b.template || '').toLowerCase());
       if (!t) { toast(`No template called “${b.template}”.`, { kind: 'error' }); return; }
-      const text0 = filled(await templateText(t), { title: stem(S.active) }).split(CURSOR).join('');
-      const { fm, body } = splitTemplate(text0); const tab = activeTab(); let text = tab.text;
+      const text0 = await askFilled(t, { title: stem(S.active) }); if (text0 == null) return; const textB = text0.split(CURSOR).join('');
+      const { fm, body } = splitTemplate(textB); const tab = activeTab(); let text = tab.text;
       const lines = text.split('\n'); const at = b.where === 'above' ? Number(box.dataset.line) : Number(box.dataset.lineEnd);
       lines.splice(at, 0, ...(b.where === 'above' ? [intoPage(body).trimEnd(), ''] : ['', intoPage(body).trimEnd()]));
       text = lines.join('\n');
