@@ -8,7 +8,7 @@ const pct = (d, t) => (t ? Math.min(100, Math.floor((d / t) * 100)) : 0);
 const clock = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 export function createMeeting(ui) {
-  const { $, esc, toast, confirm, prompt, openFile, refreshTree, openSettings } = ui;
+  const { esc, toast, confirm, prompt, openFile, refreshTree, openSettings } = ui;
   let feature = null, host = null, progress = {}, rec = null, bar = null, state = null;
 
   /* ---------------- Settings section ---------------- */
