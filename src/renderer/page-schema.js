@@ -1,5 +1,6 @@
 // Folio — the page schema: the TipTap extensions that define what a page can hold and how it reads and writes Markdown.
 // Pure (no DOM at import), so the format tests and the editor share exactly the same Markdown behaviour.
+import { critic } from './page-critic.js';
 import { Node } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TableKit } from '@tiptap/extension-table';
@@ -32,6 +33,7 @@ export function pageExtensions({ codeBlock = CodeBlock, image = PageImage.config
     image,
     Highlight,
     ...pageSyntax().map((e) => byName.get(e.name) || e),
+    ...critic(),
     raw,
   ];
 }

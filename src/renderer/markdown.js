@@ -2,6 +2,7 @@
 import MarkdownIt from 'markdown-it';
 import { FIELD, statusClass, DAY } from './page-mentions.js';
 import { parseButton } from './page-templates.js';
+import { parseComment } from './page-critic.js';
 import { refsPlugin } from './refs-syntax.js';
 import taskLists from 'markdown-it-task-lists';
 import footnote from 'markdown-it-footnote';
@@ -206,6 +207,28 @@ md.inline.ruler.before('link', 'folio_field', (state, silent) => {
   state.pos += m[0].length;
   return true;
 });
+// CriticMarkup (D10): {++added++} {--deleted--} {~~old~>new~~} {==highlight==} {>>comment<<}
+md.inline.ruler.before('emphasis', 'critic', (state, silent) => {
+  const src = state.src.slice(state.pos);
+  if (src.charCodeAt(0) !== 0x7b) return false;
+  const m = /^\{(\+\+|--|==)((?:(?!\1\})[^\n])+)\1\}|^\{~~([^\n]*?)~>([^\n]*?)~~\}|^\{>>([^\n]*?)<<\}/.exec(src);
+  if (!m) return false;
+  if (!silent) {
+    if (m[1]) {
+      const tag = { '++': 'ins', '--': 'del', '==': 'mark' }[m[1]];
+      const o = state.push('critic_open', tag, 1); o.attrSet('class', `critic-${tag === 'mark' ? 'hl' : tag}`);
+      const old = state.posMax; state.pos += 3; state.posMax = state.pos + m[2].length; state.md.inline.tokenize(state); state.posMax = old;
+      state.push('critic_close', tag, -1);
+      state.pos += 3; return true;
+    }
+    if (m[3] != null) { const t = state.push('critic_sub', 'span', 0); t.meta = [m[3], m[4]]; }
+    else { const t = state.push('critic_comment', 'span', 0); t.meta = parseComment(m[5]); }
+  }
+  state.pos += m[0].length;
+  return true;
+});
+md.renderer.rules.critic_sub = (tk, i) => `<span class="critic-sub"><del class="critic-del">${escape(tk[i].meta[0])}</del><ins class="critic-ins">${escape(tk[i].meta[1])}</ins></span>`;
+md.renderer.rules.critic_comment = (tk, i) => { const c = tk[i].meta; return `<span class="critic-comment" tabindex="0" role="note" aria-label="Comment${c.author ? ' by ' + escape(c.author) : ''}: ${escape(c.text)}" data-tip="${escape((c.author ? c.author + ': ' : '') + c.text)}"></span>`; };
 md.renderer.rules.folio_tag = (tk, i) => `<span class="md-tag">${escape(tk[i].content)}</span>`;
 md.renderer.rules.folio_field = (tk, i) => {
   const [key, val] = tk[i].meta;

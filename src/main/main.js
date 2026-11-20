@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -32,6 +32,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
+  templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
@@ -220,6 +221,30 @@ h('fs:pick-media', async (noteRel, kind) => {
 h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel).split(path.sep).join('/'));
 h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal(url); });
 /* open a file of the workspace (an attached PDF, a document) with the system's app */
+/* templates (D9): the community gallery and links to Markdown files. Text only, 1 MB at most, HTTPS (or this machine) */
+const TEMPLATE_MAX = 1024 * 1024;
+h('templates:fetch', async (url) => {
+  const u = new URL(String(url));
+  const local = u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname);
+  if (u.protocol !== 'https:' && !local) throw new Error('Only https:// links can be downloaded.');
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const res = await net.fetch(u.href, { signal: ctl.signal, redirect: 'follow' });
+    if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+    const type = res.headers.get('content-type') || '';
+    if (/^(image|video|audio|application\/(pdf|zip|octet-stream))/i.test(type)) throw new Error('That link is not a text file.');
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > TEMPLATE_MAX) throw new Error('That file is larger than 1 MB.');
+    return buf.toString('utf8');
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'The download took too long.' : e.message); } finally { clearTimeout(timer); }
+});
+h('templates:import-files', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Import templates', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }] });
+  if (r.canceled) return [];
+  const out = [];
+  for (const f of r.filePaths.slice(0, 50)) { const st = await fs.stat(f); if (st.size > TEMPLATE_MAX) continue; out.push({ name: path.basename(f).replace(/\.(md|markdown|txt)$/i, ''), text: await fs.readFile(f, 'utf8') }); }
+  return out;
+});
 h('shell:open-file', async (rel) => { const abs = notes.resolve(rel); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
 

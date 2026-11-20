@@ -61,6 +61,7 @@ export const icons = {
   search: p('<circle cx="7" cy="7" r="4.25"/><path d="m10.2 10.2 3.3 3.3"/>'),
   chevron: p('<path d="m6 4 4 4-4 4"/>', 'style="width:10px;height:10px"'),
   chevronDown: p('<path d="m4 6 4 4 4-4"/>', 'style="width:12px;height:12px"'),
+  comment: p('<path d="M2.25 3.75a1.5 1.5 0 0 1 1.5-1.5h8.5a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H7L4 13.75v-2.5h-.25a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M5 5.75h6M5 8.25h4"/>'),
   find: p('<circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.5 3.5"/>'),
   replace: p('<path d="M2.25 5.25h7.5M7.5 3l2.25 2.25L7.5 7.5"/><path d="M13.75 10.75h-7.5M8.5 8.5l-2.25 2.25L8.5 13"/>'),
   brush: p('<path d="M9.5 2.25 13.75 6.5 8.5 11.75 4.25 7.5z"/><path d="M4.25 7.5 2.5 9.25c-.7.7-.7 1.8 0 2.5l1.75 1.75c.7.7 1.8.7 2.5 0L8.5 11.75"/><path d="M11 3.75l-1 1"/>'),

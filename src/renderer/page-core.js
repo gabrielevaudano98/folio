@@ -95,11 +95,23 @@ function applyStyle(md, style) {
  * md: a TipTap MarkdownManager (parse, serialize). Returns load and save.
  * load(text) -> model with `json` to give to the editor. bind(model, doc) after the editor holds it. save(model, doc) -> text.
  */
+
+/* The serializer moves spaces at the edges of marked text outside the mark (right for **bold**, wrong for CriticMarkup,
+   where `{-- old--}` means the space was deleted too). Spaces at the edges of {++ ++} {-- --} {== ==} text are pinned
+   to private-use characters while serializing and put back after. */
+const PIN = { ' ': '\uE000', '\t': '\uE001' };
+const KEEP_EDGES = new Set(['criticIns', 'criticDel', 'criticHl']);
+function pinEdges(node) {
+  if (node.type === 'text' && node.marks?.some((m) => KEEP_EDGES.has(m.type))) return { ...node, text: node.text.replace(/^[ \t]+|[ \t]+$/g, (w) => w.replace(/[ \t]/g, (c) => PIN[c])) };
+  return node.content ? { ...node, content: node.content.map(pinEdges) } : node;
+}
+const unpin = (t) => t.replace(/\uE000/g, ' ').replace(/\uE001/g, '\t');
+
 export function createPageCodec(md) {
   const serialize = (nodes, style) => {
     const content = nodes.map((n) => (n.toJSON ? n.toJSON() : n)).filter((n) => !(n.type === 'paragraph' && !n.content?.length));
     if (!content.length) return '';
-    return applyStyle(tidy(md.serialize({ type: 'doc', content })), style);
+    return applyStyle(tidy(unpin(md.serialize({ type: 'doc', content: content.map(pinEdges) }))), style);
   };
 
   function load(text) {

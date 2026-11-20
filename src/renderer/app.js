@@ -12,7 +12,9 @@ import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { renameTag } from './page-props.js';
-import { listTemplates, fillTemplate, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS } from './page-templates.js';
+import { listTemplates, fillTemplate, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
+import { openGallery } from './template-gallery.js';
+import { popupMenu } from './page-table.js';
 import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
@@ -106,6 +108,7 @@ const isRich = () => app.dataset.modeView === 'edit';
 async function boot() {
   const init = await folio.init();
   S.platform = init.platform; S.settings = init.settings; S.mcp = init.mcp; S.version = init.version;
+  folio.userName().then((n) => { S.userName = n || ''; }).catch(() => {});
   document.documentElement.dataset.platform = init.platform;
   if (init.platform === 'darwin') document.documentElement.classList.add('vibrant');
   applyTheme(init.dark, init.accent);
@@ -142,6 +145,7 @@ async function boot() {
     isOn: (id) => (id === 'focus' ? app.classList.contains('focus') : id === 'outline' ? app.dataset.outline === 'open' : id === 'spellcheck' ? !!S.settings.spellcheck : false),
     onTag: (t) => showTag(t),
     onTemplate: (b, pos) => runTemplateButton(b, pos),
+    author: () => S.settings.authorName || S.userName || '',
     onStats: (st) => { S.richStats = st; if (isRich()) renderStatus(); },
     mentions: mentionCtx,
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
@@ -630,14 +634,17 @@ async function openDailyNote(day) {
   if (existing) return openRef(existing);
   const d = new Date(`${day}T12:00:00`);
   const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === DAILY.toLowerCase());
-  const text = t ? fillTemplate(await templateText(t), { title: day, now: d }).split(CURSOR).join('') : `# ${longDay(d)}\n\n`;
+  const text = t ? filled(await templateText(t), { title: day, now: d }).split(CURSOR).join('') : `# ${longDay(d)}\n\n`;
   const p = await folio.create(`${JOURNAL}/${day}.md`, text);
   await refreshTree(); openFile(p);
 }
 const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 /* templates (D9): pages in Templates/ and the starters; filled with {{title}}, {{date}}… when used */
-const templateText = async (t) => (t.path ? await textOf(t.path) : t.text);
+const communityText = new Map();
+const templateText = async (t) => (t.path ? await textOf(t.path) : t.url ? communityText.get(t.url) ?? communityText.set(t.url, await folio.fetchTemplate(t.url)).get(t.url) : t.text);
+/* a template ready to use: variables filled, its own `template:` description removed */
+const filled = (raw, opts) => fillTemplate(withoutMeta(raw), opts);
 function pickTemplate({ title = 'Insert template', note = 'Its properties join this page’s and its text goes at the cursor.', action = 'Insert' } = {}) {
   return new Promise((resolve) => {
     const d = $('#sheet-prompt'); const list = listTemplates(S.files);
@@ -646,34 +653,89 @@ function pickTemplate({ title = 'Insert template', note = 'Its properties join t
       <div class="sheet-body"><fieldset class="tpl-list"><legend class="visually-hidden">Template</legend>
         ${list.map((t, i) => `<label class="tpl-card"><input type="radio" name="tpl" value="${i}"${i === 0 ? ' checked' : ''}><span class="tpl-name">${esc(t.name)}</span><span class="tpl-desc">${esc(t.starter ? t.desc : t.path)}</span>${t.starter ? '<span class="tpl-badge">Starter</span>' : ''}</label>`).join('')}
       </fieldset></div>
-      <div class="sheet-foot"><button class="btn" type="button" data-edit>Edit templates…</button><span class="rb-spacer"></span><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`;
+      <div class="sheet-foot"><button class="btn" type="button" data-edit>All templates…</button><span class="rb-spacer"></span><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`;
     const done = (v) => { d.close(); resolve(v); };
     d.querySelector('form').onsubmit = (e) => { e.preventDefault(); done(list[+d.querySelector('[name=tpl]:checked').value]); };
     d.querySelector('[data-cancel]').onclick = () => done(null);
-    d.querySelector('[data-edit]').onclick = () => { done(null); editTemplates(); };
+    d.querySelector('[data-edit]').onclick = () => { done(null); templateGallery('insert'); };
     d.addEventListener('dblclick', (e) => { const c = e.target.closest('.tpl-card'); if (c) { c.querySelector('input').checked = true; d.querySelector('form').requestSubmit(); } }, { once: true });
     d.oncancel = () => resolve(null);
     d.showModal(); d.querySelector('[name=tpl]:checked')?.focus();
   });
 }
-/* copy the starters into Templates/ (only the missing ones) and show the folder */
-async function editTemplates() {
-  if (!S.workspace) return chooseFolder();
-  let made = 0;
-  for (const st of STARTERS) { const p = `${TEMPLATE_DIR}/${st.name}.md`; if (S.files.includes(p)) continue; try { await folio.create(p, st.text); made++; } catch { /* exists */ } }
-  S.expanded.add(TEMPLATE_DIR); await refreshTree();
-  const first = S.files.find((f) => f.startsWith(TEMPLATE_DIR + '/')); if (first) openFile(first);
-  toast(made ? `Added ${made} starter templates to ${TEMPLATE_DIR}/. Edit them, or add your own pages there.` : `Your templates are the pages in ${TEMPLATE_DIR}/.`);
-}
 async function applyTemplate(t, pos = null) {
   if (!t || curType() !== 'md') return;
-  const text = fillTemplate(await templateText(t), { title: stem(S.active || 'Untitled') });
+  const text = filled(await templateText(t), { title: stem(S.active || 'Untitled') });
+  rememberTemplate(t);
   if (isRich()) { rich.insertTemplate(text, pos); return; }
   const tab = activeTab(); const { fm, body } = splitTemplate(text);
   if (fm) { const cur = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(tab.text)?.[0] || ''; const merged = mergeProps(cur, fm); if (merged !== cur) editor.setDoc(merged + tab.text.slice(cur.length), { keepHistory: true }); }
   editor.insert(intoPage(body).split(CURSOR).join(''));
 }
-async function insertTemplateCmd() { if (curType() !== 'md' || !S.active) return toast('Open a page to insert a template.'); const t = await pickTemplate(); if (t) applyTemplate(t); }
+async function insertTemplateCmd() { return templateGallery(curType() === 'md' && S.active ? 'insert' : 'new'); }
+
+/* ---------- the template gallery (Confluence, Notion) ---------- */
+async function templateItems() {
+  const metas = {};
+  for (const f of S.files.filter((x) => x.startsWith(TEMPLATE_DIR + '/') && /\.(md|markdown)$/i.test(x))) metas[f] = templateMeta(await textOf(f));
+  return listTemplates(S.files, metas);
+}
+function rememberTemplate(t) { if (!t?.id) return; const r = [t.id, ...(S.settings.templateRecent || []).filter((x) => x !== t.id)].slice(0, 12); saveSetting({ templateRecent: r }); }
+const freeTemplatePath = (name, folder = TEMPLATE_DIR) => { const base0 = templateFileName(name); let p = `${folder}/${base0}.md`, n = 1; while (S.files.includes(p)) p = `${folder}/${base0} ${++n}.md`; return p; };
+async function writeTemplate(name, text) { const p = freeTemplatePath(name); await folio.create(p, text); S.expanded.add(TEMPLATE_DIR); await refreshTree(); return p; }
+async function newPageFromTemplate(t, name) {
+  if (!S.workspace) return chooseFolder();
+  const folder = S.active && !S.active.startsWith(TEMPLATE_DIR + '/') ? dirOf(S.active) : '';
+  let title = templateFileName(name || t.name), file = (folder ? folder + '/' : '') + title + '.md', n = 1;
+  while (S.files.includes(file)) file = (folder ? folder + '/' : '') + `${title} ${++n}.md`;
+  title = stem(file);
+  const text = filled(await templateText(t), { title }).split(CURSOR).join('');
+  const p = await folio.create(file, text); rememberTemplate(t);
+  if (folder) S.expanded.add(folder); await refreshTree(); await openFile(p);
+}
+async function templateGallery(mode = 'insert') {
+  if (!S.workspace) return chooseFolder();
+  const page = mode === 'insert' && curType() === 'md' && S.active && !S.active.startsWith(TEMPLATE_DIR + '/') ? stem(S.active) : '';
+  return openGallery($('#sheet-gallery'), {
+    mode: page ? 'insert' : 'new', page, icons,
+    items: templateItems,
+    community: async () => {
+      const url = S.settings.templateGallery;
+      try { return { items: communityItems(JSON.parse(await folio.fetchTemplate(url)), url) }; } catch (e) { return { items: null, error: e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }; }
+    },
+    text: templateText,
+    preview: async (raw, t) => { const text = filled(raw, { title: page || t.name }).split(CURSOR).join(''); const { body } = splitTemplate(text); return { text, html: render(page ? intoPage(body) : body) }; },
+    favs: S.settings.templateFavs || [], recent: S.settings.templateRecent || [],
+    setFavs: (ids) => saveSetting({ templateFavs: ids }),
+    use: async (t, { as, name }) => { try { if (as === 'here') await applyTemplate(t); else await newPageFromTemplate(t, name); } catch (e) { toast(e.message, { kind: 'error' }); } },
+    save: async (t) => {
+      try {
+        const raw = await templateText(t);
+        const p = await writeTemplate(t.name, setMeta(raw, { description: t.desc, category: t.category, icon: t.icon, ...(t.url ? { source: t.url } : {}) }));
+        toast(`Saved to ${p}. Edit it there: it is yours now.`); return p;
+      } catch (e) { toast(e.message, { kind: 'error' }); return null; }
+    },
+    edit: (t) => openFile(t.path),
+    remove: async (t) => { if (!await confirmSheet({ title: `Delete the template “${t.name}”?`, body: 'It moves to the trash. Pages made from it stay as they are.', action: 'Delete', danger: true })) return false; await folio.trash(t.path); await refreshTree(); return true; },
+    rename: async (t) => { const name = await prompt({ title: 'Rename template', label: 'Name', value: t.name, action: 'Rename' }); if (!name || name === t.name) return null; const to = `${dirOf(t.path)}/${templateFileName(name)}.md`; await movePath(t.path, to, false); return to; },
+    setCategory: async (t) => {
+      const cat = await prompt({ title: 'Category', label: 'Category', value: t.category, hint: 'For example Meetings, Planning, Product, Engineering, Reports, Docs, Personal, or your own.', action: 'Save' });
+      if (!cat) return false; const text = await textOf(t.path); await folio.write(t.path, setMeta(text, { category: cat.trim() })); const tab = tabOf(t.path); if (tab) { tab.text = tab.saved = setMeta(text, { category: cat.trim() }); } return true;
+    },
+    duplicate: async (t) => writeTemplate(`${t.name} copy`, await templateText(t)),
+    create: async () => { const p = await writeTemplate('New template', setMeta('# {{title}}\n\n{{cursor}}\n', { description: 'What this template is for', category: 'General' })); await openFile(p); toast('A template is a page: write it as you want new pages to start. {{title}}, {{date}} and {{cursor}} are filled in when it is used.'); },
+    saveCurrent: async () => { const tab = activeTab(); const p = await writeTemplate(stem(S.active), setMeta(tab.text, { description: '', category: 'General' })); toast(`Saved as a template: ${p}.`); },
+    importFiles: async () => { const list = await folio.importTemplateFiles(); for (const f of list) await writeTemplate(f.name, Object.keys(templateMeta(f.text)).length ? f.text : setMeta(f.text, { category: 'Imported' })); if (list.length) toast(`Imported ${list.length} ${list.length === 1 ? 'template' : 'templates'}.`); return list.length; },
+    importLink: async () => {
+      const url = await prompt({ title: 'Import a template from a link', label: 'Link to a Markdown file', value: 'https://', hint: 'A raw .md file, for example from GitHub (raw) or a gist.', action: 'Import' });
+      if (!url || url === 'https://') return null;
+      try { const text = await folio.fetchTemplate(url.trim()); const name = templateMeta(text).name || /^#\s+(.+)$/m.exec(withoutMeta(text))?.[1]?.replace(/\{\{[^}]*\}\}/g, '').trim() || decodeURIComponent(url.split('/').pop().replace(/\.(md|markdown|txt)$/i, '')) || 'Imported template';
+        const p = await writeTemplate(name, Object.keys(templateMeta(text)).length ? text : setMeta(text, { category: 'Imported', source: url.trim() })); toast(`Imported ${p}.`); return p; }
+      catch (e) { toast(e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { kind: 'error' }); return null; }
+    },
+    menu: (anchor, items) => popupMenu(anchor, items, { label: 'Template actions' }),
+  });
+}
 async function insertTemplateButton() {
   const t = await pickTemplate({ title: 'Template button', note: 'A button in the page that inserts this template below it, as in Notion.', action: 'Add button' }); if (!t) return;
   const src = buttonSource({ label: `New ${t.name.toLowerCase()}`, template: t.name });
@@ -892,7 +954,7 @@ async function newNote(folder = dirOf(S.active || ''), type, fromTemplate = fals
   try {
     const title = stem(file);
     const tpl = type === 'md' && res.template ? res.template : null;
-    const content = tpl ? fillTemplate(await templateText(tpl), { title }).split(CURSOR).join('') : (NEW_CONTENT[type] || NEW_CONTENT.md)(title);
+    const content = tpl ? filled(await templateText(tpl), { title }).split(CURSOR).join('') : (NEW_CONTENT[type] || NEW_CONTENT.md)(title);
     const p = await folio.create(file, content);
     if (folder) S.expanded.add(folder);
     await refreshTree(); await openFile(p);
@@ -1211,11 +1273,18 @@ function openSettings() {
 /* ============ palette ============ */
 const COMMANDS = [
   { id: 'new-note', title: 'New note', key: 'Mod+N', run: () => newNote() },
-  { id: 'new-from-template', title: 'New note from template…', run: () => newNote(undefined, 'md', true) },
+  { id: 'new-from-template', title: 'New page from a template…', run: () => templateGallery('new') },
+  { id: 'template-gallery', title: 'Templates: browse the gallery', run: () => templateGallery('insert') },
+  { id: 'save-as-template', title: 'Save this page as a template', run: () => (curType() === 'md' && S.active ? writeTemplate(stem(S.active), setMeta(activeTab().text, { description: '', category: 'General' })).then((p) => toast(`Saved as a template: ${p}.`)) : toast('Open a page first.')) },
+  { id: 'comment', title: 'Comment on the selection', key: 'Mod+Alt+M', run: () => rich.run('comment') },
+  { id: 'suggest-mode', title: 'Suggesting: on or off (track changes)', run: () => rich.run('suggest') },
+  { id: 'review-pane', title: 'Show or hide comments and suggestions', run: () => rich.run('reviewPane') },
+  { id: 'accept-all', title: 'Accept all suggestions', run: () => rich.run('acceptAll') },
+  { id: 'reject-all', title: 'Reject all suggestions', run: () => rich.run('rejectAll') },
   { id: 'insert-template', title: 'Insert template…', key: 'Mod+Alt+T', run: () => insertTemplateCmd() },
   { id: 'template-button', title: 'Insert template button', run: () => insertTemplateButton() },
   { id: 'daily-note', title: 'Open today’s daily note', key: 'Mod+Alt+D', run: () => (S.workspace ? openDailyNote(todayKey()) : chooseFolder()) },
-  { id: 'edit-templates', title: 'Templates: edit (adds the starters to Templates/)', run: () => editTemplates() },
+
   { id: 'new-folder', title: 'New folder', run: () => newFolder(dirOf(S.active || '')) },
   { id: 'open-folder', title: 'Open folder…', key: 'Mod+O', run: chooseFolder },
   { id: 'quick-open', title: 'Go to note…', key: 'Mod+P', run: () => openPalette('files') },
@@ -1565,8 +1634,8 @@ function bindChrome() {
       const box = tb.closest('[data-line]'); const b = JSON.parse(decodeURIComponent(box.dataset.spec));
       const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === (b.template || '').toLowerCase());
       if (!t) { toast(`No template called “${b.template}”.`, { kind: 'error' }); return; }
-      const filled = fillTemplate(await templateText(t), { title: stem(S.active) }).split(CURSOR).join('');
-      const { fm, body } = splitTemplate(filled); const tab = activeTab(); let text = tab.text;
+      const text0 = filled(await templateText(t), { title: stem(S.active) }).split(CURSOR).join('');
+      const { fm, body } = splitTemplate(text0); const tab = activeTab(); let text = tab.text;
       const lines = text.split('\n'); const at = b.where === 'above' ? Number(box.dataset.line) : Number(box.dataset.lineEnd);
       lines.splice(at, 0, ...(b.where === 'above' ? [intoPage(body).trimEnd(), ''] : ['', intoPage(body).trimEnd()]));
       text = lines.join('\n');
@@ -1708,6 +1777,6 @@ function bindIpc() {
 }
 
 window.__folioErrors = [];
-addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
+addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message, e.error?.stack || ''); });
 addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); console.error('[folio-error]', e.reason?.message || e.reason); });
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>Folio could not start. ${esc(e.message)}</p></div></div>`); console.error(e); });

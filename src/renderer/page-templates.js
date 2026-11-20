@@ -67,154 +67,64 @@ export function parseButton(src) {
 }
 export const buttonSource = ({ label, template, where = 'below' }) => `\`\`\`template-button\nlabel: ${label}\ntemplate: ${template}${where === 'above' ? '\nwhere: above' : ''}\n\`\`\``;
 
-/* ---------- starters: shown when Templates/ has no page of the same name ---------- */
-export const STARTERS = [
-  { name: DAILY, desc: 'The page a day link opens', text: `---
-tags: [daily]
----
-# {{date:dddd D MMMM YYYY}}
+/* ---------- template pages: metadata, the collection, the community ---------- */
+export { STARTERS, CATEGORIES } from './template-starters.js';
+import { STARTERS } from './template-starters.js';
 
-[[{{yesterday}}|← Yesterday]] · [[{{tomorrow}}|Tomorrow →]]
-
-## Focus
-
-- [ ] {{cursor}}Top priority
-
-## Notes
-
-## Done today
-` },
-  { name: 'Meeting notes', desc: 'Attendees, agenda, decisions, actions', text: `---
-tags: [meeting]
-date: {{date}}
-attendees: []
----
-# {{title}}
-
-> [!info] {{date:D MMMM YYYY}}, {{time}}
-
-## Agenda
-
-1. {{cursor}}First topic
-
-## Notes
-
-## Decisions
-
-- What was decided, and why
-
-## Actions
-
-- [ ] Owner: task, by date
-` },
-  { name: 'Decision log', desc: 'One decision: context, options, outcome (ADR)', text: `---
-tags: [decision]
-date: {{date}}
-status: Proposed
-deciders: []
----
-# {{title}}
-
-[status:: Proposed]
-
-## Context
-
-{{cursor}}
-
-## Options
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A |  |  |
-| B |  |  |
-
-## Decision
-
-## Consequences
-` },
-  { name: 'Project brief', desc: 'Problem, goals, scope, milestones, risks', text: `---
-tags: [project]
-owner: ""
-start: {{date}}
-status: Not started
----
-# {{title}}
-
-[status:: Not started]
-
-## Problem
-
-{{cursor}}
-
-## Goals
-
-- A measurable outcome
-
-## Non-goals
-
-- What this will not do
-
-## Scope and milestones
-
-| Milestone | Date | Owner |
-| --- | --- | --- |
-|  |  |  |
-
-## Risks
-
-> [!warning] What could stop this
-
-## Links
-` },
-  { name: 'Status report', desc: 'Weekly progress for stakeholders', text: `---
-tags: [status]
-week: {{date}}
----
-# {{title}}
-
-**Week of {{date:D MMMM YYYY}}** · [status:: In progress]
-
-## Summary
-
-{{cursor}}
-
-## Done
-
-- What shipped
-
-## Next
-
-- What comes next
-
-## Risks and blockers
-
-| Risk | Impact | Owner | Action |
-| --- | --- | --- | --- |
-|  |  |  |  |
-
-## Asks
-` },
-  { name: 'Review tracker', desc: 'Items to review, with owner and status', text: `---
-tags: [review]
----
-# {{title}}
-
-| Item | Owner | Due | Status |
-| --- | --- | --- | --- |
-| {{cursor}} |  | {{tomorrow}} | [status:: Not started] |
-
-## Checklist
-
-- [ ] Content checked
-- [ ] Figures checked
-- [ ] Sign-off
-` },
-];
-
-/** the templates on offer: pages in Templates/ first, then starters whose name is not taken */
-export function listTemplates(files) {
-  const mine = files.filter((f) => new RegExp(`^${TEMPLATE_DIR}/[^/]+\\.(md|markdown)$`, 'i').test(f) && !/\.(slides|board|sheet)\.md$/i.test(f))
-    .map((f) => ({ name: f.split('/').pop().replace(/\.(md|markdown)$/i, ''), path: f }));
-  const taken = new Set(mine.map((t) => t.name.toLowerCase()));
-  return [...mine.sort((a, b) => a.name.localeCompare(b.name)), ...STARTERS.filter((s) => !taken.has(s.name.toLowerCase())).map((s) => ({ ...s, starter: true }))];
+/* a template page describes itself in a `template:` map in its front matter; that map never reaches the pages made from it:
+   template:
+     description: Agenda, notes, decisions and actions
+     category: Meetings
+     icon: 📝 */
+const META_BLOCK = /^template:[ \t]*\r?\n((?:[ \t]+[^\n]*\r?\n?)*)/m;
+export function templateMeta(text) {
+  const m = FM.exec(String(text)); if (!m) return {};
+  const b = META_BLOCK.exec(m[0]); if (!b) return {};
+  const out = {}; for (const l of b[1].split('\n')) { const kv = /^[ \t]+([a-z]+):[ \t]*(.*?)[ \t]*$/i.exec(l); if (kv) out[kv[1].toLowerCase()] = kv[2].replace(/^["']|["']$/g, ''); }
+  return out;
 }
+/** the template without its own `template:` map (and without front matter, if nothing else was in it) */
+export function withoutMeta(text) {
+  const m = FM.exec(String(text)); if (!m || !META_BLOCK.test(m[0])) return text;
+  const fm = m[0].replace(META_BLOCK, '');
+  return (/^---[ \t]*\r?\n---/.test(fm) ? '' : fm) + text.slice(m[0].length);
+}
+const yamlValue = (v) => (/[:#\n'"]|^\s|\s$/.test(v) ? JSON.stringify(v) : v);
+/** set the template's description, category or icon (adds the `template:` map, and front matter, when missing) */
+export function setMeta(text, patch) {
+  const meta = { ...templateMeta(text), ...patch };
+  const block = 'template:\n' + Object.entries(meta).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `  ${k}: ${yamlValue(String(v))}`).join('\n') + '\n';
+  const m = FM.exec(String(text));
+  if (!m) return `---\n${block}---\n${text.startsWith('\n') ? '' : '\n'}${text}`;
+  const fm = META_BLOCK.test(m[0]) ? m[0].replace(META_BLOCK, block) : m[0].replace(/^(---[ \t]*\r?\n)/, `$1${block}`);
+  return fm + text.slice(m[0].length);
+}
+
+const slug = (s) => String(s).toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '');
+/**
+ * the templates on offer: { id, name, desc, category, icon, source: mine|starter, path? }. Your pages in Templates/
+ * (and its folders, which act as categories) come first and replace starters of the same name.
+ * `metas` maps a template path to its templateMeta.
+ */
+export function listTemplates(files, metas = {}) {
+  const mine = files.filter((f) => new RegExp(`^${TEMPLATE_DIR}/.+\\.(md|markdown)$`, 'i').test(f) && !/\.(slides|board|sheet)\.md$/i.test(f))
+    .map((f) => {
+      const parts = f.split('/'); const meta = metas[f] || {};
+      return { id: f, source: 'mine', path: f, name: parts.at(-1).replace(/\.(md|markdown)$/i, ''), desc: meta.description || '', category: meta.category || (parts.length > 2 ? parts[1] : 'General'), icon: meta.icon || '' };
+    });
+  const taken = new Set(mine.map((t) => t.name.toLowerCase()));
+  return [...mine.sort((a, b) => a.name.localeCompare(b.name)),
+    ...STARTERS.filter((s) => !taken.has(s.name.toLowerCase())).map((s) => ({ id: 'starter:' + slug(s.name), source: 'starter', starter: true, ...s }))];
+}
+
+/** the community index: { templates: [{ id, name, description, category, author, file }] } → gallery items */
+export function communityItems(index, baseUrl) {
+  const list = Array.isArray(index?.templates) ? index.templates : [];
+  return list.filter((t) => t && t.name && t.file && !/^[a-z]+:|\.\.|^\//i.test(t.file)).slice(0, 500).map((t) => ({
+    id: 'community:' + slug(t.id || t.name), source: 'community', name: String(t.name).slice(0, 80), desc: String(t.description || '').slice(0, 200),
+    category: String(t.category || 'Community').slice(0, 40), icon: [...String(t.icon || '')].slice(0, 8).join(''), author: String(t.author || '').slice(0, 60),
+    url: new URL(t.file, baseUrl).href,
+  }));
+}
+/** a file name for a template inside Templates/: no characters a file system refuses */
+export const templateFileName = (name) => String(name).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Template';

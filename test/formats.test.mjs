@@ -21,8 +21,9 @@ import { findMatches, replaceAll } from '../src/renderer/page-find.js';
 import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
+import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread } from '../src/renderer/page-critic.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag } from '../src/renderer/page-props.js';
-import { formatDate, fillTemplate, splitTemplate, mergeProps, parseButton, buttonSource, listTemplates, STARTERS, CURSOR } from '../src/renderer/page-templates.js';
+import { formatDate, fillTemplate, splitTemplate, mergeProps, parseButton, buttonSource, listTemplates, STARTERS, CURSOR, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from '../src/renderer/page-templates.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -339,16 +340,41 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.deepEqual(parseButton(buttonSource(b).replace(/^```template-button\n|```$/g, '')), b); assert.deepEqual(parseButton('template: Decision log'), { label: 'New Decision log', template: 'Decision log', where: 'below' });
   const btn = open(buttonSource(b) + '\n'); assert(!btn.m.blocks.some((x) => x.raw)); assert.equal(codec.save(btn.m, btn.doc), buttonSource(b) + '\n');
   ok('a template button is a ```template-button``` fence (readable anywhere) and round-trips');
-  const list = listTemplates(['Templates/Meeting notes.md', 'Templates/Mine.md', 'Templates/Deck.slides.md', 'Other/x.md']);
-  assert.deepEqual(list.map((t) => t.name + (t.starter ? '*' : '')), ['Meeting notes', 'Mine', 'Daily note*', 'Decision log*', 'Project brief*', 'Status report*', 'Review tracker*']);
-  ok('your Templates/ pages come first and replace starters of the same name');
-  for (const s of STARTERS) {
-    const text = fillTemplate(s.text, { title: s.name, now }).split(CURSOR).join('');
-    const o = open(text); assert(!o.m.blocks.some((x) => x.raw), s.name + ': ' + o.m.blocks.filter((x) => x.raw).map((x) => x.src).join('|')); assert.equal(codec.save(o.m, o.doc), text, s.name);
-    assert(parseProps(text).props.length >= 1, s.name);
+  const list = listTemplates(['Templates/Meeting notes.md', 'Templates/Team/Standup.md', 'Templates/Deck.slides.md', 'Other/x.md'], { 'Templates/Meeting notes.md': { category: 'Rituals', description: 'Ours' } });
+  assert.deepEqual(list.slice(0, 2).map((t) => [t.id, t.name, t.category, t.desc, t.source]), [['Templates/Meeting notes.md', 'Meeting notes', 'Rituals', 'Ours', 'mine'], ['Templates/Team/Standup.md', 'Standup', 'Team', '', 'mine']]);
+  assert(!list.some((t) => t.starter && t.name === 'Meeting notes') && list.some((t) => t.id === 'starter:okrs') && list.filter((t) => t.starter).length === STARTERS.length - 1);
+  ok('your Templates/ pages come first (folders and the template: map give categories) and replace starters of the same name');
+  const tm = '---\ntemplate:\n  description: Agenda and notes\n  category: Meetings\n  icon: 📝\ntags: [meeting]\n---\n# {{title}}\n';
+  assert.deepEqual(templateMeta(tm), { description: 'Agenda and notes', category: 'Meetings', icon: '📝' });
+  assert.equal(withoutMeta(tm), '---\ntags: [meeting]\n---\n# {{title}}\n'); assert.equal(withoutMeta('---\ntemplate:\n  category: X\n---\n# A\n'), '# A\n'); assert.equal(withoutMeta('# A\n'), '# A\n');
+  assert.equal(setMeta('# A\n', { category: 'Docs', description: 'Hi: there' }), '---\ntemplate:\n  category: Docs\n  description: "Hi: there"\n---\n\n# A\n');
+  assert.equal(setMeta(tm, { category: 'Planning' }), tm.replace('Meetings', 'Planning')); assert.equal(templateMeta(setMeta(tm, { icon: '' })).icon, undefined);
+  ok('a template describes itself in a template: map that never reaches the pages made from it');
+  const ci = communityItems({ templates: [{ id: 'lean', name: 'Lean canvas', file: 'lean.md', category: 'Strategy', icon: '🧑‍💼x' }, { name: 'Evil', file: 'https://evil.example/x.md' }, { name: 'Up', file: '../x.md' }, { file: 'noname.md' }] }, 'https://x.org/c/index.json');
+  assert.deepEqual(ci.map((t) => [t.id, t.url, t.icon]), [['community:lean', 'https://x.org/c/lean.md', '🧑‍💼x']]); assert.equal(templateFileName('A/B: c?'), 'A B c');
+  ok('the community index only lists files next to it; names become safe file names');
+  const dir = new URL('../community/templates/', new URL('../', import.meta.url)); const idx = JSON.parse(fs.readFileSync(new URL('index.json', dir), 'utf8'));
+  const now9 = new Date(2026, 10, 20, 9, 5);
+  for (const t of [...STARTERS.map((x) => ({ name: x.name, text: x.text })), ...idx.templates.map((x) => ({ name: x.name, text: fs.readFileSync(new URL(x.file, dir), 'utf8') }))]) {
+    const text = fillTemplate(withoutMeta(t.text), { title: t.name, now: now9 }).split(CURSOR).join('');
+    const o = open(text); assert(!o.m.blocks.some((x) => x.raw), t.name + ': ' + o.m.blocks.filter((x) => x.raw).map((x) => x.src).join('|')); assert.equal(codec.save(o.m, o.doc), text, t.name);
+    assert(parseProps(text).props.length >= 1 && !text.includes('template:'), t.name);
   }
-  ok('every starter template is fully editable (no raw blocks) and opens without changes'); }
+  ok(`all ${STARTERS.length} collection and ${idx.templates.length} community templates are fully editable and open without changes`);
+  }
 
+
+  { // D10: CriticMarkup is editable, round-trips, and the review helpers work on the document
+    const r = open(fx('pages/review.md'));
+    assert(!r.m.blocks.some((b) => b.raw), r.m.blocks.filter((b) => b.raw).map((b) => b.src).join('|')); assert.equal(codec.save(r.m, r.doc), fx('pages/review.md'));
+    const items = docReview(r.doc);
+    assert.deepEqual(items.map((i) => i.kind + ':' + (i.text ?? i.quote)), ['ins:within 30 days', 'del: as soon as possible', 'sub:30', 'thread:Liability is capped.']);
+    assert.equal(items[3].comments[0].text, 'Check with legal.');
+    let st = EditorState.create({ doc: r.doc }); const tr = st.tr; for (const it of items.filter((i) => i.kind !== 'thread')) settle(st, it, true, tr); st = st.apply(tr);
+    assert.equal(codec.save(r.m, st.doc), '# Contract review\n\nThe supplier will deliver within 30 days.\nPayment terms 30 days. {==Liability is capped.==}{>>Check with legal.<<}\n\nNormal paragraph without marks.\n');
+    st = EditorState.create({ doc: r.doc }); st = st.apply(resolveThread(st, docReview(st.doc)[3]));
+    assert(codec.save(r.m, st.doc).includes('days. Liability is capped.\n\nNormal'));
+    ok('CriticMarkup opens as editable marks and nodes, saves byte-identical; accept all and resolve a thread change only those blocks'); }
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
@@ -436,6 +462,17 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(renameTag('a #q4 b `#q4` #q4x (#q4)\n```\n#q4\n```\n#Q4.', 'q4', 'q1'), 'a #q1 b `#q4` #q4x (#q1)\n```\n#q4\n```\n#q1.');
   assert.equal(renameTag(t, 'q4', 'bad tag'), t);
   ok('renaming a tag changes it in the text and the front matter, nested tags too, never inside code or longer tags'); }
+
+// D10: CriticMarkup on any text (Read view, exports, AI tools)
+{
+  const t = 'Hello {++new ++}world{-- old--}. {~~cat~>dog~~} and {==this==}{>>Ada, 2026-11-20 14:05: Why?<<}{>>Bob, 2026-11-20 15:00: Because<<} `{++code++}`';
+  assert.deepEqual(listChanges(t).map((c) => c.kind + ':' + c.text), ['ins:new ', 'del: old', 'sub:dog', 'hl:this', 'comment:Ada, 2026-11-20 14:05: Why?', 'comment:Bob, 2026-11-20 15:00: Because']);
+  assert.equal(acceptCm(t), 'Hello new world. dog and {==this==}{>>Ada, 2026-11-20 14:05: Why?<<}{>>Bob, 2026-11-20 15:00: Because<<} `{++code++}`');
+  assert.equal(rejectCm(t), 'Hello world old. cat and {==this==}{>>Ada, 2026-11-20 14:05: Why?<<}{>>Bob, 2026-11-20 15:00: Because<<} `{++code++}`');
+  assert.equal(cleanCm(t), 'Hello new world. dog and this `{++code++}`'); assert.equal(acceptCm(t, listChanges(t)[1].from), t.replace('{-- old--}', ''));
+  assert.deepEqual(parseComment('Ada, 2026-11-20 14:05: Why? Yes: really'), { author: 'Ada', date: '2026-11-20 14:05', text: 'Why? Yes: really' }); assert.deepEqual(parseComment('Plain note'), { author: '', date: '', text: 'Plain note' });
+  assert.equal(commentBody('Ada, Inc', 'a <<b', '2026-11-20 10:00'), 'Ada  Inc, 2026-11-20 10:00: a ‹‹b');
+  ok('CriticMarkup: list, accept, reject (one or all), clean; never inside code; comments carry author and time'); }
 
 // the / menu registry
 {

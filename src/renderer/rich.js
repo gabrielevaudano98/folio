@@ -12,6 +12,8 @@ import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
 import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
 import { FindReplace, mountFindBar } from './page-find.js';
 import { mountProps } from './page-props-ui.js';
+import { mountReview } from './page-review.js';
+import { SuggestMode } from './page-critic.js';
 import { parseButton, splitTemplate, mergeProps, intoPage, CURSOR } from './page-templates.js';
 const escHtml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 import { Markdown } from '@tiptap/markdown';
@@ -637,7 +639,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '' }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -646,7 +648,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       <select class="bubble-select" id="rb-turn" data-tip="Turn into">${TURN.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
       <span class="bubble-sep"></span>
       ${btn('bold', 'Bold', icons.bold)}${btn('italic', 'Italic', icons.italic)}${btn('underline', 'Underline', icons.underline)}${btn('strike', 'Strikethrough', icons.strike)}
-      ${btn('highlight', 'Highlight', icons.highlighter)}${btn('code', 'Inline code', icons.codeInline)}${btn('linkInline', 'Link', icons.link)}
+      ${btn('highlight', 'Highlight', icons.highlighter)}${btn('code', 'Inline code', icons.codeInline)}${btn('linkInline', 'Link', icons.link)}${btn('comment', 'Comment', icons.comment)}
       <span class="bubble-sep"></span>
       ${btn('superscript', 'Superscript', icons.superscript)}${btn('subscript', 'Subscript', icons.subscript)}${btn('colour', 'Text colour', icons.palette)}${btn('inlineMath', 'Maths', icons.sigma)}${btn('hiddenComment', 'Hidden comment', icons.commentHidden)}
       <div class="bubble-link" hidden>
@@ -681,6 +683,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       SlashMenu.configure({ keyLabel, ctx: insertCtx }),
       TableHandles.configure({ icons, toSheet: (e) => tableToSheet(e) }),
       FindReplace,
+      SuggestMode,
       Mentions.configure({ ctx: () => (mentions ? mentions() : null), keyLabel }),
       CodeHighlight,
       CalloutUI.configure({ icons }),
@@ -716,6 +719,16 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     switch (id) {
       case 'painter': return painter.toggle(false);
       case 'addProperty': return props.add();
+      case 'comment': return review.comment();
+      case 'suggest': review.suggest(); return syncToolbar();
+      case 'reviewPane': review.toggle(); return syncToolbar();
+      case 'prevChange': return review.step(-1);
+      case 'nextChange': return review.step(1);
+      case 'acceptChange': return review.settleHere(true);
+      case 'rejectChange': return review.settleHere(false);
+      case 'acceptAll': return review.all(true);
+      case 'rejectAll': return review.all(false);
+      case 'resolveAll': return review.resolveAll();
       case 'find': return findBar.open(false);
       case 'replace': return findBar.open(true);
       case 'selectAll': return c.selectAll().run();
@@ -932,6 +945,12 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const findBar = mountFindBar(host.querySelector('.rich-scroll').parentElement === host ? host : host, editor, { icons, keyLabel });
   host.insertBefore(host.querySelector('.find-bar'), host.querySelector('.rich-scroll'));
 
+  /* comments and suggestions (CriticMarkup) in a pane beside the page */
+  const review = mountReview(host, editor, { icons, author, keyLabel, onToggle: () => syncToolbar() });
+  editor.view.dom.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.code === 'KeyM') { e.preventDefault(); review.comment(); }
+  });
+
   /* properties: the front matter as fields above the title; only the lines of a changed property are rewritten */
   const props = mountProps(page, {
     icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n),
@@ -1038,7 +1057,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     const ca = editor.isActive('table') ? tableCmd.colAlign(editor.state) : null;
     const press = (cmd, on) => ribbonEl.querySelectorAll(`[data-cmd="${cmd}"]`).forEach((b) => b.setAttribute('aria-pressed', String(!!on)));
     press('cellLeft', ca === 'left'); press('cellCenter', ca === 'center'); press('cellRight', ca === 'right');
-    press('painter', painter.on); press('typewriter', pv.typewriter);
+    press('painter', painter.on); press('typewriter', pv.typewriter); press('suggest', editor.storage.suggestMode.on); press('reviewPane', review.open);
     for (const w of ['narrow', 'normal', 'wide']) press('width:' + w, pv.width === w);
     for (const a of ['focus', 'outline', 'spellcheck']) press('app:' + a, isOn(a));
     ribbonEl.querySelectorAll('.rb-zoom-val').forEach((z) => { z.textContent = `${Math.round(pv.zoom * 100)}%`; });
@@ -1057,7 +1076,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
         codec.bind(model, editor.state.doc);
       } finally { silent = false; }
       host.querySelector('.rich-scroll').scrollTop = 0;
-      props.render();
+      props.render(); review.render();
       syncToolbar();
     },
     getMarkdown() {
@@ -1091,6 +1110,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     },
     find(replace = false) { return findBar.open(replace); },
     addProperty() { props.add(); },
+    review: () => review,
     /* put a filled template in this page: its properties join the page's, its body goes at the cursor (or at pos) */
     insertTemplate(text, pos = null) {
       const { fm, body: raw } = splitTemplate(text); const body = text.startsWith('```template-button') ? raw : intoPage(raw);

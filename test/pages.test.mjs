@@ -3,11 +3,16 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import electron from 'electron';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-pages-'));
 const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud');
 fs.cpSync(new URL('./fixture', import.meta.url), ws, { recursive: true }); fs.mkdirSync(ud);
-fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47593 }));
+// the community template gallery, served from this repository's community/templates on this machine
+const galleryDir = new URL('../community/templates/', import.meta.url);
+const gallery = http.createServer((req, res) => { try { const f = new URL('.' + decodeURIComponent(req.url.split('?')[0]), galleryDir); if (!f.href.startsWith(galleryDir.href)) throw 0; res.end(fs.readFileSync(f)); } catch { res.statusCode = 404; res.end(); } });
+await new Promise((r) => gallery.listen(0, '127.0.0.1', r));
+fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47593, authorName: 'Tester', templateGallery: `http://127.0.0.1:${gallery.address().port}/index.json` }));
 const read = (f) => fs.readFileSync(path.join(ws, 'pages', f), 'utf8');
 fs.writeFileSync(path.join(ws, 'pages', 'd1.md'), '# Formatting\n\nPlain paragraph here\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd3.md'), '# Slash\n\nStart here\n');
@@ -24,6 +29,7 @@ fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| 
 fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd8.md'), '---\ntitle: Weekly\ntags: [alpha]\ndone: false\n---\n# Weekly\n\nText #beta here.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd9.md'), '# Plan\n\nIntro.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd10.md'), '# Review\n\nNormal paragraph without marks.\n\nPayment terms {~~60~>30~~} days.\n');
 const html = read('html.md'), obs = read('obsidian.md');
 const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
 
@@ -185,24 +191,45 @@ const steps = [
   { js: "document.querySelector('[data-file=\"pages/d9.md\"]').click()", wait: 1500 },
   { js: typeAtEnd('Intro.', ''), wait: 200 },
   { js: "document.querySelector('.ribbon [data-cmd=\"app:template\"]').click(); true", wait: 400 },
-  { js: "(() => { const c = [...document.querySelectorAll('#sheet-prompt .tpl-card')]; const m = c.find((x) => x.textContent.includes('Meeting notes')); m.querySelector('input').checked = true; document.querySelector('#sheet-prompt form').requestSubmit(); return c.length; })()", log: true, wait: 800 },
+  { js: "(() => { const s = document.querySelector('.tg-search input'); s.value = 'meeting notes'; s.dispatchEvent(new Event('input', { bubbles: true })); const c = [...document.querySelectorAll('.tg-card')]; const m = c.find((x) => x.querySelector('.tg-card-name').textContent === 'Meeting notes'); m.click(); document.querySelector('[data-act=useHere]').click(); return document.querySelectorAll('.tg-nav-item').length; })()", log: true, wait: 800 },
   { js: "document.execCommand('insertText', false, 'Budget '); true", wait: 300 },
   { js: "document.querySelector('.ribbon [data-cmd=\"app:template-button\"]').click(); true", wait: 400 },
   { js: "(() => { const m = [...document.querySelectorAll('#sheet-prompt .tpl-card')].find((x) => x.textContent.includes('Decision log')); m.querySelector('input').checked = true; document.querySelector('#sheet-prompt form').requestSubmit(); return true; })()", wait: 800 },
   { js: "(() => { const b = document.querySelector('.rich-prose .template-btn'); if (!b) return false; b.click(); return b.textContent; })()", log: true, wait: 2500 },
   { js: "document.querySelector('.ribbon [data-cmd=\"app:daily-note\"]').click(); true", wait: 2000 },
+  // D10: comment on a word, suggest an insertion and a deletion, accept them all
+  { js: "document.querySelector('[data-file=\"pages/d10.md\"]').click()", wait: 1500 },
+  { js: select('Normal', 0, 6), wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=comment]').click(); true", wait: 400 },
+  { js: "(() => { const ta = document.querySelector('.rv-draft textarea'); if (!ta) return false; ta.value = 'Is this the right tone?'; ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return !document.querySelector('.review-pane').hidden; })()", log: true, wait: 600 },
+  { js: "(() => { const p = [...document.querySelectorAll('.rich-prose p')].find((x) => x.textContent.startsWith('Normal')); document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.selectNodeContents(p); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()", wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=suggest]').click(); document.execCommand('insertText', false, ' Really'); true", wait: 300 },
+  { js: "(() => { const p = [...document.querySelectorAll('.rich-prose p')].find((x) => x.textContent.startsWith('Normal')); const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); let n, t; while ((n = w.nextNode())) if (n.textContent.includes('without')) t = n; const r = document.createRange(); r.setStart(t, t.textContent.indexOf('without') + 7); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()", wait: 300 },
+  { js: "for (let i = 0; i < 8; i++) document.querySelector('.rich-prose').dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })); [document.querySelectorAll('.rich-prose .critic-ins').length, document.querySelectorAll('.rich-prose .critic-del').length, document.querySelectorAll('.rv-card').length]", log: true, wait: 1500 },
+  { js: "(() => { const before = document.querySelector('.rv-count').textContent; document.querySelector('.ribbon [data-cmd=suggest]').click(); document.querySelector('.ribbon [data-cmd=acceptAll]').click(); return before; })()", log: true, wait: 2000 },
+  // the template gallery: a collection template for a new page, a favourite, a community download
+  { js: "document.querySelector('.ribbon [data-cmd=\"app:template\"]').click(); true", wait: 900 },
+  { js: "(() => { [...document.querySelectorAll('.tg-nav-item')].find((b) => b.textContent.includes('Planning')).click(); const c = [...document.querySelectorAll('.tg-card')].find((x) => x.textContent.includes('OKRs')); c.click(); [...document.querySelectorAll('.tg-card')].find((x) => x.textContent.includes('OKRs')).querySelector('.tg-star').click(); return [document.querySelectorAll('.tg-card').length, document.querySelector('.tg-preview h3').textContent]; })()", log: true, wait: 900 },
+  { js: "(() => { const i = document.querySelector('.tg-name input'); if (i) i.value = 'Q1 goals'; document.querySelector('[data-act=useNew]').click(); return true; })()", wait: 2000 },
+  { js: "document.querySelector('.ribbon [data-cmd=\"app:template\"]').click(); true", wait: 900 },
+  { js: "(() => { const favs = [...document.querySelectorAll('.tg-card .tg-card-name')].map((x) => x.textContent).join('|'); [...document.querySelectorAll('.tg-nav-item')].find((b) => b.textContent.includes('Browse online')).click(); return favs; })()", log: true, wait: 2000 },
+  { js: "(() => { const c = [...document.querySelectorAll('.tg-card')].find((x) => x.textContent.includes('Lean canvas')); if (!c) return document.querySelector('.tg-main').textContent.slice(0, 200); c.click(); return document.querySelectorAll('.tg-card').length; })()", log: true, wait: 1500 },
+  { js: "document.querySelector('[data-act=save]').click(); true", wait: 1500 },
+  { js: "[document.querySelector('.tg-nav-item[aria-current]')?.textContent, [...document.querySelectorAll('.tg-card .tg-card-name')].map((x) => x.textContent).join('|')]", log: true, wait: 200 },
+  { js: "document.querySelector('[data-act=close]').click(); true", wait: 600 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
 const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: ud, FOLIO_SHOT: stepsFile }, stdio: ['ignore', 'pipe', 'pipe'] });
 let out = ''; child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
 const timer = setTimeout(() => child.kill(), 200000);
+child.on('exit', () => gallery.close());
 child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 56, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, errors] = logs;
+  assert.equal(logs.length, 63, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -261,7 +288,7 @@ child.on('exit', () => {
   assert.equal(tagClicked, '#beta'); assert.equal(tagSearch[0], '#beta'); assert.match(tagSearch[1], /^1 page tagged #beta/); assert.equal(tagSearch[2], 'd8');
   assert(tagPane.includes('beta*') && tagPane.includes('gamma') && tagPane.includes('alpha'), tagPane);
   console.log('  ✓ Ctrl/⌘ click on a tag lists its pages; the Tags section lists every tag, with the current one marked');
-  assert(tplCount >= 6, tplCount); assert.equal(tplButton, 'New decision log');
+  assert(tplCount >= 10, tplCount); assert.equal(tplButton, 'New decision log');
   const d9 = read('d9.md');
   assert.match(d9, /^---\ntags:\n  - meeting\n  - decision\ndate: \d{4}-\d{2}-\d{2}\nattendees: \[\]\nstatus: Proposed\ndeciders: \[\]\n---\n# Plan\n\nIntro\.\n\n> \[!info\] /, d9);
   assert(d9.includes('## Agenda\n\n1. Budget First topic\n'), d9);
@@ -272,4 +299,15 @@ child.on('exit', () => {
   const daily = fs.readFileSync(path.join(ws, 'Journal', `${today}.md`), 'utf8');
   assert(daily.startsWith('---\ntags: [daily]\n---\n# ') && daily.includes('## Focus\n\n- [ ] Top priority'), daily);
   console.log('  ✓ Today opens the daily note, made from the Daily note template');
+  assert.equal(paneShown, true); assert.deepEqual(marks10.slice(0, 2), [2, 2]); assert(marks10[2] >= 3, JSON.stringify(marks10)); assert.match(counts10, /^1 comment · 3 suggestions$/);
+  assert.equal(read('d10.md'), '# Review\n\n{==Normal==}{>>Tester, ' + read('d10.md').match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)[0] + ': Is this the right tone?<<} paragraph marks. Really\n\nPayment terms 30 days.\n', read('d10.md'));
+  console.log('  ✓ comments: select, comment, the thread is saved as CriticMarkup with author and time; Suggesting marks typing and deleting; Accept all applies every suggestion');
+  assert.deepEqual(galleryOkrs, [3, 'OKRs']);
+  const okrs = read('OKRs.md'); assert(okrs.startsWith('---\ntags: [okr]\nperiod: ""\nowner: ""\n---\n# OKRs\n\n## Objective 1: An inspiring goal\n') && !okrs.includes('template:') && !okrs.includes('⁣'), okrs);
+  console.log('  ✓ gallery: a category lists its templates; New page makes a page from the template, named after it, next to the open page');
+  assert.equal(favsAndCommunity, 'OKRs'); assert.equal(communityCount, 8);
+  const lean = fs.readFileSync(path.join(ws, 'Templates', 'Lean canvas.md'), 'utf8');
+  assert(lean.startsWith('---\ntemplate:\n  description: A one-page business model for a new idea\n  category: Strategy\n  icon: 🧩\n  source: "http://127.0.0.1:') && lean.includes('| Problem | Solution |'), lean);
+  assert.equal(savedView[0].replace(/\d+$/, ''), 'All of mine'); assert(savedView[1].includes('Lean canvas'), savedView[1]);
+  console.log('  ✓ gallery: a starred template opens under Favourites; a community template downloads into Templates/ and shows under My templates');
 });

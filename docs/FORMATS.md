@@ -66,6 +66,8 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Table column alignment | `\| :--- \| :---: \| ---: \|` | GFM. Set from a column's menu or the Table tab; sorting, moving rows and columns rewrite only the table. |
 | Properties | YAML front matter: `title: Text`, `count: 3`, `done: true`, `due: 2026-12-01`, `tags: [a, b/c]`, `owner: "[[Ada]]"` | Edited as fields above the title; only the changed property's lines are rewritten. Nested maps are kept and shown read-only. |
 | Template button (Folio) | ```` ```template-button ```` with `label: New meeting`, `template: Meeting notes`, optional `where: above` | Drawn as a button; inserts the template from `Templates/` (or a starter). Other editors show a code block. |
+| Suggested insertion, deletion, replacement | `{++new text++}`, `{--old text--}`, `{~~old~>new~~}` | CriticMarkup. Accept or reject in the review pane; Suggesting mode writes them as you type. |
+| Comment | `{==quoted text==}{>>Ada, 2026-11-20 14:05: Comment<<}` | CriticMarkup. The `Author, date time:` prefix is optional; comments that follow each other are replies. |
 | Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |
 | Alignment (Folio) | a paragraph, then `{align=center}` on the next line; a heading: `## Title {align=right}` | left, center, right, justify. |
 
@@ -253,4 +255,4 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 
 ### Templates
 
-A template is a page in `Templates/`. When used, these variables are filled: `{{title}}` (the new page's name), `{{date}}`, `{{time}}`, `{{datetime}}`, `{{yesterday}}`, `{{tomorrow}}`, `{{weekday}}`, each with an optional moment.js format (`{{date:dddd D MMMM YYYY}}`), and `{{cursor}}` (where the caret goes). Other `{{…}}` text is left as written. The template's properties are merged into the page's.
+A template is a page in `Templates/` (folders are categories). It can describe itself in a `template:` map at the top of its front matter (`description`, `category`, `icon`, `source`); that map is removed from pages made from it. When used, these variables are filled: `{{title}}` (the new page's name), `{{date}}`, `{{time}}`, `{{datetime}}`, `{{yesterday}}`, `{{tomorrow}}`, `{{weekday}}`, each with an optional moment.js format (`{{date:dddd D MMMM YYYY}}`), and `{{cursor}}` (where the caret goes). Other `{{…}}` text is left as written. The template's properties are merged into the page's.

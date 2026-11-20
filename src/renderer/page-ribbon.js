@@ -53,9 +53,11 @@ export const TABS = [
     { label: 'Indent', items: [[[txt('indent', 'Indent', 'indent', 'Tab')], [txt('outdent', 'Outdent', 'outdent', 'Shift+Tab')]]] },
   ] },
   { id: 'review', label: 'Review', groups: [
-    { label: 'Proofing', items: [big('app:spellcheck', 'Spelling', 'spell', null, { pressable: true }), big('counts', 'Word count', 'counter', 'Mod+Shift+C')] },
-    { label: 'Find', items: [[[txt('find', 'Find', 'find', 'Mod+F')], [txt('replace', 'Replace', 'replace', 'Mod+H')]]] },
-    { label: 'Notes', items: [big('footnote', 'Footnote', 'footnote', 'Mod+Alt+F'), big('hiddenComment', 'Hidden note', 'commentHidden', null, { tip: 'Text kept in the file but not shown when read or exported: %%like this%%' })] },
+    { label: 'Proofing', rank: 1, items: [big('app:spellcheck', 'Spelling', 'spell', null, { pressable: true }), [[txt('counts', 'Word count', 'counter', 'Mod+Shift+C')], [txt('find', 'Find', 'find', 'Mod+F')], [txt('replace', 'Replace', 'replace', 'Mod+H')]]] },
+    { label: 'Comments', rank: 4, items: [big('comment', 'New comment', 'comment', 'Mod+Alt+M'), [[txt('reviewPane', 'Show comments', 'outline', null, { pressable: true })], [txt('resolveAll', 'Resolve all', 'check', null, { tip: 'Remove every comment; the text stays' })], [txt('hiddenComment', 'Hidden note', 'commentHidden')]]] },
+    { label: 'Tracking', rank: 5, items: [big('suggest', 'Suggesting', 'rename', null, { pressable: true, tip: 'What you type and delete becomes a suggestion to accept or reject ({++ ++} {-- --})' })] },
+    { label: 'Changes', rank: 3, items: [big('acceptChange', 'Accept', 'check', null, { tip: 'Accept the change at the cursor and go to the next one' }), big('rejectChange', 'Reject', 'close', null, { tip: 'Reject the change at the cursor and go to the next one' }), [[txt('prevChange', 'Previous', 'arrowUp')], [txt('nextChange', 'Next', 'arrowDown')]], [[txt('acceptAll', 'Accept all', 'check')], [txt('rejectAll', 'Reject all', 'close')]]] },
+    { label: 'Notes', rank: 2, items: [big('footnote', 'Footnote', 'footnote', 'Mod+Alt+F')] },
   ] },
   { id: 'view', label: 'View', groups: [
     { label: 'Focus', items: [big('app:focus', 'Focus mode', 'focus', 'Mod+Shift+Enter', { pressable: true }), big('typewriter', 'Typewriter', 'typewriter', null, { pressable: true, tip: 'Keep the line you are typing in the middle of the window' })] },
@@ -78,7 +80,7 @@ export const COMPACT = [
   'style',
   [B('bold', 'Bold', 'bold', 'Mod+B'), B('italic', 'Italic', 'italic', 'Mod+I'), B('underline', 'Underline', 'underline', 'Mod+U'), B('strike', 'Strikethrough', 'strike', 'Mod+Shift+S'), B('highlight', 'Highlight', 'highlighter', 'Mod+Shift+H'), B('colour', 'Text colour', 'palette'), B('link', 'Link', 'link', 'Mod+K')],
   [B('bullet', 'Bulleted list', 'listBullet'), B('ordered', 'Numbered list', 'listOrdered'), B('task', 'Checklist', 'listTask', 'Mod+L'), B('align', 'Alignment', 'alignLeft', null, { menu: true })],
-  [txt('insertMenu', 'Insert', 'plus', null, { menu: true })],
+  [txt('insertMenu', 'Insert', 'plus', null, { menu: true }), B('comment', 'Comment', 'comment', 'Mod+Alt+M'), B('suggest', 'Suggesting', 'rename', null, { pressable: true })],
   'table',
 ];
 /* the Insert menu of the compact ribbon: the common blocks, then everything (the / menu) */

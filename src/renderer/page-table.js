@@ -149,7 +149,8 @@ export function popupMenu(anchor, items, { label = 'Menu', onClose } = {}) {
     : it.head ? `<div class="block-mh">${it.head}</div>`
     : it.html ? it.html
     : `<button type="button" role="menuitem" class="block-mi${it.danger ? ' is-danger' : ''}" data-i="${i}"${it.checked != null ? ` aria-checked="${!!it.checked}" role="menuitemcheckbox"` : ''}${it.disabled ? ' disabled' : ''}>${it.icon || ''}<span>${it.label}</span>${it.key ? `<kbd>${it.key}</kbd>` : ''}</button>`)).join('');
-  document.body.append(menu);
+  // inside an open modal dialog, the menu must live in it (a modal makes the rest of the page inert)
+  (anchor.closest?.('dialog[open]') || document.body).append(menu);
   const r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
   const h = menu.offsetHeight;
   menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8))}px`;
