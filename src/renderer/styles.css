@@ -1695,3 +1695,12 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .start-name { font-size: var(--text-sm); font-weight: var(--weight-medium); }
 .start-sub { font-size: var(--text-xs); color: var(--color-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .start-more { background: transparent; }
+
+/* ============ D12: unlinked mentions, broken links ============ */
+.unlinked-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px; }
+.unlinked-row > a { grid-template-columns: 1fr; }
+.unlinked-snip { color: var(--color-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unlinked-snip mark { background: var(--color-select); color: var(--color-ink); border-radius: 2px; padding: 0 1px; }
+.unlinked-row .btn, .broken-row .btn { height: 24px; padding: 0 8px; font-size: 12px; }
+.broken-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.broken-row > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

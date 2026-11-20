@@ -186,7 +186,7 @@ h('fs:rename', async (from, to) => {
   const r = await notes.move(from, to);
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
-  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b).catch(() => [])) changed.add(c); }
+  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b, (f, text) => keep(f, text, { reason: 'before-rename', force: true })).catch(() => [])) changed.add(c); }
   /* a page moved to another folder takes the files it uses along (copied into the new .asset) so its pictures keep working */
   if (!isDir && path.dirname(r.from) !== path.dirname(r.to)) {
     try {
@@ -208,6 +208,7 @@ h('history:clear', (rel) => history.clear(rel));
 h('history:usage', () => history.usage());
 h('app:user-name', () => { try { const n = os.userInfo().username || ''; return n.charAt(0).toUpperCase() + n.slice(1); } catch { return ''; } });
 h('fs:backlinks', (rel) => notes.backlinks(rel));
+h('fs:unlinked', (rel) => notes.unlinkedMentions(rel));
 h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));
 h('fs:save-image', (noteRel, name, bytes) => assets.save(noteRel, name, bytes));

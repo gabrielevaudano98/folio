@@ -31,6 +31,8 @@ fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| 
 fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd8.md'), '---\ntitle: Weekly\ntags: [alpha]\ndone: false\n---\n# Weekly\n\nText #beta here.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd9.md'), '# Plan\n\nIntro.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'Atlas.md'), '# Atlas\n\nThe plan.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd12.md'), '# Meeting\n\nWe met about Atlas on Monday. `Atlas` in code.\n\nSee [[Nowhere]].\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd16.md'), '# Untitled\n\n');
 fs.mkdirSync(path.join(ws, 'Templates'), { recursive: true });
 fs.writeFileSync(path.join(ws, 'Templates', 'Ask.md'), '# Ask\n\nProject {{ask:Project name}}\n\nOwner: {{ask:Owner|people}}\n');
@@ -242,6 +244,11 @@ const steps = [
   { js: "(() => { const d = document.querySelector('#sheet-prompt'); d.querySelector('[data-format=docx]').click(); d.querySelector('[data-size=Letter]').click(); d.querySelector('[data-landscape=true]').click(); const rev = !d.querySelector('[data-review]').hidden; d.querySelector('button[type=submit]').click(); return rev; })()", log: true, wait: 3500 },
   { js: "document.querySelector('#btn-more').click(); true", wait: 400 },
   { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.startsWith('Import')).click(); true", wait: 3000 },
+  // D12: unlinked mentions with Link, and Create page for a broken link
+  { js: "document.querySelector('[data-file=\\\"pages/Atlas.md\\\"]').click()", wait: 2000 },
+  { js: "(() => { const ul = document.querySelector('#unlinked'); const n = ul.querySelectorAll('li').length; const row = [...ul.querySelectorAll('li')].find((li) => li.querySelector('a').dataset.bl === 'pages/d12.md'); row?.querySelector('[data-link-mention]').click(); return [n >= 1 && !!row, !document.querySelector('#unlinked-head').hidden]; })()", log: true, wait: 2000 },
+  { js: "document.querySelector('[data-file=\\\"pages/d12.md\\\"]').click()", wait: 1800 },
+  { js: "(() => { const b = document.querySelector('[data-create-page=Nowhere]'); const had = !!b; b?.click(); return had; })()", log: true, wait: 1500 },
   // D16: the right dock (Outline | Review), the Viewing mode, an empty page offering a start, a template that asks questions
   { js: "document.querySelector('[data-file=\\\"pages/d10.md\\\"]').click()", wait: 1500 },
   { js: "document.querySelector('#dock-tab-review').click(); true", wait: 500 },
@@ -272,8 +279,8 @@ child.on('exit', async () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 74, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, pasteWord, pasteMd, exportSheet, dockLog, dockBack, startLog, askLog, histOpen, histDiff, histNamed, histRestored, errors] = logs;
+  assert.equal(logs.length, 76, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, pasteWord, pasteMd, exportSheet, mentionLog, brokenLog, dockLog, dockBack, startLog, askLog, histOpen, histDiff, histNamed, histRestored, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -355,6 +362,9 @@ child.on('exit', async () => {
   assert.equal(savedView[0].replace(/\d+$/, ''), 'All of mine'); assert(savedView[1].includes('Lean canvas'), savedView[1]);
   console.log('  ✓ gallery: a starred template opens under Favourites; a community template downloads into Templates/ and shows under My templates');
 
+  assert.deepEqual(mentionLog, [true, true], JSON.stringify(mentionLog)); assert.equal(brokenLog, true);
+  assert.equal(read('d12.md'), '# Meeting\n\nWe met about [[Atlas]] on Monday. `Atlas` in code.\n\nSee [[Nowhere]].\n'); assert(fs.existsSync(path.join(ws, 'Nowhere.md')));
+  console.log('  ✓ links: a plain mention of a page is found and linked in one click; a broken link can be created as a page');
   assert.deepEqual(dockLog, [false, true, true, 'false'], JSON.stringify(dockLog)); assert.deepEqual(dockBack, ['true', false], JSON.stringify(dockBack));
   assert.deepEqual(startLog, [true, startLog[1]], JSON.stringify(startLog)); assert(startLog[1] >= 3); assert.equal(askLog, 2);
   assert(read('d16.md').includes('Project Atlas') && read('d16.md').includes('Owner: [[Ada]]'), read('d16.md'));

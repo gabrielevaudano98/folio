@@ -11,7 +11,7 @@ export function dayLabel(t, now = Date.now()) {
   if (days === 0) return 'Today'; if (days === 1) return 'Yesterday';
   return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() !== n.getFullYear() ? { year: 'numeric' } : {}) });
 }
-const REASON = { open: 'Saved before editing', created: 'Created', 'before-ai': 'Before an AI edit', ai: 'AI edit', 'before-restore': 'Before a restore', restore: 'Restored', named: 'Named version', close: 'Closed', edit: '' };
+const REASON = { open: 'Saved before editing', created: 'Created', 'before-ai': 'Before an AI edit', ai: 'AI edit', 'before-restore': 'Before a restore', 'before-rename': 'Before links were updated', restore: 'Restored', named: 'Named version', close: 'Closed', edit: '' };
 const who = (v) => (v.by === 'you' ? 'You' : v.by);
 const initial = (v) => (who(v)[0] || '?').toUpperCase();
 const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };

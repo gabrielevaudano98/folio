@@ -8,7 +8,7 @@ import { portableMarkdown } from './page-syntax.js';
 import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
-import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
+import { parseRef, resolveTarget, docKind, findMentions, linkMention } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { renameTag } from './page-props.js';
@@ -839,8 +839,9 @@ let blSeq = 0, blPath = null;
 const backlinksSoon = debounce(() => renderBacklinks(), 600);
 async function renderBacklinks() {
   const t = activeTab(); const seq = ++blSeq; if (!t) return; blPath = t.path;
-  const [bl, broken] = await Promise.all([folio.backlinks(t.path).catch(() => []), folio.brokenLinks(t.path).catch(() => [])]);
+  const [bl, broken, mentions] = await Promise.all([folio.backlinks(t.path).catch(() => []), folio.brokenLinks(t.path).catch(() => []), folio.unlinked(t.path).catch(() => [])]);
   if (seq !== blSeq) return;
+  renderUnlinked(mentions);
   const kindLabel = { link: 'link', value: 'value', embed: 'embed' };
   $('#backlinks').innerHTML = bl.length ? bl.map((b) => `<li><a href="#" data-bl="${esc(b.path)}" data-bl-line="${b.line}" title="${esc(b.text)}"><span class="bl-name">${esc(stem(b.path))}</span><span class="bl-kind">${kindLabel[b.kind] || b.kind}</span><span class="bl-ref">${esc(b.ref)}</span></a></li>`).join('')
     : '<li class="outline-empty">No other document links here yet.</li>';
@@ -851,8 +852,35 @@ async function renderBacklinks() {
     ...(broken.length ? [{ head: 'Broken references here' }, ...broken.map((b) => ({ label: `Line ${b.line}: ${b.ref}`, run: () => openFile(t.path, { line: b.line }) }))] : []),
   ]);
   const box = $('#broken-links'); box.hidden = !broken.length;
-  box.innerHTML = broken.length ? `<b>${broken.length} broken ${broken.length === 1 ? 'reference' : 'references'}</b>${broken.map((b) => `<a href="#" data-bl="${esc(t.path)}" data-bl-line="${b.line}">Line ${b.line}: ${esc(b.ref)}</a>`).join('')}` : '';
+  box.innerHTML = broken.length ? `<b>${broken.length} broken ${broken.length === 1 ? 'reference' : 'references'}</b>${broken.map((b) => { const nm = /^\[\[([^\]|#]+)\]\]$/.exec(b.ref)?.[1]?.trim(); return `<span class="broken-row"><a href="#" data-bl="${esc(t.path)}" data-bl-line="${b.line}">Line ${b.line}: ${esc(b.ref)}</a>${nm && !/\.\w{2,5}$/.test(nm) ? `<button type="button" class="btn btn-quiet" data-create-page="${esc(nm)}">Create page</button>` : ''}</span>`; }).join('')}` : '';
 }
+/* unlinked mentions: the name of this page written without a link, with a one-click "Link" (Obsidian, Notion) */
+function renderUnlinked(list) {
+  const ul = $('#unlinked'), head = $('#unlinked-head');
+  head.hidden = ul.hidden = !list.length;
+  ul.innerHTML = list.slice(0, 50).map((m, i) => {
+    const t = m.text, k = t.toLowerCase().indexOf(m.match.toLowerCase());
+    const snip = k < 0 ? esc(t) : `${esc(t.slice(0, k))}<mark>${esc(t.slice(k, k + m.match.length))}</mark>${esc(t.slice(k + m.match.length))}`;
+    return `<li class="unlinked-row"><a href="#" data-bl="${esc(m.path)}" data-bl-line="${m.line}" title="${esc(m.path)}"><span class="bl-name">${esc(stem(m.path))}</span><span class="bl-ref unlinked-snip">${snip}</span></a><button type="button" class="btn btn-quiet" data-link-mention="${i}" aria-label="Link this mention in ${esc(stem(m.path))}">Link</button></li>`;
+  }).join('');
+  ul._list = list;
+}
+async function linkOneMention(m) {
+  const tab = tabOf(m.path);
+  const text = tab ? tab.text : await folio.read(m.path);
+  const hit = findMentions(text, m.name).find((x) => x.start === m.start) || findMentions(text, m.name).find((x) => x.line === m.line);
+  if (!hit) { toast('That mention changed. Refreshing.'); return renderBacklinks(); }
+  const next = linkMention(text, hit, m.name);
+  if (tab) { tab.text = next; if (S.active === tab.path) setActiveText(next); await saveTab(tab); }
+  else await folio.write(m.path, next);
+  toast(`Linked “${m.name}” in ${stem(m.path)}.`, { action: ['Undo', async () => { if (tab) { tab.text = text; if (S.active === tab.path) setActiveText(text); await saveTab(tab); } else await folio.write(m.path, text); renderBacklinks(); }] });
+  renderBacklinks();
+}
+$('#unlinked').addEventListener('click', (e) => { const b = e.target.closest('[data-link-mention]'); if (b) { e.preventDefault(); linkOneMention($('#unlinked')._list[Number(b.dataset.linkMention)]); } });
+$('#broken-links').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-create-page]'); if (!b) return; e.preventDefault();
+  try { const p = await folio.create(b.dataset.createPage + '.md', `# ${b.dataset.createPage}\n\n`); await refreshTree(); toast(`Created ${p}.`); renderBacklinks(); } catch (er) { toast(er.message, { kind: 'error' }); }
+});
 $('#outline-list').addEventListener('contextmenu', (e) => {
   const a = e.target.closest('a[data-i]'); if (!a || curType() !== 'md') return; e.preventDefault();
   const h = currentHeads[Number(a.dataset.i)]; const part = h.text.replace(/[*_`]/g, '');
@@ -1102,7 +1130,7 @@ async function movePath(from, to, isDir) {
     const r = await folio.rename(from, to);
     retargetTabs(from, to);
     const n = r?.changed?.length || 0;
-    if (n) toast(`Updated links in ${n} ${n === 1 ? 'document' : 'documents'}.`);
+    if (n) toast(`Updated links in ${n} ${n === 1 ? 'document' : 'documents'}.`, { action: ['Undo', () => movePath(to, from, isDir)] });
     await refreshTree();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
