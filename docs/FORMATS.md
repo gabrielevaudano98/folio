@@ -100,6 +100,10 @@ The Write view never reformats what you did not touch:
 
 Assistants editing a page through MCP can rely on the same rule: unchanged blocks keep their text.
 
+### Working on a page as an assistant (MCP)
+
+Work by section instead of rewriting the page: `get_outline` (level, text, first and last line of each section), `read_section`, `replace_section` (everything under a heading, sub-sections included; the heading stays), `insert_after` (after a heading's section, or after the block ending with a block id ` ^abc123`). A heading is named by its text (case does not matter), by a path (`Plan > Goals`) when twins exist, or by its line. To propose instead of apply, `suggest_edit` writes a tracked change (`{~~old~>new~~}`, `{--old--}`, or `{++new++}` after an anchor) and `add_comment` writes `{==passage==}{>>Client, date: comment<<}`; the person accepts or rejects them in the Review tab. The passage must match exactly once outside code (pass `occurrence` otherwise) and may not contain CriticMarkup delimiters. `resolve_link` says where `[[Note#Heading]]` or `[[Note#^id]]` points. Every write adds a version, and `list_versions`, `get_version`, `diff_versions` and `restore_version` (itself a version first) bring any earlier text back.
+
 ## slides-md
 
 A superset of [Marp](https://marp.app) Markdown. A Marp deck opens as is.

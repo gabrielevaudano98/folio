@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 const run = (f) => execFileSync(process.execPath, [f], { stdio: 'inherit' });
 await esbuild.build({ entryPoints: ['test/formats.test.mjs'], bundle: true, platform: 'node', format: 'esm', outfile: 'dist/test/formats.test.mjs', logLevel: 'error', banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
 run('dist/test/formats.test.mjs');
+run('test/pagetools.test.mjs');
 run('test/mcp.test.mjs');
 run('test/history.test.mjs');
 run('test/assets.test.mjs');

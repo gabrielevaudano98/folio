@@ -357,6 +357,7 @@ const appBackend = {
     if (!settings.workspace) throw new Error('No folder is open in Folio. Ask the user to open one.');
     logActivity({ client: ctx.client, tool: name, path: args.path || args.from || args.query || '' });
     return runTool(notes, name, args, {
+      history, client: ctx.client,
       onWrite: async (r) => {
         if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
         await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true });
