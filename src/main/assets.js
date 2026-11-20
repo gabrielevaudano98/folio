@@ -128,7 +128,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
   }
   /** move an asset to the asset trash (recoverable for 30 days), or delete it for good */
   async function remove(assetRel, { permanent = false } = {}) {
-    const abs = notes.resolve(assetRel); assertAssetFile(abs);
+    const abs = notes.resolve(assetRel, { allowAsset: true }); assertAssetFile(abs);
     if (!(await exists(abs))) return false;
     if (permanent) { await fs.unlink(abs); return true; }
     const dir = trashDirFor(abs); await ensureDir(path.dirname(dir)); await fs.mkdir(dir, { recursive: true });
@@ -143,7 +143,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
   }
   /** put a trashed asset back where a reference expects it */
   async function restore(assetRel) {
-    const abs = notes.resolve(assetRel); assertAssetFile(abs);
+    const abs = notes.resolve(assetRel, { allowAsset: true }); assertAssetFile(abs);
     if (await exists(abs)) return true;
     const t = await trashed(abs); if (!t) return false;
     await fs.mkdir(path.dirname(abs), { recursive: true }); await fs.rename(t, abs); return true;
@@ -217,7 +217,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     const out = [];
     for (const p of gone) {
       if (elsewhere.has(p)) continue;
-      const st = await fs.stat(notes.resolve(p)).catch(() => null);
+      const st = await fs.stat(notes.resolve(p, { allowAsset: true })).catch(() => null);
       if (st?.isFile() && [ASSET_DIR, LEGACY_DIR].includes(path.basename(path.dirname(p)))) out.push({ path: p, bytes: st.size });
     }
     return out;
@@ -233,7 +233,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     const restored = [], missing = [];
     for (const p of refsOf(noteRel, text)) {
       if (!isAssetPath(p) && path.basename(path.dirname(p)) !== LEGACY_DIR) continue;
-      const abs = notes.resolve(p);
+      const abs = notes.resolve(p, { allowAsset: true });
       if (await exists(abs)) continue;
       if (await restore(p).catch(() => false)) restored.push(p); else missing.push(p);
     }

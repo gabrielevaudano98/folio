@@ -1,7 +1,7 @@
 // Folio — the editor: CodeMirror 6 tuned for prose.
 import { EditorState, StateField, StateEffect, RangeSetBuilder, Compartment, EditorSelection } from '@codemirror/state';
 import { EditorView, keymap, Decoration, ViewPlugin, WidgetType, placeholder, drawSelection, dropCursor, highlightActiveLine } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab, undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { syntaxHighlighting, syntaxTree, indentOnInput, bracketMatching } from '@codemirror/language';
@@ -299,6 +299,13 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
         view.setState(EditorState.create({ doc: text, extensions }));
       }
     },
+    /** the editor state of this document, with its undo history, to put back when the tab is shown again */
+    snapshot() { return view.state; },
+    restore(state) { view.setState(state); },
+    undo() { return cmUndo(view); },
+    redo() { return cmRedo(view); },
+    canUndo() { return undoDepth(view.state) > 0; },
+    canRedo() { return redoDepth(view.state) > 0; },
     /** apply an external text with a minimal change, keeping cursor and undo history */
     applyRemote(text) {
       const cur = view.state.doc.toString();

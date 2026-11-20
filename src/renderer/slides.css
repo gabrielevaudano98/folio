@@ -114,3 +114,36 @@
 .slide .sl-master { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .slide .sl-master .sl-obj { pointer-events: none; }
 .slide .sl-master-tag { position: absolute; top: 10px; right: 12px; z-index: 30; font-size: 14px; padding: 2px 8px; border-radius: 6px; background: var(--sl-ink); color: var(--sl-bg); opacity: .8; }
+
+/* SmartArt-style diagrams (P9) */
+.slide .sl-smartart { --sm-c: var(--sl-accent, var(--sl-ink)); padding: 0; overflow: visible; }
+.slide .sl-smartart .sm-svg { position: absolute; inset: 0; overflow: visible; }
+.slide .sm-svg rect, .slide .sm-svg polygon:not(.sm-head), .slide .sm-svg circle:not(.sm-dot) { stroke: none; }
+.slide .sm-svg .sm-card { stroke: color-mix(in oklch, var(--sm-c) 30%, var(--sl-bg)); stroke-width: 1.5; }
+.slide .sm-svg .sm-line { stroke: color-mix(in oklch, var(--sl-ink) 55%, var(--sl-bg)); stroke-width: 3; fill: none; }
+.slide .sm-svg .sm-head { fill: color-mix(in oklch, var(--sl-ink) 55%, var(--sl-bg)); }
+.slide .sm-svg .sm-dot { stroke: var(--sl-bg); stroke-width: 3; }
+.slide .sm-label { position: absolute; display: flex; align-items: center; justify-content: center; line-height: 1.2; overflow: hidden; }
+.slide .sm-label > div { max-width: 100%; overflow-wrap: anywhere; }
+.slide .sm-label ul { margin: .35em 0 0; padding-left: 1.1em; text-align: left; font-size: .78em; font-weight: 400; }
+.slide .sm-label li { margin: .1em 0; }
+.slide .sm-label li::marker { color: currentColor; }
+.slide .sm-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--sl-muted); font-size: 18px; border: 2px dashed var(--sl-rule); border-radius: 12px; }
+.slide .sm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; padding: 0; }
+.slide .sl-smartart.is-sm-editing { background: var(--sl-bg); padding: 12px 16px; overflow: auto; outline: 2px solid var(--sl-ink); }
+.slide .sl-smartart.is-sm-editing > :not(.ProseMirror) { display: none; }
+/* layout placeholders (templates) */
+.slide .sl-phs { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.slide .sl-ph { position: absolute; display: flex; flex-direction: column; overflow: hidden; }
+.slide .sl-ph > :first-child { margin-top: 0; }
+.slide .sl-ph > :last-child { margin-bottom: 0; }
+.slide .sl-ph-title h1, .slide .sl-ph-title h2, .slide .sl-ph-title h3 { margin: 0; font-size: 1em; }
+.slide .sl-body.has-ph:empty { display: none; }
+.slide .sl-obj.is-placeholder { outline: 2px dashed color-mix(in oklch, var(--sl-ink) 35%, transparent); outline-offset: -2px; }
+
+/* zoom objects: a live, scaled copy of another slide */
+.slide .sl-zoom { overflow: hidden; border-radius: 6px; box-shadow: 0 0 0 1px color-mix(in oklch, var(--sl-ink) 18%, transparent), 0 6px 20px -8px rgb(0 0 0 / .35); background: var(--sl-bg); }
+.slide .sl-zoom-view { transform-origin: 0 0; pointer-events: none; }
+.slide .sl-zoom-view .slide { box-shadow: none; }
+.slide .sl-zoom-missing { display: grid; place-items: center; height: 100%; font-size: 18px; color: var(--sl-muted); border: 2px dashed currentColor; border-radius: 6px; }
+.presenter .has-link { cursor: pointer; }

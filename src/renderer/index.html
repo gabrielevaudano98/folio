@@ -59,8 +59,16 @@
     <main class="main" id="main">
       <header class="titlebar drag" id="titlebar">
         <button class="icon-btn no-drag" type="button" id="btn-sidebar" aria-label="Toggle sidebar" data-tip="Sidebar (⌘\)" data-i18n-attr="aria-label:ui.toggle-sidebar;data-tip:ui.sidebar-cmd"></button>
+        <div class="nav-btns no-drag" role="group" aria-label="History" data-i18n-attr="aria-label:ui.history">
+          <button class="icon-btn" type="button" id="btn-back" aria-label="Back" data-tip="Back (Alt+←)" data-i18n-attr="aria-label:ui.back" disabled></button>
+          <button class="icon-btn" type="button" id="btn-forward" aria-label="Forward" data-tip="Forward (Alt+→)" data-i18n-attr="aria-label:ui.forward" disabled></button>
+        </div>
         <nav class="tabs no-drag" id="tabs" role="tablist" aria-label="Open notes" data-i18n-attr="aria-label:ui.open-notes"></nav>
         <div class="titlebar-spacer"></div>
+        <div class="nav-btns no-drag" role="group" aria-label="Undo and redo" data-i18n-attr="aria-label:ui.undo-redo">
+          <button class="icon-btn" type="button" id="btn-undo" aria-label="Undo" data-tip="Undo (⌘Z)" data-i18n-attr="aria-label:ui.undo;data-tip:ui.undo-cmd" disabled></button>
+          <button class="icon-btn" type="button" id="btn-redo" aria-label="Redo" data-tip="Redo (⌘⇧Z)" data-i18n-attr="aria-label:ui.redo;data-tip:ui.redo-cmd" disabled></button>
+        </div>
         <div class="segmented no-drag" role="radiogroup" aria-label="View" id="view-switch" data-i18n-attr="aria-label:ui.view">
           <button type="button" role="radio" data-view="edit" aria-checked="false" aria-label="Write" data-tip="Write (⌘1)" data-i18n-attr="aria-label:ui.write;data-tip:ui.write-cmd1"></button>
           <button type="button" role="radio" data-view="split" aria-checked="true" aria-label="Split" data-tip="Split (⌘2)" data-i18n-attr="aria-label:ui.split;data-tip:ui.split-cmd2"></button>

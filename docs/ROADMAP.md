@@ -14,7 +14,7 @@ Make what exists trustworthy: fidelity, tests, signed builds, updates.
 - **Accessibility audit of the canvas and the grid** — Keyboard-only creation and connection of shapes, screen-reader names for shapes and cells, focus order in the inspector. WCAG 2.2 AA.
 - **Virtualize the sheet grid** — Render only visible rows and columns so a 10,000 row sheet scrolls at 60 fps; recalculate only dependants of an edited cell.
 
-## v1.2 Slides Studio
+## v1.2 Slides Studio (shipped in 1.2.0)
 
 PowerPoint and Google Slides capabilities with full user control, in plain slides-md, with links between Folio documents. Full plan and feature coverage: [SLIDES-PLAN.md](SLIDES-PLAN.md).
 
@@ -23,6 +23,7 @@ PowerPoint and Google Slides capabilities with full user control, in plain slide
 - **P5** Insert · **P6** Format and picture tools · **P7** Themes and masters · **P8** Slide management
 - **P9** SmartArt and Designer · **P10** Transitions, animations, Morph · **P11** Interactivity and Zoom
 - **P12** Present and record · **P13** PPTX interop · **P14** MCP and AI · **P15** Polish
+- All phases done. Still open: 3D models, screen recording, background removal, per-word colour and WordArt, rulers.
 
 ## v1.2 Pages Studio
 
@@ -68,3 +69,16 @@ Bigger bets after 1.3.
 - Page editor (Word-style), slides-md with PowerPoint and PDF export, board-md canvas, sheet-md grid with formulas, charts in sheets, pages and slides.
 - MCP server with live, reversible AI edits; one-click connection to Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code.
 - CI with format, MCP and UI smoke tests; CodeQL; Dependabot; cubic and Claude reviews.
+
+## Done in 1.2.3
+
+- The MCP bridge now runs inside the app binary (`--mcp-stdio`), so the `RunAsNode` fuse is off on macOS and Linux (Windows keeps it, its exe gets no stdin). Existing client configs keep working; on macOS and Linux Connect rewrites them to the new form, while Windows keeps the legacy form. CI starts the packaged builds and talks MCP to them. Fuses are set per platform in `build/afterPack.cjs`.
+
+## Done in 1.2.2
+
+- Security review of the main process. A note can no longer pull a file from outside the open folder into an export (`file:` images, and links, are checked against the folder and limited to media types); remote images are fetched only from public addresses (checked by name and by what the name resolves to) and are limited to media types and 30 MB. Links inside the folder that lead outside are refused, as are hidden files and folders (`.git`, `.env`, `.ssh`) and changes to the folder itself, for the app and for AI assistants alike. Only the app page can call the main process, the window cannot be navigated to another page, only the microphone permission is granted, the settings file (which holds the MCP token) is owner-only, PDF export uses a private temporary folder, and the token is compared in constant time. Electron 45.4.1; the packaged app turns off `NODE_OPTIONS` and the inspector. Also fixes the image picker, which failed with an error, and asks macOS for microphone access so narration works in signed builds.
+
+## Done in 1.2.1
+
+- Undo and redo everywhere: one history per tab (pages, visual editor, slides, boards, sheets), toolbar buttons, Edit menu and palette; undo and redo for file actions (create, rename, move, trash); back and forward between notes.
+- Security: transitive `image-size` and `katex` pinned to patched versions; CodeQL action v4; animation comment scanner without regex backtracking.

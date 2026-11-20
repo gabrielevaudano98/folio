@@ -1,6 +1,6 @@
 // Folio — stdio MCP bridge.
 // Launched by Claude Desktop, Cursor, VS Code, Windsurf, Claude Code… with the Folio binary in
-// ELECTRON_RUN_AS_NODE mode, so the user needs no Node install.
+// `--mcp-stdio` (see boot.js), so the user needs no Node install.
 // If Folio is running, every call is relayed to it (live highlights, undo, open note).
 // If Folio is closed, it works directly on the last opened folder.
 import fs from 'node:fs';

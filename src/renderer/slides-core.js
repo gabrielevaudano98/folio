@@ -10,6 +10,7 @@ import DOMPurify from 'dompurify';
 import { extractObjects, geometry, textStyle, linePoints, linePath, fillCss, fillSvg, frameCss, flipCss, adjustCss, safeColor, parsePoints, pointsPath } from './slides-objects.js';
 import { shapeSvg } from './board-core.js';
 import { refsPlugin } from './refs-syntax.js';
+import { smartArt, parseItems } from './slides-smartart.js';
 
 export const LAYOUTS = [
   ['default', 'Title and content'], ['title', 'Title'], ['section', 'Section header'], ['two-columns', 'Two columns'],
@@ -18,14 +19,15 @@ export const LAYOUTS = [
 ];
 export const THEMES = [['folio', 'Folio'], ['graphite', 'Graphite'], ['paper', 'Paper']];
 /** slide sizes: name → [width, height] in px */
+import { parseAnim } from './slides-motion.js';
 export const SIZES = { '16:9': [1280, 720], '4:3': [960, 720], '1:1': [1080, 1080], '9:16': [720, 1280], '16:10': [1280, 800], A4: [1123, 794], 'A4-portrait': [794, 1123] };
 /** theme tokens a deck (or its template) may set in front matter, and the CSS variable each one drives */
 export const TOKENS = { paper: '--sl-bg', ink: '--sl-ink', muted: '--sl-muted', accent: '--sl-accent', card: '--sl-card', 'heading-font': '--sl-face', 'body-font': '--sl-body' };
 const FONT_NAME = /^[\w \-'",.]{1,120}$/;
 const MARP_THEME = { default: 'folio', gaia: 'paper', uncover: 'graphite' };
-const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source', 'master', 'section'];
+const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source', 'master', 'section', 'animate', 'advance', 'link'];
 const LOCAL = ['paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color'];
-const SPOT = ['layout', 'source', 'master', 'section']; // Folio layouts apply to one slide only
+const SPOT = ['layout', 'source', 'master', 'section', 'transition', 'advance', 'link']; // Folio layouts apply to one slide only
 
 const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -71,20 +73,20 @@ export function splitSlides(body) {
 const FLAG = /^\s*(master|hidden)\s*$/;
 export const COMMENT = /^\s*comment(?:\s*\(([^,)]*)(?:,\s*([^)]*))?\))?\s*:\s*([\s\S]*?)\s*$/;
 function parseComments(chunk) {
-  const directives = {}; const notes = []; const comments = [];
+  const directives = {}; const notes = []; const comments = []; const anims = [];
   const body = chunk.replace(/<!--([\s\S]*?)-->/g, (all, inner) => {
     const flag = inner.match(FLAG); if (flag) { directives[flag[1]] = ''; return ''; }
     const c = inner.match(COMMENT); if (c) { comments.push({ author: (c[1] || '').trim(), date: (c[2] || '').trim(), text: c[3], raw: all }); return ''; }
     const lines = inner.trim().split(/\r?\n/);
     const parsed = lines.map((l) => l.trim().match(/^(_?)([a-zA-Z]+)\s*:\s*(.*)$/));
     if (parsed.length && parsed.every((p) => p && DIRECTIVES.includes(p[2]))) {
-      for (const p of parsed) directives[(p[1] || '') + p[2]] = p[3].trim().replace(/^["']|["']$/g, '');
+      for (const p of parsed) { if (p[2] === 'animate') anims.push(p[3].trim()); else directives[(p[1] || '') + p[2]] = p[3].trim().replace(/^["']|["']$/g, ''); }
       return '';
     }
     notes.push(inner.trim());
     return '';
   });
-  return { body, directives, notes: notes.join('\n\n'), comments };
+  return { body, directives, notes: notes.join('\n\n'), comments, anims };
 }
 
 function parseBg(body) {
@@ -115,11 +117,11 @@ export function parseDeck(text, { template = null } = {}) {
   const fm = parseFrontmatter(text);
   const tpl = template ? parseDeck(template) : null;
   const chunks = splitSlides(fm.body);
-  const global = { theme: 'folio', paginate: 'false', size: '16:9', ...(tpl ? Object.fromEntries(Object.entries(tpl.fm.data).filter(([k]) => !['marp', 'title', 'template', 'description', 'author'].includes(k))) : {}) };
+  const global = { theme: 'folio', paginate: 'false', size: '16:9', ...(tpl ? Object.fromEntries(Object.entries(tpl.fm.data).filter(([k]) => !['marp', 'title', 'template', 'description', 'author'].includes(k) && !k.startsWith('template-'))) : {}) };
   for (const [k, v] of Object.entries(fm.data)) global[k] = v;
   const carried = {};
   const slides = chunks.map((src, i) => {
-    const { body, directives, notes, comments } = parseComments(src);
+    const { body, directives, notes, comments, anims } = parseComments(src);
     for (const [k, v] of Object.entries(directives)) {
       if (k.startsWith('_') || SPOT.includes(k)) continue;
       if (LOCAL.includes(k)) carried[k] = v; else global[k] = v;
@@ -135,8 +137,9 @@ export function parseDeck(text, { template = null } = {}) {
     if (!eff.layout && bgs.some((b) => b.side === 'right')) layout = 'image-right';
     if (!eff.layout && bgs.some((b) => b.side === 'left')) layout = 'image-left';
     const title = ((content.trim() || withObjects).match(/^\s*#{1,6}\s+(.+)$/m) || [])[1]?.replace(/[*_`]/g, '') || '';
-    const master = directives.master != null ? (String(directives.master).trim() || 'all') : null;
-    return { index: i, src, content: content.trim(), objects, directives, notes, comments, bgs, layout, classes: cls, eff, title, master, hidden: directives.hidden != null, section: directives.section || null };
+    const mParts = directives.master != null ? String(directives.master).trim().split(/\s+/).filter(Boolean) : null;
+    const master = mParts ? (mParts[0] || 'all') : null; const only = !!mParts && mParts.includes('only');
+    return { index: i, src, content: content.trim(), objects, directives, notes, comments, bgs, layout, classes: cls, eff, title, master, only, hidden: directives.hidden != null, section: directives.section || null, animations: anims.map(parseAnim), transition: directives.transition ?? null, advance: directives.advance ?? null };
   });
   let n = 0; for (const sl of slides) sl.number = sl.master ? null : ++n;
   const masters = [...(tpl ? tpl.masters.map((m) => ({ ...m, fromTemplate: true })) : []), ...slides.filter((sl) => sl.master)];
@@ -147,7 +150,10 @@ export function parseDeck(text, { template = null } = {}) {
 
 /* ---------- render ---------- */
 export function renderSlide(deck, s, { number = true } = {}) {
-  const e = s.eff;
+  let e = s.eff;
+  // a master's own background (<!-- _backgroundColor --> / _backgroundImage / _color) applies to its slides unless they set one
+  const mbg = {}; for (const m of mastersFor(deck, s)) for (const k of ['backgroundColor', 'backgroundImage', 'color', 'class']) { const v = m.directives['_' + k] ?? m.directives[k]; if (v != null) mbg[k] = v; }
+  if (Object.keys(mbg).length) { const own = s.directives; e = { ...e }; for (const [k, v] of Object.entries(mbg)) if (own['_' + k] == null && own[k] == null) e[k] = v; }
   const style = [];
   for (const [k, v] of Object.entries(TOKENS)) {
     const val = e[k]; if (val == null || val === '') continue;
@@ -162,15 +168,32 @@ export function renderSlide(deck, s, { number = true } = {}) {
   const bgs = [...s.bgs, ...(bgImg ? [{ src: bgImg, fit: 'cover', side: null, filters: [] }] : [])];
   const full = bgs.filter((b) => !b.side), side = bgs.filter((b) => b.side);
   const sideW = side[0]?.size || 50;
-  const html = DOMPurify.sanitize(md.render(s.content), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
-  const placed = placedHtml(deck, s);
+  const clean = (m) => DOMPurify.sanitize(md.render(m), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+  const ph = s.master ? {} : placeholdersFor(deck, s);
+  let html, phHtml = '';
+  if (ph.title || ph.body || ph.subtitle) {
+    const { title, rest } = splitTitle(s.content);
+    const parts = { title: ph.title ? title : '', body: ph.body ? rest : '', subtitle: !ph.body && ph.subtitle ? rest : '' };
+    const flow = [ph.title ? '' : title, ph.body || ph.subtitle ? '' : rest].filter(Boolean).join('\n\n');
+    html = clean(flow);
+    phHtml = ROLES.filter((r) => ph[r] && parts[r]).map((r) => {
+      const o = ph[r], g = geometry(o), a = o.attrs;
+      const st = [`left:${g.x}px`, `top:${g.y}px`, `width:${g.w}px`, `height:${g.h}px`, ...textStyle(a)];
+      if (safeColor(a.color)) st.push(`color:${safeColor(a.color)}`);
+      const bg = fillCss(a.fill); if (bg) st.push(`background:${bg}`);
+      if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`);
+      return `<div class="sl-ph sl-ph-${r}${a.fit === 'shrink' ? ' sl-obj is-fit' : ''}" style="${st.join(';')}">${clean(parts[r])}</div>`;
+    }).join('');
+  } else html = clean(s.content);
+  const placed = placedHtml(deck, s, zoomDepth ? { inert: true } : undefined);
   const img = (b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'none' ? 'none' : /%$/.test(b.fit) ? 'contain' : b.fit};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`;
   const theme = MARP_THEME[e.theme] || (THEMES.some(([t]) => t === e.theme) ? e.theme : deck.theme);
   return `<section class="slide theme-${theme} layout-${escape(s.layout)} ${s.classes.map((c) => 'cls-' + escape(c)).join(' ')}${side.length ? ' has-side side-' + side[0].side : ''}" style="width:${deck.width}px;height:${deck.height}px;--side:${sideW}%;${style.join(';')}">
     ${full.length ? `<div class="sl-bg">${full.map(img).join('')}</div>` : ''}
     ${side.length ? `<div class="sl-side">${side.map(img).join('')}</div>` : ''}
     ${masterLayer(deck, s)}
-    <div class="sl-body">${html}</div>
+    <div class="sl-body${phHtml ? ' has-ph' : ''}">${html}</div>
+    ${phHtml ? `<div class="sl-phs">${phHtml}</div>` : ''}
     ${placed ? `<div class="sl-placed">${placed}</div>` : ''}
     ${e.header ? `<header class="sl-header">${escape(e.header)}</header>` : ''}
     ${e.footer ? `<footer class="sl-footer">${escape(e.footer)}</footer>` : ''}
@@ -180,6 +203,21 @@ export function renderSlide(deck, s, { number = true } = {}) {
 }
 
 /** placed objects of a slide; inert (for masters) leaves out the ids the canvas selects by */
+/** the slide a zoom shows: `slide=` (its number) or `section=` (the section's first slide) */
+export function zoomTarget(deck, a) {
+  const list = deck.slides.filter((x) => !x.master);
+  if (a.section) return list.find((x) => x.section === a.section) || null;
+  const n = parseInt(a.slide, 10); return Number.isFinite(n) ? list.find((x) => x.number === n) || null : null;
+}
+let zoomDepth = 0;
+function zoomHtml(deck, o, cls, ref, st) {
+  const a = o.attrs; const t = zoomTarget(deck, a); const g = geometry(o);
+  const k = Math.min(g.w / deck.width, g.h / deck.height);
+  let inner = '<div class="sl-zoom-missing">Pick a slide for this zoom</div>';
+  if (t && zoomDepth < 1) { zoomDepth++; try { inner = `<div class="sl-zoom-view" style="width:${deck.width}px;height:${deck.height}px;transform:scale(${k})">${renderSlide(deck, t, { number: false })}</div>`; } finally { zoomDepth--; } }
+  const label = t ? (a.section ? `Zoom to section ${a.section}` : `Zoom to slide ${t.number}`) : 'Zoom';
+  return `<div class="${cls.join(' ')}"${ref} data-zoom="${t ? t.number : ''}"${a.section ? ` data-zoom-section="${escape(a.section)}"` : ''} role="link" aria-label="${escape(label)}" style="${st.join(';')}">${inner}</div>`;
+}
 function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
   const byId = Object.fromEntries((s.objects || []).filter((o) => o.id && o.kind !== 'line').map((o) => [o.id, geometry(o)]));
   return (s.objects || []).map((o, n) => {
@@ -192,8 +230,11 @@ function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
     if (g.opacity != null) st.push(`opacity:${g.opacity}`);
     st.push(...frameCss(o));
     const cls = ['sl-obj', 'sl-' + o.kind]; if (['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase())) cls.push('is-locked');
-    const ref = inert ? '' : ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`;
+    const ref = (inert ? '' : ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`) + (a.link ? ` data-link="${escape(a.link)}"` : '');
+    if (a.link) cls.push('has-link');
+    if (o.kind === 'zoom') return zoomHtml(deck, o, cls, ref, st);
     if (inert) cls.push('is-master');
+    if (a.placeholder) cls.push('is-placeholder');
     if (o.kind === 'image') {
       const adj = adjustCss(a.adjust); const imgF = adj.length ? `filter:${adj.join(' ')};` : '';
       if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`, 'overflow:hidden');
@@ -217,6 +258,11 @@ function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
       const opts = `${a.loop === 'true' ? ' loop' : ''}${a.muted === 'true' ? ' muted' : ''}${a.autoplay === 'true' ? ' data-autoplay="1"' : ''}`;
       return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}">${audio ? `<audio class="sl-media-el" controls preload="metadata" data-src="${escape(a.src || '')}"${opts}></audio>` : `<video class="sl-media-el" controls preload="metadata" playsinline data-src="${escape(a.src || '')}"${a.poster ? ` data-poster="${escape(a.poster)}"` : ''}${opts}></video>`}</div>`;
     }
+    if (o.kind === 'smartart') {
+      const c = safeColor(a.fill) || null;
+      const items = parseItems(o.body); const flat = (list) => list.map((x) => `<li>${escape(x.text)}${x.children.length ? `<ul>${flat(x.children)}</ul>` : ''}</li>`).join('');
+      return `<div class="${cls.join(' ')}" data-type="${escape(a.type || 'process')}"${ref} style="${st.join(';')}${c ? `;--sm-c:${c}` : ''}" role="img" aria-label="${escape((a.type || 'process') + ' diagram')}"><ul class="sm-sr">${flat(items)}</ul>${smartArt(a.type || 'process', o.body, g.w, g.h, { size: parseFloat(a.size) || null })}</div>`;
+    }
     if (o.kind === 'path') {
       const gid = `sp-${s.index}-${n}`; const fl = fillSvg(a.fill, gid);
       const closed = a.d ? true : a.closed === 'true';
@@ -236,14 +282,42 @@ function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
   }).join('');
 }
 
+/** the masters that apply to a slide, template masters first, 'all' before layout-specific */
+export function mastersFor(deck, s) {
+  if (s.master || !deck.masters?.length) return [];
+  const own = deck.masters.filter((m) => m.master === s.layout);
+  const all = own.some((m) => m.only) ? [] : deck.masters.filter((m) => m.master === 'all');
+  return [...all, ...own];
+}
+/** layouts with their own arrangement: placeholders from the all-slides master do not apply to them */
+const STRUCTURED = ['two-columns', 'cards', 'image-right', 'image-left', 'quote', 'big-number', 'blank'];
+const ROLES = ['title', 'subtitle', 'body'];
+/** placeholder boxes (::: box placeholder=title …) from the masters, later masters win per role */
+export function placeholdersFor(deck, s) {
+  const out = {};
+  for (const m of mastersFor(deck, s)) {
+    if (m.master === 'all' && STRUCTURED.includes(s.layout)) continue;
+    for (const o of m.objects || []) if (o.kind === 'box' && ROLES.includes(o.attrs.placeholder)) out[o.attrs.placeholder] = o;
+  }
+  return out;
+}
+/** split a slide's flow text into title (first heading) and the rest */
+export function splitTitle(content) {
+  const lines = content.split('\n'); let fence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*(```|~~~)/.test(lines[i])) fence = !fence;
+    if (!fence && /^\s*#{1,6}\s+\S/.test(lines[i])) return { title: lines[i], rest: [...lines.slice(0, i), ...lines.slice(i + 1)].join('\n').replace(/\n{3,}/g, '\n\n').trim() };
+  }
+  return { title: '', rest: content.trim() };
+}
+
 /** objects and backgrounds of the master slides that apply to this slide, drawn under its content */
 function masterLayer(deck, s) {
-  if (s.master || !deck.masters?.length) return '';
-  const use = deck.masters.filter((m) => m.master === 'all' || m.master === s.layout);
+  const use = mastersFor(deck, s);
   if (!use.length) return '';
   const parts = use.map((m) => {
     const bg = m.bgs.filter((b) => !b.side).map((b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'contain' ? 'contain' : 'cover'};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`).join('');
-    const objs = placedHtml(deck, { ...m, index: `m${m.index}${m.fromTemplate ? 't' : ''}` });
+    const objs = placedHtml(deck, { ...m, objects: (m.objects || []).filter((o) => !o.attrs.placeholder), index: `m${m.index}${m.fromTemplate ? 't' : ''}` });
     return `${bg ? `<div class="sl-bg">${bg}</div>` : ''}${objs ? `<div class="sl-placed sl-master-objs">${objs}</div>` : ''}`;
   }).join('');
   return `<div class="sl-master" aria-hidden="true">${parts}</div>`;
@@ -319,6 +393,7 @@ export function setNotes(chunk, text) {
   return out + '\n';
 }
 export function setGlobal(fmRaw, key, value) {
+  if (typeof value === 'string' && /^#/.test(value)) value = `"${value}"`;
   const re = new RegExp(`^${key}:.*$`, 'm');
   if (value == null || value === '') return fmRaw && re.test(fmRaw) ? fmRaw.replace(new RegExp(`^${key}:.*\\r?\\n`, 'm'), '') : fmRaw;
   if (!fmRaw) return `---\nmarp: true\n${key}: ${value}\n---\n\n`;

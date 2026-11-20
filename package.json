@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "description": "A Markdown editor your AI assistants can read and edit through MCP.",
   "main": "dist/main.mjs",
   "scripts": {
@@ -20,10 +20,12 @@
   "license": "AGPL-3.0-only",
   "devDependencies": {
     "axe-core": "^4.14.1",
-    "electron": "^45.3.4",
+    "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
-    "happy-dom": "^21.0.4"
+    "happy-dom": "^21.0.4",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -67,6 +69,7 @@
     "highlight.js": "^11.12.0",
     "hot-formula-parser": "^4.0.0",
     "i18next": "^27.2.2",
+    "jszip": "^3.10.2",
     "katex": "^0.19.1",
     "lucide-static": "^1.76.0",
     "mammoth": "^1.13.0",
@@ -80,6 +83,8 @@
     "moveable": "^0.53.0",
     "polygon-clipping": "^0.15.7",
     "pptxgenjs": "^4.0.1",
+    "pptxtojson": "^3.0.0",
+    "qrcode-generator": "^1.5.2",
     "selecto": "^1.26.3",
     "turndown": "^7.2.5",
     "zod": "^4.6.7"
@@ -90,6 +95,7 @@
     "appId": "com.folio.markdown",
     "productName": "Folio",
     "copyright": "Copyright (C) 2026 Gabriele Vaudano. AGPL-3.0. Based on Folio by Gabriele Vaudano.",
+    "afterPack": "build/afterPack.cjs",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -133,7 +139,10 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Folio uses the microphone only when you record narration for a slide show."
+      }
     },
     "dmg": {
       "title": "Folio",
@@ -202,5 +211,13 @@
   },
   "bugs": {
     "url": "https://github.com/gabrielevaudano98/folio/issues"
+  },
+  "overrides": {
+    "pptxgenjs": {
+      "image-size": "^2.1.0"
+    },
+    "@vscode/markdown-it-katex": {
+      "katex": "^0.19.1"
+    }
   }
 }

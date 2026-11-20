@@ -122,11 +122,35 @@ Each phase ships, is tested (round-trip tests, smoke test, screenshots) and clos
 | **P10** | **Motion.** Transitions (20+) and Morph by object id; entrance, emphasis, exit and motion-path animations; animation pane with timeline, triggers, delay, repeat, build by paragraph or chart series, animation painter. | Animations play in present mode and survive a round-trip through the file. |
 | **P11** | **Interactivity.** Hyperlinks and actions on any object, Zoom (slide, section, summary), custom shows, buttons, kiosk and loop. | A deck can be navigated non-linearly. |
 | **P12** | **Present and record.** Presenter view (timer, next slide, notes), pen, highlighter and laser, magnifier, black and white screen, rehearse timings, narration recording, live captions, audience Q&A and polls over the local network with a QR code. | Parity with presenter view and Google's audience tools. |
-| **P13** | **Interop.** PPTX export at 1:1 geometry with native animations and transitions (our XML post-processing), PPTX import via pptxtojson, handouts and notes pages, PNG/SVG/GIF/video, PDF, Google Slides through PPTX. | A reference deck survives import then export. |
+| **P13** | ✅ (export, import, templates, handouts) · **Interop.** PPTX export at 1:1 geometry with native animations and transitions (our XML post-processing), PPTX import via pptxtojson, handouts and notes pages, PNG/SVG/GIF/video, PDF, Google Slides through PPTX. | A reference deck survives import then export. |
 | **P14** | **AI and MCP.** Geometry tools (`add_object`, `move_object`, `restyle`), link tools (`resolve_ref`, `get_backlinks`, `find_broken_links`, `rewrite_links`), alt-text and notes generation, translate deck, Designer ideas via the AI. | An agent builds a positioned, linked deck end to end. |
 | **P15** | **Polish.** Keyboard-only editing, screen reader names, 200-slide performance, 60 fps drag, visual regression screenshots in CI. | No regressions; WCAG 2.2 AA. |
 
 Order: P0 → P1 → P2 → P3 is "put things where I want". P4 comes next because links change the data model for everything after it. P5–P9 make it complete, P10–P12 add motion and delivery, and P13–P15 bring parity and polish.
+
+## Execution plan for P10–P15 (v3, November 2026)
+
+**Status: all increments done on the `slides-p10-p15` branch and released as 1.2.0.**
+
+Each increment ships with a format change in FORMATS.md, an automated test (format round-trip or in-app test that checks the file on disk) and a screenshot check. Work happens on the `slides-p10-p15` branch, merged by pull request, then released as 1.2.0.
+
+| Inc. | Scope | Test |
+|---|---|---|
+| **10.1** | Motion model: `transition:` (24 effects, duration, Morph) and `animate:` lines (entrance, emphasis, exit, motion path; click, with, after; delay, repeat, by paragraph) parsed and written back. | Round-trip, byte-identical. |
+| **10.2** | Present engine in its own module: build steps, transitions between two layers, Morph by object id, back and forward through steps. | In-app: steps and slides advance in order. |
+| **10.3** | Animations pane: transition for the slide or all, add, change, reorder and remove animations for the selection, order badges on the canvas, Preview. | In-app: pane edits write the expected lines. |
+| **10.4** | PowerPoint: transitions and animations exported natively (`p:transition`, `p:timing`); transitions imported. | Package XML check, import check. |
+| **11.1** | `link=` on any object: web, slide number, first/last/next/previous, end show, another Folio document. Works when presenting; exported as PowerPoint hyperlinks. | Format + in-app click. |
+| **11.2** | Zoom objects (`::: zoom slide=` and `section=`), summary zoom from sections; jump and return when presenting. | Format + in-app. |
+| **11.3** | Custom shows (`show-<name>:` in front matter), loop and kiosk (`loop: true`), auto-advance (`advance:`), rehearse timings writes it. | Format + in-app. |
+| **12.1** | Presenter view: current, next, notes, timer, clock, slide counter, audience window on a second display. | In-app. |
+| **12.2** | Pen, highlighter, laser, eraser, black and white screens, magnifier, go-to-slide. | In-app. |
+| **12.3** | Narration recording per slide (saved as audio objects), audience Q&A over the local network with a QR code. | In-app (recording mocked), HTTP check. |
+| **14.1** | MCP geometry tools: `list_slide_objects`, `add_object`, `move_object`, `restyle_object`, `remove_object`, `set_animation`, `set_transition`, `rewrite_links`. | MCP test. |
+| **14.2** | MCP content tools: `set_alt_text`, `set_speaker_notes`, `get_design_ideas`, `apply_design_idea`; agent recipe for translating a deck. | MCP test. |
+| **15.1** | Keyboard-only editing (Tab through objects, Enter to edit text), names for screen readers, canvas zoom and pan, Alt-drag to copy. | In-app. |
+| **15.2** | 200-slide deck stays fast (thumbnail virtualisation, measured); visual regression screenshots in CI. | Perf test, screenshot diff. |
+| **R** | Docs, README, pull request, CI green, merge, release 1.2.0. | Release assets on GitHub. |
 
 ## Not planned (and why)
 

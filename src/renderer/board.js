@@ -2,6 +2,8 @@
 import { t as tr, tl } from './i18n.js';
 import { LIBRARY, SHAPES, CONTAINERS, ARROWS, parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, autoLayout, edgePath, shapeSvg, labelBox, defaultSize, fitAuto, ports, applyEdgeStyle } from './board-core.js';
 
+import { perDoc } from './history.js';
+
 const NS = 'http://www.w3.org/2000/svg';
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const GRID = 10;
@@ -73,6 +75,7 @@ export function mountBoard(host, ctx) {
   let sel = new Set(); // node ids and 'e:<index>'
   let view = { x: 40, y: 40, k: 1 }, fitted = false;
   const undo = [], redo = [];
+  const docs = perDoc(undo, redo); let seen = false;
   let clipboard = null;
 
   /* ---------- model io ---------- */
@@ -600,7 +603,9 @@ A o-- B   aggregation</pre>`;
 
   return {
     setText(t) {
-      if (t === text) return;
+      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true;
+      if (t === text) { if (moved) render(); return; }
+      if (!moved && had) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       const first = !parts;
       load(t); render();
       if (first || !fitted) { fitted = false; requestAnimationFrame(() => { if (canvas.clientWidth) { fitted = true; fit(); } }); }
@@ -612,6 +617,7 @@ A o-- B   aggregation</pre>`;
       if (n && !(sel.size === 1 && sel.has(n.id))) { sel = new Set([n.id]); render(); }
     },
     exportPng: () => exportImage('png'),
+    undo: () => doUndo(), redo: () => doRedo(), canUndo: () => undo.length > 0, canRedo: () => redo.length > 0,
     focus() { canvas.focus(); },
   };
 }

@@ -7,7 +7,7 @@
 // Pure text functions. Every edit rewrites only the opener line (or the one image line) of one object, so the rest of
 // the slide, and every other slide, keeps its bytes.
 
-export const KINDS = ['box', 'shape', 'line', 'icon', 'media', 'path'];
+export const KINDS = ['box', 'shape', 'line', 'icon', 'media', 'path', 'smartart', 'zoom'];
 const NUM = ['x', 'y', 'w', 'h', 'rotate', 'z', 'radius', 'opacity'];
 
 /** `#id x=1 fill="#fff" alt="a b"` → { id, attrs, tokens } */
@@ -41,7 +41,7 @@ export function patchTokens(tokens, patch) {
   return out;
 }
 
-const OPEN = /^(\s*):::\s*(box|shape|line|icon|media|path)\b(.*)$/;
+const OPEN = /^(\s*):::\s*(box|shape|line|icon|media|path|smartart|zoom)\b(.*)$/;
 const SELF = /\s:::\s*$/;
 const IMG = /^(\s*)!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)\{([^}]*)\}\s*$/;
 

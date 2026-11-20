@@ -2,20 +2,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import FORMATS from '../../docs/FORMATS.md';
+import TEMPLATES from '../../docs/TEMPLATES.md';
 import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
 import { resolveRef, loadExternals } from '../renderer/refs.js';
 import { createAssets } from './assets.js';
 import { parseRef, resolveTarget, docKind } from '../renderer/refs-syntax.js';
 import { createPatch, diffWords } from 'diff';
 import { sections, findSection, findBlock, readSection, replaceSection, insertAfter, addComment, suggestEdit } from './page-tools.js';
+import { SLIDE_TOOLS, runSlideTool } from './mcp-slides.js';
 
-export const SERVER_INFO = { name: 'folio', version: '1.1.0' };
+export const SERVER_INFO = { name: 'folio', version: '1.2.3' };
 
 export const INSTRUCTIONS = `Folio is the user's Markdown workspace. Paths are relative to the open folder and use forward slashes.
 Read a note before editing it. Prefer edit_note (exact find-and-replace) over write_note for small changes so the user's formatting survives.
 Every change you make is shown live to the user in Folio with a one-click undo. Use get_open_note to see what the user is looking at right now.
 Besides pages (.md) Folio has slides (name.slides.md, Marp compatible), boards (name.board.md, diagrams as text) and sheets (name.sheet.md, Markdown tables with Excel formulas). Call get_format_guide before creating or editing those, and get_sheet_values to read computed sheet values. Documents can reference each other: [[Doc#part]] links, {{Doc#part}} shows a live value (e.g. {{Budget.sheet#Summary!B7}}), ![[Doc#part]] embeds a sheet range, slide, board or page section. Use resolve_ref to see what a reference shows.
-For long pages work by section: get_outline, read_section, replace_section, insert_after (after a heading or a ^block-id). To propose rather than apply, use suggest_edit (tracked change) and add_comment (comment on a passage); the user accepts or rejects them in Folio. Every write is kept in the page's version history: list_versions, get_version, diff_versions, restore_version. resolve_link tells you where a [[link]] points.`;
+For long pages work by section: get_outline, read_section, replace_section, insert_after (after a heading or a ^block-id). To propose rather than apply, use suggest_edit (tracked change) and add_comment (comment on a passage); the user accepts or rejects them in Folio. Every write is kept in the page's version history: list_versions, get_version, diff_versions, restore_version. resolve_link tells you where a [[link]] points. Slide decks can use a template (template: Templates/Name.slides); get_format_guide with type template explains how to build one.`;
 
 const ro = { readOnlyHint: true, openWorldHint: false };
 const rw = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
@@ -34,8 +36,8 @@ export const TOOLS = [
     description: 'Return the heading structure of a note: level, text, first line and last line of each section (sub-sections included).',
     input: { path: z.string() } },
   { name: 'get_format_guide', title: 'Get format guide', write: false, annotations: ro,
-    description: 'Return the syntax of Folio document types: pages (.md: footnotes, maths, colour, alignment, hidden comments), slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets).',
-    input: { type: z.enum(['page', 'slides', 'board', 'sheet', 'all']).optional() } },
+    description: 'Return the syntax of Folio document types: pages (.md: footnotes, maths, colour, alignment, hidden comments), slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/).',
+    input: { type: z.enum(['page', 'slides', 'board', 'sheet', 'template', 'all']).optional() } },
   { name: 'get_sheet_values', title: 'Get sheet values', write: false, annotations: ro,
     description: 'Evaluate every formula in a .sheet.md note and return each sheet as a grid of computed values, with cell addresses.',
     input: { path: z.string(), sheet: z.string().optional().describe('Sheet name; all sheets when omitted') } },
@@ -105,6 +107,7 @@ export const TOOLS = [
   { name: 'open_note', title: 'Show note to user', write: false, annotations: ro, appOnly: true,
     description: 'Open a note in Folio so the user sees it, optionally scrolled to a line.',
     input: { path: z.string(), line: z.number().int().min(1).optional() } },
+  ...SLIDE_TOOLS,
 ];
 
 const asText = (v) => ({ content: [{ type: 'text', text: typeof v === 'string' ? v : JSON.stringify(v, null, 2) }] });
@@ -173,7 +176,8 @@ export async function runTool(notes, name, a, hooks = {}) {
     }
     case 'restore_version': { const v = await pick(a.path, a.id); const text = await hist().get(a.path, v.id); return wrote(await notes.write(a.path, text), `Restored the ${new Date(v.t).toISOString().slice(0, 16).replace('T', ' ')} version of`); }
     case 'get_format_guide': {
-      if (!a.type || a.type === 'all') return FORMATS;
+      if (a.type === 'template') return TEMPLATES;
+      if (!a.type || a.type === 'all') return FORMATS + '\n\n' + TEMPLATES;
       const title = { page: '## Pages', slides: '## slides-md', board: '## board-md', sheet: '## sheet-md' }[a.type];
       const start = FORMATS.indexOf(title); const next = FORMATS.indexOf('\n## ', start + 4);
       return FORMATS.slice(start, next < 0 ? undefined : next);
@@ -204,6 +208,8 @@ export async function runTool(notes, name, a, hooks = {}) {
     case 'find_missing_assets': return (await createAssets(notes).usage()).missing;
     case 'get_open_note': if (!hooks.openNote) throw new Error('Folio is not running.'); return hooks.openNote();
     case 'open_note': if (!hooks.showNote) throw new Error('Folio is not running.'); await hooks.showNote(a); return `Opened ${a.path}`;
-    default: throw new Error(`Unknown tool ${name}`);
+    default:
+      if (SLIDE_TOOLS.some((t) => t.name === name)) return runSlideTool(notes, name, a, wrote);
+      throw new Error(`Unknown tool ${name}`);
   }
 }

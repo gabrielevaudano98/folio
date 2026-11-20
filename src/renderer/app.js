@@ -1,12 +1,15 @@
 // Folio — renderer.
 import { diffLines } from 'diff';
 import { createEditor } from './editor.js';
+import { EditorView } from '@codemirror/view';
+import { undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import { createActionLog } from './history.js';
 import { createRich } from './rich.js';
 import { fuzzy, highlight } from './fuzzy.js';
 import { INSERTS } from './inserts.js';
 import { portableMarkdown } from './page-syntax.js';
 import { mountSlides } from './slides.js';
-import { NEW_DECK, renderSlide } from './slides-core.js';
+import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
@@ -78,15 +81,19 @@ function surfaceCtx(type) {
     dataUrl: (src) => folio.dataUrl(src, S.active),
     readNote: readRelative,
     getPath: () => S.active,
+    docKey: () => activeTab(),
     copy: (t) => folio.copy(t),
     revealLine: (n) => { if (app.dataset.modeView === 'split') editor.scrollToLine(n); },
-    exportPdf: (html) => folio.exportPdf(S.active, html, { cssPage: true }),
+    exportPdf: (html, o = {}) => folio.exportPdf(S.active, html, { cssPage: true, ...o }),
+    saveAsset: (name, bytes) => folio.saveImage(S.active, name, bytes),
+    qa: folio.qa,
     saveBinary: (ext, bytes) => folio.exportBinary(S.active, ext, bytes),
     isDark: () => S.dark,
     refEnv,
     openRef,
     copyRef: (part, kind) => copyRef(S.active, part, kind),
     pickRef,
+    templateGallery: slideTemplateGallery, ensureTemplate, saveTemplate,
     userName: () => folio.userName(),
     pickImage: () => folio.pickImage(S.active),
     pickMedia: (kind) => folio.pickMedia(S.active, kind),
@@ -214,6 +221,8 @@ function paintStaticIcons() {
   $('#view-switch [data-view="split"]').innerHTML = icons.viewSplit;
   $('#view-switch [data-view="preview"]').innerHTML = icons.viewRead;
   $('#btn-sidebar').innerHTML = icons.sidebar;
+  $('#btn-back').innerHTML = icons.back; $('#btn-forward').innerHTML = icons.forward;
+  $('#btn-undo').innerHTML = icons.undo; $('#btn-redo').innerHTML = icons.redo;
   $('#btn-outline').innerHTML = icons.outline;
   $('#btn-more').innerHTML = icons.more;
   $('.workspace-chev').innerHTML = icons.chevronDown;
@@ -229,6 +238,7 @@ function translateStatic() {
   const keys = (s) => s.replace(/⌘/g, mod()).replace(/⇧/g, shift());
   applyStatic(document, keys);
   $$('[data-tip]:not([data-i18n-attr])').forEach((el) => (el.dataset.tip = keys(el.dataset.tip)));
+  $('#btn-back').dataset.tip = `${tr('ui.back')} (${S.platform === 'darwin' ? '⌘⌥←' : 'Alt+←'})`; $('#btn-forward').dataset.tip = `${tr('ui.forward')} (${S.platform === 'darwin' ? '⌘⌥→' : 'Alt+→'})`;
 }
 
 function applyLayoutSettings() {
@@ -326,6 +336,7 @@ function setView(v, { persist = true } = {}) {
 async function loadWorkspace(dir, { restore = false } = {}) {
   S.workspace = dir;
   folio.propTypes().then(setTypeOverrides).catch(() => setTypeOverrides({}));
+  actions.clear(); nav.list = []; nav.i = -1; // file actions and history belong to one folder
   $('#workspace-name').textContent = dir.split(/[\\/]/).filter(Boolean).pop();
   $('#tree').innerHTML = Array.from({ length: 7 }, (_, i) => `<div class="skeleton-row" style="--w:${[62, 48, 70, 40, 56, 66, 44][i]}%;--d:${i % 3 === 2 ? 1 : 0}"></div>`).join('');
   await refreshTree();
@@ -384,7 +395,12 @@ async function openFile(p, { line, background = false } = {}) {
 }
 function activate(p, { line } = {}) {
   const prev = activeTab();
-  if (prev) prev.scroll = editor.view.scrollDOM.scrollTop;
+  if (prev) {
+    prev.scroll = editor.view.scrollDOM.scrollTop;
+    prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
+    prev.rich = docType(prev.path) === 'md' && isRich() ? rich.snapshot() : null;
+  }
+  navRecord(p);
   S.active = p;
   const t = activeTab();
   hideEmpty();
@@ -395,13 +411,13 @@ function activate(p, { line } = {}) {
   app.dataset.modeView = v;
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
   layoutPanes();
-  editor.setDoc(t.text);
-  if (type === 'md') { if (isRich()) rich.setMarkdown(t.text); }
+  if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
+  if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
   else { const s = surfaceFor(type); s.setText(t.text); s.setMode?.(v); }
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
-  renderTabs(); renderTree(); renderPreview(); renderOutline(); renderStatus();
+  renderTabs(); renderTree(); renderPreview(); renderOutline(); renderStatus(); updateHistoryButtons();
   saveSetting({ lastFile: p });
   if (type !== 'md') { if (v === 'code') editor.focus(); else curSurface()?.focus?.(); }
   else if (isRich()) rich.focus('start'); else if (app.dataset.modeView !== 'preview') editor.focus();
@@ -434,6 +450,7 @@ const surfaceSoon = debounce((text) => curSurface()?.setText(text), 250);
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
 function onEditorChange(text, isRemote, from = 'source') {
   const t = activeTab(); if (!t) return;
+  historySoon();
   if (from === 'source' && isRich()) return; // the hidden source view only mirrors
   if (from === 'source' && curType() !== 'md' && app.dataset.modeView === 'visual') return;
   if (text === t.text) return;
@@ -450,7 +467,7 @@ function setActiveText(text) {
   const t = activeTab(); if (!t) return;
   t.text = text;
   editor.applyRemote(text);
-  if (curType() === 'md') { if (isRich()) rich.setMarkdown(text); }
+  if (curType() === 'md') { if (isRich()) rich.setMarkdown(text, { keepHistory: true }); }
   else curSurface()?.setText(text);
 }
 function renderTabsDirty() {
@@ -1120,14 +1137,20 @@ async function newNote(folder = dirOf(S.active || ''), type, fromTemplate = fals
   const { name } = res; type = res.type;
   const ext = type === 'md' ? '.md' : `.${type}.md`;
   const file = (folder ? folder + '/' : '') + (/\.(md|markdown|mdx|txt)$/i.test(name) ? name : name + ext);
+  let tpl = null;
+  if (type === 'slides') { tpl = await slideTemplateGallery({ mode: 'new' }); if (tpl == null) return; }
   try {
-    const title = stem(file);
-    const tpl = type === 'md' && res.template ? res.template : null;
-    const asked = tpl ? await askFilled(tpl, { title }) : null; if (tpl && asked == null) return;
-    const content = tpl ? asked.split(CURSOR).join('') : (NEW_CONTENT[type] || NEW_CONTENT.md)(title);
+    const title = stem(file).replace(/\.slides$/i, '');
+    const mdTpl = type === 'md' && res.template ? res.template : null;
+    const asked = mdTpl ? await askFilled(mdTpl, { title }) : null; if (mdTpl && asked == null) return;
+    let content = mdTpl ? asked.split(CURSOR).join('') : (NEW_CONTENT[type] || NEW_CONTENT.md)(stem(file));
+    if (tpl && tpl !== 'blank') { const T = await import('./slides-templates.js'); await ensureTemplate(tpl); content = T.newDeckFrom(tpl, title); }
     const p = await folio.create(file, content);
     if (folder) S.expanded.add(folder);
     await refreshTree(); await openFile(p);
+    let rec = null;
+    actions.push({ scope: S.workspace, label: `created ${base(p)}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); await openFile(p); } });
+    updateHistoryButtons();
     if (type === 'md' && !isRich()) editor.view.dispatch({ selection: { anchor: editor.view.state.doc.length } });
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
@@ -1164,10 +1187,74 @@ function newDocSheet({ folder, type = 'md', fromTemplate = false }) {
     d.showModal(); input.select();
   });
 }
+/* slide templates: gallery, workspace copies, saving */
+async function ensureTemplate(t) {
+  const T = await import('./slides-templates.js'); const path = T.workspacePath(t);
+  if (!S.files.includes(path)) { await folio.create(path, t.text); await refreshTree(); }
+  return path;
+}
+/** a .pptx becomes a deck next to the open note; a .potx becomes a template in Templates/ */
+async function importPowerPointFile() {
+  let picked;
+  try { picked = await folio.pickOffice(); } catch (e) { return toast(e.message, { kind: 'error' }); }
+  if (!picked) return;
+  const asTemplate = picked.ext === 'potx';
+  const T = await import('./slides-templates.js');
+  const folder = asTemplate ? T.TEMPLATE_DIR : dirOf(S.active || '');
+  const safe = picked.name.replace(/[\\/:*?"<>|]/g, '-');
+  let path = `${folder ? folder + '/' : ''}${safe}.slides.md`; let n = 2;
+  while (S.files.includes(path)) path = `${folder ? folder + '/' : ''}${safe} ${n++}.slides.md`;
+  toast(`Importing ${picked.name}…`);
+  try {
+    const { importPowerPoint } = await import('./slides-import.js');
+    const text = await importPowerPoint(picked.bytes.buffer, { name: picked.name, template: asTemplate, saveAsset: (name, bytes) => folio.saveImage(path, name, bytes) });
+    await folio.create(path, text); await refreshTree(); await openFile(path);
+    toast(asTemplate ? `${picked.name} is now a template. Find it in New from template.` : `Imported ${picked.name}.`);
+  } catch (e) { toast(`Import failed. ${e.message}`, { kind: 'error' }); }
+}
+async function saveTemplate(name, text) {
+  const T = await import('./slides-templates.js');
+  let path = `${T.TEMPLATE_DIR}/${name.replace(/[\\/:*?"<>|]/g, '-')}.slides.md`; let n = 2;
+  while (S.files.includes(path)) path = `${T.TEMPLATE_DIR}/${name.replace(/[\\/:*?"<>|]/g, '-')} ${n++}.slides.md`;
+  await folio.create(path, text); await refreshTree(); return path;
+}
+async function slideTemplateGallery({ mode = 'new' } = {}) {
+  const T = await import('./slides-templates.js');
+  const list = await T.listTemplates(refEnv());
+  return new Promise((resolve) => {
+    const d = $('#sheet-prompt'); d.classList.add('sheet-wide');
+    const tags = [...new Set(list.flatMap((t) => t.tags))].sort();
+    d.innerHTML = `<form method="dialog" class="tp-form">
+      <div class="sheet-head"><div><h2 id="prompt-title">${mode === 'new' ? 'Choose a template' : 'Change template'}</h2><p>${mode === 'new' ? 'A template sets colours, fonts, backgrounds and slide layouts. You can change it later in Design.' : 'The deck keeps its slides and takes the colours, fonts, backgrounds and layouts of the template.'}</p></div></div>
+      <div class="sheet-body">
+        <div class="tp-filter"><input class="input" type="search" data-tq placeholder="Search templates" aria-label="Search templates"><select class="rb-select" data-tt aria-label="Filter by style"><option value="">All styles</option>${tags.map((x) => `<option>${esc(x)}</option>`).join('')}</select></div>
+        <div class="tp-grid" role="radiogroup" aria-label="Templates">
+          ${mode === 'new' ? '<label class="tp-card"><input type="radio" name="tp" value="blank"><span class="tp-prev tp-blank">Blank deck</span><span class="tp-name">Blank</span><span class="tp-desc">The plain Folio look, no template file.</span></label>' : ''}
+          ${list.map((t, i) => `<label class="tp-card" data-tags="${esc(t.tags.join(','))}" data-name="${esc((t.name + ' ' + t.description).toLowerCase())}"><input type="radio" name="tp" value="${i}"${i === 0 && mode !== 'new' ? ' checked' : ''}><span class="tp-prev">${T.previewHtml(t, 200)}</span><span class="tp-name">${esc(t.name)}${t.builtin ? '' : ' <em>yours</em>'}</span><span class="tp-desc">${esc(t.description)}</span>${t.variants.length ? `<span class="tp-vars" aria-label="Colour variants">${[t, ...t.variants].map((v) => { const tk = v.tokens || {}; const tok = v.tokens ? tk : Object.fromEntries(['paper', 'accent', 'ink'].map((k) => [k, (parseFrontmatter(t.text).data[k] || '')])); return `<i style="background:${esc(tok.accent || '#888')};border-color:${esc(tok.paper || '#fff')}"></i>`; }).join('')}</span>` : ''}</label>`).join('')}
+        </div>
+        <p class="fp-note">Make your own: build a deck, then Design, Save as template. Templates live in the ${T.TEMPLATE_DIR} folder. <a href="#" data-guide>How to build a template</a></p>
+      </div>
+      <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">${mode === 'new' ? 'Create' : 'Apply template'}</button></div></form>`;
+    if (mode === 'new') d.querySelector('input[value="0"]').checked = true;
+    const filter = () => { const q = d.querySelector('[data-tq]').value.trim().toLowerCase(), tg = d.querySelector('[data-tt]').value; for (const c of d.querySelectorAll('.tp-card[data-name]')) c.hidden = (q && !c.dataset.name.includes(q)) || (tg && !c.dataset.tags.split(',').includes(tg)); };
+    d.querySelector('[data-tq]').addEventListener('input', filter); d.querySelector('[data-tt]').addEventListener('change', filter);
+    d.querySelector('[data-guide]').addEventListener('click', (e) => { e.preventDefault(); folio.openExternal?.('https://github.com/gabrielevaudano98/folio/blob/main/docs/TEMPLATES.md'); });
+    const done = (v) => { d.close(); d.classList.remove('sheet-wide'); resolve(v); };
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); const v = d.querySelector('input[name=tp]:checked')?.value; done(v == null ? null : v === 'blank' ? 'blank' : list[Number(v)]); };
+    d.querySelector('[data-cancel]').onclick = () => done(null);
+    d.oncancel = () => { d.classList.remove('sheet-wide'); resolve(null); };
+    d.showModal();
+  });
+}
 async function newFolder(parent = '') {
   const name = await prompt({ title: tr('app.new-folder-2'), label: tr('app.name'), value: '', action: tr('app.create') });
   if (!name) return;
-  try { const p = (parent ? parent + '/' : '') + name; await folio.mkdir(p); S.expanded.add(p); await refreshTree(); } catch (e) { toast(e.message, { kind: 'error' }); }
+  try {
+    const p = (parent ? parent + '/' : '') + name; await folio.mkdir(p); S.expanded.add(p); await refreshTree();
+    let rec = null;
+    actions.push({ scope: S.workspace, label: `created folder ${name}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); } });
+    updateHistoryButtons();
+  } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 async function renamePath(p, isDir) {
   const name = await prompt({ title: tr(isDir ? 'app.rename-folder' : 'app.rename-note'), label: tr('app.name'), value: isDir ? base(p) : stem(p), action: tr('app.rename-2') });
@@ -1177,16 +1264,24 @@ async function renamePath(p, isDir) {
   if (to === p) return;
   await movePath(p, to, isDir);
 }
+/** rename or move, with the links in other documents kept in step; returns how many documents changed */
+async function moveRaw(from, to) {
+  const r = await folio.rename(from, to);
+  retargetTabs(from, to);
+  await refreshTree();
+  return r?.changed?.length || 0;
+}
 async function movePath(from, to, isDir) {
   try {
-    const r = await folio.rename(from, to);
-    retargetTabs(from, to);
-    const n = r?.changed?.length || 0;
-    if (n) toast(tr('app.updated-links-in-n-documents', { n: n }), { action: [tr('app.undo'), () => movePath(to, from, isDir)] });
-    await refreshTree();
+    const n = await moveRaw(from, to);
+    actions.push({ scope: S.workspace, label: `${dirOf(from) === dirOf(to) ? 'renamed' : 'moved'} ${isDir ? base(from) : stem(from)}`, undo: () => moveRaw(to, from), redo: () => moveRaw(from, to) });
+    const what = isDir ? base(from) : stem(from);
+    toast(n ? tr('app.updated-links-in-n-documents', { n }) : tr(dirOf(from) === dirOf(to) ? 'app.renamed-what' : 'app.moved-what', { what }), { action: [tr('app.undo'), () => fileUndo('undo')] });
+    updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 function retargetTabs(from, to) {
+  nav.list = nav.list.map((x) => (x === from || x.startsWith(from + '/') ? to + x.slice(from.length) : x));
   for (const t of S.tabs) {
     if (t.path === from || t.path.startsWith(from + '/')) {
       const np = to + t.path.slice(from.length);
@@ -1196,13 +1291,34 @@ function retargetTabs(from, to) {
   }
   renderTabs(); renderStatus(); persistTabs();
 }
+/** move to the Trash, keeping a copy so the move can be undone; unsaved edits are saved first so they come back too */
+async function trashRaw(p) {
+  const open = S.tabs.filter((t) => t.path === p || t.path.startsWith(p + '/')).map((t) => t.path);
+  const active = open.includes(S.active) ? S.active : null;
+  for (const q of open) {
+    const t = tabOf(q); if (!t || t.text === t.saved) continue;
+    await saveTab(t).catch(() => {});
+    if (t.text !== t.saved) throw new Error(`Could not save “${stem(q)}”, so it was not moved. Your changes are still open.`);
+  }
+  const { token } = await folio.trash(p);
+  for (const q of open) await closeTab(q);
+  await refreshTree();
+  return { token, open, active };
+}
+async function untrashRaw(rec) {
+  await folio.untrash(rec.token); await refreshTree();
+  for (const q of rec.open) await openFile(q, { background: true });
+  if (rec.active) await openFile(rec.active);
+}
 async function trashPath(p, isDir) {
-  const ok = await confirmSheet({ title: tr('app.move-p-to-the-trash', { p: isDir ? base(p) : stem(p) }), body: tr('app.you-can-restore-it-from-the-system-tra'), action: tr('app.move-to-trash'), danger: true });
+  const ok = await confirmSheet({ title: tr('app.move-p-to-the-trash', { p: isDir ? base(p) : stem(p) }), body: tr('app.you-can-undo-this-or-restore-it-from-the-system-trash'), action: tr('app.move-to-trash'), danger: true });
   if (!ok) return;
   try {
-    await folio.trash(p);
-    for (const t of [...S.tabs]) if (t.path === p || t.path.startsWith(p + '/')) { t.saved = t.text; await closeTab(t.path); }
-    await refreshTree();
+    let rec = await trashRaw(p);
+    const name = isDir ? base(p) : stem(p);
+    actions.push({ scope: S.workspace, label: `moved ${name} to the Trash`, undo: async () => { await untrashRaw(rec); }, redo: async () => { rec = await trashRaw(p); } });
+    toast(`Moved “${name}” to the Trash.`, { action: ['Undo', () => fileUndo('undo')] });
+    updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 async function chooseFolder() {
@@ -1213,6 +1329,7 @@ async function chooseFolder() {
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 async function switchWorkspace(dir) {
+  await actions.idle(); // let a file action that is still running finish in the folder it started in
   for (const t of S.tabs) await saveTab(t);
   S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear();
   renderTabs();
@@ -1479,7 +1596,69 @@ function openHelp(query = '') {
 function localizeCommands() { for (const c of COMMANDS) { c.en ??= c.title; const k = c.id === 'reveal' && S.platform === 'darwin' ? 'cmd.reveal-mac' : `cmd.${c.id}`; const v = tr(k); c.title = v === k ? c.en : v; } }
 
 /* ============ palette ============ */
+/* ---------- back and forward between notes ---------- */
+const nav = { list: [], i: -1, busy: false };
+function navRecord(p) {
+  if (nav.busy || nav.list[nav.i] === p) return;
+  nav.list.length = nav.i + 1; nav.list.push(p);
+  if (nav.list.length > 100) nav.list.shift();
+  nav.i = nav.list.length - 1;
+}
+function navFind(d) { for (let j = nav.i + d; j >= 0 && j < nav.list.length; j += d) if (S.files.includes(nav.list[j])) return j; return -1; }
+async function navGo(d) {
+  const j = navFind(d); if (j < 0) return;
+  nav.busy = true;
+  try { await openFile(nav.list[j]); nav.i = j; } catch (e) { toast(e.message, { kind: 'error' }); } finally { nav.busy = false; }
+  updateHistoryButtons();
+}
+
+/* ---------- undo and redo ---------- */
+const actions = createActionLog(50);
+/** where Undo and Redo go right now: the editor with focus, else the visible document view */
+function docTarget() {
+  const dom = document.activeElement?.closest?.('.cm-editor');
+  const v = dom && EditorView.findFromDOM(dom);
+  if (v) return { run: (d) => (d === 'undo' ? cmUndo(v) : cmRedo(v)), can: (d) => (d === 'undo' ? undoDepth(v.state) : redoDepth(v.state)) > 0 };
+  const type = curType();
+  if (type !== 'md' && app.dataset.modeView !== 'code') {
+    const sf = curSurface();
+    if (sf?.undo) return { run: (d) => sf[d](), can: (d) => (d === 'undo' ? sf.canUndo() : sf.canRedo()) };
+  }
+  if (type === 'md' && isRich()) return { run: (d) => rich[d](), can: (d) => (d === 'undo' ? rich.canUndo() : rich.canRedo()) };
+  return { run: (d) => editor[d](), can: (d) => (d === 'undo' ? editor.canUndo() : editor.canRedo()) };
+}
+function editUndo(dir) {
+  const a = document.activeElement;
+  if (a?.matches?.('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea')) { document.execCommand(dir); return; }
+  if (a?.closest?.('#sidebar')) return fileUndo(dir); // in the file list, Undo means the last file action
+  if (!S.active) return;
+  docTarget().run(dir);
+  updateHistoryButtons();
+}
+async function fileUndo(dir) {
+  const op = actions.peek(dir);
+  if (!op) return toast(dir === 'undo' ? 'No file action to undo.' : 'No file action to redo.');
+  if (op.scope !== S.workspace) { actions.clear(); return toast('That action belongs to another folder.', { kind: 'error' }); }
+  try { await actions.run(dir); toast(`${dir === 'undo' ? 'Undid' : 'Redid'}: ${op.label}.`); }
+  catch (e) { toast(e.message, { kind: 'error' }); }
+  await refreshTree(); updateHistoryButtons();
+}
+function updateHistoryButtons() {
+  const t = S.active ? docTarget() : null;
+  $('#btn-undo').disabled = !t || !t.can('undo');
+  $('#btn-redo').disabled = !t || !t.can('redo');
+  $('#btn-back').disabled = navFind(-1) < 0;
+  $('#btn-forward').disabled = navFind(1) < 0;
+}
+const historySoon = debounce(() => updateHistoryButtons(), 60);
+
 const COMMANDS = [
+  { id: 'undo', title: 'Undo', key: 'Mod+Z', run: () => editUndo('undo') },
+  { id: 'redo', title: 'Redo', key: 'Mod+Shift+Z', run: () => editUndo('redo') },
+  { id: 'undo-file', title: 'Undo last file action', key: 'Mod+Alt+Z', run: () => fileUndo('undo') },
+  { id: 'redo-file', title: 'Redo file action', key: 'Mod+Alt+Shift+Z', run: () => fileUndo('redo') },
+  { id: 'nav-back', title: 'Go back', get key() { return S.platform === 'darwin' ? 'Mod+Alt+Left' : 'Alt+Left'; }, run: () => navGo(-1) },
+  { id: 'nav-forward', title: 'Go forward', get key() { return S.platform === 'darwin' ? 'Mod+Alt+Right' : 'Alt+Right'; }, run: () => navGo(1) },
   { id: 'new-note', title: 'New note', key: 'Mod+N', run: () => newNote() },
   { id: 'new-from-template', title: 'New page from a template…', run: () => templateGallery('new') },
   { id: 'template-gallery', title: 'Templates: browse the gallery', run: () => templateGallery('insert') },
@@ -1527,6 +1706,15 @@ const COMMANDS = [
   { id: 'export-html', title: 'Export as HTML…', run: () => exportAs('html') },
   { id: 'export-md', title: 'Export as portable Markdown…', run: () => exportAs('md') },
   { id: 'export-pptx', title: 'Export slides as PowerPoint…', run: () => (curType() === 'slides' ? exportAs('pptx') : toast('Open a slides document first.')) },
+  { id: 'import-pptx', title: 'Import PowerPoint or template (.pptx, .potx)…', run: () => importPowerPointFile() },
+  { id: 'export-handouts', title: 'Export slide handouts as PDF…', run: async () => {
+    if (curType() !== 'slides') return toast('Open a slides document first.');
+    const n = await prompt({ title: 'Export handouts', label: 'Slides per page', value: '3', hint: '1, 2, 3, 4, 6 or 9. Three per page adds lines for notes.', action: 'Export' });
+    if (!n) return; const per = parseInt(n, 10);
+    if (![1, 2, 3, 4, 6, 9].includes(per)) return toast('Choose 1, 2, 3, 4, 6 or 9 slides per page.', { kind: 'error' });
+    curSurface()?.exportHandouts?.({ perPage: per });
+  } },
+  { id: 'export-notes', title: 'Export slide notes pages as PDF…', run: () => (curType() === 'slides' ? curSurface()?.exportHandouts?.({ notes: true }) : toast('Open a slides document first.')) },
   { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
   { id: 'export-pdf', title: 'Export as PDF…', run: () => exportAs('pdf') },
@@ -1563,7 +1751,7 @@ const COMMANDS = [
   { id: 'align-center', title: 'Centre', key: 'Mod+Alt+E', run: () => isRich() && rich.run('alignCenter') },
   { id: 'align-right', title: 'Align right', key: 'Mod+Shift+R', run: () => isRich() && rich.run('alignRight') },
   { id: 'align-justify', title: 'Justify', key: 'Mod+Shift+J', run: () => isRich() && rich.run('alignJustify') },
-  { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; showWelcome(); } },
+  { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
 ];
 /* everything the / menu offers is in the palette too (the Write view inserts it, the source view types its Markdown) */
 for (const it of INSERTS) {
@@ -1863,6 +2051,7 @@ async function openAssets() {
 window.addEventListener('focus', () => { const t = activeTab(); if (t && ASSET_HINT.test(t.text)) checkAssets(t, { rerender: true }).catch(() => {}); });
 function toast(text, { kind = 'info', action } = {}) {
   const el = document.createElement('div');
+  (window.__folioToasts ||= []).push(text); // tests read what was said
   el.className = 'toast'; el.dataset.kind = kind; el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
   el.innerHTML = `<p>${esc(text)}</p>${action ? `<button class="btn btn-quiet" type="button">${esc(action[0])}</button>` : ''}<button class="icon-btn" type="button" aria-label="${tr('app.dismiss')}">${icons.close}</button>`;
   $('#toasts').appendChild(el);
@@ -1958,6 +2147,19 @@ function bindChrome() {
   bindTooltips();
   $('#btn-new').onclick = () => newNote();
   $('#btn-sidebar').onclick = toggleSidebar;
+  $('#btn-back').onclick = () => navGo(-1); $('#btn-forward').onclick = () => navGo(1);
+  $('#btn-undo').onclick = () => editUndo('undo'); $('#btn-redo').onclick = () => editUndo('redo');
+  // clicking these must not take the focus away from the editor they act on
+  for (const id of ['#btn-back', '#btn-forward', '#btn-undo', '#btn-redo']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+  document.addEventListener('focusin', historySoon);
+  // back and forward from the keyboard win over the editors' own word-jump keys; the mouse side buttons do the same
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey || e.shiftKey || (S.platform === 'darwin' ? !e.metaKey : e.ctrlKey || e.metaKey)) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (e.target.closest?.('input, textarea, select')) return;
+    e.preventDefault(); e.stopPropagation(); navGo(e.key === 'ArrowLeft' ? -1 : 1);
+  }, true);
+  document.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); navGo(e.button === 3 ? -1 : 1); } });
   $('#btn-outline').onclick = toggleOutline;
   $('#tags-head').addEventListener('click', () => { saveSetting({ showTags: !tagsOpen() }); renderTags(); });
   $('#tags-list').addEventListener('click', (e) => { const b = e.target.closest('[data-tag]'); if (b) showTag(b.dataset.tag); });
@@ -2220,6 +2422,10 @@ function bindIpc() {
 }
 
 window.__folioErrors = [];
-addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message, e.error?.stack || ''); });
-addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); console.error('[folio-error]', e.reason?.message || e.reason); });
+/** tests and automation: run a command by id, as the menu would */
+window.__folioRun = (id) => COMMANDS.find((x) => x.id === id)?.run();
+Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
+Object.defineProperty(window, '__folioEditor', { get: () => editor });
+addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
+addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); if (e.reason?.stack) console.error('[folio-error-stack]', e.reason.stack.split('\n').slice(0, 4).join(' | ')); console.error('[folio-error]', e.reason?.message || e.reason); });
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>${esc(tr('app.could-not-start', { message: e.message }))}</p></div></div>`); console.error(e); });

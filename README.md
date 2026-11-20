@@ -25,12 +25,26 @@ La sintassi completa dei formati è in [`docs/FORMATS.md`](docs/FORMATS.md).
 - **Write (WYSIWYG live)**: titoli, grassetto, corsivo, link, citazioni, liste, checkbox cliccabili, immagini e righe orizzontali appaiono già formattati; la sintassi Markdown ricompare solo sulla riga dove hai il cursore (stile Typora/Obsidian). Tabelle, codice e formule restano in sorgente e si vedono renderizzati in Split/Read
 - **Split** (sorgente + anteprima sincronizzati) e **Read** — `⌘1` `⌘2` `⌘3`
 - Schede, albero cartelle con drag & drop, rinomina, cestino di sistema
+- **Annulla e ripeti ovunque**: `⌘Z` / `⇧⌘Z` (su Windows anche `Ctrl+Y`) valgono per pagine, slide, lavagne e fogli, con la cronologia **separata per ogni scheda** (cambiare scheda non la perde). Pulsanti nella barra del titolo, menu Modifica e palette
+- **Annulla azioni sui file**: crea, rinomina, sposta ed elimina si annullano con `⌘⌥Z` (o `⌘Z` con l'elenco file in primo piano, o il pulsante *Annulla* nella notifica). Gli elementi eliminati tornano con il loro contenuto
+- **Indietro e avanti tra le note**: `Alt+←` / `Alt+→` (macOS `⌘⌥←` / `⌘⌥→`), pulsanti nella barra, tasti laterali del mouse, swipe sul trackpad
 - Salvataggio automatico, ricarica se il file cambia su disco
 - Palette comandi `⌘⇧P`, apertura rapida `⌘P`, ricerca in tutte le note `⌘⇧F`, cerca/sostituisci `⌘F`
 - Formattazione: `⌘B` `⌘I` `⌘K` (link) `⌘E` (codice) `⌘L` (task), liste che continuano con Invio
 - Incolla o trascina immagini → salvate in `assets/` accanto alla nota
 - Indice ("On this page") con sezione corrente, modalità Focus `⌘.`
 - Esporta in **PDF** e **HTML**
+
+**Slide** (`.slides.md`, compatibili Marp)
+- Editor visuale stile PowerPoint: oggetti posizionati liberamente (testo, forme, linee e connettori, icone, immagini, video, tabelle, grafici, equazioni, diagrammi SmartArt, forme libere), allinea/distribuisci/raggruppa, pannello Formato, unione di forme
+- **Template**: galleria con 8 template (colori, font, sfondi, master con segnaposto per titolo e testo, varianti di colore), template tuoi nella cartella `Templates/`, "Salva come template". Guida: [docs/TEMPLATES.md](docs/TEMPLATES.md)
+- Master, sezioni, slide nascoste, ordinamento, struttura, commenti, trova e sostituisci, controllo accessibilità, Design ideas, riferimenti vivi ad altri documenti
+- Transizioni (24 effetti e Morph), animazioni di entrata, enfasi, uscita e percorsi, con pannello Animazioni
+- Link su qualsiasi oggetto, Zoom di slide e sezioni, presentazioni personalizzate, loop, kiosk e avanzamento automatico
+- Vista relatore con finestra per il pubblico, penna, evidenziatore, laser, schermo nero, lente, prove dei tempi, registrazione della narrazione e domande del pubblico in rete locale
+- Strumenti MCP per lavorare sulle slide oggetto per oggetto (posizione, stile, animazioni, link, alt text, note, idee di design)
+- Presentazione, esportazione PDF, stampati (handout) e pagine note
+- PowerPoint in entrata e in uscita: export .pptx fedele 1:1 con master, layout con segnaposto e colori del tema; import di .pptx come deck e di .potx come template
 
 **Anteprima**
 - GitHub Flavored Markdown, task cliccabili (aggiornano il sorgente), tabelle, note a piè di pagina
@@ -53,7 +67,7 @@ Apri **AI → Connect AI Assistants…** (`⌘⇧A`) oppure clicca il riquadro i
 | Claude Code | Copia il comando `claude mcp add folio …` mostrato nel pannello |
 | Altri client | URL Streamable HTTP `http://127.0.0.1:47321/mcp` + token Bearer (dal pannello) |
 
-Il bridge stdio usa l'eseguibile stesso di Folio (`ELECTRON_RUN_AS_NODE`), quindi **non serve installare Node**. Se Folio è aperto, le chiamate passano dall'app (evidenziazioni live, undo, nota aperta); se è chiuso, lavora direttamente sull'ultima cartella aperta.
+Il bridge stdio usa l'eseguibile stesso di Folio (`--mcp-stdio`), quindi **non serve installare Node**. Se Folio è aperto, le chiamate passano dall'app (evidenziazioni live, undo, nota aperta); se è chiuso, lavora direttamente sull'ultima cartella aperta.
 
 **Strumenti MCP:** `get_format_guide` (sintassi di slide, lavagne e fogli), `get_sheet_values` (valori calcolati delle formule), `list_notes`, `read_note`, `search_notes`, `get_outline`, `get_open_note`, `create_note`, `write_note`, `edit_note` (trova/sostituisci esatto), `append_to_note` (anche sotto un titolo), `move_note`, `open_note`.
 
