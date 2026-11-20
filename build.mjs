@@ -5,7 +5,7 @@ fs.rmSync('dist', { recursive: true, force: true });
 fs.mkdirSync('dist/renderer', { recursive: true });
 fs.copyFileSync('src/renderer/index.html', 'dist/renderer/index.html');
 fs.copyFileSync('src/main/preload.cjs', 'dist/preload.cjs');
-const common = { bundle: true, minify: !watch, sourcemap: watch, logLevel: 'info', legalComments: 'none' };
+const common = { bundle: true, minify: !watch && !process.env.FOLIO_NOMINIFY, sourcemap: watch, logLevel: 'info', legalComments: 'none' };
 const banner = { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" };
 await Promise.all([
   esbuild.build({ ...common, entryPoints: ['src/main/main.js'], outfile: 'dist/main.mjs', platform: 'node', format: 'esm', target: 'node22', external: ['electron', 'fsevents'], banner, loader: { '.md': 'text' } }),

@@ -34,6 +34,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
+  language: 'en',
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
@@ -533,6 +534,7 @@ function buildMenu() {
     { label: 'AI', submenu: [{ label: 'Connect AI Assistants…', accelerator: 'CmdOrCtrl+Shift+A', click: cmd('ai') }] },
     { role: 'windowMenu' },
     { role: 'help', submenu: [
+      { label: 'Shortcuts and Syntax', accelerator: 'F1', click: cmd('help') },
       { label: 'About Folio', click: () => app.showAboutPanel() },
       { label: 'Source code and license', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio') },
       { label: 'Report a problem', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/issues/new/choose') },

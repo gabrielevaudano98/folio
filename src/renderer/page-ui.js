@@ -130,17 +130,18 @@ export const HeadingFold = Extension.create({
   addProseMirrorPlugins() {
     const opts = this.options;
     const build = (doc, folded) => {
-      const deco = []; let hideUntil = 0;
+      const deco = []; let hideUntil = 0, ordinal = 0;
       doc.forEach((n, pos) => {
         if (n.type.name === 'heading') {
+          const nth = ordinal++;
           if (hideUntil && n.attrs.level <= hideUntil) hideUntil = 0;
           if (!hideUntil) {
             const isFolded = folded.has(pos);
             deco.push(Decoration.widget(pos + 1, () => {
-              const b = document.createElement('button'); b.type = 'button'; b.className = 'rich-hfold'; b.contentEditable = 'false'; b.dataset.pos = String(pos);
+              const b = document.createElement('button'); b.type = 'button'; b.className = 'rich-hfold'; b.contentEditable = 'false';
               b.setAttribute('aria-expanded', String(!isFolded)); b.setAttribute('aria-label', isFolded ? 'Show this section' : 'Fold this section');
               b.innerHTML = opts.icons.chevron || '›'; return b;
-            }, { side: -1, key: `hf:${pos}:${isFolded}` }));
+            }, { side: -1, key: `hf:${nth}:${isFolded}` })); // keyed by order, not position: typing above does not rebuild every chevron
             if (isFolded) { deco.push(Decoration.node(pos, pos + n.nodeSize, { class: 'is-section-folded' })); hideUntil = n.attrs.level; return; }
           }
         }
@@ -148,10 +149,12 @@ export const HeadingFold = Extension.create({
       });
       return DecorationSet.create(doc, deco);
     };
+    /* which top-level blocks are headings: while it is unchanged and nothing is folded, the decorations only need moving */
+    const sig = (doc) => { let o = ''; doc.forEach((n, _p, i) => { if (n.type.name === 'heading') o += i + ','; }); return o; };
     return [new Plugin({
       key: HFOLD,
       state: {
-        init: (_, st) => ({ folded: new Set(), deco: build(st.doc, new Set()) }),
+        init: (_, st) => ({ folded: new Set(), deco: build(st.doc, new Set()), sig: sig(st.doc) }),
         apply(tr, prev) {
           let folded = prev.folded;
           if (tr.docChanged) folded = new Set([...folded].map((p) => tr.mapping.map(p)).filter((p) => tr.doc.nodeAt(p)?.type.name === 'heading'));
@@ -159,13 +162,14 @@ export const HeadingFold = Extension.create({
           if (t === 'all') { folded = new Set(); tr.doc.forEach((n, pos) => { if (n.type.name === 'heading') folded.add(pos); }); }
           else if (t === 'none') folded = new Set();
           else if (t != null) { folded = new Set(folded); folded.has(t) ? folded.delete(t) : folded.add(t); }
-          return tr.docChanged || t != null ? { folded, deco: build(tr.doc, folded) } : prev;
+          if (t == null && tr.docChanged && !folded.size && !prev.folded.size) { const g = sig(tr.doc); if (g === prev.sig) return { folded, deco: prev.deco.map(tr.mapping, tr.doc), sig: g }; return { folded, deco: build(tr.doc, folded), sig: g }; }
+          return tr.docChanged || t != null ? { folded, deco: build(tr.doc, folded), sig: sig(tr.doc) } : prev;
         },
       },
       props: {
         decorations: (st) => HFOLD.getState(st).deco,
         handleDOMEvents: {
-          mousedown(view, e) { const b = e.target.closest?.('.rich-hfold'); if (!b) return false; e.preventDefault(); view.dispatch(view.state.tr.setMeta(HFOLD, +b.dataset.pos)); return true; },
+          mousedown(view, e) { const b = e.target.closest?.('.rich-hfold'); if (!b) return false; e.preventDefault(); view.dispatch(view.state.tr.setMeta(HFOLD, view.posAtDOM(b.parentNode, 0) - 1)); return true; },
         },
       },
     })];

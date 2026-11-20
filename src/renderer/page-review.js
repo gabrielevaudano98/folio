@@ -1,6 +1,7 @@
 // Folio — the review pane of a page (D10): comment threads and suggested changes beside the text, as in Google Docs
 // and Word. Everything is CriticMarkup in the file (page-critic.js); this pane only lists it and acts on it.
 import { TextSelection } from '@tiptap/pm/state';
+import { t } from './i18n.js';
 import { docReview, settle, resolveThread, commentBody } from './page-critic.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -45,7 +46,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     const act = activeIndex();
     pane.innerHTML = `<div class="rv-head">
         <div class="rv-title"><span class="rv-count">${threads.length} ${threads.length === 1 ? 'comment' : 'comments'} · ${changes.length} ${changes.length === 1 ? 'suggestion' : 'suggestions'}</span></div>
-        <button type="button" class="btn btn-quiet rv-align" data-rv="align" aria-pressed="${aligned}" title="Show each comment beside its line">Beside text</button>
+        <button type="button" class="btn btn-quiet rv-align" data-rv="align" aria-pressed="${aligned}" title="${esc(t('review.besideTextTip'))}">${esc(t('review.besideText'))}</button>
       </div>
       <div class="rv-tools">
         <div class="rv-mode" role="radiogroup" aria-label="Mode" data-mode="${mode()}">${[['edit', 'Editing', 'Change the text directly'], ['suggest', 'Suggesting', 'Your changes become suggestions'], ['view', 'Viewing', 'Read only']].map(([k, l, t]) => `<button type="button" role="radio" aria-checked="${mode() === k}" data-mode-set="${k}" title="${t}">${l}</button>`).join('')}</div>
@@ -89,7 +90,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     const what = x.kind === 'ins' ? `Add <ins class="critic-ins">${esc(short(x.text))}</ins>` : x.kind === 'del' ? `Delete <del class="critic-del">${esc(short(x.text))}</del>` : `Replace <del class="critic-del">${esc(short(x.old))}</del> with <ins class="critic-ins">${esc(short(x.new))}</ins>`;
     return `<article class="rv-card rv-change${active ? ' is-active' : ''}" data-i="${i}" tabindex="0">
       <div class="rv-meta"><b>Suggestion</b></div><p>${what}</p>
-      <div class="rv-row"><button type="button" class="btn" data-act="accept" data-i="${i}">${ic('check')}<span>Accept</span></button><button type="button" class="btn" data-act="reject" data-i="${i}">${ic('close')}<span>Reject</span></button></div>
+      <div class="rv-row"><button type="button" class="btn" data-act="accept" data-i="${i}">${ic('check')}<span>${esc(t('review.accept'))}</span></button><button type="button" class="btn" data-act="reject" data-i="${i}">${ic('close')}<span>${esc(t('review.reject'))}</span></button></div>
     </article>`;
   }
   // never rebuild the pane under someone typing a comment or reply: wait until they leave the field
@@ -149,7 +150,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
 
   /* resting on a suggestion in the text offers Accept and Reject right there (Word, Docs) */
   const bar = document.createElement('div'); bar.className = 'rv-hover'; bar.hidden = true; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Suggestion');
-  bar.innerHTML = `<button type="button" data-hv="accept" aria-label="Accept this suggestion">${ic('check')}<span>Accept</span></button><button type="button" data-hv="reject" aria-label="Reject this suggestion">${ic('close')}<span>Reject</span></button>`;
+  bar.innerHTML = `<button type="button" data-hv="accept" aria-label="${esc(t('review.acceptLabel'))}">${ic('check')}<span>${esc(t('review.accept'))}</span></button><button type="button" data-hv="reject" aria-label="${esc(t('review.rejectLabel'))}">${ic('close')}<span>${esc(t('review.reject'))}</span></button>`;
   host.append(bar);
   let hoverEl = null, hoverTimer = 0;
   const hideBar = () => { clearTimeout(hoverTimer); bar.hidden = true; hoverEl = null; };

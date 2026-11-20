@@ -44,7 +44,7 @@
         </section>
       </div>
 
-      <button class="ai-status no-drag" type="button" id="ai-status" aria-label="AI connections">
+      <button class="ai-status no-drag" type="button" id="ai-status" data-tip="AI connections">
         <span class="ai-status-icon" aria-hidden="true"></span>
         <span class="ai-status-text">
           <span class="ai-status-title" id="ai-status-title">AI access</span>
@@ -53,7 +53,7 @@
       </button>
     </aside>
 
-    <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>
+    <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="200" aria-valuemax="420" aria-valuenow="260" tabindex="0"></div>
 
     <!-- Main -->
     <main class="main" id="main">
@@ -116,7 +116,7 @@
         <button type="button" class="st-words" id="st-words" data-tip="Word count (Ctrl+Shift+C)"></button>
         <span id="st-time"></span>
         <span id="st-cursor"></span>
-        <span class="st-zoom" id="st-zoom" hidden><button type="button" class="st-zoom-btn" data-zoom="-1" aria-label="Zoom out">−</button><button type="button" class="st-zoom-btn st-zoom-val" id="st-zoom-val" data-zoom="0" aria-label="Reset zoom" data-tip="Page zoom. Click for 100%">100%</button><button type="button" class="st-zoom-btn" data-zoom="1" aria-label="Zoom in">+</button></span>
+        <span class="st-zoom" id="st-zoom" hidden><button type="button" class="st-zoom-btn" data-zoom="-1" aria-label="Zoom out">−</button><button type="button" class="st-zoom-btn st-zoom-val" id="st-zoom-val" data-zoom="0" aria-label="Reset zoom to 100%" data-tip="Page zoom. Click for 100%">100%</button><button type="button" class="st-zoom-btn" data-zoom="1" aria-label="Zoom in">+</button></span>
       </footer>
     </main>
   </div>
@@ -135,6 +135,7 @@
 
   <dialog class="sheet" id="sheet-ai" aria-labelledby="ai-title"></dialog>
   <dialog class="sheet sheet-wide" id="sheet-diff" aria-labelledby="diff-title"></dialog>
+  <dialog class="sheet sheet-wide help-sheet" id="sheet-help" aria-labelledby="help-title"></dialog>
   <dialog class="sheet" id="sheet-settings" aria-labelledby="settings-title"></dialog>
   <dialog class="sheet" id="sheet-assets" aria-labelledby="assets-title"></dialog>
   <dialog class="sheet sheet-small" id="sheet-prompt" aria-labelledby="prompt-title"></dialog>

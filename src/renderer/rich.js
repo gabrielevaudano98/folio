@@ -180,11 +180,11 @@ const Decorate = Extension.create({
           }
         }
       });
-      return DecorationSet.create(doc, deco);
+      return deco;
     };
     return [new Plugin({
       key: new PluginKey('folioDecorate'),
-      state: { init: (_, s) => build(s.doc), apply: (tr, old) => (tr.docChanged ? build(tr.doc) : old) },
+      state: { init: (_, s) => DecorationSet.create(s.doc, build(s.doc)), apply: (tr, old) => (tr.docChanged ? DecorationSet.create(tr.doc, build(tr.doc)) : old) },
       props: {
         decorations(state) { return this.getState(state); },
         handleDOMEvents: {
@@ -206,6 +206,17 @@ const Decorate = Extension.create({
           mouseout(view, e) { const el = e.target.closest?.('.rich-wikilink'); if (el && el === hover.el && !el.contains(e.relatedTarget)) hover.hide(); return false; },
           keydown() { hover.hide(); return false; },
           scroll() { hover.hide(); return false; },
+        },
+        /* from the keyboard: Alt+Enter with the caret in a status, tag or link does what clicking it does */
+        handleKeyDown(view, e) {
+          if (e.key !== 'Enter' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+          let node = view.root.getSelection?.()?.anchorNode; if (!node || !view.dom.contains(node)) { try { node = view.domAtPos(view.state.selection.from).node; } catch { return false; } }
+          const el = (node.nodeType === 3 ? node.parentElement : node)?.closest?.('.rich-status, .rich-tag, .rich-wikilink, .rich-ref'); if (!el) return false;
+          e.preventDefault();
+          if (el.classList.contains('rich-status') && opts.onStatus) { const from = view.posAtDOM(el, 0); const m = /^\[status::[ \t]*([^\]\n]*?)[ \t]*\]/.exec(view.state.doc.textBetween(from, Math.min(view.state.doc.resolve(from).end(), from + 100), '\n', '\0')); if (m) opts.onStatus(el, m[1], (v) => { view.dispatch(view.state.tr.insertText(`[status:: ${v}]`, from, from + m[0].length)); view.focus(); }); return true; }
+          if (el.classList.contains('rich-tag')) { const { $from } = view.state.selection; const at = $from.parentOffset, txt = $from.parent.textContent; let tag = el.textContent; for (const m of txt.matchAll(/#[\p{L}\p{N}_\/-]+/gu)) if (at >= m.index && at <= m.index + m[0].length) tag = m[0]; opts.onTag?.(tag.replace(/^#/, '')); return true; } // the chip can be split in two by an open suggestion: read the whole tag from the text
+          if (el.dataset.target) { opts.onWikiLink?.(el.dataset.target); return true; }
+          return false;
         },
         handleClick(view, pos, event) {
           const tag = event.target.closest?.('.rich-tag');
@@ -552,7 +563,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
       el = document.createElement('div'); el.className = 'slash-menu';
       el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">↑↓ to move · Enter to choose · Esc to close</div>';
       list = el.firstChild; document.body.append(el);
-      view.dom.setAttribute('aria-controls', 'slash-list'); view.dom.setAttribute('aria-expanded', 'true');
+      view.dom.setAttribute('aria-controls', 'slash-list'); // aria-expanded is not allowed on a textbox: the list is announced through aria-activedescendant
       list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
       list.addEventListener('mousemove', (e) => { const it = e.target.closest('.slash-item'); if (it && +it.dataset.i !== sel) { sel = +it.dataset.i; list.querySelectorAll('.slash-item').forEach((n) => n.setAttribute('aria-selected', String(+n.dataset.i === sel))); view.dom.setAttribute('aria-activedescendant', `slash-${sel}`); } });
       paint(); place();
@@ -564,12 +575,12 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
       const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
       if (step) { sel = (sel + step + items.length) % items.length; paint(); return true; }
       if (event.key === 'Home' || event.key === 'End') { sel = event.key === 'Home' ? 0 : items.length - 1; paint(); return true; }
-      if (event.key === 'Enter' || event.key === 'Tab') { choose(sel); return true; }
+      if ((event.key === 'Enter' && !event.altKey) || event.key === 'Tab') { choose(sel); return true; } // Alt+Enter is "open it" (Decorate), not "pick"
       return false;
     },
     onExit() {
       el?.remove(); el = null;
-      view?.dom.removeAttribute('aria-controls'); view?.dom.removeAttribute('aria-activedescendant'); view?.dom.setAttribute('aria-expanded', 'false');
+      view?.dom.removeAttribute('aria-controls'); view?.dom.removeAttribute('aria-activedescendant'); view?.dom.removeAttribute('aria-expanded');
     },
   };
 }
@@ -1052,6 +1063,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   const ACTIVE = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strike', highlight: 'highlight', code: 'code', link: 'link', linkInline: 'link', bullet: 'bulletList', ordered: 'orderedList', task: 'taskList', quote: 'blockquote', codeblock: 'codeBlock', superscript: 'superscript', subscript: 'subscript', hiddenComment: 'hiddenComment', colour: 'folioColor', inlineMath: 'inlineMath', blockMath: 'blockMath' };
   const ALIGN_BTN = { alignLeft: null, alignCenter: 'center', alignRight: 'right', alignJustify: 'justify' };
   function syncToolbar() {
+    host.classList.toggle('rich-large', editor.state.doc.childCount > 2500); // very long pages: blocks off screen are not laid out (CSS content-visibility), which keeps typing quick
     for (const b of host.querySelectorAll('.rb[data-cmd]')) {
       const n = ACTIVE[b.dataset.cmd];
       if (n) b.setAttribute('aria-pressed', String(editor.isActive(n)));

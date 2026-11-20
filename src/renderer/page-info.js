@@ -1,4 +1,5 @@
 // Folio — the Info tab of a page (D16): what the page holds and when the file last changed. Pure; runs on any text.
+import { t } from './i18n.js';
 const words = (s) => (s.match(/[\p{L}\p{N}’'-]+/gu) || []).length;
 
 export function docInfo(text) {
@@ -25,30 +26,29 @@ export function docInfo(text) {
   };
 }
 
-const plural = (n, one, many = one + 's') => `${new Intl.NumberFormat().format(n)} ${n === 1 ? one : many}`;
 export const size = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`);
 export const ago = (ms, now = Date.now()) => {
   const d = Math.max(0, now - ms), m = Math.round(d / 60000);
-  if (m < 1) return 'just now'; if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60); if (h < 24) return `${h} h ago`;
+  if (m < 1) return t('info.justNow'); if (m < 60) return t('info.minAgo', { n: m });
+  const h = Math.round(m / 60); if (h < 24) return t('info.hAgo', { n: h });
   return new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'short', year: new Date(ms).getFullYear() === new Date(now).getFullYear() ? undefined : 'numeric' });
 };
 
 /** rows for the panel: [label, value]; `file` is { mtimeMs, birthtimeMs, size } when the main process knows it */
 export function infoRows(info, path, file) {
-  const rows = [['Words', plural(info.words, 'word')], ['Reading time', `${info.minutes} min`], ['Characters', new Intl.NumberFormat().format(info.chars)]];
-  if (info.headings) rows.push(['Headings', String(info.headings)]);
-  if (info.tasks.done + info.tasks.open) rows.push(['Tasks', `${info.tasks.done} of ${info.tasks.done + info.tasks.open} done`]);
-  if (info.links) rows.push(['Links', String(info.links)]);
-  if (info.images) rows.push(['Images', String(info.images)]);
-  if (info.embeds) rows.push(['Embeds', String(info.embeds)]);
-  if (info.tables) rows.push(['Tables', String(info.tables)]);
-  if (info.codeBlocks) rows.push(['Code blocks', String(info.codeBlocks)]);
-  if (info.comments) rows.push(['Comments', String(info.comments)]);
-  if (info.suggestions) rows.push(['Suggestions', String(info.suggestions)]);
-  rows.push(['Path', path || '']);
-  rows.push(['Size', size(file?.size ?? info.bytes)]);
-  if (file?.mtimeMs) rows.push(['Changed', ago(file.mtimeMs)]);
-  if (file?.birthtimeMs) rows.push(['Created', new Date(file.birthtimeMs).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })]);
+  const rows = [[t('info.words'), new Intl.NumberFormat().format(info.words)], [t('info.readingTime'), t('info.minutes', { n: info.minutes })], [t('info.characters'), new Intl.NumberFormat().format(info.chars)]];
+  if (info.headings) rows.push([t('info.headings'), String(info.headings)]);
+  if (info.tasks.done + info.tasks.open) rows.push([t('info.tasks'), t('info.tasksDone', { done: info.tasks.done, total: info.tasks.done + info.tasks.open })]);
+  if (info.links) rows.push([t('info.links'), String(info.links)]);
+  if (info.images) rows.push([t('info.images'), String(info.images)]);
+  if (info.embeds) rows.push([t('info.embeds'), String(info.embeds)]);
+  if (info.tables) rows.push([t('info.tables'), String(info.tables)]);
+  if (info.codeBlocks) rows.push([t('info.codeBlocks'), String(info.codeBlocks)]);
+  if (info.comments) rows.push([t('info.comments'), String(info.comments)]);
+  if (info.suggestions) rows.push([t('info.suggestions'), String(info.suggestions)]);
+  rows.push([t('info.path'), path || '']);
+  rows.push([t('info.size'), size(file?.size ?? info.bytes)]);
+  if (file?.mtimeMs) rows.push([t('info.changed'), ago(file.mtimeMs)]);
+  if (file?.birthtimeMs) rows.push([t('info.created'), new Date(file.birthtimeMs).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })]);
   return rows;
 }

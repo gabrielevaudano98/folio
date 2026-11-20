@@ -777,6 +777,7 @@ a.md-card:hover { box-shadow: inset 0 0 0 0.5px var(--color-rule-strong); }
   background: var(--color-paper); font-size: var(--text-sm); color: var(--color-ink);
 }
 .rb-select:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; }
+.rich-large .rich-prose > :not(h1, h2, h3, h4, h5, h6, .rich-page-break) { content-visibility: auto; contain-intrinsic-size: auto 1.8em; }
 .rich-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--color-paper-2); padding: var(--space-xl) var(--space-lg) 30vh; scrollbar-width: thin; cursor: text; }
 .rich-page {
   position: relative;
@@ -1578,7 +1579,7 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .tg-nav-item[aria-current="true"] { background: var(--color-select); color: var(--color-ink); font-weight: var(--weight-medium); }
 .tg-nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tg-nav-ic { width: 18px; text-align: center; font-size: 13px; }
-.tg-n { font-size: var(--text-xs); color: var(--color-faint); font-variant-numeric: tabular-nums; }
+.tg-n { font-size: var(--text-xs); color: var(--color-muted); font-variant-numeric: tabular-nums; }
 .tg-hint { margin: 2px 8px; font-size: var(--text-xs); color: var(--color-faint); line-height: 1.4; }
 .tg-nav-foot { display: grid; gap: 6px; padding: var(--space-xs) var(--space-sm) var(--space-sm); border-top: 0.5px solid var(--color-rule); }
 .tg-nav-foot .btn { display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; }
@@ -1602,7 +1603,7 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .tg-card-desc { font-size: var(--text-xs); color: var(--color-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tg-card-foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .tg-chip { padding: 1px 7px; border-radius: 99px; background: var(--content-gray-bg); font-size: var(--text-2xs); color: var(--content-gray); white-space: nowrap; }
-.tg-src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-2xs); color: var(--color-faint); }
+.tg-src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-2xs); color: var(--color-muted); }
 .tg-star { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; font-size: 15px; color: var(--color-rule-strong); opacity: 0; }
 .tg-card:hover .tg-star, .tg-card:focus-within .tg-star, .tg-star[aria-pressed="true"], .tg-preview-head .tg-star { opacity: 1; }
 .tg-star[aria-pressed="true"] { color: var(--content-yellow); }
@@ -1737,3 +1738,12 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .tbl-drop { position: absolute; pointer-events: none; background: var(--color-accent-soft); outline: 2px solid var(--color-accent); outline-offset: -2px; border-radius: var(--radius-xs); opacity: 0.6; }
 .tbl-drop[hidden] { display: none; }
 .tbl-grip { cursor: grab; }
+
+/* ---------- help sheet (D14) ---------- */
+.help-search { width: 100%; margin-bottom: var(--space-md); }
+.help-list { margin: 0; display: grid; gap: 1px; }
+.help-list > div { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--space-md); padding: var(--space-xs) 0; border-bottom: 1px solid var(--color-rule); align-items: baseline; }
+.help-list dt { font-size: var(--text-ui); }
+.help-list dt code { font-size: var(--text-sm); overflow-wrap: anywhere; }
+.help-list dd { margin: 0; color: var(--color-ink-2); font-size: var(--text-sm); }
+.help-list dd kbd { color: var(--color-ink); }

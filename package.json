@@ -19,6 +19,7 @@
   },
   "license": "AGPL-3.0-only",
   "devDependencies": {
+    "axe-core": "^4.14.1",
     "electron": "^45.3.4",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",

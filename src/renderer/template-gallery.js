@@ -77,7 +77,7 @@ export function openGallery(dialog, host) {
       main.innerHTML = `<header class="tg-main-head"><h2 id="tg-title">${esc(title())}</h2><span class="tg-n">${list.length || ''}</span>
           <button type="button" class="rb tg-close" data-act="close" aria-label="Close" data-tip="Close (Esc)">${ic('close')}</button></header>
         ${view.startsWith('community') && communityError ? `<p class="tg-error">${esc(empty)} <button type="button" class="btn btn-quiet" data-act="retry">Try again</button></p>` : ''}
-        <div class="tg-grid" role="listbox" aria-labelledby="tg-title">${list.map((t) => `<div class="tg-card${current?.id === t.id ? ' is-current' : ''}" role="option" aria-selected="${current?.id === t.id}" tabindex="0" data-id="${esc(t.id)}">
+        <div class="tg-grid" role="list" aria-labelledby="tg-title">${list.map((t) => `<div class="tg-card${current?.id === t.id ? ' is-current' : ''}" role="listitem"${current?.id === t.id ? ' aria-current="true"' : ''} tabindex="0" data-id="${esc(t.id)}">
             <span class="tg-thumb" aria-hidden="true"><span class="tg-thumb-page prose">${thumbs.has(t.id) ? thumbs.get(t.id) : ''}</span></span>
             <span class="tg-card-ic" aria-hidden="true">${esc(iconOf(t))}</span>
             <span class="tg-card-name">${esc(t.name)}</span>
@@ -128,6 +128,7 @@ export function openGallery(dialog, host) {
         const raw = await host.text(t); if (n !== seq) return;
         const html = await host.preview(raw, t); if (n !== seq) return;
         prev.querySelector('.tg-preview-doc').innerHTML = html.html;
+        prev.querySelectorAll('.tg-preview-doc input[type=checkbox]:not([aria-label])').forEach((c) => c.setAttribute('aria-label', (c.closest('li')?.textContent || 'Task').trim().slice(0, 80) || 'Task'));
         const props = parseProps(html.text).props.filter((p) => !p.readOnly);
         prev.querySelector('.tg-preview-props').innerHTML = props.length ? props.map((p) => `<span class="tg-prop"><b>${esc(p.key)}</b> ${esc(Array.isArray(p.value) ? p.value.join(', ') : String(p.value ?? ''))}</span>`).join('') : '';
       } catch (e) { if (n === seq) prev.querySelector('.tg-preview-doc').innerHTML = `<p class="tg-error">${esc(e.message)}</p>`; }

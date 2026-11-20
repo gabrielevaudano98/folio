@@ -12,6 +12,8 @@ import { parseRef, resolveTarget, docKind, findMentions, linkMention } from './r
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { docInfo, infoRows } from './page-info.js';
+import { t as tr, setLocale, LOCALES } from './i18n.js';
+import { helpSections } from './page-help.js';
 import { renameTag, setTypeOverrides } from './page-props.js';
 import { listTemplates, fillTemplate, askVars, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
 import { openGallery } from './template-gallery.js';
@@ -113,6 +115,7 @@ const isRich = () => app.dataset.modeView === 'edit';
 
 async function boot() {
   const init = await folio.init();
+  setLocale(init.settings.language);
   S.platform = init.platform; S.settings = init.settings; S.mcp = init.mcp; S.version = init.version;
   folio.userName().then((n) => { S.userName = n || ''; }).catch(() => {});
   document.documentElement.dataset.platform = init.platform;
@@ -149,7 +152,7 @@ async function boot() {
     askUrl: (title) => prompt({ title, label: 'Address', placeholder: 'https://', action: 'Insert' }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
     openMedia: (src) => openMedia(src),
     createDoc: createDocHere,
-    onCommand: (id) => { if (id === 'template') return insertTemplateCmd(); if (id === 'daily-note') return openDailyNote(todayKey()); if (id === 'template-button') return insertTemplateButton(); if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
+    onCommand: (id) => { if (id === 'template') return insertTemplateCmd(); if (id === 'daily-note') return openDailyNote(todayKey()); if (id === 'template-button') return insertTemplateButton(); if (id === 'help') return openHelp(); if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
     isOn: (id) => (id === 'focus' ? app.classList.contains('focus') : id === 'outline' ? app.dataset.outline === 'open' : id === 'spellcheck' ? !!S.settings.spellcheck : false),
     onTag: (t) => showTag(t),
     onTemplate: (b, pos) => runTemplateButton(b, pos),
@@ -278,12 +281,12 @@ const infoFile = {};
 async function renderInfo(refetch) {
   if (app.dataset.dock !== 'info') return;
   const t = activeTab(), el = $('#dock-info');
-  if (!t) { el.innerHTML = '<p class="info-empty">Open a page to see its details.</p>'; return; }
+  if (!t) { el.innerHTML = `<p class="info-empty">${esc(tr('info.empty'))}</p>`; return; }
   if (refetch || !(t.path in infoFile)) infoFile[t.path] = await folio.info(t.path).catch(() => null);
   if (activeTab()?.path !== t.path || app.dataset.dock !== 'info') return;
   const rows = infoRows(curType() === 'md' ? docInfo(t.text) : { words: 0, chars: 0, minutes: 1, tasks: { done: 0, open: 0 }, bytes: new TextEncoder().encode(t.text).length }, t.path, infoFile[t.path]);
-  const shown = curType() === 'md' ? rows : rows.filter(([k]) => ['Path', 'Size', 'Changed', 'Created'].includes(k));
-  el.innerHTML = `<h2 class="side-head">Details</h2><dl class="info-list">${shown.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
+  const shown = curType() === 'md' ? rows : rows.filter(([k]) => [tr('info.path'), tr('info.size'), tr('info.changed'), tr('info.created')].includes(k));
+  el.innerHTML = `<h2 class="side-head">${esc(tr('info.title'))}</h2><dl class="info-list">${shown.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
 }
 const infoSoon = debounce(() => renderInfo(false), 200);
 
@@ -401,7 +404,7 @@ function renderTabs() {
     const dirty = t.text !== t.saved;
     return `<div class="tab" role="tab" tabindex="0" data-tab="${esc(t.path)}" aria-selected="${t.path === S.active}" data-dirty="${dirty}" data-ai="${S.aiEdits.has(t.path)}" title="${esc(t.path)}">
       <span class="tab-label">${esc(stem(t.path))}</span>
-      <span class="tab-close" role="button" tabindex="-1" data-close="${esc(t.path)}" aria-label="${dirty ? 'Unsaved changes. Close' : 'Close'} ${esc(stem(t.path))}">${icons.close}</span></div>`;
+      <span class="tab-close" aria-hidden="true" data-close="${esc(t.path)}">${icons.close}</span></div>`; // a mouse shortcut: from the keyboard a tab closes with Delete or ⌘/Ctrl+W
   }).join('');
 }
 async function closeTab(p = S.active) {
@@ -1055,7 +1058,7 @@ function renderStatus() {
   if (st) {
     $('#st-words').textContent = st.selection ? `${fmt.format(st.selection.words)} of ${fmt.format(st.words)} words` : `${fmt.format(st.words)} ${st.words === 1 ? 'word' : 'words'}`;
     $('#st-time').textContent = st.selection ? `${fmt.format(st.selection.chars)} characters selected` : `${fmt.format(st.chars)} characters · ${Math.max(1, Math.round(st.words / 230))} min read`;
-    zoomEl.hidden = false; $('#st-zoom-val').textContent = `${Math.round(st.zoom * 100)}%`;
+    zoomEl.hidden = false; $('#st-zoom-val').textContent = `${Math.round(st.zoom * 100)}%`; $('#st-zoom-val').setAttribute('aria-label', `${Math.round(st.zoom * 100)}% zoom, reset to 100%`);
   } else zoomEl.hidden = true;
 }
 
@@ -1396,6 +1399,8 @@ function openSettings() {
       <section class="group"><h3>Appearance</h3><div class="rows">
         <div class="row"><div class="row-main"><label class="row-title" for="set-theme">Theme</label></div>
           <select class="select" id="set-theme" data-setting="theme"><option value="system">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+        <div class="row"><div class="row-main"><label class="row-title" for="set-lang">${esc(tr('settings.language'))}</label><span class="row-sub">${esc(tr('settings.languageHint'))}</span></div>
+          <select class="select" id="set-lang" data-setting="language">${Object.entries(LOCALES).map(([c, l]) => `<option value="${c}">${esc(l.name)}</option>`).join('')}</select></div>
         <div class="row"><div class="row-main"><label class="row-title" for="set-size">Text size</label><span class="row-sub">Editor and preview</span></div>
           <select class="select" id="set-size" data-setting="fontSize">${[14, 15, 16, 17, 18, 20, 22].map((n) => `<option value="${n}">${n} pt</option>`).join('')}</select></div>
         <div class="row"><div class="row-main"><label class="row-title" for="set-width">Line length</label><span class="row-sub">Characters per line</span></div>
@@ -1414,8 +1419,25 @@ function openSettings() {
           <input class="input" id="set-port" type="text" inputmode="numeric" name="port" autocomplete="off" value="${s.mcpPort}" style="width:7rem" aria-describedby="port-help"></div>
       </div></section>
     </div>`;
-  $('#set-theme', d).value = s.theme; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth;
-  d.showModal(); $('#set-theme', d).focus();
+  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth;
+  if (!d.open) d.showModal();
+  $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
+}
+
+/* ============ help sheet (shortcuts from the commands themselves, so it can't drift) ============ */
+function openHelp(query = '') {
+  const d = $('#sheet-help');
+  const draw = (q) => {
+    const secs = helpSections(COMMANDS, keyLabel, q);
+    $('#help-body', d).innerHTML = secs.length ? secs.map((s) => `<section class="group" aria-labelledby="help-${s.id}"><h3 id="help-${s.id}">${esc(s.title)}</h3><dl class="help-list">${s.rows.map(([a, b]) => `<div><dt>${s.id === 'syntax' ? `<code>${esc(a)}</code>` : esc(a)}</dt><dd>${s.id === 'shortcuts' ? `<kbd>${esc(b)}</kbd>` : esc(b)}</dd></div>`).join('')}</dl></section>`).join('') : `<p class="info-empty">${esc(tr('help.none'))}</p>`;
+  };
+  if (!d.open) {
+    d.innerHTML = `<div class="sheet-head"><div><h2 id="help-title">${esc(tr('help.title'))}</h2></div><button class="icon-btn" type="button" data-close-sheet aria-label="${esc(tr('help.close'))}">${icons.close}</button></div>
+      <div class="sheet-body"><input class="input help-search" id="help-search" type="search" name="help-search" autocomplete="off" aria-label="${esc(tr('help.search'))}" placeholder="${esc(tr('help.search'))}" value="${esc(query)}"><div id="help-body"></div></div>`;
+    $('#help-search', d).addEventListener('input', (e) => draw(e.target.value));
+    d.showModal();
+  }
+  draw(query); $('#help-search', d).focus();
 }
 
 /* ============ palette ============ */
@@ -1453,6 +1475,7 @@ const COMMANDS = [
   { id: 'toggle-sidebar', title: 'Toggle sidebar', key: 'Mod+\\', run: toggleSidebar },
   { id: 'toggle-outline', title: 'Toggle outline', key: 'Mod+Shift+O', run: toggleOutline },
   { id: 'focus', title: 'Focus mode', key: 'Mod+.', run: toggleFocus },
+  { id: 'help', title: 'Help: shortcuts and syntax', key: 'F1', run: () => openHelp() },
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
   { id: 'assets-clean', title: 'Files: clean up unused files…', run: () => openAssets() },
   { id: 'assets-ask', title: 'Files: ask before removing a file from the folder', run: () => { saveSetting({ assetRemoval: 'ask' }); toast('Folio will ask when a file is removed from a page.'); } },
@@ -1852,6 +1875,15 @@ function showMenu(anchor, items, at) {
   m.innerHTML = items.map((it, i) => it === '-' ? '<div class="menu-sep" role="separator"></div>' : it.head ? `<div class="menu-head">${esc(it.head)}</div>`
     : `<button class="menu-item ${it.danger ? 'danger' : ''}" type="button" role="menuitem" data-mi="${i}"${it.disabled ? ' disabled aria-disabled="true"' : ''}><span class="menu-label">${esc(it.label)}</span>${it.key ? `<kbd>${esc(keyLabel(it.key))}</kbd>` : ''}</button>`).join('');
   m.onclick = (e) => { const b = e.target.closest('[data-mi]'); if (!b) return; m.hidePopover(); items[Number(b.dataset.mi)].run(); };
+  /* the ARIA menu pattern: arrows, Home and End move between items, a letter jumps to the next label that starts with it, Tab closes */
+  m.onkeydown = (e) => {
+    const list = [...m.querySelectorAll('.menu-item:not([disabled])')]; if (!list.length) return;
+    const i = list.indexOf(document.activeElement);
+    const go = (k) => { e.preventDefault(); list[(k + list.length) % list.length].focus(); };
+    if (e.key === 'ArrowDown') go(i + 1); else if (e.key === 'ArrowUp') go(i < 0 ? -1 : i - 1); else if (e.key === 'Home') go(0); else if (e.key === 'End') go(-1);
+    else if (e.key === 'Tab') m.hidePopover();
+    else if (e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) { const k = e.key.toLowerCase(); const n = [...list.slice(i + 1), ...list.slice(0, i + 1)].find((b) => b.textContent.trim().toLowerCase().startsWith(k)); if (n) { e.preventDefault(); n.focus(); } }
+  };
   m.showPopover();
   const r = at ? { left: at.x, bottom: at.y, right: at.x } : anchor.getBoundingClientRect();
   const w = m.offsetWidth, h = m.offsetHeight;
@@ -1982,7 +2014,7 @@ function bindChrome() {
     const t = e.target.closest('[data-tab]'); if (t && t.dataset.tab !== S.active) activate(t.dataset.tab);
   });
   $('#tabs').addEventListener('auxclick', (e) => { const t = e.target.closest('[data-tab]'); if (t && e.button === 1) closeTab(t.dataset.tab); });
-  $('#tabs').addEventListener('keydown', (e) => { const t = e.target.closest('[data-tab]'); if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); activate(t.dataset.tab); } });
+  $('#tabs').addEventListener('keydown', (e) => { const t = e.target.closest('[data-tab]'); if (!t) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(t.dataset.tab); } else if (e.key === 'Delete') { e.preventDefault(); closeTab(t.dataset.tab); } });
 
   // outline
   $('#outline-list').addEventListener('click', (e) => {
@@ -2063,6 +2095,7 @@ function bindChrome() {
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
+    if (k === 'language') { setLocale(v); renderInfo(false); if ($('#sheet-settings').open) openSettings(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });
   document.addEventListener('input', (e) => {
@@ -2087,7 +2120,9 @@ function bindChrome() {
   $('#palette').addEventListener('pointerdown', (e) => { if (e.target.id === 'palette') closePalette(); });
 
   // resizers
-  dragResize($('#sidebar-resizer'), (x) => { const w = Math.max(200, Math.min(420, x)); document.documentElement.style.setProperty('--sidebar-w', `${w}px`); localStorageSet('folio.sidebarW', w); });
+  const sideW = (w) => { w = Math.max(200, Math.min(420, w)); document.documentElement.style.setProperty('--sidebar-w', `${w}px`); localStorageSet('folio.sidebarW', w); $('#sidebar-resizer').setAttribute('aria-valuenow', String(Math.round(w))); return w; };
+  dragResize($('#sidebar-resizer'), sideW);
+  $('#sidebar-resizer').addEventListener('keydown', (e) => { const d = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0; if (!d) return; e.preventDefault(); sideW(+$('#sidebar-resizer').getAttribute('aria-valuenow') + d); });
   dragResize($('#pane-divider'), (x) => { const ws = $('#workspace').getBoundingClientRect(); const outline = $('#outline').offsetWidth; splitRatio = Math.max(0.22, Math.min(0.78, (x - ws.left) / (ws.width - outline))); localStorageSet('folio.split', splitRatio); layoutPanes(); });
 
   // global shortcuts not owned by the menu
