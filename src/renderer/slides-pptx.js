@@ -334,7 +334,7 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote, prepare 
   } finally { host.remove(); }
   const bytes = await pptx.write({ outputType: 'uint8array' });
   const motion = list.map((s, k) => ({ n: k + 1, transition: s.transition ?? deck.global.transition ?? null, advance: s.advance ?? deck.global.advance ?? null, animations: s.animations }));
-  return finishPackage(bytes, { palette, fonts: pptx.theme, anchors, motion, W: deck.width, H: deck.height });
+  return finishPackage(bytes, { palette, fonts: pptx.theme, anchors, motion, W: deck.width, H: deck.height, loop: String(deck.global.loop) === 'true', kiosk: String(deck.global.kiosk) === 'true' });
 }
 
 /** the deck's tokens as a PowerPoint colour scheme, so theme colours in PowerPoint are the deck's */
@@ -346,10 +346,15 @@ function themePalette(sec) {
   return { dk1: ink, lt1: paper, dk2: v('--sl-muted') || '6B6B6B', lt2: v('--sl-card') || 'F0F0F0', accent1: accent, accent2: ch[0] || accent, accent3: ch[1] || accent, accent4: ch[2] || accent, accent5: ch[3] || accent, accent6: ch[4] || accent, hlink: accent, folHlink: v('--sl-muted') || accent };
 }
 /** what pptxgenjs cannot write: the deck's colour scheme and how layout placeholders anchor their text */
-export async function finishPackage(bytes, { palette, fonts = {}, anchors = [], motion = [], W = 1280, H = 720 } = {}) {
+export async function finishPackage(bytes, { palette, fonts = {}, anchors = [], motion = [], W = 1280, H = 720, loop = false, kiosk = false } = {}) {
   const moving = motion.filter((m) => m.transition || m.advance || m.animations?.length);
-  if (!palette && !anchors.length && !moving.length) return bytes;
+  if (!palette && !anchors.length && !moving.length && !loop && !kiosk) return bytes;
   const zip = await JSZip.loadAsync(bytes);
+  if (loop || kiosk) {
+    // how the show runs: looping, or browsed at a kiosk
+    const f = zip.file('ppt/presProps.xml');
+    if (f) { const x = (await f.async('string')).replace(/<p:showPr[\s\S]*?<\/p:showPr>|<p:showPr[^>]*\/>/, '').replace(/(<p:presentationPr\b[^>]*>)/, `$1<p:showPr loop="1" showNarration="1">${kiosk ? '<p:kiosk/>' : '<p:present/>'}<p:sldAll/></p:showPr>`); zip.file('ppt/presProps.xml', x); }
+  }
   if (moving.length) { const { writeMotion } = await import('./slides-pptx-motion.js'); await writeMotion(zip, moving, { W, H }); }
   if (palette) await withTheme(zip, palette, fonts);
   if (anchors.length) {
