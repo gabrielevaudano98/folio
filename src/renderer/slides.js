@@ -77,7 +77,7 @@ export function mountSlides(host, ctx) {
   let tplText = null, tplRef = null, tplSeq = 0;
   const parse = (t) => parseDeck(t, { template: tplText });
   const undo = []; const redo = []; let lastPush = 0, restoring = false;
-  const docs = perDoc(undo, redo);
+  const docs = perDoc(undo, redo); let seen = false;
   const thumbs = host.querySelector('.sl-thumbs');
   const frame = host.querySelector('.sl-frame');
   const stage = host.querySelector('.sl-stage');
@@ -1333,11 +1333,11 @@ export function mountSlides(host, ctx) {
 
   return {
     setText(t) {
-      const moved = docs.bind(ctx.docKey?.());
+      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true;
       if (moved) lastPush = 0; // the coalescing timer belongs to one document
       if (t === text) { if (moved) syncHistory(); return; }
       // a change that did not come from this canvas (an AI edit, the code pane) is a step of its own, so Undo gives it back
-      if (!moved && text && !restoring) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; lastPush = Date.now(); }
+      if (!moved && had && !restoring) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; lastPush = 0; }
       text = t; deck = parse(t); loadTemplate();
       cur = Math.min(cur, deck.slides.length - 1);
       render(); syncHistory();

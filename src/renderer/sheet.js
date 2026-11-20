@@ -58,7 +58,7 @@ export function mountSheet(host, ctx) {
   let text = '', blocks = [], si = 0, ev = null;
   let anchor = [0, 0], focus = [0, 0], editing = null, colSel = false;
   const undo = [], redo = [];
-  const docs = perDoc(undo, redo);
+  const docs = perDoc(undo, redo); let seen = false;
   let clip = null;
 
   const sheets = () => blocks.filter((b) => b.type === 'sheet');
@@ -573,8 +573,8 @@ export function mountSheet(host, ctx) {
 
   return {
     setText(t) {
-      const moved = docs.bind(ctx.docKey?.()); if (t === text) { if (moved) render(); return; }
-      if (!moved && text) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
+      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true; if (t === text) { if (moved) render(); return; }
+      if (!moved && had) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       load(t); render();
     },
     setMode() { requestAnimationFrame(drawSel); },

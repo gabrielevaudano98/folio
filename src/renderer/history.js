@@ -40,6 +40,8 @@ export function createActionLog(limit = 50) {
       return next;
     },
     clear() { gen++; done.length = 0; undone.length = 0; },
+    /** resolves when every run so far has finished */
+    idle() { return chain; },
   };
   return log;
 }

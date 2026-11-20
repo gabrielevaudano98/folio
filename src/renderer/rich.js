@@ -284,14 +284,15 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
 
   const api = {
     editor,
-    setMarkdown(md) {
+    /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
+    setMarkdown(md, { keepHistory = false } = {}) {
       const m = md.match(FM);
       frontmatter = m ? m[0] : '';
       silent = true;
       try { editor.commands.setContent(md.slice(frontmatter.length), { contentType: 'markdown', emitUpdate: false }); }
       finally { silent = false; }
       // a loaded document starts with a clean history, so Undo never reaches into the previous tab
-      const st = editor.state; editor.view.updateState(EditorState.create({ schema: st.schema, doc: st.doc, plugins: st.plugins }));
+      if (!keepHistory) { const st = editor.state; editor.view.updateState(EditorState.create({ schema: st.schema, doc: st.doc, plugins: st.plugins })); }
       host.querySelector('.rich-scroll').scrollTop = 0;
       syncToolbar();
     },

@@ -369,7 +369,7 @@ function setActiveText(text) {
   const t = activeTab(); if (!t) return;
   t.text = text;
   editor.applyRemote(text);
-  if (curType() === 'md') { if (isRich()) rich.setMarkdown(text); }
+  if (curType() === 'md') { if (isRich()) rich.setMarkdown(text, { keepHistory: true }); }
   else curSurface()?.setText(text);
 }
 function renderTabsDirty() {
@@ -661,7 +661,7 @@ async function newNote(folder = dirOf(S.active || ''), type) {
     if (folder) S.expanded.add(folder);
     await refreshTree(); await openFile(p);
     let rec = null;
-    actions.push({ label: `created ${base(p)}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); await openFile(p); } });
+    actions.push({ scope: S.workspace, label: `created ${base(p)}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); await openFile(p); } });
     updateHistoryButtons();
     if (type === 'md' && !isRich()) editor.view.dispatch({ selection: { anchor: editor.view.state.doc.length } });
   } catch (e) { toast(e.message, { kind: 'error' }); }
@@ -758,7 +758,7 @@ async function newFolder(parent = '') {
   try {
     const p = (parent ? parent + '/' : '') + name; await folio.mkdir(p); S.expanded.add(p); await refreshTree();
     let rec = null;
-    actions.push({ label: `created folder ${name}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); } });
+    actions.push({ scope: S.workspace, label: `created folder ${name}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); } });
     updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
@@ -780,7 +780,7 @@ async function moveRaw(from, to) {
 async function movePath(from, to, isDir) {
   try {
     const n = await moveRaw(from, to);
-    actions.push({ label: `${dirOf(from) === dirOf(to) ? 'renamed' : 'moved'} ${isDir ? base(from) : stem(from)}`, undo: () => moveRaw(to, from), redo: () => moveRaw(from, to) });
+    actions.push({ scope: S.workspace, label: `${dirOf(from) === dirOf(to) ? 'renamed' : 'moved'} ${isDir ? base(from) : stem(from)}`, undo: () => moveRaw(to, from), redo: () => moveRaw(from, to) });
     toast(n ? `Updated links in ${n} ${n === 1 ? 'document' : 'documents'}.` : `${dirOf(from) === dirOf(to) ? 'Renamed' : 'Moved'} “${isDir ? base(from) : stem(from)}”.`, { action: ['Undo', () => fileUndo('undo')] });
     updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
@@ -821,7 +821,7 @@ async function trashPath(p, isDir) {
   try {
     let rec = await trashRaw(p);
     const name = isDir ? base(p) : stem(p);
-    actions.push({ label: `moved ${name} to the Trash`, undo: async () => { await untrashRaw(rec); }, redo: async () => { rec = await trashRaw(p); } });
+    actions.push({ scope: S.workspace, label: `moved ${name} to the Trash`, undo: async () => { await untrashRaw(rec); }, redo: async () => { rec = await trashRaw(p); } });
     toast(`Moved “${name}” to the Trash.`, { action: ['Undo', () => fileUndo('undo')] });
     updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
@@ -834,6 +834,7 @@ async function chooseFolder() {
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 async function switchWorkspace(dir) {
+  await actions.idle(); // let a file action that is still running finish in the folder it started in
   for (const t of S.tabs) await saveTab(t);
   S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear();
   renderTabs();
@@ -1095,6 +1096,7 @@ function editUndo(dir) {
 async function fileUndo(dir) {
   const op = actions.peek(dir);
   if (!op) return toast(dir === 'undo' ? 'No file action to undo.' : 'No file action to redo.');
+  if (op.scope !== S.workspace) { actions.clear(); return toast('That action belongs to another folder.', { kind: 'error' }); }
   try { await actions.run(dir); toast(`${dir === 'undo' ? 'Undid' : 'Redid'}: ${op.label}.`); }
   catch (e) { toast(e.message, { kind: 'error' }); }
   await refreshTree(); updateHistoryButtons();

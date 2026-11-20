@@ -74,7 +74,7 @@ export function mountBoard(host, ctx) {
   let sel = new Set(); // node ids and 'e:<index>'
   let view = { x: 40, y: 40, k: 1 }, fitted = false;
   const undo = [], redo = [];
-  const docs = perDoc(undo, redo);
+  const docs = perDoc(undo, redo); let seen = false;
   let clipboard = null;
 
   /* ---------- model io ---------- */
@@ -602,9 +602,9 @@ A o-- B   aggregation</pre>`;
 
   return {
     setText(t) {
-      const moved = docs.bind(ctx.docKey?.());
+      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true;
       if (t === text) { if (moved) render(); return; }
-      if (!moved && text) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
+      if (!moved && had) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       const first = !parts;
       load(t); render();
       if (first || !fitted) { fitted = false; requestAnimationFrame(() => { if (canvas.clientWidth) { fitted = true; fit(); } }); }
