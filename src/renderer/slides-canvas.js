@@ -50,7 +50,12 @@ export function mountCanvas(o) {
   });
 
   const apply = (e) => { e.target.style.cssText += e.cssText; };
-  const begin = () => { start = geo(); };
+  let copying = false, dragging = false;
+  // Alt held when the gesture started (Moveable does not always pass the pressing event on)
+  let altAtDown = false; const downAlt = (ev) => { altAtDown = !!ev.altKey; }; stage.addEventListener('mousedown', downAlt, true); stage.addEventListener('pointerdown', downAlt, true);
+  // Alt held while dragging (checked again at the drop, like PowerPoint's Ctrl-drag)
+  let altNow = false; const trackAlt = (ev) => { altNow = !!ev.altKey; }; document.addEventListener('mousemove', trackAlt, true); document.addEventListener('pointermove', trackAlt, true);
+  const begin = (e, drag = false) => { dragging = drag; start = geo(); copying = drag && (altAtDown || !!(e?.inputEvent?.altKey)); frame.classList.toggle('is-copying', copying); };
   const finish = () => {
     const els = moveable.target ? [].concat(moveable.target) : [];
     const objs = scanObjects(o.getChunk());
@@ -61,15 +66,29 @@ export function mountCanvas(o) {
       return [i, p];
     }).filter(([, p]) => Object.keys(p).length);
     if (!patches.length) return;
+    if (dragging && altNow) copying = true;
+    if (copying) {
+      // Alt-drag: the originals stay, copies land where the drag ended
+      copying = false; frame.classList.remove('is-copying');
+      const n0 = objs.length;
+      o.edit((chunk) => patches.reduce((t, [i, p]) => {
+        const ob = scanObjects(t)[i]; const nid = nextId(t, ob.kind === 'image' ? 'image' : ob.kind);
+        let src = objectSource(t, i).replace(/ #[\w-]+/, '').replace(/^(\s*:::\s*\w+)/, `$1 #${nid}`);
+        if (ob.kind === 'image') src = src.replace(/\{([^}]*)\}\s*$/, (m, inner) => `{#${nid} ${inner.replace(/#[\w-]+\s*/, '')}}`);
+        return setMany(addObject(t, src), [[scanObjects(t).length, p]]);
+      }, chunk));
+      o.onSelect(patches.map((_, j) => n0 + j));
+      return;
+    }
     o.edit((chunk) => setMany(chunk, patches));
   };
 
-  moveable.on('dragStart', begin).on('drag', apply).on('dragEnd', ({ isDrag }) => { if (isDrag) finish(); });
-  moveable.on('resizeStart', begin).on('resize', apply).on('resizeEnd', ({ isDrag }) => { if (isDrag) finish(); });
-  moveable.on('rotateStart', begin).on('rotate', apply).on('rotateEnd', ({ isDrag }) => { if (isDrag) finish(); });
-  moveable.on('dragGroupStart', begin).on('dragGroup', ({ events }) => events.forEach(apply)).on('dragGroupEnd', ({ isDrag }) => { if (isDrag) finish(); });
-  moveable.on('resizeGroupStart', begin).on('resizeGroup', ({ events }) => events.forEach(apply)).on('resizeGroupEnd', ({ isDrag }) => { if (isDrag) finish(); });
-  moveable.on('rotateGroupStart', begin).on('rotateGroup', ({ events }) => events.forEach(apply)).on('rotateGroupEnd', ({ isDrag }) => { if (isDrag) finish(); });
+  moveable.on('dragStart', (e) => begin(e, true)).on('drag', apply).on('dragEnd', ({ isDrag }) => { if (isDrag) finish(); });
+  moveable.on('resizeStart', () => begin()).on('resize', apply).on('resizeEnd', ({ isDrag }) => { if (isDrag) finish(); });
+  moveable.on('rotateStart', () => begin()).on('rotate', apply).on('rotateEnd', ({ isDrag }) => { if (isDrag) finish(); });
+  moveable.on('dragGroupStart', (e) => begin(e, true)).on('dragGroup', ({ events }) => events.forEach(apply)).on('dragGroupEnd', ({ isDrag }) => { if (isDrag) finish(); });
+  moveable.on('resizeGroupStart', () => begin()).on('resizeGroup', ({ events }) => events.forEach(apply)).on('resizeGroupEnd', ({ isDrag }) => { if (isDrag) finish(); });
+  moveable.on('rotateGroupStart', () => begin()).on('rotateGroup', ({ events }) => events.forEach(apply)).on('rotateGroupEnd', ({ isDrag }) => { if (isDrag) finish(); });
 
   const selecto = new Selecto({
     container: stage, rootContainer: stage, dragContainer: frame,
@@ -109,6 +128,16 @@ export function mountCanvas(o) {
     // handles on a single object follow its rotation; groups are axis-aligned
     moveable.updateRect();
     if (notify) o.onSelect(sel);
+    announce(els);
+  }
+  // a live region tells screen readers what is selected and where
+  const live = document.createElement('div'); live.className = 'visually-hidden'; live.setAttribute('aria-live', 'polite'); stage.appendChild(live);
+  function announce(els) {
+    if (!els.length) { live.textContent = ''; return; }
+    if (els.length > 1) { live.textContent = `${els.length} objects selected`; return; }
+    const ob = scanObjects(o.getChunk())[indexOf(els[0])]; if (!ob) return; const g = geometry(ob);
+    const what = (ob.body || ob.alt || '').replace(/[#*_`>[\]-]/g, '').trim().split('\n')[0].slice(0, 40);
+    live.textContent = `${ob.kind}${what ? ' ' + what : ''}${ob.id ? ', ' + ob.id : ''}, x ${Math.round(g.x)}, y ${Math.round(g.y)}, ${Math.round(g.w)} by ${Math.round(g.h)}. Arrows move, Enter edits text, Delete removes.`;
   }
 
   /* keyboard: arrows nudge, Delete removes, Ctrl+D duplicates, Ctrl+A selects all, Esc clears */
@@ -117,6 +146,14 @@ export function mountCanvas(o) {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); set(objEls().map(indexOf)); return; }
     if (e.key === 'Escape' && sel.length) { set([]); return; }
+    if (e.key === 'Tab' && !mod) {
+      // keyboard-only editing: Tab and Shift+Tab walk through the objects on the slide
+      const all = objEls().filter((el) => !el.classList.contains('is-locked')).map(indexOf).sort((a, b) => a - b); if (!all.length) return;
+      e.preventDefault();
+      const curI = sel.length ? all.indexOf(sel[sel.length - 1]) : -1;
+      const nextI = e.shiftKey ? (curI <= 0 ? all.length - 1 : curI - 1) : (curI + 1) % all.length;
+      set([all[nextI]]); return;
+    }
     if (!sel.length) return;
     const step = e.shiftKey ? 10 : 1;
     const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
@@ -203,6 +240,6 @@ export function mountCanvas(o) {
     setGrid(n) { moveable.snapGridWidth = n; moveable.snapGridHeight = n; moveable.updateRect(); },
     selection: () => sel,
     update: () => { moveable.updateRect(); if (ends.length) drawEnds(byIndex(sel[0])); },
-    destroy() { ends.forEach((h) => h.remove()); stage.removeEventListener('keydown', onKey); selecto.destroy(); moveable.destroy(); },
+    destroy() { document.removeEventListener('mousemove', trackAlt, true); document.removeEventListener('pointermove', trackAlt, true); live.remove(); ends.forEach((h) => h.remove()); stage.removeEventListener('keydown', onKey); selecto.destroy(); moveable.destroy(); },
   };
 }

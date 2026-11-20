@@ -153,10 +153,34 @@ export function mountSlides(host, ctx) {
       for (let n = 0; n < 60 && size > 10 && (t.scrollHeight > el.clientHeight + 1 || t.scrollWidth > el.clientWidth + 1); n++) { size -= 1; t.style.fontSize = `${size}px`; }
     }
   }
+  /* canvas zoom: 1 = fit the window; above that the stage scrolls (and Space-drag pans) */
+  let zoom = 1;
+  const zoomBar = document.createElement('div'); zoomBar.className = 'sl-zoombar'; zoomBar.setAttribute('role', 'group'); zoomBar.setAttribute('aria-label', 'Zoom');
+  zoomBar.innerHTML = '<button type="button" class="icon-btn" data-z="-" aria-label="Zoom out">−</button><button type="button" class="sl-zoom-pct" data-z="fit" title="Fit to window (Ctrl+0)">100%</button><button type="button" class="icon-btn" data-z="+" aria-label="Zoom in">+</button>';
+  stage.parentElement.appendChild(zoomBar);
+  const setZoom = (z, at) => {
+    const old = zoom; zoom = Math.max(1, Math.min(6, Math.round(z * 100) / 100)); if (zoom === old) return;
+    const r = stage.getBoundingClientRect(); const px = at ? at.x - r.left : r.width / 2, py = at ? at.y - r.top : r.height / 2;
+    const fx = (stage.scrollLeft + px) / Math.max(1, stage.scrollWidth), fy = (stage.scrollTop + py) / Math.max(1, stage.scrollHeight);
+    fit(); stage.scrollLeft = fx * stage.scrollWidth - px; stage.scrollTop = fy * stage.scrollHeight - py;
+  };
+  zoomBar.addEventListener('click', (e) => { const b = e.target.closest('[data-z]'); if (!b) return; const z = b.dataset.z; setZoom(z === 'fit' ? 1 : z === '+' ? zoom * 1.25 : zoom / 1.25); });
+  stage.addEventListener('wheel', (e) => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), { x: e.clientX, y: e.clientY }); }, { passive: false });
+  host.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.target.closest('input, textarea, select, [contenteditable="true"], .cm-editor')) return;
+    if (e.key === '=' || e.key === '+') { e.preventDefault(); setZoom(zoom * 1.25); } else if (e.key === '-') { e.preventDefault(); setZoom(zoom / 1.25); } else if (e.key === '0') { e.preventDefault(); setZoom(1); }
+  });
+  let panning = null, spaceDown = false;
+  host.addEventListener('keydown', (e) => { if (e.key === ' ' && zoom > 1 && !e.target.closest('input, textarea, [contenteditable="true"], .cm-editor')) { spaceDown = true; stage.classList.add('is-panning'); e.preventDefault(); } });
+  host.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceDown = false; stage.classList.remove('is-panning'); } });
+  stage.addEventListener('pointerdown', (e) => { if (!spaceDown && e.button !== 1) return; e.preventDefault(); e.stopPropagation(); panning = { x: e.clientX, y: e.clientY, l: stage.scrollLeft, t: stage.scrollTop }; }, true);
+  addEventListener('pointermove', (e) => { if (!panning) return; stage.scrollLeft = panning.l - (e.clientX - panning.x); stage.scrollTop = panning.t - (e.clientY - panning.y); });
+  addEventListener('pointerup', () => { panning = null; });
   function fit() {
     if (!deck) return;
     const r = stage.getBoundingClientRect();
-    const k = Math.max(0.05, Math.min((r.width - 48) / deck.width, (r.height - 48) / deck.height));
+    const k = Math.max(0.05, Math.min((r.width - 48) / deck.width, (r.height - 48) / deck.height)) * zoom;
+    stage.classList.toggle('is-zoomed', zoom > 1); const pct = zoomBar.querySelector('.sl-zoom-pct'); if (pct) pct.textContent = `${Math.round(zoom * 100)}%`;
     frame.style.width = `${deck.width * k}px`; frame.style.height = `${deck.height * k}px`;
     frame.style.setProperty('--k', k);
     canvas?.update();

@@ -1151,3 +1151,12 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .sl-present-split { display: inline-flex; } .sl-present-split .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; } .sl-present-more { border-top-left-radius: 0; border-bottom-left-radius: 0; padding-inline: 8px; margin-left: 1px; }
 .presenter.is-embedded .pr-bar { display: none; }
 .pv-qa-list li.pv-empty { list-style: none; margin-left: -1.2em; }
+
+/* canvas zoom and pan */
+.sl-stage.is-zoomed { overflow: auto; place-items: start; padding: 24px; }
+.sl-stage.is-panning, .sl-stage.is-panning * { cursor: grab !important; }
+.sl-zoombar { position: absolute; right: 12px; bottom: 12px; z-index: 6; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: var(--radius-md, 8px); background: var(--color-paper); border: 1px solid var(--color-rule); }
+.surface-slides.sl-docked .sl-zoombar { right: 276px; }
+.sl-zoom-pct { font: inherit; font-size: var(--text-xs, 12px); min-width: 4.5ch; border: 0; background: none; color: inherit; cursor: pointer; font-variant-numeric: tabular-nums; }
+.sl-frame.is-copying .sl-moveable { opacity: .6; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
