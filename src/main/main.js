@@ -470,8 +470,9 @@ h('connections:list', async () => {
   const entry = stdioEntry();
   const list = [];
   for (const [id, t] of Object.entries(TARGETS)) {
+    // a pre-1.2.3 entry (no --mcp-stdio) still works but shows Connect, which rewrites it
     let installed = false, appPresent = fss.existsSync(path.dirname(t.file));
-    try { const cur = (await readJson(t.file))?.[t.key]?.folio; installed = !!cur && Array.isArray(cur.args) && cur.args.includes('--mcp-stdio'); // a pre-1.2.3 entry still works but shows Connect, which rewrites it } catch {}
+    try { const cur = (await readJson(t.file))?.[t.key]?.folio; installed = !!cur && Array.isArray(cur.args) && cur.args.includes('--mcp-stdio'); } catch {}
     list.push({ id, name: t.name, file: t.file, installed, appPresent, restart: t.restart, snippet: JSON.stringify({ [t.key]: { folio: t.shape(entry) } }, null, 2) });
   }
   const cli = `claude mcp add folio --scope user -- ${[entry.command, ...entry.args].map(quote).join(' ')}`;
