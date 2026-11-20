@@ -62,7 +62,7 @@ Bigger bets after 1.3.
 - MCP server with live, reversible AI edits; one-click connection to Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code.
 - CI with format, MCP and UI smoke tests; CodeQL; Dependabot; cubic and Claude reviews.
 
-## Next (1.2.3, unreleased)
+## Done in 1.2.3
 
 - The MCP bridge now runs inside the app binary (`--mcp-stdio`), so the `RunAsNode` fuse is off on macOS and Linux (Windows keeps it, its exe gets no stdin). Existing client configs keep working; on macOS and Linux Connect rewrites them to the new form, while Windows keeps the legacy form. CI starts the packaged builds and talks MCP to them. Fuses are set per platform in `build/afterPack.cjs`.
 
