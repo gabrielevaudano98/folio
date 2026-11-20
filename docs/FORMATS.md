@@ -167,6 +167,15 @@ Continue
 - **Q&A** opens a page on the local network (address and QR code in the presenter view); questions appear beside the notes. It listens only while Q&A is open and keeps questions in memory.
 - **Record narration** records one audio clip per slide from the microphone and adds it to the slide as `::: media #narration … autoplay=true :::`.
 
+### Slides and AI assistants (MCP)
+
+Connected assistants can work on a deck object by object instead of rewriting the file:
+
+- Read: `list_slides`, `list_slide_objects` (ids, kinds, geometry in px, attributes, text, links), `get_design_ideas`.
+- Change: `add_object`, `move_object`, `restyle_object`, `remove_object`, `set_animations`, `set_transition` (one slide or all), `rewrite_links`, `set_alt_text`, `set_speaker_notes`, `apply_design_idea`.
+- **Translate a deck:** `read_note` the deck, then `write_note` it back with every heading, paragraph, list item, table cell and object text translated, keeping front matter, `:::` lines, `#ids`, attributes, comments (`animate:`, `transition:`, notes) and links unchanged; translate the notes with `set_speaker_notes`. Save as a copy (`Deck (Italiano).slides.md`) unless asked to replace it.
+- **Describe pictures:** `list_slide_objects` on each slide, then `set_alt_text` for every image, icon, chart and diagram without a description; the Review pane's accessibility check lists what is still missing.
+
 ### PowerPoint in and out
 
 - **Export to PowerPoint** (File menu) renders each slide at its real size and measures it, so the .pptx matches Folio: text frames keep position, fonts, sizes, colours and spacing; placed objects become native shapes, lines and arrows, freeforms, pictures (crop kept), tables, charts, video and audio; masters become slide layouts with title, subtitle and body placeholders; the deck's tokens become the theme colours and fonts. Hidden slides stay hidden, sections and speaker notes are kept. Gradients are drawn as pictures. Fonts are named, not embedded: the portable family of a font stack is used (`Segoe UI` for the system stack, `Georgia` for serif, `Consolas` for mono).

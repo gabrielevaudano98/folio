@@ -5,6 +5,7 @@ import FORMATS from '../../docs/FORMATS.md';
 import TEMPLATES from '../../docs/TEMPLATES.md';
 import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
 import { resolveRef, loadExternals } from '../renderer/refs.js';
+import { SLIDE_TOOLS, runSlideTool } from './mcp-slides.js';
 
 export const SERVER_INFO = { name: 'folio', version: '1.1.0' };
 
@@ -65,6 +66,7 @@ export const TOOLS = [
   { name: 'open_note', title: 'Show note to user', write: false, annotations: ro, appOnly: true,
     description: 'Open a note in Folio so the user sees it, optionally scrolled to a line.',
     input: { path: z.string(), line: z.number().int().min(1).optional() } },
+  ...SLIDE_TOOLS,
 ];
 
 const asText = (v) => ({ content: [{ type: 'text', text: typeof v === 'string' ? v : JSON.stringify(v, null, 2) }] });
@@ -130,6 +132,8 @@ export async function runTool(notes, name, a, hooks = {}) {
     case 'find_broken_links': return notes.brokenLinks(a.path);
     case 'get_open_note': if (!hooks.openNote) throw new Error('Folio is not running.'); return hooks.openNote();
     case 'open_note': if (!hooks.showNote) throw new Error('Folio is not running.'); await hooks.showNote(a); return `Opened ${a.path}`;
-    default: throw new Error(`Unknown tool ${name}`);
+    default:
+      if (SLIDE_TOOLS.some((t) => t.name === name)) return runSlideTool(notes, name, a, wrote);
+      throw new Error(`Unknown tool ${name}`);
   }
 }
