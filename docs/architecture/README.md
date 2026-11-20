@@ -18,7 +18,8 @@ creates is a Markdown file in a folder they choose: pages, slide decks, whiteboa
 | 5 | **Files stay portable** | Plain Markdown that other editors read; no lock-in, no database. |
 
 Stakeholders: the person using Folio (often non-technical), AI assistants connected through MCP, contributors (the AGPL
-requires changes to come back, see `CONTRIBUTING.md`).
+requires anyone who distributes or serves a modified version to publish its source; changes come back through pull
+requests, see `CONTRIBUTING.md`).
 
 ## 2. Constraints
 
@@ -37,7 +38,9 @@ C4Context
   System_Ext(ai, "AI assistant", "Claude Desktop, Claude Code, Cursor, VS Code…")
   System_Ext(fs, "The open folder", "Markdown files and assets on disk")
   System_Ext(dl, "Download sources", "Hugging Face, npm, GitHub releases (optional components only)")
+  Person_Ext(aud, "Audience", "People in the room during a presentation")
   Rel(user, folio, "Uses")
+  Rel(aud, folio, "Sends questions", "HTTP on the local network, only while Q&A is open")
   Rel(ai, folio, "MCP tools", "HTTP on 127.0.0.1 or stdio")
   Rel(folio, fs, "Reads and writes")
   Rel(folio, dl, "Downloads pinned files", "HTTPS, only when a feature is turned on")
@@ -51,7 +54,7 @@ server; the only network traffic is the optional component download and what the
 | Goal | Approach |
 |---|---|
 | Files safe | One module resolves every path (`notes.js`); atomic writes ([ADR 0008](../adr/0008-atomic-writes.md)); lossless round-trip tests for every format. |
-| Responsive | No synchronous I/O in the main process after startup; heavy work in other processes; visual editors loaded on first use ([ADR 0009](../adr/0009-lazy-visual-editors.md)). |
+| Responsive | Note reading, writing and network calls are asynchronous in the main process (the few small synchronous calls are listed in [process-model](../explanation/process-model.md)); heavy work in other processes; visual editors loaded on first use ([ADR 0009](../adr/0009-lazy-visual-editors.md)). |
 | Lean | The installer carries only the esbuild bundle ([ADR 0010](../adr/0010-ship-the-bundle-only.md)); optional components are downloaded on demand ([ADR 0005](../adr/0005-optional-components-are-downloaded.md)). |
 | AI, safely | One tool table for both MCP hosts, token and Host/Origin checks, read-only switch ([ADR 0004](../adr/0004-mcp-over-http-and-stdio.md)). |
 | Portable | Each document type is a Markdown dialect with a pure parser and serializer ([`FORMATS.md`](../FORMATS.md)). |
@@ -70,6 +73,7 @@ C4Container
     Container(win, "Window", "Chromium renderer, sandboxed", "Shell, editors, previews. No Node.js; talks only through window.folio")
     Container(asr, "Meeting worker", "Electron utilityProcess", "Voice detection and transcription; exists only while recording")
     Container(llm, "Notes engine", "llama.cpp server, child process", "Drafts meeting notes; exists only after a recording")
+    Container(qa, "Q&A server", "HTTP in the main process", "Question form for the audience; listens on 0.0.0.0 only while Q&A is open")
     Container(bridge, "stdio bridge", "The Folio binary with --mcp-stdio", "Started by the AI app; relays to the main process or works on the folder")
   }
   System_Ext(fs, "The open folder")
@@ -81,6 +85,7 @@ C4Container
   Rel(main, fs, "Reads, writes, watches")
   Rel(ai, main, "MCP over HTTP", "127.0.0.1:47321 + token")
   Rel(ai, bridge, "MCP over stdio")
+  Rel(main, qa, "Starts and stops it")
   Rel(bridge, main, "Relays tool calls", "HTTP + token")
   Rel(bridge, fs, "Direct mode when the app is closed")
 ```
@@ -173,6 +178,8 @@ See [`docs/adr/`](../adr/README.md).
   into modules is planned when they next change, not as a refactor of its own.
 - The meeting recorder is not yet measured on Windows hardware (loopback with USB and Bluetooth headsets, Defender).
 - Remote images in previews load directly (see `SECURITY.md`).
+- The audience Q&A page listens on all network interfaces while it is open, so anyone on the same network can send a
+  question. It accepts only short text, keeps it in memory and serves no files; it closes when the presenter closes Q&A.
 - Windows keeps the `RunAsNode` fuse on for the stdio bridge.
 - Builds are not code-signed yet.
 

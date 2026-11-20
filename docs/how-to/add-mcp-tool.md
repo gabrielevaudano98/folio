@@ -5,6 +5,7 @@
    and `input` as zod fields with `.describe()`.
 2. Implement it in `runTool()` in the same file. Go through `notes` for every file access; never use `fs` directly with
    a path that came from the AI.
-3. If it changes files, return `{ path, before, after }` from the write, so the app highlights it and offers Undo.
-4. Add a case to `test/mcp.test.mjs` (it runs over HTTP and stdio).
+3. If it changes files, pass the result of the `notes` write (`{ path, before, after }`) through the `wrote(result, verb)`
+   helper in `runTool()`: it calls the app's `onWrite` hook, which highlights the change and offers Undo.
+4. Add a case to `test/mcp.test.mjs` (stdio always; HTTP too when `FOLIO_APP_BRIDGE` points to a running app).
 5. Regenerate the reference: `node scripts/docs-reference.mjs` (the test suite fails until you do).

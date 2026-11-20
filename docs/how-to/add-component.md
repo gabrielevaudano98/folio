@@ -12,6 +12,7 @@ Components are the files an optional feature downloads (models, native runtimes)
    `unpack`, `into`, `strip`, `keep`.
 4. Measure the model's memory peak and set `peakRamMB` (see [measure performance](measure-performance.md)). It must stay
    below the feature's `budget.workerMB`.
-5. To make it the default, put its id in the feature's `required` or `notes` list and the old one in `alternatives`.
+5. To make it the default, put its id in the feature's `required` list (or `notes`, for the notes model and its engine)
+   and move the old id to `alternatives`, keyed by kind, for example `alternatives: { asr: ['old-id'] }`.
 6. Run `node test/features.test.mjs` and `node scripts/docs-reference.mjs`, then install it from Settings in a dev build
    to check the hashes against the real downloads.

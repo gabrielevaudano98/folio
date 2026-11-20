@@ -42,11 +42,26 @@ const defaults = {
 };
 let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
+// settings change often (every tab switch records the last file), so writes are batched and done off the main thread;
+// quitting writes any pending change at once. It holds the MCP token (0600) and is atomic, so a crash cannot leave it half written.
+let settingsTimer = null, settingsWrite = Promise.resolve();
 function saveSettings() {
-  fss.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true });
-  writeAtomicSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); // it holds the MCP token; atomic, so a crash cannot leave it half written
-  try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {}
-  writeBridge();
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(() => {
+    settingsTimer = null;
+    const text = JSON.stringify(settings, null, 2);
+    settingsWrite = settingsWrite.then(async () => {
+      await fs.mkdir(path.dirname(SETTINGS_FILE()), { recursive: true });
+      await writeAtomic(SETTINGS_FILE(), text, { mode: 0o600 });
+      writeBridge();
+    }).catch((e) => console.error('[folio] settings not saved:', e.message));
+  }, 200);
+}
+function flushSettingsSync() {
+  if (!settingsTimer) return;
+  clearTimeout(settingsTimer); settingsTimer = null;
+  try { fss.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true }); writeAtomicSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); writeBridge(); }
+  catch (e) { console.error('[folio] settings not saved:', e.message); }
 }
 function writeBridge() {
   const b = { port: mcpServerPort, token: settings.token, workspace: settings.workspace, allowWrite: settings.allowWrite, pid: process.pid };
@@ -96,15 +111,18 @@ function createWindow() {
   const here = (u) => String(u).split(/[?#]/)[0];
   const lock = (e, url) => { if (here(url) === here(win.webContents.getURL())) return; e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); };
   win.webContents.on('will-navigate', lock);
-  // the page crashed (out of memory, a GPU or renderer fault): open it again rather than leave a blank window;
-  // notes are saved as you type and tabs are restored from settings. Three crashes in a minute stop the loop.
+  // the page crashed (out of memory, a GPU or renderer fault): open it again rather than leave a blank window.
+  // Notes are autosaved shortly after typing stops, so the last second or so of typing can be lost; tabs come back from
+  // settings. A recording in progress is stopped and saved first, since its audio came from this page.
+  // Up to three reloads a minute; a fourth crash stops the loop.
   const crashes = [];
   win.webContents.on('render-process-gone', (_e, d) => {
     if (d.reason === 'clean-exit' || win.isDestroyed()) return;
     console.error('[folio] window process gone:', d.reason, d.exitCode);
+    if (features.active()) features.stop();
     const now = Date.now(); crashes.push(now); while (crashes.length && now - crashes[0] > 60000) crashes.shift();
     if (crashes.length <= 3) { win.webContents.reload(); return; }
-    dialog.showMessageBox(win, { type: 'error', message: 'Folio’s window keeps closing unexpectedly.', detail: `Reason: ${d.reason}. Your notes are saved on disk. Restart Folio, and if it happens again, report it with this reason.`, buttons: ['Quit'] }).then(() => app.quit());
+    dialog.showMessageBox(win, { type: 'error', message: 'Folio’s window keeps closing unexpectedly.', detail: `Reason: ${d.reason}. Your notes are saved on disk, apart from anything typed in the last moment before the crash. Restart Folio, and if it happens again, report it with this reason.`, buttons: ['Quit'] }).then(() => app.quit());
   });
   win.webContents.on('will-redirect', lock);
   win.on('close', (e) => {
@@ -626,7 +644,7 @@ app.on('before-quit', (e) => { // a recording is saved before the app quits; a n
   if (!features.active()) { features.abortNotes(); return; }
   e.preventDefault(); features.stop().finally(() => app.quit());
 });
-app.on('before-quit', () => { fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
+app.on('before-quit', () => { flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
 async function devShot(w) {

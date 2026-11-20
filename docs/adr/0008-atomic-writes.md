@@ -15,7 +15,7 @@ Notes were written in place. A crash, a power cut or a full disk during a write 
 
 ## Decision
 
-`src/main/atomic.js` writes to a hidden temporary file next to the target, flushes it, then renames it over the target. On Windows it retries while another program holds the file, and falls back to writing in place where renames are refused. A symbolic link keeps its target.
+`src/main/atomic.js` writes to a hidden temporary file next to the target, flushes it, then renames it over the target. On Windows it retries for about 1.6 s while another program holds the file; if it is still locked the write fails with a clear message and the old file is untouched (no in-place fallback, which could leave half a file). The new file keeps the old one's mode, a read-only file is refused, and a symbolic link keeps its target.
 
 ## Consequences
 

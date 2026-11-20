@@ -10,7 +10,7 @@ for (let f = 0; f < 30; f++) { const d = path.join(w.ws, `Area ${f}`); fs.mkdirS
 const block = (i) => `## Section ${i}\n\nA paragraph with **bold**, *italic*, \`code\` and a [link](https://example.com) number ${i}.\n\n- item one\n- item two\n  - nested ${i}\n\n| a | b | c |\n|---|---|---|\n| ${i} | x | y |\n\n\`\`\`js\nconst n${i} = ${i} * 2;\n\`\`\`\n`;
 fs.writeFileSync(path.join(w.ws, 'Long page.md'), '# Long page\n\n' + Array.from({ length: 400 }, (_, i) => block(i)).join('\n'));
 const longtasks = "window.__lt=[];new PerformanceObserver((l)=>{for(const e of l.getEntries())window.__lt.push(Math.round(e.duration))}).observe({type:'longtask',buffered:true});1";
-const maxLT = (label) => ({ js: `(()=>{const v={action:'${label}',longestMs:Math.max(0,...window.__lt),tasksOver50:window.__lt.length};window.__lt=[];return v})()`, log: true, wait: 50 });
+const maxLT = (label) => ({ js: `(()=>{const v={action:'${label}',longestTaskOver50Ms:Math.max(0,...window.__lt),tasksOver50:window.__lt.length};window.__lt=[];return v})()`, log: true, wait: 50 });
 const steps = [
   { size: [1400, 900], wait: 500 },
   { js: longtasks, wait: 300 },
@@ -27,5 +27,5 @@ const steps = [
 ];
 const r = await runApp(w, steps, {}, 240000);
 const perf = r.log.split('\n').find((l) => l.startsWith('perf ')); const metrics = r.js.filter((x) => x?.metrics);
-const out = { loadedMs: perf ? JSON.parse(perf.slice(5)).loadedMs : null, memoryMB: { afterStart: metrics[0]?.totalMB, atRest: metrics[1]?.totalMB, afterWork: metrics[2]?.totalMB }, processes: metrics[1]?.metrics, actions: r.js.filter((x) => x?.action) };
+const out = { loadedMs: perf ? JSON.parse(perf.slice(5)).loadedMs : null, memoryMB: { afterStart: metrics[0]?.totalMB, atRest: metrics[1]?.totalMB, afterWork: metrics[2]?.totalMB }, processes: { afterStart: metrics[0]?.metrics, atRest: metrics[1]?.metrics, afterWork: metrics[2]?.metrics }, actions: r.js.filter((x) => x?.action) };
 console.log(JSON.stringify(out, null, 1));

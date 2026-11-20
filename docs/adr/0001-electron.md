@@ -21,7 +21,7 @@ Electron. One JavaScript code base for the editors and the main process; the sam
 
 - One language and one rendering engine; mature tooling (electron-builder, fuses, utilityProcess).
 - Larger download and memory than a system-webview app.
-- Security depends on configuring Electron strictly (sandbox, context isolation, CSP, fuses), which `main.js` and `build/afterPack.cjs` do.
+- Security depends on configuring Electron strictly (sandbox, context isolation, CSP, fuses), which `src/main/main.js` (sandbox, context isolation, navigation lock), `src/renderer/index.html` (CSP) and `build/afterPack.cjs` (fuses) do.
 
 ## Notes
 

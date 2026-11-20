@@ -165,7 +165,14 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
     },
     pathOf: dirOf,
     /** leftovers of an install that was interrupted while placing files; partial downloads are kept to resume */
-    async cleanup() { await fs.rm(staging, { recursive: true, force: true }); for (const id of Object.keys(components)) await fs.rm(dirOf(id) + '.old', { recursive: true, force: true }); },
+    async cleanup() {
+      await fs.rm(staging, { recursive: true, force: true });
+      for (const id of Object.keys(components)) { // an update stopped between its two renames: put the old version back
+        const dest = dirOf(id), old = dest + '.old';
+        if (!(await exists(old))) continue;
+        if (await exists(dest)) await fs.rm(old, { recursive: true, force: true }); else await fs.rename(old, dest);
+      }
+    },
   };
 }
 const gb = (n) => `${(n / 2 ** 30).toFixed(1)} GB`;

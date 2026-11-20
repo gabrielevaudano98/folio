@@ -16,8 +16,8 @@ and [WWDC22 Track down hangs](https://developer.apple.com/wwdc22/10082); Electro
 | What | Budget | Baseline, 20 Nov 2026 |
 |---|---|---|
 | Process start to page loaded | < 1,000 ms | 470–500 ms |
-| Longest task at startup | < 100 ms | 91–108 ms (at the limit) |
-| Longest task opening a 400-section page | < 100 ms | 101–110 ms (at the limit) |
+| Longest task at startup | < 100 ms | 91–108 ms (over budget in some runs) |
+| Longest task opening a 400-section page | < 100 ms | 101–110 ms (over budget) |
 | Longest task per keystroke | < 100 ms | 50–57 ms |
 | Scroll, command palette, quick open | < 100 ms | 0–57 ms |
 | Memory at rest, all processes | as low as possible | 597 MB |
@@ -31,6 +31,6 @@ change ([how-to](../how-to/measure-performance.md)).
 
 ## Next to look at
 
-- The startup task and opening a long page sit at the 100 ms line: profile them (likely editor creation and the first
+- The startup task and opening a long page are over the 100 ms budget: profile them (likely editor creation and the first
   layout of a long document).
 - Memory at rest: about 600 MB on Linux, a third of it the software GPU process; measure on Windows first.

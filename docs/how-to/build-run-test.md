@@ -21,7 +21,8 @@ You need Node.js 22 and git. On Linux, tests that open the window need `xvfb`.
   ```
   The wav must be 16 kHz mono 16-bit. The components folder must already hold the installed components; the simplest
   way is to install them once from Settings in a dev build started with the same `FOLIO_COMPONENTS_DIR`.
-- **A packaged binary**: `FOLIO_BINARY=release/linux-unpacked/folio node test/stdio-binary.test.mjs` checks the MCP bridge
+- **A packaged binary**: after `npx electron-builder --linux dir` (output in `release/linux-unpacked/`),
+  `FOLIO_BINARY=release/linux-unpacked/folio node test/stdio-binary.test.mjs` checks the MCP bridge
   through the installed app.
 
 ## Useful environment variables (development only)

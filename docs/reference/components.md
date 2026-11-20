@@ -2,7 +2,7 @@
 
 # Optional components
 
-What an optional feature downloads. Every file has a pinned address and a SHA-256 checked before it is used; nothing outside this list is ever downloaded. Components live in `%LOCALAPPDATA%\Folio\components` on Windows.
+What an optional feature downloads. Every file has a fixed address (a commit, a version or a release tag) and a SHA-256 that is checked before the file is used, so a changed file is refused; nothing outside this list is ever downloaded. Components live in `%LOCALAPPDATA%\Folio\components` on Windows.
 
 ## Feature: Meeting recorder (`meeting-recorder`)
 

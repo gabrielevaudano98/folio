@@ -2,10 +2,10 @@
 //   node scripts/docs-reference.mjs           write the pages
 //   node scripts/docs-reference.mjs --check   fail if a page is out of date (run by npm test)
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'); // also with spaces and drive letters
 const check = process.argv.includes('--check');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-docs-'));
 await esbuild.build({
@@ -28,7 +28,7 @@ function mcpTools() {
     o += `\n## \`${t.name}\`\n\n${t.description}\n\n`;
     if (!props.length) { o += 'No arguments.\n'; continue; }
     o += '| Argument | Type | Required | Description |\n|---|---|---|---|\n';
-    for (const [k, v] of props) o += `| \`${k}\` | ${cell(v.type || (v.enum ? v.enum.map((e) => `\`${e}\``).join(', ') : v.anyOf ? 'any of several' : 'object'))} | ${(js.required || []).includes(k) ? 'yes' : 'no'} | ${cell(v.description)} |\n`;
+    for (const [k, v] of props) o += `| \`${k}\` | ${cell(v.enum ? v.enum.map((e) => `\`${e}\``).join(', ') : v.type || (v.anyOf ? 'any of several' : 'object'))} | ${(js.required || []).includes(k) ? 'yes' : 'no'} | ${cell(v.description)} |\n`;
   }
   return o;
 }
@@ -45,8 +45,14 @@ function ipc() {
   for (const line of pre.split('\n')) {
     const g = line.match(/^\s{2}([a-zA-Z]+): \{\s*$/); if (g) { group = g[1]; continue; }
     if (/^\s{2}\},?\s*$/.test(line)) { group = ''; continue; }
-    const m = line.match(/^\s+([a-zA-Z]+):.*?\b(?:call|send|on)\('([a-z0-9:-]+)'/);
-    if (m) api.push({ name: (group ? group + '.' : '') + m[1], channel: m[2], kind: /\bon\('/.test(line) && !/call\(/.test(line) ? 'event' : /send\('/.test(line) ? 'message' : 'request' });
+    const kindOf = (fn) => (fn === 'on' ? 'event' : fn === 'send' ? 'message' : 'request');
+    const inline = line.match(/^\s{2}([a-zA-Z]+): \{(.+)\},?\s*$/); // a namespace on one line: qa: { start: …, poll: … }
+    if (inline) {
+      for (const m of inline[2].matchAll(/([a-zA-Z]+): \([^)]*\) => (call|send|on)\('([a-z0-9:-]+)'/g)) api.push({ name: `${inline[1]}.${m[1]}`, channel: m[3], kind: kindOf(m[2]) });
+      continue;
+    }
+    const m = line.match(/^\s+([a-zA-Z]+):.*?\b(call|send|on)\('([a-z0-9:-]+)'/);
+    if (m) api.push({ name: (group ? group + '.' : '') + m[1], channel: m[3], kind: kindOf(m[2]) });
   }
   let o = head('IPC: window ↔ main process', 'src/main/preload.cjs, src/main/main.js and src/main/meeting/service.js');
   o += 'The window has no Node.js. Everything it can ask of the main process is this list, exposed as `window.folio` by the preload script. Requests are answered by `h()` handlers, which accept calls only from the app page; events go from the main process to the window.\n\n';
@@ -61,7 +67,7 @@ function ipc() {
 function catalog() {
   const gb = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`);
   let o = head('Optional components', 'src/main/features/catalog.js');
-  o += 'What an optional feature downloads. Every file has a pinned address and a SHA-256 checked before it is used; nothing outside this list is ever downloaded. Components live in `%LOCALAPPDATA%\\Folio\\components` on Windows.\n\n';
+  o += 'What an optional feature downloads. Every file has a fixed address (a commit, a version or a release tag) and a SHA-256 that is checked before the file is used, so a changed file is refused; nothing outside this list is ever downloaded. Components live in `%LOCALAPPDATA%\\Folio\\components` on Windows.\n\n';
   for (const [id, f] of Object.entries(FEATURES)) {
     o += `## Feature: ${f.name} (\`${id}\`)\n\n${f.description}\n\n- Platforms: ${f.platforms.join(', ')}\n- Memory budget: worker ${f.budget.workerMB} MB, whole app ${f.budget.appMB} MB\n- Required: ${f.required.map((c) => `\`${c}\``).join(', ')}\n- Notes (optional): ${f.notes.map((c) => `\`${c}\``).join(', ')}\n`;
     if (f.alternatives) o += `- Alternatives: ${Object.entries(f.alternatives).map(([k, v]) => `${k}: ${v.map((c) => `\`${c}\``).join(', ')}`).join('; ')}\n`;
@@ -82,7 +88,7 @@ fs.mkdirSync(dir, { recursive: true });
 let stale = [];
 for (const [name, text] of Object.entries(pages)) {
   const file = path.join(dir, name);
-  let cur = null; try { cur = fs.readFileSync(file, 'utf8'); } catch {} // read once: no check-then-read
+  let cur = null; try { cur = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch {} // read once; a Windows checkout may have CRLF
   if (cur === text) continue;
   if (check) stale.push(name); else fs.writeFileSync(file, text);
 }

@@ -137,7 +137,7 @@ export function createNotes(getRoot) {
       if (count > 1 && !e.replaceAll) throw new NotesError(`Edit ${i + 1}: oldText appears ${count} times; add surrounding context or set replaceAll.`);
       text = e.replaceAll ? text.split(e.oldText).join(e.newText) : text.replace(e.oldText, () => e.newText);
     }
-    await fs.writeFile(abs, text, 'utf8');
+    await writeAtomic(abs, text);
     return { path: relOf(abs), before, after: text, created: false };
   }
 
@@ -162,7 +162,7 @@ export function createNotes(getRoot) {
       text = before ? before.replace(/\n*$/, '\n\n') + addition + '\n' : addition + '\n';
     }
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await fs.writeFile(abs, text, 'utf8');
+    await writeAtomic(abs, text);
     return { path: relOf(abs), before, after: text, created: !before };
   }
 
@@ -225,7 +225,7 @@ export function createNotes(getRoot) {
     for (let i = 0; i < files.length; i++) {
       if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
       const next = rewriteRefs(texts[i], before[i], from, to, before);
-      if (next !== texts[i]) { await fs.writeFile(resolve(files[i]), next, 'utf8'); changed.push(files[i]); }
+      if (next !== texts[i]) { await writeAtomic(resolve(files[i]), next); changed.push(files[i]); }
     }
     return changed;
   }

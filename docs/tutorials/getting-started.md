@@ -1,6 +1,6 @@
 # Getting started with Folio
 
-This tutorial takes about ten minutes. At the end you will have a folder of notes, a page with a link and a table, and an
+This tutorial takes about ten minutes. At the end you will have a folder of notes, a page with a link, and an
 AI assistant that can read them.
 
 1. **Open a folder.** Start Folio and choose **Open folder**. Pick an empty folder, for example `Documents/Notes`. Folio

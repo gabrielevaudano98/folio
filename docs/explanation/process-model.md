@@ -6,10 +6,10 @@ page). Anything that can take long runs somewhere else, or asynchronously.
 
 | Process | Lives | Does | Why separate |
 |---|---|---|---|
-| Main | Always | Files, watcher, IPC, MCP server, menu, downloads | It owns the operating system resources; all its disk and network work is asynchronous after startup. |
+| Main | Always | Files, watcher, IPC, MCP server, menu, downloads | It owns the operating system resources; reading and writing notes and all network work are asynchronous; the few small synchronous calls are listed below. |
 | Window | Always | The interface and the editors | Sandboxed, no Node.js: a malicious document cannot reach the disk. |
 | GPU, network | Always | Chromium's own helpers | Part of Electron. |
-| Meeting worker | While recording | Voice detection, transcription | Uses 1–2 GB and CPU in bursts; a crash or a slow segment never freezes the app ([ADR 0006](../adr/0006-utility-process-for-transcription.md)). |
+| Meeting worker | While recording and finishing the transcript | Voice detection, transcription | Uses 1–2 GB and CPU in bursts; a crash or a slow segment never freezes the app ([ADR 0006](../adr/0006-utility-process-for-transcription.md)). |
 | Notes engine | After a recording | Drafts meeting notes | Frees all its memory when it exits ([ADR 0007](../adr/0007-llama-server-for-notes.md)). |
 | stdio bridge | While an AI app uses it | MCP over stdio | Started by the AI app, not by Folio ([ADR 0004](../adr/0004-mcp-over-http-and-stdio.md)). |
 
@@ -23,5 +23,8 @@ page). Anything that can take long runs somewhere else, or asynchronously.
 
 ## What stays on the main thread
 
-Startup reads `settings.json` synchronously (a few kilobytes) and writes it atomically when a setting changes. Nothing
-else in the main process uses synchronous file or network calls; a review keeps it so (`grep "Sync(" src/main`).
+Startup reads `settings.json` synchronously (a few kilobytes). Setting changes are batched and written asynchronously,
+with one synchronous write at quit. The remaining synchronous calls are small and bounded: path checks in
+`notes.resolve()` (`realpathSync`, `lstatSync`), a few `existsSync` checks in IPC handlers, the `mcp-bridge.json` write,
+and clean-up at quit. Reading, writing and listing notes, the watcher and every network call are asynchronous. Review new
+code with `grep -n "Sync(" src/main` and keep that list from growing.

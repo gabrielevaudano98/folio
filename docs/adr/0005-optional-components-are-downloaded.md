@@ -15,7 +15,7 @@ The meeting recorder needs native runtimes and models of up to 2 GB. Most people
 
 ## Decision
 
-`src/main/features/catalog.js` lists every component with a pinned address (commit, tag or version), size and SHA-256. The installer downloads in the main process with Electron's `net` (system proxy), resumes with HTTP Range, verifies, unpacks in memory with checked paths and swaps the folder in atomically. Components live in a local, non-roaming folder.
+`src/main/features/catalog.js` lists every component with a fixed address (a commit, a version or a release tag; a tag can move, the SHA-256 cannot), size and SHA-256. The installer downloads in the main process with Electron's `net` (system proxy), resumes with HTTP Range, verifies, unpacks in memory with checked paths into a staging folder, then moves the old folder aside and the new one in; if the app stops between the two moves, the next start puts the old version back. Components live in a local, non-roaming folder.
 
 ## Consequences
 

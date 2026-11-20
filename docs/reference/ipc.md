@@ -30,7 +30,9 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `pickImage` | request | `fs:pick-image` | `src/main/main.js` |
 | `pickMedia` | request | `fs:pick-media` | `src/main/main.js` |
 | `pickOffice` | request | `fs:pick-office` | `src/main/main.js` |
-| `qa` | request | `qa:start` | `src/main/main.js` |
+| `qa.start` | request | `qa:start` | `src/main/main.js` |
+| `qa.poll` | request | `qa:poll` | `src/main/main.js` |
+| `qa.stop` | request | `qa:stop` | `src/main/main.js` |
 | `openExternal` | request | `shell:open` | `src/main/main.js` |
 | `copy` | request | `clipboard:write` | `src/main/main.js` |
 | `exportHtml` | request | `export:html` | `src/main/main.js` |
@@ -69,5 +71,3 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `meeting.onState` | event | `meeting:state` | — |
 | `meeting.onSegment` | event | `meeting:segment` | — |
 | `meeting.onStopRequest` | event | `meeting:stop-request` | — |
-
-Handled but not exposed by name in the preload (used through a generic helper or by the menu): `qa:poll`, `qa:stop`.

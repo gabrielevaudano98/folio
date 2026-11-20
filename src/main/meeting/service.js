@@ -114,11 +114,13 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   }
   /** writes the note into the workspace with a name that does not overwrite anything */
   async function writeNote(rel, text) {
-    let p = rel;
-    for (let i = 2; await fs.stat(notes.resolve(p, { mustBeNote: true })).then(() => true, () => false); i++) p = rel.replace(/\.md$/, ` ${i}.md`);
-    const abs = notes.resolve(p, { mustBeNote: true });
-    await fs.mkdir(path.dirname(abs), { recursive: true });
-    await writeAtomic(abs, text);
+    await fs.mkdir(path.dirname(notes.resolve(rel, { mustBeNote: true })), { recursive: true });
+    let abs;
+    for (let i = 1; ; i++) { // the name is claimed with an exclusive create, so two saves at once never pick the same one
+      abs = notes.resolve(i === 1 ? rel : rel.replace(/\.md$/, ` ${i}.md`), { mustBeNote: true });
+      try { await (await fs.open(abs, 'wx')).close(); break; } catch (e) { if (e.code !== 'EEXIST') throw e; }
+    }
+    try { await writeAtomic(abs, text); } catch (e) { await fs.rm(abs, { force: true }); throw e; } // the work file keeps the transcript
     return notes.relOf(abs);
   }
 

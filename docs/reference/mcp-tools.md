@@ -81,7 +81,7 @@ Return the syntax of Folio document types: slides-md (.slides.md, Marp compatibl
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | no |  |
+| `type` | `slides`, `board`, `sheet`, `template`, `all` | no |  |
 
 ## `get_sheet_values`
 
@@ -203,7 +203,7 @@ Place an object on a slide at x, y, w, h (px). kind: box, shape, line, icon, med
 |---|---|---|---|
 | `path` | string | yes | Path of a .slides.md deck |
 | `slide` | integer | yes | Slide number (1 = first slide, masters not counted) |
-| `kind` | string | yes |  |
+| `kind` | `box`, `shape`, `line`, `icon`, `media`, `path`, `smartart`, `zoom`, `image` | yes |  |
 | `x` | number | yes |  |
 | `y` | number | yes |  |
 | `w` | number | yes |  |

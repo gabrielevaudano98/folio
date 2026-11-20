@@ -22,8 +22,8 @@ AI assistants edit through MCP. Everything the user creates is a `.md` file.
 4. **Electron security.** `contextIsolation: true`, `sandbox: true`, no `nodeIntegration`, no remote content in the app window.
 5. **Design system.** Colours, fonts, radii and motion only through `src/renderer/tokens.css`. Grey palette only (chroma 0).
    No uppercase tracked labels, no emoji as icons, visible `:focus-visible`, `prefers-reduced-motion` respected.
-6. **Responsiveness and data safety.** No synchronous I/O in the main process after startup; files are written with
-   `atomic.js`; heavy work runs outside the main process and the window ([budget](docs/performance/budget.md)).
+6. **Responsiveness and data safety.** No synchronous I/O in the main process after startup, except the small
+   `settings.json` and `mcp-bridge.json` writes; files are written with `atomic.js`; heavy work runs outside the main process and the window ([budget](docs/performance/budget.md)).
 7. **Attribution.** Never remove "Based on Folio by Gabriele Vaudano" from NOTICE, README or the About window.
 
 ## Commands

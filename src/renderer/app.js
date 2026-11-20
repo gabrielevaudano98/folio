@@ -515,6 +515,7 @@ async function openRef(path, part = '') {
   await openFile(path);
   if (!part) return;
   const type = docType(path);
+  if (SURFACES[type]) await loadSurface(type).catch(() => {}); // the first open of this type mounts its editor after loading it
   if (type === 'slides') curSurface()?.gotoSlide?.(parseInt(part, 10) - 1);
   else if (type === 'sheet') curSurface()?.gotoCell?.(part);
   else if (type === 'board') curSurface()?.gotoNode?.(part);
@@ -1160,7 +1161,10 @@ const COMMANDS = [
     curSurface()?.exportHandouts?.({ perPage: per });
   } },
   { id: 'export-notes', title: 'Export slide notes pages as PDF…', run: () => (curType() === 'slides' ? curSurface()?.exportHandouts?.({ notes: true }) : toast('Open a slides document first.')) },
-  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' && curSurface() ? curSurface().present() : toast('Open a slides document to present it.')) },
+  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => {
+    if (curType() !== 'slides') return toast('Open a slides document to present it.');
+    loadSurface('slides').then(() => { if (curType() === 'slides') (curSurface() || surfaceFor('slides'))?.present(); }, (e) => toast(e.message, { kind: 'error' })); // the editor may still be loading
+  } },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
   { id: 'export-pdf', title: 'Export as PDF…', key: 'Mod+Shift+E', run: () => exportAs('pdf') },
   { id: 'reveal', title: S.platform === 'darwin' ? 'Reveal in Finder' : 'Show in folder', run: () => folio.reveal(S.active || '') },
@@ -1243,6 +1247,7 @@ function runPalette(i = pal.sel) { const it = pal.items[i]; if (!it) return; clo
 /* ============ export ============ */
 async function exportAs(kind) {
   const t = activeTab(); if (!t) return toast('Open a note to export it.');
+  if (SURFACES[curType()]) { try { await loadSurface(curType()); } catch (e) { return toast(e.message, { kind: 'error' }); } } // its editor may still be loading
   const s = curSurface();
   if (s) { if (kind === 'pdf' && s.exportPdf) return s.exportPdf(); if (kind === 'pptx' && s.exportPptx) return s.exportPptx(); if (kind === 'html') return toast('HTML export is for pages. Use PDF for this document.'); }
   const prose = stylesCss.slice(stylesCss.indexOf('/* ---------- preview prose')).split('/* ---------- palette')[0];
@@ -1596,7 +1601,7 @@ function bindIpc() {
 
 window.__folioErrors = [];
 /** tests and automation: run a command by id, as the menu would */
-window.__folioRun = (id) => COMMANDS.find((x) => x.id === id)?.run();
+window.__folioRun = (id) => (id === 'palette' ? openPalette('commands') : COMMANDS.find((x) => x.id === id)?.run()); // the palette is opened by the menu, not a command
 Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
 Object.defineProperty(window, '__folioEditor', { get: () => editor });
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
