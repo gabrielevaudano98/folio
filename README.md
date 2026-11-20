@@ -67,7 +67,7 @@ Apri **AI → Connect AI Assistants…** (`⌘⇧A`) oppure clicca il riquadro i
 | Claude Code | Copia il comando `claude mcp add folio …` mostrato nel pannello |
 | Altri client | URL Streamable HTTP `http://127.0.0.1:47321/mcp` + token Bearer (dal pannello) |
 
-Il bridge stdio usa l'eseguibile stesso di Folio (`ELECTRON_RUN_AS_NODE`), quindi **non serve installare Node**. Se Folio è aperto, le chiamate passano dall'app (evidenziazioni live, undo, nota aperta); se è chiuso, lavora direttamente sull'ultima cartella aperta.
+Il bridge stdio usa l'eseguibile stesso di Folio (`--mcp-stdio`), quindi **non serve installare Node**. Se Folio è aperto, le chiamate passano dall'app (evidenziazioni live, undo, nota aperta); se è chiuso, lavora direttamente sull'ultima cartella aperta.
 
 **Strumenti MCP:** `get_format_guide` (sintassi di slide, lavagne e fogli), `get_sheet_values` (valori calcolati delle formule), `list_notes`, `read_note`, `search_notes`, `get_outline`, `get_open_note`, `create_note`, `write_note`, `edit_note` (trova/sostituisci esatto), `append_to_note` (anche sotto un titolo), `move_note`, `open_note`.
 
