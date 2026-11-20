@@ -94,6 +94,7 @@ Legend: ✅ already in Folio · 🟡 partial · ⬜ to build. Source: N = Notion
 | Templates and building blocks (meeting notes, decision log…) | G N O | ⬜ |
 | Backlinks and unlinked mentions | N O | ⬜ shared with SLIDES-PLAN P4 |
 | Export DOCX, PDF (pages or pageless, margins, page numbers), HTML; import DOCX | G W | ⬜ |
+| Version history: snapshots, named versions, compare, restore, recently deleted | G N W O | ⬜ D15 |
 
 ## Keyboard map (target)
 
@@ -165,9 +166,29 @@ Today `getMarkdown()` re-serializes the whole document on every keystroke, so on
 - CriticMarkup in the Write view: comments in a margin rail, suggest mode records insertions and deletions as `{++ ++}` `{-- --}`, accept or reject one by one or all.
 - Feeds v1.3 "Accept or reject AI edits change by change": AI edits can arrive as suggestions.
 
-### D11 — Paste, import, export
+### D11 — Paste, import, export — done, see Progress
 - Paste HTML from Word, Google Docs, Notion and the web as clean Markdown (headings, lists, tables, links, images saved to `assets/`). Paste as plain text.
 - Export: DOCX (styles mapped), PDF with page setup (pages or pageless, A4/Letter, margins, page numbers, page breaks), HTML. Import DOCX as a new page.
+
+### D15 — Version history (Google Docs, Notion, Word, Obsidian File recovery) — asked by Gabriele, 20 Nov
+Every document type (pages, slides, boards, sheets), not only pages. The file stays the truth: history is kept beside it, never inside it.
+- **Snapshots, automatic:** on open, then at most every few minutes while you edit (when the text really changed), before every AI edit (the MCP write tools), before a rename, a move, a template, Replace all, Accept all, an import over an existing file, and on close. Stored per workspace in `.folio/history/` (compressed, deduplicated by content hash), so they move with the folder and sync with it; `.folio/` is ignored by the tree, search, tags and backlinks.
+- **Named versions (Docs):** "Name this version" (`Mod+Alt+Shift+S`) marks a snapshot; named versions are never pruned. A version can carry a short note.
+- **History panel:** timeline grouped by day, with author (you, or which AI tool), size of the change (+/− words), named versions on top, filter "only named". Selecting a version shows the page as it was, read-only, with the changes against the current text (or against the previous version) highlighted word by word; next and previous change.
+- **Restore:** the whole version (itself a new snapshot first, so restore can be undone), only a selected passage (copy or "restore this section"), or "Make a copy" as a new page. Compare any two versions.
+- **Deleted documents:** "Recently deleted" lists files removed in Folio or outside it, with their last version; restore puts them back where they were.
+- **Retention:** keep everything for 30 days, then hourly for 6 months, then daily (Obsidian-style settings: days to keep, minimum interval, maximum space); a "Clear history" per file and per workspace.
+- **Git-aware:** when the workspace is a Git repository, its commits for the file appear in the same timeline (read-only), and a version can be committed.
+- **For AIs (D13):** `list_versions`, `get_version`, `diff_versions`, `restore_version` MCP tools; every AI edit is undoable from history even after the app was closed.
+- Tests: snapshot cadence, dedup, pruning rules, restore round-trip byte for byte, deleted-file recovery, diff accuracy.
+
+### D16 — UX pass: templates, review, history (asked by Gabriele, 20 Nov: "they look bad") — with D15
+One design for the three, so they feel like one product (references: Google Docs side panels and version history, Notion's empty page and template picker, Confluence's template wizard, Word's review pane).
+- **One side dock** on the right with tabs (Comments, History, Outline, Info) instead of panes that each push the page; same header, same cards, same keyboard (`Mod+Alt+M` comments, `Mod+Alt+Shift+H` history), remembered width, closes with Esc.
+- **Review in place (Docs):** comment cards beside the line they belong to (aligned, stacked when they collide), bubble markers in the margin when the window is narrow; hover or click on a suggestion shows Accept / Reject right on the text; a mode switch in the top bar — Editing / Suggesting / Viewing — with a colour cue, instead of a checkbox; reactions and @mentions in comments; "resolved" kept in history, not lost.
+- **Templates as a start, not a dialog (Notion, Confluence):** a new or empty page shows "Start with": empty, a few suggested templates, the gallery, import; the gallery opens as a full view with large visual thumbnails of each template and a big preview; **template prompts** (`{{ask:Project name}}`, `{{ask:Owner|people}}`) fill a short form before the page is made (Confluence variables); one click to use, keyboard first.
+- **History as a mode (Docs):** the page full width with the changes highlighted, versions on the right (named first, grouped by day, authors as avatars), a top bar with "Restore this version", "Make a copy", "Compare with…", "Back to editing".
+- Shared visual language: one card component, one empty-state style, avatars and colours per author, motion only where it explains (reduced motion respected), every action reachable from the keyboard and the command palette, screenshots reviewed at 1024 and 1440 px, light and dark.
 
 ### D12 — Backlinks and link health
 - Backlinks panel with unlinked mentions ("link it"), broken-link check, rename and move rewrite inbound links in one undoable step. Shared with SLIDES-PLAN P4.
@@ -183,7 +204,7 @@ Today `getMarkdown()` re-serializes the whole document on every keystroke, so on
 
 - **D-1 Colour and alignment — decided: Folio-flavoured Markdown.** Folio reads attribute syntax that other editors treat as plain text, and **Export → Markdown (portable)** removes it so the exported `.md` shows no Folio markup. Syntax (Pandoc-compatible): inline `[text]{color=red bg=yellow}`, block attributes on the line after a block `{align=center}`. Built in D1, export in D11.
 - **D-2 Dependencies — decided: reuse everything that can be reused.** Already in and reused: markdown-it and its plugins (oracle for D0, preview), `diff` (block diff in D0), KaTeX, highlight.js, Mermaid, DOMPurify, TipTap extensions (subscript, superscript, text-align, text-style, typography are installed and unused today). To add when their step starts: `docx` (export) and `mammoth` (import) for D11, `@tiptap/suggestion` for the `/` and `@` menus (D3, D5), `@tiptap/extension-drag-handle` for D2, `chrono-node` for natural-language dates (D5), `turndown` + `turndown-plugin-gfm` for HTML paste (D11). All MIT.
-- **D-3 Order.** D0 → D1 → D3 → D2 → D4 → D5 → D6 → D7 → D8 → D9 → D10 → D11 → D12 → D13 → D14.
+- **D-3 Order.** D0 → D1 → D3 → D2 → D4 → D5 → D6 → D7 → D8 → D9 → D10 → D11 → D15 + D16 (version history and the UX pass, added 20 Nov) → D12 → D13 → D14.
 
 ## Progress
 
@@ -220,6 +241,7 @@ Today `getMarkdown()` re-serializes the whole document on every keystroke, so on
 - **Template gallery** (asked by Gabriele, 20 Nov: "templates direct the work"): `template-gallery.js`, modelled on Confluence's and Notion's galleries. Left: search, All templates, Recently used, Favourites (★), My templates (all, and by category), the **Folio collection** by category (16 templates in Meetings, Planning, Product, Engineering, Reports, Docs, Personal: `template-starters.js`), **Community** (online). Middle: cards with icon, description, category, source. Right: a live preview of the filled page and its properties, with **Use in “page”** (merge), **New page**, and **Customise** (collection) / **Download** (community) to copy it into `Templates/`, or **Edit** and a menu (rename, change category, duplicate, delete) for your own. **New template**, **Import** from files or from a link (a raw `.md`), **Save this page as a template**. A template describes itself in a `template:` map in its front matter (`description`, `category`, `icon`, `source`), which never reaches pages made from it; folders inside `Templates/` are categories too. Favourites and recent templates are kept in settings.
   - **Community gallery**: `community/templates/` in this repository (`index.json`, eight templates: Sprint planning, PR/FAQ, Lean canvas, SWOT, Customer journey map, Launch checklist, Competitive analysis, Interview scorecard; README on how to contribute). Folio reads the index from `settings.templateGallery` (default: this repository's `main` branch on raw.githubusercontent.com, so it works once merged). Downloads run in the main process: HTTPS only (or this machine, for tests), text only, 1 MB at most, 12 s timeout; the index can only point at files next to it.
 - **Ribbon — redone** (asked by Gabriele, 20 Nov): `page-ribbon.js`. Two layouts of the same commands, as Microsoft 365: **simplified** (one row: undo, style, character formats, lists, alignment menu, Insert menu, find; the Table group appears in a table) and **full** (Word tabs Home, Insert, Layout, Review, View, plus the contextual Table tab; labelled groups; large buttons for the main command of a group; style gallery). The chevron at the right switches, double-clicking a tab goes back to simplified, the choice is remembered. Narrow windows fold groups into a button that opens them, least important first (Word). Undo and redo sit left of the tabs (quick access).
+- **D11 — done.** `page-paste.js`: HTML from Word (lists from `mso-list`, headings, highlight), Google Docs (CSS styles → bold/italic/strike/code, checklists), Notion and the web goes through turndown + the GFM plugin into plain Markdown, then through the page codec like typed text; `data:` and `file:` images are saved to `assets/`. Several pasted blocks start new blocks after the current line; in Suggesting mode a paste is an insertion. Plain text that looks like Markdown is parsed; **Paste as plain text** (Ctrl/⌘ Shift V) keeps it as text. `page-docx.js`: the Read-view HTML becomes a `.docx` with real headings, numbered and bulleted lists, tasks, tables with alignment, code, callouts (shaded with a bar), columns, footnotes, a contents field, page breaks, images (diagrams and charts as pictures), header and footer with page numbers, and the properties as document properties; CriticMarkup becomes **Word tracked changes and comments with threaded replies**, or is dropped with "Final text only". **Export…** (Ctrl/⌘ Shift E) asks for format, paper (A4, Letter, A5, Legal), orientation, margins, page numbers and header, and remembers them; PDF uses the same setup through `printToPDF`. **Import Word or HTML** (mammoth) makes a new page.
 - **Branch.** Rebased on `main` after slides P4–P8 landed; work continues on `pages` (the remote `pages-studio` holds the pre-rebase D0–D1 and can be deleted).
 - **Reuse from slides P4 for D5/D12:** references (`[[…]]`, `{{…}}`, `![[…]]`), the reference picker, backlinks panel ("Linked from"), rename rewriting links, `resolve_ref`/`get_backlinks`/`find_broken_links` MCP tools. D5 becomes the inline `@`/`[[` pickers on top of these; D12 shrinks to unlinked mentions.
 

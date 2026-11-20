@@ -228,7 +228,7 @@ md.inline.ruler.before('emphasis', 'critic', (state, silent) => {
   return true;
 });
 md.renderer.rules.critic_sub = (tk, i) => `<span class="critic-sub"><del class="critic-del">${escape(tk[i].meta[0])}</del><ins class="critic-ins">${escape(tk[i].meta[1])}</ins></span>`;
-md.renderer.rules.critic_comment = (tk, i) => { const c = tk[i].meta; return `<span class="critic-comment" tabindex="0" role="note" aria-label="Comment${c.author ? ' by ' + escape(c.author) : ''}: ${escape(c.text)}" data-tip="${escape((c.author ? c.author + ': ' : '') + c.text)}"></span>`; };
+md.renderer.rules.critic_comment = (tk, i) => { const c = tk[i].meta; return `<span class="critic-comment" tabindex="0" role="note" aria-label="Comment${c.author ? ' by ' + escape(c.author) : ''}: ${escape(c.text)}" data-tip="${escape((c.author ? c.author + ': ' : '') + c.text)}" data-author="${escape(c.author)}" data-date="${escape(c.date)}" data-text="${escape(c.text)}"></span>`; };
 md.renderer.rules.folio_tag = (tk, i) => `<span class="md-tag">${escape(tk[i].content)}</span>`;
 md.renderer.rules.folio_field = (tk, i) => {
   const [key, val] = tk[i].meta;
@@ -259,7 +259,7 @@ export function render(text) {
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
   if (meta?.length) html = `<dl class="frontmatter" data-line="0">${meta.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
   return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align', 'data-host', 'controls', 'preload'],
+    ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align', 'data-host', 'controls', 'preload', 'data-author', 'data-date', 'data-text'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],
     FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form'],
   });

@@ -19,6 +19,10 @@ import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
 import { icons } from './icons.js';
+import { htmlToMarkdown } from './page-paste.js';
+import { pageSetup, pdfOptions, pageCss } from './page-docx.js';
+import { parseProps } from './page-props.js';
+import { clean as cleanCm } from './page-critic.js';
 import tokensCss from './tokens.css';
 import stylesCss from './styles.css';
 
@@ -150,6 +154,14 @@ async function boot() {
     mentions: mentionCtx,
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
     preview: previewHtml,
+    saveImage: async (src) => {
+      const t = activeTab(); if (!t) return null;
+      let data = src; if (!/^data:/.test(src)) data = await folio.dataUrl(src, t.path);
+      const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(data); if (!m) return null;
+      const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return folio.saveImage(t.path, `pasted.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
+    },
+    onError: (e) => toast(`Paste failed. ${e.message}`, { kind: 'error' }),
     onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(`Copied ${t}. Paste it anywhere to link to this block.`); },
     onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
   });
@@ -1306,12 +1318,16 @@ const COMMANDS = [
   { id: 'toggle-outline', title: 'Toggle outline', key: 'Mod+Shift+O', run: toggleOutline },
   { id: 'focus', title: 'Focus mode', key: 'Mod+.', run: toggleFocus },
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
+  { id: 'export', title: 'Export…', key: 'Mod+Shift+E', run: () => openExport() },
+  { id: 'export-docx', title: 'Export as Word…', run: () => exportAs('docx') },
+  { id: 'import-document', title: 'Import Word or HTML as a page…', run: () => importDocument() },
+  { id: 'paste-plain', title: 'Paste as plain text', key: 'Mod+Shift+V', run: () => pastePlain() },
   { id: 'export-html', title: 'Export as HTML…', run: () => exportAs('html') },
   { id: 'export-md', title: 'Export as portable Markdown…', run: () => exportAs('md') },
   { id: 'export-pptx', title: 'Export slides as PowerPoint…', run: () => (curType() === 'slides' ? exportAs('pptx') : toast('Open a slides document first.')) },
   { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
-  { id: 'export-pdf', title: 'Export as PDF…', key: 'Mod+Shift+E', run: () => exportAs('pdf') },
+  { id: 'export-pdf', title: 'Export as PDF…', run: () => exportAs('pdf') },
   { id: 'reveal', title: S.platform === 'darwin' ? 'Reveal in Finder' : 'Show in folder', run: () => folio.reveal(S.active || '') },
   { id: 'rename', title: 'Rename note…', run: () => S.active && renamePath(S.active, false) },
   { id: 'trash', title: 'Move note to Trash', run: () => S.active && trashPath(S.active, false) },
@@ -1407,8 +1423,93 @@ function updatePalette() {
 function runPalette(i = pal.sel) { const it = pal.items[i]; if (!it) return; closePalette(); it.run(); }
 
 /* ============ export ============ */
-async function exportAs(kind) {
+const EXPORT_KEY = 'folio.export';
+const exportPrefs = () => { try { return { format: 'pdf', size: 'A4', landscape: false, margins: 'normal', pageNumbers: true, header: false, review: 'keep', ...JSON.parse(localStorage.getItem(EXPORT_KEY) || '{}') }; } catch { return { format: 'pdf', size: 'A4', landscape: false, margins: 'normal', pageNumbers: true, header: false, review: 'keep' }; } };
+function openExport() {
   const t = activeTab(); if (!t) return toast('Open a note to export it.');
+  if (curType() !== 'md') return exportAs('pdf');
+  const p = exportPrefs(); const d = $('#sheet-prompt');
+  const seg = (name, opts, cur) => `<div class="segmented" role="radiogroup" aria-label="${name}">${opts.map(([v, l]) => `<button type="button" role="radio" data-${name}="${v}" aria-checked="${String(cur) === String(v)}">${l}</button>`).join('')}</div>`;
+  d.classList.remove('sheet-small');
+  d.innerHTML = `<form method="dialog">
+    <div class="sheet-head"><div><h2 id="prompt-title">Export “${esc(stem(t.path))}”</h2><p>Choose a format and how the pages look.</p></div><button class="icon-btn" type="button" data-cancel aria-label="Close">${icons.close}</button></div>
+    <div class="sheet-body">
+      <section class="group"><h3>Format</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">File type</span></div>${seg('format', [['pdf', 'PDF'], ['docx', 'Word'], ['html', 'HTML'], ['md', 'Markdown']], p.format)}</div></div></section>
+      <section class="group" data-pages><h3>Pages</h3><div class="rows">
+        <div class="row"><div class="row-main"><span class="row-title">Paper</span></div>${seg('size', [['A4', 'A4'], ['Letter', 'Letter'], ['A5', 'A5'], ['Legal', 'Legal']], p.size)}</div>
+        <div class="row"><div class="row-main"><span class="row-title">Orientation</span></div>${seg('landscape', [['false', 'Portrait'], ['true', 'Landscape']], p.landscape)}</div>
+        <div class="row"><div class="row-main"><span class="row-title">Margins</span></div>${seg('margins', [['normal', 'Normal'], ['narrow', 'Narrow'], ['wide', 'Wide']], p.margins)}</div>
+        <div class="row"><div class="row-main"><span class="row-title">Page numbers</span></div><label class="switch"><input type="checkbox" role="switch" name="pageNumbers" ${p.pageNumbers ? 'checked' : ''} aria-label="Page numbers"></label></div>
+        <div class="row"><div class="row-main"><span class="row-title">Title in the header</span></div><label class="switch"><input type="checkbox" role="switch" name="header" ${p.header ? 'checked' : ''} aria-label="Title in the header"></label></div>
+      </div></section>
+      <section class="group" data-review><h3>Suggestions and comments</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">In the file</span><span class="row-sub" data-review-sub></span></div>${seg('review', [['keep', 'Keep'], ['clean', 'Final text only']], p.review)}</div></div></section>
+    </div>
+    <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Export</button></div></form>`;
+  const sync = () => {
+    d.querySelector('[data-pages]').hidden = !/^(pdf|docx)$/.test(p.format);
+    d.querySelector('[data-review]').hidden = !/^(pdf|docx|html)$/.test(p.format) || !/\{(\+\+|--|~~|==|>>)/.test(t.text);
+    d.querySelector('[data-review-sub]').textContent = p.format === 'docx' ? 'Word shows them as tracked changes and comments' : 'Clean removes comments and accepts every suggestion';
+    for (const b of d.querySelectorAll('[role=radio]')) { const k = Object.keys(b.dataset)[0]; b.setAttribute('aria-checked', String(String(p[k]) === b.dataset[k])); }
+  };
+  d.onclick = (e) => {
+    if (e.target.closest('[data-cancel]')) return d.close();
+    const b = e.target.closest('[role=radio]'); if (!b) return;
+    const k = Object.keys(b.dataset)[0]; p[k] = k === 'landscape' ? b.dataset[k] === 'true' : b.dataset[k]; sync();
+  };
+  d.onchange = (e) => { if (e.target.name) { p[e.target.name] = e.target.checked; } };
+  d.onsubmit = (e) => { e.preventDefault(); try { localStorage.setItem(EXPORT_KEY, JSON.stringify(p)); } catch {} d.close(); exportAs(p.format, p); };
+  sync(); d.showModal(); d.querySelector('button[type=submit]').focus();
+}
+const exportText = (t, o) => (o?.review === 'clean' ? cleanCm(t.text) : t.text);
+async function importDocument() {
+  try {
+    const r = await folio.importDocument(); if (!r) return;
+    const { markdown, images } = htmlToMarkdown(r.html, { source: 'web' });
+    const rel = `${r.name}.md`; let md = markdown;
+    const target = await folio.create(rel, `# ${r.name}\n\n`).catch(() => null);
+    if (!target) return toast('Could not create the page.', { kind: 'error' });
+    for (const src of images) { try { const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(src); if (!m) continue; const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); const saved = await folio.saveImage(target, `image.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes); md = md.split(src).join(encodeURI(saved)); } catch {} }
+    md = md.replace(/^# .*\n+/, (h) => h); // keep the document's own title if it has one
+    const body = /^#\s/.test(md) ? md : `# ${r.name}\n\n${md}`;
+    await folio.write(target, body + '\n');
+    await refreshTree(); openFile(target);
+    toast(r.messages?.length ? `Imported ${r.name}. Some Word formatting could not be kept.` : `Imported ${r.name}.`);
+  } catch (e) { toast(`Import failed. ${e.message}`, { kind: 'error' }); }
+}
+async function pastePlain() {
+  if (!isRich() || curType() !== 'md') return document.execCommand?.('paste');
+  const c = await folio.readClipboard(); rich.insertPlain(c.text || '');
+}
+const dataUrlImage = (url) => new Promise((res) => { const i = new Image(); i.onload = () => res({ width: i.naturalWidth, height: i.naturalHeight }); i.onerror = () => res({ width: 0, height: 0 }); i.src = url; });
+function bytesOf(url) { const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(url); if (!m) return null; const raw = m[2] ? atob(m[3]) : decodeURIComponent(m[3]); const b = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) b[i] = raw.charCodeAt(i); return { data: b, mime: m[1] }; }
+async function exportWord(t, o) {
+  const [{ toDocx }, { render: renderMd }] = [await import('./page-docx.js'), { render }];
+  const text = exportText(t, o); const props = Object.fromEntries(parseProps(text).props.map((q) => [q.key, q.value]));
+  const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:-9999px;top:0;width:720px'; host.innerHTML = renderMd(text); document.body.appendChild(host);
+  try {
+    await renderMermaid(host, false); await hydrateCharts(host, readRelative);
+    const bytes = await toDocx(host, {
+      title: props.title || stem(t.path), author: S.settings.authorName || S.userName || 'Folio', props, page: o, reviewMarks: o?.review !== 'clean',
+      async loadImage(src) {
+        if (!src) return null; const url = await folio.dataUrl(src, t.path); const b = bytesOf(url); if (!b) return null;
+        const type = /svg/.test(b.mime) ? null : b.mime.split('/')[1].replace('jpeg', 'jpg'); if (!/^(png|jpg|gif|bmp)$/.test(type || '')) return rasterUrl(url);
+        return { data: b.data, type, ...(await dataUrlImage(url)) };
+      },
+      async rasterize(el) { const svg = el.querySelector('svg'); if (!svg) return null; const xml = new XMLSerializer().serializeToString(svg); const box = svg.getBoundingClientRect(); return rasterUrl('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml), box.width, box.height); },
+    });
+    const out = await folio.exportBinary(t.path, 'docx', bytes); if (out) toast(`Exported to ${base(out)}.`);
+  } finally { host.remove(); }
+}
+async function rasterUrl(url, w, h) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  const W = Math.round(w || img.naturalWidth || 600), H = Math.round(h || img.naturalHeight || 400); const c = document.createElement('canvas'); c.width = W * 2; c.height = H * 2;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  const b = bytesOf(c.toDataURL('image/png')); return { data: b.data, type: 'png', width: W, height: H };
+}
+async function exportAs(kind, o = null) {
+  const t = activeTab(); if (!t) return toast('Open a note to export it.');
+  if (!o && curType() === 'md' && (kind === 'pdf' || kind === 'docx')) o = exportPrefs();
+  if (kind === 'docx') { if (curType() !== 'md') return toast('Word export is for pages.'); try { return await exportWord(t, o); } catch (e) { return toast(`Export failed. ${e.message}`, { kind: 'error' }); } }
   const s = curSurface();
   if (kind === 'md') {
     if (curType() !== 'md') return toast('Portable Markdown export is for pages.');
@@ -1419,8 +1520,9 @@ async function exportAs(kind) {
   if (s) { if (kind === 'pdf' && s.exportPdf) return s.exportPdf(); if (kind === 'pptx' && s.exportPptx) return s.exportPptx(); if (kind === 'html') return toast('HTML export is for pages. Use PDF for this document.'); }
   const prose = stylesCss.slice(stylesCss.indexOf('/* ---------- preview prose')).split('/* ---------- palette')[0];
   const css = tokensCss + '\nbody{margin:0;font-family:var(--font-sans);color:var(--color-ink);background:var(--color-paper);-webkit-print-color-adjust:exact}' + prose + '\n.copy-code{display:none}.prose{padding:48px 24px}@media print{.prose{padding:0}}';
-  const html = exportDocument(stem(t.path), (!isRich() && $('#preview').innerHTML) || render(t.text), css);
-  try { const out = kind === 'pdf' ? await folio.exportPdf(t.path, html) : await folio.exportHtml(t.path, html); if (out) toast(`Exported to ${base(out)}.`); }
+  const page = o && curType() === 'md' ? pageCss(o) : '';
+  const html = exportDocument(stem(t.path), o ? render(exportText(t, o)) : (!isRich() && $('#preview').innerHTML) || render(t.text), css + page);
+  try { const out = kind === 'pdf' ? await folio.exportPdf(t.path, html, o && curType() === 'md' ? { print: pdfOptions(o, stem(t.path)) } : undefined) : await folio.exportHtml(t.path, html); if (out) toast(`Exported to ${base(out)}.`); }
   catch (e) { toast(`Export failed. ${e.message}`, { kind: 'error' }); }
 }
 
@@ -1536,8 +1638,8 @@ function bindChrome() {
     const v = views[(i + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; setView(v); $(`#view-switch [data-view="${v}"]`).focus();
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
-    { label: 'Export as PDF…', key: 'Mod+Shift+E', run: () => exportAs('pdf') },
-    { label: 'Export as HTML…', run: () => exportAs('html') }, '-',
+    { label: 'Export…', key: 'Mod+Shift+E', run: openExport },
+    { label: 'Import Word or HTML…', run: importDocument }, '-',
     { label: 'Focus mode', key: 'Mod+.', run: toggleFocus },
     { label: 'Command palette…', key: 'Mod+Shift+P', run: () => openPalette('commands') }, '-',
     { label: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },

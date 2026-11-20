@@ -247,6 +247,21 @@ h('templates:import-files', async () => {
 });
 h('shell:open-file', async (rel) => { const abs = notes.resolve(rel); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
+h('clipboard:read', () => ({ text: clipboard.readText(), html: clipboard.readHTML() }));
+/* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */
+h('import:document', async () => {
+  const pick = !app.isPackaged && process.env.FOLIO_IMPORT_FILE ? { filePaths: [process.env.FOLIO_IMPORT_FILE] } : await dialog.showOpenDialog(win, { title: 'Import a document', properties: ['openFile'], filters: [{ name: 'Documents', extensions: ['docx', 'html', 'htm'] }] });
+  const f = pick.filePaths?.[0]; if (pick.canceled || !f) return null;
+  const st = await fs.stat(f); if (st.size > 60 * 1024 * 1024) throw new Error('That file is larger than 60 MB.');
+  const name = path.basename(f).replace(/\.(docx|html?)$/i, '');
+  if (/\.html?$/i.test(f)) return { name, html: await fs.readFile(f, 'utf8'), messages: [] };
+  const { default: mammoth } = await import('mammoth');
+  const r = await mammoth.convertToHtml({ buffer: await fs.readFile(f) }, {
+    styleMap: ["p[style-name='Title'] => h1:fresh", "p[style-name='Subtitle'] => p > em:fresh", "p[style-name='Quote'] => blockquote > p:fresh", "p[style-name='Intense Quote'] => blockquote > p:fresh", "r[style-name='Code'] => code", "p[style-name='Code'] => pre:separator('\\n')", 'highlight => mark'],
+    convertImage: mammoth.images.imgElement((img) => img.read('base64').then((b) => ({ src: `data:${img.contentType};base64,${b}` }))),
+  });
+  return { name, html: r.value, messages: r.messages.filter((m) => m.type === 'warning').slice(0, 5).map((m) => m.message) };
+});
 
 h('export:html', async (rel, html) => {
   const r = await dialog.showSaveDialog(win, { defaultPath: rel.replace(/\.\w+$/, '.html').split('/').pop(), filters: [{ name: 'HTML', extensions: ['html'] }] });
@@ -282,7 +297,7 @@ h('export:pdf', async (rel, html, opts = {}) => {
   await fs.writeFile(tmp, html, 'utf8');
   const pw = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
   await pw.loadFile(tmp);
-  const pdf = await pw.webContents.printToPDF(opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
+  const pdf = await pw.webContents.printToPDF(opts.print ? opts.print : opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
   pw.destroy(); fs.unlink(tmp).catch(() => {});
   await fs.writeFile(r.filePath, pdf); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
@@ -452,12 +467,15 @@ function buildMenu() {
       { label: 'Save', accelerator: 'CmdOrCtrl+S', click: cmd('save') },
       { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
       { type: 'separator' },
+      { label: 'Import Word or HTML…', click: cmd('import-document') },
+      { label: 'Export…', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export') },
+      { label: 'Export as PDF…', click: cmd('export-pdf') },
+      { label: 'Export as Word…', click: cmd('export-docx') },
       { label: 'Export as HTML…', click: cmd('export-html') },
       { label: 'Export as Portable Markdown…', click: cmd('export-md') },
-      { label: 'Export as PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export-pdf') },
       ...(isMac ? [] : [{ type: 'separator' }, { label: 'Settings…', accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
     ] },
-    { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
+    { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { label: 'Paste as Plain Text', accelerator: 'CmdOrCtrl+Shift+V', click: cmd('paste-plain') }, { role: 'selectAll' }, { type: 'separator' },
       { label: 'Find in Note', accelerator: 'CmdOrCtrl+F', click: cmd('find') },
       { label: 'Find and Replace…', accelerator: process.platform === 'darwin' ? 'Cmd+Alt+H' : 'Ctrl+H', click: cmd('replace') },
       { label: 'Search All Notes', accelerator: 'CmdOrCtrl+Shift+F', click: cmd('search') }] },

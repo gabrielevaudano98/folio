@@ -4,6 +4,8 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 import electron from 'electron';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import * as D from 'docx';
+import mammoth from 'mammoth';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-pages-'));
 const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud');
@@ -29,6 +31,15 @@ fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| 
 fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd8.md'), '---\ntitle: Weekly\ntags: [alpha]\ndone: false\n---\n# Weekly\n\nText #beta here.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd9.md'), '# Plan\n\nIntro.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd11.md'), '# Paste\n\nStart here\n\n{++new idea++} and {==noted==}{>>Ada, 2026-11-20 14:05: Check<<}\n');
+const exportDir = path.join(tmp, 'out'); fs.mkdirSync(exportDir);
+const importFile = path.join(tmp, 'Imported doc.docx');
+fs.writeFileSync(importFile, await D.Packer.toBuffer(new D.Document({ numbering: { config: [{ reference: 'b', levels: [{ level: 0, format: D.LevelFormat.BULLET, text: '•', alignment: D.AlignmentType.LEFT }] }] }, sections: [{ children: [
+  new D.Paragraph({ heading: D.HeadingLevel.HEADING_1, children: [new D.TextRun('Imported title')] }),
+  new D.Paragraph({ children: [new D.TextRun('Plain and '), new D.TextRun({ text: 'strong', bold: true }), new D.TextRun(' words.')] }),
+  new D.Paragraph({ numbering: { reference: 'b', level: 0 }, children: [new D.TextRun('First point')] }),
+  new D.Paragraph({ numbering: { reference: 'b', level: 0 }, children: [new D.TextRun('Second point')] }),
+] }] })));
 fs.writeFileSync(path.join(ws, 'pages', 'd10.md'), '# Review\n\nNormal paragraph without marks.\n\nPayment terms {~~60~>30~~} days.\n');
 const html = read('html.md'), obs = read('obsidian.md');
 const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
@@ -217,19 +228,29 @@ const steps = [
   { js: "document.querySelector('[data-act=save]').click(); true", wait: 1500 },
   { js: "[document.querySelector('.tg-nav-item[aria-current]')?.textContent, [...document.querySelectorAll('.tg-card .tg-card-name')].map((x) => x.textContent).join('|')]", log: true, wait: 200 },
   { js: "document.querySelector('[data-act=close]').click(); true", wait: 600 },
+  // D11: paste from Word and the web, paste Markdown, export Word, import Word
+  { js: "document.querySelector('[data-file=\"pages/d11.md\"]').click()", wait: 1500 },
+  { js: "(() => { const p = [...document.querySelectorAll('.rich-prose p')].find((x) => x.textContent === 'Start here'); document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.selectNodeContents(p); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()", wait: 400 },
+  { js: "(() => { const dt = new DataTransfer(); dt.setData('text/html', '<html xmlns:o=\"urn:schemas-microsoft-com:office:office\"><body><p class=MsoNormal>Pasted <b>bold</b> <span style=\"background:yellow;mso-highlight:yellow\">marked</span><o:p></o:p></p><p class=MsoListParagraphCxSpFirst style=\"mso-list:l0 level1 lfo1\"><![if !supportLists]><span style=\"mso-list:Ignore\">·<span>&nbsp;</span></span><![endif]>Alpha</p><p class=MsoListParagraphCxSpLast style=\"mso-list:l0 level1 lfo1\"><![if !supportLists]><span style=\"mso-list:Ignore\">·<span>&nbsp;</span></span><![endif]>Beta</p></body></html>'); dt.setData('text/plain', 'Pasted bold marked Alpha Beta'); return !document.querySelector('.rich-prose').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); })()", log: true, wait: 800 },
+  { js: "(() => { const dt = new DataTransfer(); dt.setData('text/plain', '## From text\\n\\n- [ ] x\\n- [ ] y'); return !document.querySelector('.rich-prose').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); })()", log: true, wait: 1500 },
+  { js: "document.querySelector('#btn-more').click(); true", wait: 400 },
+  { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.startsWith('Export')).click(); true", wait: 600 },
+  { js: "(() => { const d = document.querySelector('#sheet-prompt'); d.querySelector('[data-format=docx]').click(); d.querySelector('[data-size=Letter]').click(); d.querySelector('[data-landscape=true]').click(); const rev = !d.querySelector('[data-review]').hidden; d.querySelector('button[type=submit]').click(); return rev; })()", log: true, wait: 3500 },
+  { js: "document.querySelector('#btn-more').click(); true", wait: 400 },
+  { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.startsWith('Import')).click(); true", wait: 3000 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
-const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: ud, FOLIO_SHOT: stepsFile }, stdio: ['ignore', 'pipe', 'pipe'] });
+const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: ud, FOLIO_SHOT: stepsFile, FOLIO_EXPORT_DIR: exportDir, FOLIO_IMPORT_FILE: importFile }, stdio: ['ignore', 'pipe', 'pipe'] });
 let out = ''; child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
 const timer = setTimeout(() => child.kill(), 200000);
 child.on('exit', () => gallery.close());
-child.on('exit', () => {
+child.on('exit', async () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 63, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, errors] = logs;
+  assert.equal(logs.length, 66, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, pasteWord, pasteMd, exportSheet, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -310,4 +331,18 @@ child.on('exit', () => {
   assert(lean.startsWith('---\ntemplate:\n  description: A one-page business model for a new idea\n  category: Strategy\n  icon: 🧩\n  source: "http://127.0.0.1:') && lean.includes('| Problem | Solution |'), lean);
   assert.equal(savedView[0].replace(/\d+$/, ''), 'All of mine'); assert(savedView[1].includes('Lean canvas'), savedView[1]);
   console.log('  ✓ gallery: a starred template opens under Favourites; a community template downloads into Templates/ and shows under My templates');
+
+  assert.equal(pasteWord, true); assert.equal(pasteMd, true); assert.equal(exportSheet, true);
+  const d11 = read('d11.md');
+  assert(d11.includes('Start here\n\nPasted **bold** ==marked==\n\n- Alpha\n- Beta\n\n## From text\n\n- [ ] x\n- [ ] y') && !d11.includes('mso') && !d11.includes('<o:p>'), d11);
+  console.log('  ✓ paste: Word HTML becomes bold, highlight and a real list; Markdown text becomes headings and a task list; the file is plain Markdown');
+  const docxFile = path.join(exportDir, 'd11.docx'); assert(fs.existsSync(docxFile), fs.readdirSync(exportDir).join());
+  const docxHtml = (await mammoth.convertToHtml({ path: docxFile })).value;
+  assert(docxHtml.includes('<h1>Paste</h1>') && docxHtml.includes('<strong>bold</strong>') && docxHtml.includes('<ul>') && docxHtml.includes('Alpha') && docxHtml.includes('new idea'), docxHtml);
+  const docxZip = await (await import('jszip')).default.loadAsync(fs.readFileSync(docxFile)); const docXml = await docxZip.file('word/document.xml').async('string');
+  assert(docXml.includes('w:orient="landscape"') && docXml.includes('w:w="15840"') && /<w:ins [^>]*w:author="Tester"/.test(docXml) && (await docxZip.file('word/comments.xml').async('string')).includes('Check'), 'page setup, tracked insertion, comment');
+  console.log('  ✓ export: the export sheet makes a Word file with the chosen paper and orientation, real headings and lists, a tracked insertion and a comment');
+  const imported = fs.readFileSync(path.join(ws, 'Imported doc.md'), 'utf8');
+  assert.equal(imported, '# Imported title\n\nPlain and **strong** words.\n\n- First point\n- Second point\n', imported);
+  console.log('  ✓ import: a Word file becomes a page with its headings, bold text and list');
 });

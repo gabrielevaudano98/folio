@@ -14,6 +14,7 @@ import { FindReplace, mountFindBar } from './page-find.js';
 import { mountProps } from './page-props-ui.js';
 import { mountReview } from './page-review.js';
 import { SuggestMode } from './page-critic.js';
+import { SmartPaste, insertMarkdown, insertPlainText } from './page-paste.js';
 import { parseButton, splitTemplate, mergeProps, intoPage, CURSOR } from './page-templates.js';
 const escHtml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 import { Markdown } from '@tiptap/markdown';
@@ -639,7 +640,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '' }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -684,6 +685,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       TableHandles.configure({ icons, toSheet: (e) => tableToSheet(e) }),
       FindReplace,
       SuggestMode,
+      SmartPaste.configure({ toNodes: (md) => codec.load(md).json.content, saveImage, onError }),
       Mentions.configure({ ctx: () => (mentions ? mentions() : null), keyLabel }),
       CodeHighlight,
       CalloutUI.configure({ icons }),
@@ -1110,6 +1112,9 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     },
     find(replace = false) { return findBar.open(replace); },
     addProperty() { props.add(); },
+    /* paste-like insertion: Markdown goes through the codec, plain text stays text */
+    insertMarkdown(md) { editor.commands.focus(); return insertMarkdown(editor, md, (m) => codec.load(m).json.content); },
+    insertPlain(text) { editor.commands.focus(); return insertPlainText(editor, text); },
     review: () => review,
     /* put a filled template in this page: its properties join the page's, its body goes at the cursor (or at pos) */
     insertTemplate(text, pos = null) {

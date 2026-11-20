@@ -73,6 +73,10 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 
 The Write view has pickers for these: `[[` (pages, people, `Note#` headings, `Note#^` blocks, "Create"), `@` (people, pages, dates in English and Italian, status), `#` (tags in the workspace) and `:` (emoji). They only insert the plain text above.
 
+### Paste, import and export
+
+Nothing here adds syntax: pasting and importing write the Markdown above. HTML from Word, Google Docs, Notion and web pages becomes headings, lists, `- [ ]` tasks, GFM tables (column alignment kept), links, `**bold**`, `*italic*`, `~~strike~~`, `==highlight==`, `<sub>`, `<sup>`, `<u>` and `![alt|width](assets/…)` images (pasted pictures are saved next to the page). Export to Word writes headings, real lists and tables, footnotes, a contents field for `[TOC]`, and turns CriticMarkup into tracked changes (`{++ ++}`, `{-- --}`, `{~~ ~>  ~~}`) and comments (`{== ==}{>> <<}`, replies threaded); "Final text only" accepts every suggestion and drops comments. Hidden `%%comments%%`, front matter and `[BREADCRUMB]` are not exported.
+
 Colour and alignment use Pandoc attribute syntax. Other editors show them as plain text; **Export as portable Markdown** removes them.
 
 The Write view never reformats what you did not touch:

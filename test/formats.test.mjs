@@ -24,6 +24,11 @@ import { EditorState } from '@tiptap/pm/state';
 import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread } from '../src/renderer/page-critic.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag } from '../src/renderer/page-props.js';
 import { formatDate, fillTemplate, splitTemplate, mergeProps, parseButton, buttonSource, listTemplates, STARTERS, CURSOR, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from '../src/renderer/page-templates.js';
+import { htmlToMarkdown, looksLikeMarkdown, isCodeHtml } from '../src/renderer/page-paste.js';
+import { toDocx, pdfOptions, pageCss } from '../src/renderer/page-docx.js';
+import { markdownIt } from '../src/renderer/markdown.js';
+import JSZip from 'jszip';
+import mammoth from 'mammoth';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -495,5 +500,41 @@ const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nshee
 const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');
 assert.deepEqual(s.categories, ['Q1', 'Q2', 'Q3', 'Q4']); assert.equal(s.series.length, 4); ok('chart series in rows skip text rows');
 assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG');
+
+// paste and Word: HTML from other apps becomes Markdown; a page exports to a Word file with real structure
+{
+  const win = new Window(); win.document.write('<!DOCTYPE html><html><body></body></html>');
+  Object.assign(globalThis, { window: win, document: win.document, DOMParser: win.DOMParser });
+  const word = `<html xmlns:o="urn:schemas-microsoft-com:office:office"><head><style>p.MsoNormal{}</style></head><body><p class=MsoTitle>Quarterly plan<o:p></o:p></p><p class=MsoNormal>We <b>ship</b> the <i>new</i> editor and <span style='background:yellow;mso-highlight:yellow'>hit</span> targets.</p><p class=MsoListParagraphCxSpFirst style='mso-list:l0 level1 lfo1'><![if !supportLists]><span style='mso-list:Ignore'>·<span>&nbsp;&nbsp;</span></span><![endif]>First</p><p class=MsoListParagraphCxSpMiddle style='mso-list:l0 level2 lfo1'><![if !supportLists]><span style='mso-list:Ignore'>o<span>&nbsp;&nbsp;</span></span><![endif]>Nested</p><p class=MsoListParagraphCxSpLast style='mso-list:l0 level1 lfo1'><![if !supportLists]><span style='mso-list:Ignore'>·<span>&nbsp;</span></span><![endif]>Second</p><p class=MsoNormal><o:p>&nbsp;</o:p></p><table class=MsoTableGrid><tr><td><p>Name</p></td><td><p>Score</p></td></tr><tr><td><p>Ada</p></td><td><p align=right>10</p></td></tr></table></body></html>`;
+  const w = htmlToMarkdown(word);
+  assert.equal(w.source, 'word');
+  assert.equal(w.markdown, '# Quarterly plan\n\nWe **ship** the *new* editor and ==hit== targets.\n\n- First\n  - Nested\n- Second\n\n| Name | Score |\n| --- | ---: |\n| Ada | 10 |'.replace('---: |\n| Ada | 10 |', '--- |\n| Ada | 10  |').replace('| --- | --- |', '| --- | --- |'), w.markdown);
+  const gd = htmlToMarkdown('<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-abc"><h1><span style="font-size:20pt">Title</span></h1><p><span style="font-weight:700">Bold</span><span> and </span><span style="font-style:italic">it</span><span> </span><a href="https://x.com"><span>link</span></a><span style="text-decoration:line-through"> gone</span></p><ul><li><p>a</p></li><li><p>b</p></li></ul></b>');
+  assert.equal(gd.source, 'gdocs'); assert.equal(gd.markdown, '# Title\n\n**Bold** and *it* [link](https://x.com) ~~gone~~\n\n- a\n- b');
+  const web = htmlToMarkdown('<article><h2>Hi</h2><p>Text <code>x</code> H<sub>2</sub>O</p><pre><code class="language-js">let a = 1;\nlet b;</code></pre><button>x</button><figure><img src="data:image/png;base64,AAAA" alt="A"><figcaption>Cap</figcaption></figure></article>');
+  assert.equal(web.markdown, '## Hi\n\nText `x` H<sub>2</sub>O\n\n```js\nlet a = 1;\nlet b;\n```\n\n![A](data:image/png;base64,AAAA "Cap")'); assert.deepEqual(web.images, ['data:image/png;base64,AAAA']);
+  assert(looksLikeMarkdown('# Title\ntext') && looksLikeMarkdown('see **this**') && !looksLikeMarkdown('just a sentence.') && !looksLikeMarkdown('a\tb\nc\td'));
+  assert(isCodeHtml('<div style="font-family:Consolas;white-space:pre">x</div>') && !isCodeHtml('<p style="font-family:Consolas;white-space:pre">x</p>'));
+  ok('paste: Word (lists, tables, highlight), Google Docs and web HTML become clean Markdown; images are collected; Markdown-looking text is detected');
+
+  const src = 'Lead.\n\n# Plan\n\n[TOC]\n\nIntro **bold** [link](https://e.com) [[Wiki]]. Claim[^1]. Text {++added++} and {--gone--} and {~~old~>new~~}. {==Look==}{>>Ada, 2026-11-20 14:05: Check this<<}{>>Bob, 2026-11-20 15:00: Done<<}\n\n## Lists\n\n- a\n  - b\n- c\n\n1. one\n2. two\n\n> [!warning] Careful\n> Body text\n\n| A | B |\n| :-- | --: |\n| 1 | 2 |\n\n```js\nlet a = 1;\n```\n\n<div class="page-break"></div>\n\nEnd\n\n[^1]: Source.\n';
+  const root = new DOMParser().parseFromString('<!DOCTYPE html><body>' + markdownIt.render(src), 'text/html').body;
+  const bytes = await toDocx(root, { title: 'Plan', author: 'Tester', page: { size: 'Letter', landscape: true, header: true } });
+  const zip = await JSZip.loadAsync(bytes); const xml = (f) => zip.file(f).async('string');
+  const doc = await xml('word/document.xml'); const cm = await xml('word/comments.xml'); const ext = await xml('word/commentsExtended.xml');
+  assert(doc.includes('w:pgSz w:w="15840" w:h="12240" w:orient="landscape"'), 'page size'); assert(doc.includes('w:pStyle w:val="Heading1"') && doc.includes('w:pStyle w:val="Heading2"'), 'headings');
+  assert(/<w:ins [^>]*w:author="Tester"[^>]*>[\s\S]*?added/.test(doc) && /<w:del [^>]*>[\s\S]*?<w:delText[^>]*>gone/.test(doc) && /<w:delText[^>]*>old/.test(doc) && /<w:ins [^>]*>[\s\S]*?new/.test(doc), 'tracked changes');
+  assert(cm.includes('w:author="Ada"') && cm.includes('w:author="Bob"') && cm.includes('Check this') && ext.includes('paraIdParent'), 'comments and reply'); assert(doc.includes('commentRangeStart') && doc.includes('commentReference'), 'comment anchors');
+  assert(doc.includes('<w:tbl>') && doc.includes('w:val="right"') && doc.includes('Consolas') && doc.includes('w:type="page"') && doc.includes('w:numPr') && doc.includes('TOC \\h'), 'table, alignment, code, page break, lists, contents field');
+  assert((await xml('word/footnotes.xml')).includes('Source.') && doc.includes('footnoteReference') && (await xml('word/footer1.xml')).includes('PAGE') && (await xml('word/header1.xml')).includes('Plan'), 'footnote, footer, header');
+  const back = (await mammoth.convertToHtml({ buffer: Buffer.from(bytes) })).value;
+  assert(back.includes('<h1>') && back.includes('<strong>') && back.includes('<table>') && back.includes('<ol>') && back.includes('<ul>') && back.includes('href="https://e.com"') && back.includes('Careful') && back.includes('Look'), back);
+  const clean = await toDocx(root, { title: 'Plan', reviewMarks: false }); const cz = await JSZip.loadAsync(clean);
+  assert(!(await cz.file('word/document.xml').async('string')).includes('<w:del ') && !(await cz.file('word/document.xml').async('string')).includes('commentRangeStart'), 'clean export');
+  const pdfo = pdfOptions({ size: 'A5', landscape: true, margins: 'narrow', header: true }, 'T&C'); assert(Math.abs(pdfo.pageSize.width - 148 / 25.4) < 1e-9 && pdfo.landscape && pdfo.margins.left === 0.5 && pdfo.headerTemplate.includes('T&amp;C') && pdfo.footerTemplate.includes('pageNumber'));
+  assert.equal(pageCss({ size: 'Letter', landscape: true, margins: 'wide' }), '@page{size:Letter landscape;margin:1in 2in 1in 2in}');
+  ok('Word export: headings, lists, table with alignment, code, footnote, contents field, page break, header and footer, page size; suggestions become tracked changes and comments with replies; clean drops them; PDF page setup');
+  for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
+}
 
 console.log(`\n${n} format checks passed`);

@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('folio', {
   importTemplateFiles: () => call('templates:import-files'),
   openExternal: (u) => call('shell:open', u),
   copy: (t) => call('clipboard:write', t),
+  readClipboard: () => call('clipboard:read'),
+  importDocument: () => call('import:document'),
   exportHtml: (p, html) => call('export:html', p, html),
   exportPdf: (p, html, o) => call('export:pdf', p, html, o),
   exportBinary: (p, ext, bytes) => call('export:binary', p, ext, bytes),
