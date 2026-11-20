@@ -134,6 +134,30 @@ animate: body appear by=paragraph
 - Effects. Entrance: `appear`, `fade-in`, `zoom-in`, `grow-in`, `fly-in-left|right|up|down`, `float-in`, `wipe-in`, `spin-in`, `bounce-in`. Emphasis: `pulse`, `spin`, `grow`, `teeter`, `flash`, `shake`. Exit: `disappear`, `fade-out`, `zoom-out`, `fly-out-left|right|up|down`, `wipe-out`. Motion paths: `path-left|right|up|down|arc|custom`.
 - Objects whose first animation is an entrance start hidden. An unchanged line is written back exactly as typed. Marp ignores both (they are comments).
 
+### Links, zooms and how a show runs
+
+```markdown
+---
+show-short: 1, 3, 5-7      # a custom show: slide numbers, ranges allowed
+loop: true                 # start again after the last slide
+kiosk: true                # loop, and only links and Esc work (for a stand or a screen)
+advance: 8s                # deck default for auto-advance
+---
+
+<!-- advance: 5s -->       # this slide moves on by itself after its builds
+
+::: box #cta x=80 y=520 w=320 h=80 link=next
+Continue
+:::
+
+::: zoom #z1 x=80 y=180 w=384 h=216 section=Results :::
+::: zoom #z2 x=520 y=180 w=384 h=216 slide=7 return=false :::
+```
+
+- `link=` on any placed object: `next`, `prev`, `first`, `last`, `back` (last slide viewed), `end`, `slide:7`, a web address (`https://…`, `mailto:…`) or a Folio document (`"[[Budget#Totals]]"`). Links work when presenting; web addresses and slide jumps export as PowerPoint hyperlinks.
+- `::: zoom` shows a live copy of a slide (`slide=` number) or of a section's first slide (`section=`). When presenting, a click zooms into it; a section zoom plays the section, then comes back (`return=false` stays). Insert → Summary zoom makes a slide with one zoom per section. In PowerPoint a zoom becomes a card that jumps to its slide.
+- Custom shows appear in the Present menu. `advance:` (per slide or for the deck) and `loop`/`kiosk` also apply in PowerPoint (`advTm`).
+
 ### PowerPoint in and out
 
 - **Export to PowerPoint** (File menu) renders each slide at its real size and measures it, so the .pptx matches Folio: text frames keep position, fonts, sizes, colours and spacing; placed objects become native shapes, lines and arrows, freeforms, pictures (crop kept), tables, charts, video and audio; masters become slide layouts with title, subtitle and body placeholders; the deck's tokens become the theme colours and fonts. Hidden slides stay hidden, sections and speaker notes are kept. Gradients are drawn as pictures. Fonts are named, not embedded: the portable family of a font stack is used (`Segoe UI` for the system stack, `Georgia` for serif, `Consolas` for mono).

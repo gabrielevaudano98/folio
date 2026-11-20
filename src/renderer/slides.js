@@ -733,6 +733,15 @@ export function mountSlides(host, ctx) {
     if (only('icon')) h += `<section class="fp-sec"><h3>Icon</h3>${fRow('Colour', col('color', a.color, '#1a1a1a'))}${fRow('Line weight', range('weight', a.weight || 2, 0.5, 4, 0.25))}<div class="fp-btns"><button class="btn" type="button" data-fa="icon">Change icon…</button></div></section>`;
     if (only('smartart')) h += `<section class="fp-sec"><h3>Diagram</h3>${fRow('Type', sel('type', a.type || 'process', SMART_TYPES))}${fRow('Colour', col('fill', a.fill, '#1f1f1f'))}<p class="fp-note">Double-click the diagram to edit its list. Indent an item to make a sub-item.</p><div class="fp-btns"><button class="btn" type="button" data-fa="explode">Convert to shapes</button><button class="btn" type="button" data-fa="sm-box">Convert to text box</button></div></section>`;
     if (only('box') && /^\s*[-*+]\s/m.test(o.body || '')) h += `<section class="fp-sec"><h3>List</h3><div class="fp-btns"><button class="btn" type="button" data-fa="to-smartart">Convert to diagram…</button></div></section>`;
+    { // link: where a click goes when presenting
+      const L = String(a.link || ''); const kind = !L ? '' : ['next', 'prev', 'first', 'last', 'end', 'back'].includes(L) ? L : /^slide:/.test(L) ? 'slide' : /^\[\[/.test(L) ? 'doc' : 'url';
+      const val = kind === 'slide' ? L.slice(6) : kind === 'doc' ? L.replace(/^\[\[|\]\]$/g, '') : kind === 'url' ? L : '';
+      h += `<section class="fp-sec"><h3>Link</h3>${fRow('Goes to', sel('link-kind', kind, [['', 'Nothing'], ['next', 'Next slide'], ['prev', 'Previous slide'], ['first', 'First slide'], ['last', 'Last slide'], ['slide', 'Slide number…'], ['back', 'Last slide viewed'], ['end', 'End of show'], ['url', 'Web address…'], ['doc', 'Folio document…']]))}${['slide', 'url', 'doc'].includes(kind) ? fRow(kind === 'slide' ? 'Slide' : kind === 'url' ? 'Address' : 'Document', `<input class="input" data-fk="link-value" value="${esc(val)}" placeholder="${kind === 'slide' ? '3' : kind === 'url' ? 'https://…' : 'Budget or Budget#Totals'}">`) : ''}<p class="fp-note">Links work when presenting and in PowerPoint.</p></section>`;
+    }
+    if (only('zoom')) {
+      const list = deck.slides.filter((x) => !x.master); const secs = [...new Set(list.map((x) => x.section).filter(Boolean))];
+      h += `<section class="fp-sec"><h3>Zoom</h3>${fRow('Shows', sel('zoom-to', a.section ? 'section:' + a.section : 'slide:' + (a.slide || ''), [...list.map((x) => ['slide:' + x.number, `Slide ${x.number}${x.title ? ' · ' + x.title.slice(0, 30) : ''}`]), ...secs.map((n) => ['section:' + n, `Section ${n}`])]))}${fRow('Return here', `<input type="checkbox" data-fk="return"${a.return === 'false' ? '' : ' checked'}>`)}<p class="fp-note">When presenting, a click on the zoom opens the slide or section, then comes back.</p></section>`;
+    }
     if (only('media')) h += `<section class="fp-sec"><h3>Playback</h3>${fRow('Loop', `<input type="checkbox" data-fk="loop"${a.loop === 'true' ? ' checked' : ''}>`)}${fRow('Muted', `<input type="checkbox" data-fk="muted"${a.muted === 'true' ? ' checked' : ''}>`)}${fRow('Start when the slide shows', `<input type="checkbox" data-fk="autoplay"${a.autoplay === 'true' ? ' checked' : ''}>`)}</section>`;
     const focusKey = document.activeElement?.closest?.('.sl-format') ? document.activeElement.dataset.fk : null;
     fpane.innerHTML = h;
@@ -762,6 +771,13 @@ export function mountSlides(host, ctx) {
         return { adjust: s2 || null };
       });
     }
+    if (k === 'link-kind' || k === 'link-value') {
+      const kind = fpane.querySelector('[data-fk="link-kind"]').value; const val = (fpane.querySelector('[data-fk="link-value"]')?.value || '').trim();
+      const link = !kind ? null : kind === 'slide' ? (val ? `slide:${parseInt(val, 10) || 1}` : 'slide:1') : kind === 'url' ? (val || 'https://') : kind === 'doc' ? `[[${val || 'Document'}]]` : kind;
+      return each(() => ({ link }));
+    }
+    if (k === 'zoom-to') { const [t, ...rest] = v.split(':'); const x = rest.join(':'); return each((o) => (o.kind === 'zoom' ? (t === 'section' ? { section: x, slide: null } : { slide: x, section: null }) : null)); }
+    if (k === 'return') return each((o) => (o.kind === 'zoom' ? { return: el.checked ? null : 'false' } : null));
     if (k === 'opacity') return each(() => ({ opacity: parseFloat(v) >= 1 ? null : parseFloat(v) }));
     return each(() => ({ [k]: v === '' ? null : v }));
   }
@@ -1025,9 +1041,21 @@ export function mountSlides(host, ctx) {
       { label: 'Chart from a sheet…', run: insertChart },
       { label: 'Equation', run: () => box('$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$', 480, 160, ' align=center valign=middle') },
       { label: 'Code', run: () => box('```js\nconst answer = 42;\n```', 520, 200) }, '-',
+      { label: 'Zoom to a slide', run: () => { const list = deck.slides.filter((x) => !x.master); const me = deck.slides[cur]; const t = list.find((x) => x.number > (me?.number || 0)) || list[0]; placeBlock(({ x, y, id }) => `::: zoom #${id('zoom')} x=${x} y=${y} w=384 h=216 slide=${t?.number || 1} :::`, 384, 216); } },
+      { label: 'Summary zoom (one per section)', run: summaryZoom, disabled: !deck.slides.some((x) => x.section) }, '-',
       { label: 'Live value from another document…', run: () => insertRefBox('value') },
       { label: 'Embed from another document…', run: () => insertRefBox('embed') },
     ]);
+  }
+  /** a new slide with a zoom to each section, laid out in a grid */
+  function summaryZoom() {
+    const secs = [...new Set(deck.slides.filter((x) => !x.master && x.section).map((x) => x.section))]; if (!secs.length) return;
+    const cols = secs.length <= 2 ? secs.length : secs.length <= 4 ? 2 : 3; const rows = Math.ceil(secs.length / cols);
+    const gap = 32, top = 170, W = deck.width, H = deck.height;
+    const w = Math.min((W - 160 - gap * (cols - 1)) / cols, ((H - top - 60 - gap * (rows - 1)) / rows) * (W / H)); const h = w * (H / W);
+    const x0 = (W - (cols * w + gap * (cols - 1))) / 2;
+    const zooms = secs.map((n, k) => `::: zoom #zoom-${k + 1} x=${Math.round(x0 + (k % cols) * (w + gap))} y=${Math.round(top + Math.floor(k / cols) * (h + gap))} w=${Math.round(w)} h=${Math.round(h)} section=${/[\s"]/.test(n) ? `"${n.replace(/"/g, "'")}"` : n} :::`);
+    const { fm, list } = chunks(); list.splice(cur + 1, 0, `\n# Summary\n\n${zooms.join('\n\n')}\n`); cur += 1; commit(joinDeck(fm, list));
   }
   function connectSelected() {
     const objs = objsNow(); const [a, b] = selected.map((i) => objs[i]);
@@ -1100,7 +1128,11 @@ export function mountSlides(host, ctx) {
   notesEl.addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(() => editChunk((c) => setNotes(c, notesEl.value)), 350); });
   host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: 'Synced copy of a slide…', run: reuseSlide }, '-', ...BLOCKS.map(([id, l, body]) => ({ label: `Building block: ${l}`, run: () => addBlock(body) }))]));
   function addBlock(body) { const { fm, list } = chunks(); list.splice(cur + 1, 0, `\n${body}\n`); cur += 1; selected = []; commit(joinDeck(fm, list)); }
-  host.querySelector('[data-sl="present"]').addEventListener('click', () => present(cur));
+  host.querySelector('[data-sl="present"]').addEventListener('click', async (e) => {
+    const anchor = e.currentTarget; const { customShows } = await import('./slides-present.js'); const shows = Object.keys(customShows(deck));
+    if (!shows.length) return present(cur);
+    ctx.showMenu(anchor, [{ label: 'From this slide', run: () => present(cur) }, { label: 'From the beginning', run: () => present(0) }, '-', ...shows.map((n) => ({ label: `Custom show: ${n}`, run: () => present(0, n) }))]);
+  });
   host.querySelector('[data-sl="export"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [
     { label: 'PowerPoint (.pptx)…', run: () => exportPptx() },
     { label: 'PDF…', run: () => exportPdf() },
@@ -1125,11 +1157,17 @@ export function mountSlides(host, ctx) {
 
   /* presenter */
   let show = null;
-  async function present(start = 0) {
-    const order = deck.shown; if (!order.length) return ctx.toast('There are no slides to present, only masters.');
-    const startSlide = deck.slides[start]; const from = Math.max(0, order.indexOf(startSlide?.master ? order[0] : startSlide));
-    const { startShow } = await import('./slides-present.js');
-    show = startShow({ deck, order, start: from, renderSlide, hydrate, onExit: (s) => { show = null; select(s.index); } });
+  async function present(start = 0, showName = null) {
+    const P = await import('./slides-present.js');
+    const custom = showName ? P.customShows(deck)[showName] : null;
+    const order = custom || deck.shown; if (!order.length) return ctx.toast('There are no slides to present, only masters.');
+    const startSlide = deck.slides[start]; const from = custom ? 0 : Math.max(0, order.indexOf(startSlide?.master ? order[0] : startSlide));
+    const openLink = (L, api) => {
+      const wiki = L.match(/^\[\[(.+)\]\]$/);
+      if (wiki) { api.close(); ctx.onWikiLink ? ctx.onWikiLink(wiki[1]) : ctx.toast(`Open ${wiki[1]} from the sidebar.`); return; }
+      if (/^https?:/.test(L)) window.open(L, '_blank');
+    };
+    show = P.startShow({ deck, order, start: from, renderSlide, hydrate, openLink, onExit: (s) => { show = null; select(s.index); } });
     window.__folioShow = show;
   }
 

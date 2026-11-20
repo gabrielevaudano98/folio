@@ -140,3 +140,10 @@
 .slide .sl-ph-title h1, .slide .sl-ph-title h2, .slide .sl-ph-title h3 { margin: 0; font-size: 1em; }
 .slide .sl-body.has-ph:empty { display: none; }
 .slide .sl-obj.is-placeholder { outline: 2px dashed color-mix(in oklch, var(--sl-ink) 35%, transparent); outline-offset: -2px; }
+
+/* zoom objects: a live, scaled copy of another slide */
+.slide .sl-zoom { overflow: hidden; border-radius: 6px; box-shadow: 0 0 0 1px color-mix(in oklch, var(--sl-ink) 18%, transparent), 0 6px 20px -8px rgb(0 0 0 / .35); background: var(--sl-bg); }
+.slide .sl-zoom-view { transform-origin: 0 0; pointer-events: none; }
+.slide .sl-zoom-view .slide { box-shadow: none; }
+.slide .sl-zoom-missing { display: grid; place-items: center; height: 100%; font-size: 18px; color: var(--sl-muted); border: 2px dashed currentColor; border-radius: 6px; }
+.presenter .has-link { cursor: pointer; }

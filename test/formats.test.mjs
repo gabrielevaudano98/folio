@@ -5,7 +5,7 @@ import { parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, applyEdgeStyle
 import { parseWorkbook, serializeWorkbook, evaluator, shiftFormula } from '../src/renderer/sheet-core.js';
 import { findRefs, resolveTarget, rewriteRefs } from '../src/renderer/refs-syntax.js';
 import { resolveRef } from '../src/renderer/refs.js';
-import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter } from '../src/renderer/slides-core.js';
+import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter, zoomTarget } from '../src/renderer/slides-core.js';
 import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle, linePoints, linePath, parseFill, fillCss, fillSvg, adjustCss, frameCss, safeColor, replaceImageSrc, pathBlock, polygonsBlock, simplify, pointsPath, parsePoints } from '../src/renderer/slides-objects.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
@@ -232,6 +232,16 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.deepEqual(steps.map((st) => st.map((x) => [x.anim.effect, x.anim.part ?? null, +x.start.toFixed(2)])), [[['fade-in', null, 0], ['fly-in-up', null, 0.2], ['pulse', 0, 0.6]], [['pulse', 1, 0]], [['pulse', 2, 0]]]); ok('build steps: with joins the click, after waits for the previous end, by paragraph adds a click per paragraph');
   assert.deepEqual(M.hiddenAtStart(s1.animations).map((a) => a.target), ['a', 'b']); ok('objects that enter start hidden');
   assert.equal(Object.keys(M.TRANSITIONS).length >= 24, true); for (const t of Object.keys(M.TRANSITIONS)) assert.equal(M.transitionFrames(t).length, 2); for (const e of Object.keys(M.EFFECTS)) assert(M.keyframes(M.parseAnim(`#x ${e}`)).length >= 2); ok('24+ transitions and every effect have keyframes');
+}
+
+// interactivity: links, zooms, custom shows, auto-advance
+{
+  const lt = fx('Links.slides.md'); const ld = parseDeck(lt);
+  const z = ld.slides[0].objects.find((o) => o.kind === 'zoom');
+  assert.equal(z.attrs.section, 'Detail'); assert.equal(zoomTarget(ld, z.attrs).title, 'Detail one'); assert.equal(zoomTarget(ld, { slide: '4' }).title, 'The end'); assert.equal(zoomTarget(ld, { slide: '9' }), null); ok('zoom objects point at a slide or the first slide of a section');
+  const P = await import('../src/renderer/slides-present.js');
+  assert.deepEqual(Object.fromEntries(Object.entries(P.customShows(ld)).map(([k, v]) => [k, v.map((x) => x.number)])), { short: [1, 3] }); ok('custom shows list slides by number, ranges allowed');
+  assert.equal(ld.slides[3].advance, '1s'); assert.equal(ld.slides[2].advance, null); ok('auto-advance is a one-slide directive');
 }
 
 // PowerPoint interop: package reading, text conversion, and a .pptx made by pptxgenjs back to slides-md

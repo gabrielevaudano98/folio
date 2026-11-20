@@ -1451,5 +1451,5 @@ window.__folioErrors = [];
 window.__folioRun = (id) => COMMANDS.find((x) => x.id === id)?.run();
 Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
-addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); console.error('[folio-error]', e.reason?.message || e.reason); });
+addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); if (e.reason?.stack) console.error('[folio-error-stack]', e.reason.stack.split('\n').slice(0, 4).join(' | ')); console.error('[folio-error]', e.reason?.message || e.reason); });
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>Folio could not start. ${esc(e.message)}</p></div></div>`); console.error(e); });

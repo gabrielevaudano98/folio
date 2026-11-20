@@ -185,7 +185,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
       return `<div class="sl-ph sl-ph-${r}${a.fit === 'shrink' ? ' sl-obj is-fit' : ''}" style="${st.join(';')}">${clean(parts[r])}</div>`;
     }).join('');
   } else html = clean(s.content);
-  const placed = placedHtml(deck, s);
+  const placed = placedHtml(deck, s, zoomDepth ? { inert: true } : undefined);
   const img = (b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'none' ? 'none' : /%$/.test(b.fit) ? 'contain' : b.fit};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`;
   const theme = MARP_THEME[e.theme] || (THEMES.some(([t]) => t === e.theme) ? e.theme : deck.theme);
   return `<section class="slide theme-${theme} layout-${escape(s.layout)} ${s.classes.map((c) => 'cls-' + escape(c)).join(' ')}${side.length ? ' has-side side-' + side[0].side : ''}" style="width:${deck.width}px;height:${deck.height}px;--side:${sideW}%;${style.join(';')}">
@@ -203,6 +203,21 @@ export function renderSlide(deck, s, { number = true } = {}) {
 }
 
 /** placed objects of a slide; inert (for masters) leaves out the ids the canvas selects by */
+/** the slide a zoom shows: `slide=` (its number) or `section=` (the section's first slide) */
+export function zoomTarget(deck, a) {
+  const list = deck.slides.filter((x) => !x.master);
+  if (a.section) return list.find((x) => x.section === a.section) || null;
+  const n = parseInt(a.slide, 10); return Number.isFinite(n) ? list.find((x) => x.number === n) || null : null;
+}
+let zoomDepth = 0;
+function zoomHtml(deck, o, cls, ref, st) {
+  const a = o.attrs; const t = zoomTarget(deck, a); const g = geometry(o);
+  const k = Math.min(g.w / deck.width, g.h / deck.height);
+  let inner = '<div class="sl-zoom-missing">Pick a slide for this zoom</div>';
+  if (t && zoomDepth < 1) { zoomDepth++; try { inner = `<div class="sl-zoom-view" style="width:${deck.width}px;height:${deck.height}px;transform:scale(${k})">${renderSlide(deck, t, { number: false })}</div>`; } finally { zoomDepth--; } }
+  const label = t ? (a.section ? `Zoom to section ${a.section}` : `Zoom to slide ${t.number}`) : 'Zoom';
+  return `<div class="${cls.join(' ')}"${ref} data-zoom="${t ? t.number : ''}"${a.section ? ` data-zoom-section="${escape(a.section)}"` : ''} role="link" aria-label="${escape(label)}" style="${st.join(';')}">${inner}</div>`;
+}
 function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
   const byId = Object.fromEntries((s.objects || []).filter((o) => o.id && o.kind !== 'line').map((o) => [o.id, geometry(o)]));
   return (s.objects || []).map((o, n) => {
@@ -215,7 +230,9 @@ function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
     if (g.opacity != null) st.push(`opacity:${g.opacity}`);
     st.push(...frameCss(o));
     const cls = ['sl-obj', 'sl-' + o.kind]; if (['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase())) cls.push('is-locked');
-    const ref = inert ? '' : ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`;
+    const ref = (inert ? '' : ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`) + (a.link ? ` data-link="${escape(a.link)}"` : '');
+    if (a.link) cls.push('has-link');
+    if (o.kind === 'zoom') return zoomHtml(deck, o, cls, ref, st);
     if (inert) cls.push('is-master');
     if (a.placeholder) cls.push('is-placeholder');
     if (o.kind === 'image') {

@@ -252,7 +252,12 @@ function sinkFor(target) {
   }
   return {
     master: false,
-    text: (t, o) => target.addText(t, o),
+    // pptxgenjs links runs, not text boxes: a clear shape on top carries the object's link
+    text: (t, o) => {
+      if (!o.hyperlink || o.placeholder) return target.addText(t, o);
+      const { hyperlink, ...rest } = o; target.addText(t, rest);
+      target.addShape('rect', { x: o.x, y: o.y, w: o.w, h: o.h, ...(o.rotate ? { rotate: o.rotate } : {}), fill: { color: 'FFFFFF', transparency: 100 }, line: { type: 'none' }, hyperlink, objectName: `${o.objectName || 'Text'} link` });
+    },
     shape: (type, o) => target.addShape(type, o),
     image: (o) => target.addImage(o),
     table: (rows, o) => target.addTable(rows, o),
@@ -305,7 +310,7 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote, prepare 
     for (const [k, s] of list.entries()) {
       const sec = sections[k]; if (!sec) continue;
       const origin = sec.getBoundingClientRect();
-      const ctx = { pptx, origin, dataUrl, readNote, deck, s, anchors };
+      const ctx = { pptx, origin, dataUrl, readNote, deck, s, anchors, k, list };
       // the slide's layout: its masters (an all-slides master plus a layout master) as one PowerPoint layout
       const masters = mastersFor(deck, s);
       let masterName = null;
@@ -575,6 +580,16 @@ function svgPicture(ctx, svg, out, extra = {}) {
 }
 
 /* ---------- placed objects: native PowerPoint objects at their model geometry ---------- */
+const a0 = (o) => o?.attrs || {};
+/** a Folio link as a PowerPoint hyperlink: web addresses and slide jumps (next, previous, first, last, slide:N, zooms) */
+function linkFor(ctx, L) {
+  if (!L) return null; L = String(L);
+  if (/^(https?|mailto):/i.test(L)) return { url: L };
+  const n = ctx.list.length; let to = null;
+  if (L === 'next') to = ctx.k + 2; else if (L === 'prev') to = ctx.k; else if (L === 'first') to = 1; else if (L === 'last') to = n;
+  else { const m = L.match(/^(?:slide:|#)(\d+)$/); if (m) { const t = ctx.list.findIndex((x) => x.number === +m[1]); if (t >= 0) to = t + 1; } }
+  return to >= 1 && to <= n ? { slide: to } : null;
+}
 function objectOf(ctx, el) {
   // the model object behind a rendered element: slide objects carry their index, master objects were paired by order
   if (el._model) return { o: el._model, scope: el._scope };
@@ -592,9 +607,18 @@ async function placed(ctx, el, out) {
   const a = o?.attrs || {};
   const flip = String(a.flip || (/scaleX\(-1\)|scale\(-1/.test(el.style.transform + (el.querySelector('svg')?.style.transform || '')) ? 'h' : ''));
   ctx.objName = o?.id ? `!!${o.id}` : null; // PowerPoint's Morph and our animations find objects by this name
-  const base = { ...(ctx.objName ? { objectName: ctx.objName } : {}), x: inch(g.x), y: inch(g.y), w: inch(g.w), h: inch(g.h), ...(g.rotate ? { rotate: g.rotate } : {}), ...(flip.includes('h') ? { flipH: true } : {}), ...(flip.includes('v') ? { flipV: true } : {}) };
+  const hyperlink = linkFor(ctx, a0(o).link || el.dataset.link);
+  const base = { ...(ctx.objName ? { objectName: ctx.objName } : {}), ...(hyperlink ? { hyperlink } : {}), x: inch(g.x), y: inch(g.y), w: inch(g.w), h: inch(g.h), ...(g.rotate ? { rotate: g.rotate } : {}), ...(flip.includes('h') ? { flipH: true } : {}), ...(flip.includes('v') ? { flipV: true } : {}) };
   const shadow = shadowOf(a);
-  const kind = ['line', 'image', 'icon', 'media', 'smartart', 'path', 'shape', 'box'].find((k) => el.classList.contains('sl-' + k)) || 'box';
+  const kind = ['line', 'image', 'icon', 'media', 'smartart', 'path', 'shape', 'zoom', 'box'].find((k) => el.classList.contains('sl-' + k)) || 'box';
+  if (kind === 'zoom') {
+    // PowerPoint's own zoom objects need a thumbnail it renders itself: a framed card that jumps to the slide stands in
+    const t = ctx.list.find((x) => x.number === +el.dataset.zoom); const to = t ? ctx.list.indexOf(t) + 1 : null;
+    const ink = cssColor(getComputedStyle(el).color)?.hex || '1F1F1F';
+    out.text([{ text: t?.title || (a.section ? `Section ${a.section}` : `Slide ${t?.number ?? ''}`), options: { bold: true, fontSize: 18, color: ink } }, { text: a.section ? `\nSection · ${t ? 'slide ' + t.number : ''}` : `\nSlide ${t?.number ?? ''}`, options: { fontSize: 12, color: ink } }],
+      { ...base, ...(to && !hyperlink ? { hyperlink: { slide: to } } : {}), shape: 'roundRect', rectRadius: 0.06, fill: { color: cssColor(getComputedStyle(el).backgroundColor)?.hex || 'F4F4F4' }, line: { color: ink, width: 0.75, transparency: 70 }, align: 'center', valign: 'middle' });
+    return;
+  }
 
   if (kind === 'line') return line(ctx, el, o, scope, out);
   if (kind === 'image') { const img = el.querySelector('img'); if (img) await picture(ctx, img, out, { rotate: g.rotate, transparency: op < 1 ? Math.round((1 - op) * 100) : 0, flipH: base.flipH, flipV: base.flipV, shadow }); return; }
