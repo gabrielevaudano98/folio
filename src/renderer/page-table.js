@@ -2,6 +2,7 @@
 // Pure helpers (parse pasted cells, table → sheet) run in Node tests; the commands work on the TipTap editor;
 // TableHandles draws the Notion/Docs handles: a grip over the column and beside the row under the pointer, and
 // + bars under and to the right of the table.
+import { t as tr, tl } from './i18n.js';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
@@ -207,25 +208,25 @@ export function popupMenu(anchor, items, { label = 'Menu', onClose } = {}) {
 export function tableMenuItems(editor, { icons = {}, kind = 'both', toSheet } = {}) {
   const c = () => editor.chain().focus();
   const t = tableAt(editor.state); const align = tableCmd.colAlign(editor.state);
-  const row = [{ head: 'Row' },
-    { label: 'Header row', icon: icons.table, checked: t ? !emptyHeader(t.table) : false, run: () => tableCmd.toggleHeader(editor) },
-    { label: 'Insert above', icon: icons.rowAbove, run: () => c().addRowBefore().run(), disabled: t?.row === 0 },
-    { label: 'Insert below', icon: icons.rowBelow, run: () => c().addRowAfter().run() },
-    { label: 'Move up', icon: icons.arrowUp, run: () => tableCmd.moveRow(editor, -1), disabled: !t || t.row <= 1 },
-    { label: 'Move down', icon: icons.arrowDown, run: () => tableCmd.moveRow(editor, 1), disabled: !t || t.row === 0 || t.row >= t.map.height - 1 },
-    { label: 'Delete row', icon: icons.rowDelete, run: () => c().deleteRow().run(), danger: true, disabled: t?.row === 0 }];
-  const col = [{ head: 'Column' },
-    { label: 'Insert left', icon: icons.colLeft, run: () => c().addColumnBefore().run() },
-    { label: 'Insert right', icon: icons.colRight, run: () => c().addColumnAfter().run() },
-    { label: 'Move left', icon: icons.arrowLeft, run: () => tableCmd.moveCol(editor, -1), disabled: !t || t.col === 0 },
-    { label: 'Move right', icon: icons.arrowRight, run: () => tableCmd.moveCol(editor, 1), disabled: !t || t.col >= t.map.width - 1 },
-    { label: 'Align left', icon: icons.alignLeft, checked: align === 'left', run: () => tableCmd.alignCol(editor, 'left') },
-    { label: 'Align centre', icon: icons.alignCenter, checked: align === 'center', run: () => tableCmd.alignCol(editor, 'center') },
-    { label: 'Align right', icon: icons.alignRight, checked: align === 'right', run: () => tableCmd.alignCol(editor, 'right') },
-    { label: 'Sort A to Z', icon: icons.sortAsc, run: () => tableCmd.sort(editor, false) },
-    { label: 'Sort Z to A', icon: icons.sortDesc, run: () => tableCmd.sort(editor, true) },
-    { label: 'Delete column', icon: icons.colDelete, run: () => c().deleteColumn().run(), danger: true }];
-  const tail = ['-', ...(toSheet ? [{ label: 'Open as sheet', icon: icons.sheet, run: toSheet }] : []), { label: 'Delete table', icon: icons.trash, run: () => c().deleteTable().run(), danger: true }];
+  const row = [{ head: tr('tbl.row') },
+    { label: tr('tbl.header-row'), icon: icons.table, checked: t ? !emptyHeader(t.table) : false, run: () => tableCmd.toggleHeader(editor) },
+    { label: tr('tbl.insert-above'), icon: icons.rowAbove, run: () => c().addRowBefore().run(), disabled: t?.row === 0 },
+    { label: tr('tbl.insert-below'), icon: icons.rowBelow, run: () => c().addRowAfter().run() },
+    { label: tr('tbl.move-up'), icon: icons.arrowUp, run: () => tableCmd.moveRow(editor, -1), disabled: !t || t.row <= 1 },
+    { label: tr('tbl.move-down'), icon: icons.arrowDown, run: () => tableCmd.moveRow(editor, 1), disabled: !t || t.row === 0 || t.row >= t.map.height - 1 },
+    { label: tr('tbl.delete-row'), icon: icons.rowDelete, run: () => c().deleteRow().run(), danger: true, disabled: t?.row === 0 }];
+  const col = [{ head: tr('tbl.column') },
+    { label: tr('tbl.insert-left'), icon: icons.colLeft, run: () => c().addColumnBefore().run() },
+    { label: tr('tbl.insert-right'), icon: icons.colRight, run: () => c().addColumnAfter().run() },
+    { label: tr('tbl.move-left'), icon: icons.arrowLeft, run: () => tableCmd.moveCol(editor, -1), disabled: !t || t.col === 0 },
+    { label: tr('tbl.move-right'), icon: icons.arrowRight, run: () => tableCmd.moveCol(editor, 1), disabled: !t || t.col >= t.map.width - 1 },
+    { label: tr('tbl.align-left'), icon: icons.alignLeft, checked: align === 'left', run: () => tableCmd.alignCol(editor, 'left') },
+    { label: tr('tbl.align-centre'), icon: icons.alignCenter, checked: align === 'center', run: () => tableCmd.alignCol(editor, 'center') },
+    { label: tr('tbl.align-right'), icon: icons.alignRight, checked: align === 'right', run: () => tableCmd.alignCol(editor, 'right') },
+    { label: tr('tbl.sort-a-to-z'), icon: icons.sortAsc, run: () => tableCmd.sort(editor, false) },
+    { label: tr('tbl.sort-z-to-a'), icon: icons.sortDesc, run: () => tableCmd.sort(editor, true) },
+    { label: tr('tbl.delete-column'), icon: icons.colDelete, run: () => c().deleteColumn().run(), danger: true }];
+  const tail = ['-', ...(toSheet ? [{ label: tr('tbl.open-as-sheet'), icon: icons.sheet, run: toSheet }] : []), { label: tr('tbl.delete-table'), icon: icons.trash, run: () => c().deleteTable().run(), danger: true }];
   return kind === 'row' ? [...row, ...tail] : kind === 'col' ? [...col, ...tail] : [...row, '-', ...col, ...tail];
 }
 
@@ -264,7 +265,7 @@ export const TableHandles = Extension.create({
         const page = view.dom.closest('.rich-page') || view.dom.parentElement;
         const ui = document.createElement('div'); ui.className = 'table-ui'; ui.hidden = true;
         const btn = (cls, label, icon) => `<button type="button" class="${cls}" aria-label="${label}" data-tip="${label}">${icon || ''}</button>`;
-        ui.innerHTML = btn('tbl-grip tbl-col', 'Column options', opts.icons.grip) + btn('tbl-grip tbl-row', 'Row options', opts.icons.grip) + btn('tbl-add tbl-add-row', 'Add a row', opts.icons.plus) + btn('tbl-add tbl-add-col', 'Add a column', opts.icons.plus);
+        ui.innerHTML = btn('tbl-grip tbl-col', tl('tbl', 'Column options'), opts.icons.grip) + btn('tbl-grip tbl-row', tl('tbl', 'Row options'), opts.icons.grip) + btn('tbl-add tbl-add-row', tl('tbl', 'Add a row'), opts.icons.plus) + btn('tbl-add tbl-add-col', tl('tbl', 'Add a column'), opts.icons.plus);
         page.append(ui);
         const [colGrip, rowGrip, addRow, addCol] = ui.children;
         let hover = null, raf = 0, open = false;
@@ -306,7 +307,7 @@ export const TableHandles = Extension.create({
           // commands need the cursor in a cell, not the cell selection: put it back before running
           const items = tableMenuItems(editor, { icons: opts.icons, kind, toSheet: opts.toSheet ? () => opts.toSheet(editor) : null })
             .map((it) => (it.run ? { ...it, run: () => { view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(hover?.pos ?? view.state.selection.from)))); it.run(); } } : it));
-          popupMenu(grip, items, { label: kind === 'row' ? 'Row' : 'Column', onClose: () => { open = false; grip.setAttribute('aria-expanded', 'false'); } });
+          popupMenu(grip, items, { label: kind === 'row' ? tl('tbl', 'Row') : tl('tbl', 'Column'), onClose: () => { open = false; grip.setAttribute('aria-expanded', 'false'); } });
         };
         for (const b of ui.children) b.addEventListener('mousedown', (ev) => ev.preventDefault());
         /* drag a grip to move its column or row: a line shows where it lands */

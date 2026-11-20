@@ -1,11 +1,12 @@
 // Folio — the Properties panel above the title of a page (D8). It edits the front matter through page-props.js,
 // so each change rewrites only that property's lines. `get()` returns the front matter block, `set(text)` stores it.
+import { t as tr, tl } from './i18n.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, TYPES } from './page-props.js';
 import { popupMenu } from './page-table.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const TYPE_LABEL = { text: 'Text', number: 'Number', checkbox: 'Checkbox', date: 'Date', datetime: 'Date and time', list: 'List', tags: 'Tags', link: 'Link to a page', object: 'Nested (edit in source)' };
-const TYPE_ICON = { text: 'counter', number: 'heading', checkbox: 'check', date: 'calendar', datetime: 'calendar', list: 'listBullet', tags: 'tag', link: 'link', object: 'source' };
+const TYPE_LABEL = { text: tr('props.text'), number: 'Number', checkbox: 'Checkbox', date: 'Date', datetime: tl('props', 'Date and time'), list: 'List', tags: 'Tags', link: tl('props', 'Link to a page'), object: tl('props', 'Nested (edit in source)') };
+const TYPE_ICON = { text: tr('props.counter'), number: 'heading', checkbox: 'check', date: 'calendar', datetime: 'calendar', list: 'listBullet', tags: 'tag', link: 'link', object: 'source' };
 /* a value carried over when the type changes */
 const convert = (v, t) => {
   const list = Array.isArray(v) ? v : v === '' || v == null ? [] : [String(v)];
@@ -19,7 +20,7 @@ const convert = (v, t) => {
 };
 
 export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType }) {
-  const box = document.createElement('section'); box.className = 'props'; box.setAttribute('aria-label', 'Properties');
+  const box = document.createElement('section'); box.className = 'props'; box.setAttribute('aria-label', tl('props', 'Properties'));
   page.prepend(box);
   let open = true, adding = null;
   const ic = (n) => icons[n] || '';
@@ -27,7 +28,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   const valueHtml = (p) => {
     const id = `prop-${p.key.replace(/\W+/g, '-')}`;
-    if (p.readOnly) return `<code class="prop-raw" title="Nested values are edited in the source view">${esc(String(p.value).trim())}</code>`;
+    if (p.readOnly) return `<code class="prop-raw" title="${tr('props.nested-values-are-edited-in-the-source')}">${esc(String(p.value).trim())}</code>`;
     if (p.type === 'checkbox') return `<input type="checkbox" class="prop-check" id="${id}" ${p.value ? 'checked' : ''} aria-label="${esc(p.key)}">`;
     if (p.type === 'list' || p.type === 'tags') {
       const chips = (p.value || []).map((x, i) => `<span class="prop-chip${p.type === 'tags' ? ' is-tag' : ''}"><button type="button" class="prop-chip-text" data-chip="${i}"${p.type === 'tags' ? ` data-tag="${esc(String(x).replace(/^#/, ''))}"` : ''}>${p.type === 'tags' ? '#' : ''}${esc(String(x).replace(/^#/, ''))}</button><button type="button" class="prop-chip-x" data-remove="${i}" aria-label="Remove ${esc(x)}">${ic('close')}</button></span>`).join('');
@@ -36,20 +37,20 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
     if (p.type === 'date') return `<input type="date" class="prop-input" id="${id}" value="${esc(String(p.value || '').slice(0, 10))}" aria-label="${esc(p.key)}">`;
     if (p.type === 'datetime') return `<input type="datetime-local" class="prop-input" id="${id}" value="${esc(String(p.value || '').replace(' ', 'T').slice(0, 16))}" aria-label="${esc(p.key)}">`;
     if (p.type === 'number') return `<input type="number" class="prop-input" id="${id}" value="${esc(p.value)}" aria-label="${esc(p.key)}" step="any">`;
-    if (p.type === 'link') { const v = String(p.value || '').replace(/^\[\[|\]\]$/g, ''); return `<div class="prop-link-row">${v ? `<button type="button" class="prop-link" data-link="${esc(v)}" title="Ctrl or ⌘ click to open">${esc(v)}</button>` : ''}<input type="text" class="prop-input prop-link-input" id="${id}" value="${esc(v)}" placeholder="Page name" aria-label="${esc(p.key)}" spellcheck="false"${v ? ' hidden' : ''}></div>`; }
-    return `<input type="text" class="prop-input" id="${id}" value="${esc(p.value)}" placeholder="Empty" aria-label="${esc(p.key)}">`;
+    if (p.type === 'link') { const v = String(p.value || '').replace(/^\[\[|\]\]$/g, ''); return `<div class="prop-link-row">${v ? `<button type="button" class="prop-link" data-link="${esc(v)}" title="${tr('props.ctrl-or-click-to-open')}">${esc(v)}</button>` : ''}<input type="text" class="prop-input prop-link-input" id="${id}" value="${esc(v)}" placeholder="${tr('props.page-name')}" aria-label="${esc(p.key)}" spellcheck="false"${v ? ' hidden' : ''}></div>`; }
+    return `<input type="text" class="prop-input" id="${id}" value="${esc(p.value)}" placeholder="${tr('props.empty')}" aria-label="${esc(p.key)}">`;
   };
 
   function render() {
     const p = parseProps(get());
     box.classList.toggle('is-empty', !p.props.length && !adding);
-    box.innerHTML = `${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>Properties</span><span class="props-count">${p.props.length}</span></button>` : ''}
+    box.innerHTML = `${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
       <div class="props-rows"${open ? '' : ' hidden'}>${p.props.map((x) => `<div class="prop-row" data-key="${esc(x.key)}" data-type="${x.type}">
         <button type="button" class="prop-key" aria-haspopup="menu" aria-label="${esc(x.key)}: ${TYPE_LABEL[x.type]}. Change type, rename or remove" data-tip="${TYPE_LABEL[x.type]}">${ic(TYPE_ICON[x.type])}<span>${esc(x.key)}</span></button>
         <div class="prop-value">${valueHtml(x)}</div></div>`).join('')}
-        ${adding ? `<div class="prop-row is-new"><span class="prop-key">${ic('plus')}<input class="prop-new-key" type="text" value="${esc(adding)}" aria-label="Property name" spellcheck="false"></span><div class="prop-value prop-hint">Enter to add, Esc to cancel</div></div>` : ''}
+        ${adding ? `<div class="prop-row is-new"><span class="prop-key">${ic('plus')}<input class="prop-new-key" type="text" value="${esc(adding)}" aria-label="${tr('props.property-name')}" spellcheck="false"></span><div class="prop-value prop-hint">${tr('props.enter-to-add-esc-to-cancel')}</div></div>` : ''}
       </div>
-      <button type="button" class="props-add"${open || !p.props.length ? '' : ' hidden'}>${ic('plus')}<span>Add property</span></button>
+      <button type="button" class="props-add"${open || !p.props.length ? '' : ' hidden'}>${ic('plus')}<span>${tr('props.add-property')}</span></button>
       <datalist id="prop-tag-list"></datalist>`;
     if (adding) { const k = box.querySelector('.prop-new-key'); k.focus(); k.select(); }
   }
@@ -119,14 +120,14 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   function openMenu(btn) {
     const key = btn.closest('.prop-row').dataset.key; const p = propOf(key); if (!p) return;
-    const items = [{ head: 'Type' }, ...(p.readOnly ? [{ label: TYPE_LABEL.object, icon: ic('source'), checked: true, disabled: true, run() {} }] : TYPES.map((t) => ({ label: TYPE_LABEL[t], icon: ic(TYPE_ICON[t]), checked: p.type === t, run: () => { commit((x) => setProp(x, key, convert(p.value, t), t)); onType?.(key, t); } }))), '-',
-      { label: 'Rename', icon: ic('rename'), run: () => renameInline(key) },
-      { label: 'Remove property', icon: ic('trash'), danger: true, run: () => commit((x) => removeProp(x, key)) }];
-    popupMenu(btn, items, { label: `Property ${key}` });
+    const items = [{ head: tr('props.type') }, ...(p.readOnly ? [{ label: TYPE_LABEL.object, icon: ic('source'), checked: true, disabled: true, run() {} }] : TYPES.map((t) => ({ label: TYPE_LABEL[t], icon: ic(TYPE_ICON[t]), checked: p.type === t, run: () => { commit((x) => setProp(x, key, convert(p.value, t), t)); onType?.(key, t); } }))), '-',
+      { label: tr('props.rename'), icon: ic('rename'), run: () => renameInline(key) },
+      { label: tr('props.remove-property'), icon: ic('trash'), danger: true, run: () => commit((x) => removeProp(x, key)) }];
+    popupMenu(btn, items, { label: tr('props.property-key', { key }) });
   }
   function renameInline(key) {
     const row = box.querySelector(`.prop-row[data-key="${CSS.escape(key)}"] .prop-key span`); if (!row) return;
-    const inp = document.createElement('input'); inp.className = 'prop-new-key'; inp.value = key; inp.setAttribute('aria-label', 'New name'); row.replaceWith(inp); inp.focus(); inp.select();
+    const inp = document.createElement('input'); inp.className = 'prop-new-key'; inp.value = key; inp.setAttribute('aria-label', tl('props', 'New name')); row.replaceWith(inp); inp.focus(); inp.select();
     const done = (ok) => { inp.onblur = null; if (ok) commit((x) => renameProp(x, key, inp.value)); else render(); };
     inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); done(true); } if (e.key === 'Escape') { e.preventDefault(); done(false); } };
     inp.onblur = () => done(true);

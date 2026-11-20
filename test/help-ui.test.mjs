@@ -36,9 +36,11 @@ const steps = [
   { js: "document.querySelector('#dock-info .side-head').textContent", log: true, wait: 100 },
   { js: "document.querySelector('#btn-more').click(); true", wait: 300 },
   { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => /^Settings/.test(b.textContent)).click(); true", wait: 400 },
-  { js: "(() => { const s = document.querySelector('#set-lang'); s.value = 'it'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()", wait: 600 },
-  { js: "[document.querySelector('#sheet-settings [for=set-lang]').textContent, document.documentElement.lang, document.querySelector('#sheet-settings').open, document.querySelector('#set-lang').value]", log: true, wait: 100 },
-  { js: "document.querySelector('#sheet-settings [data-close-sheet]').click(); document.querySelector('#dock-info .side-head').textContent", log: true, wait: 400 },
+  { js: "(() => { const s = document.querySelector('#set-lang'); s.value = 'it'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()", wait: 3500 },
+  // the window reloads in the new language (menus and tables are built at load): the shell, the dock and the palette speak Italian
+  { js: "[document.documentElement.lang, document.querySelector('#btn-new').getAttribute('aria-label'), document.querySelector('#sidebar-search').placeholder, document.querySelector('#dock-tab-outline').textContent, localStorage.getItem('folio.lang')]", log: true, wait: 200 },
+  { js: "document.querySelector('#dock-tab-info').click(); true", wait: 800 },
+  { js: "document.querySelector('#dock-info .side-head').textContent", log: true, wait: 100 },
   // perf regression: typing in a long page keeps the heading chevrons (they used to be rebuilt on every key)
   { js: "document.querySelector('[data-file=\"pages/long.md\"]').click(); true", wait: 3500 },
   { js: "(() => { const hs = document.querySelectorAll('.rich-hfold'); hs.forEach((b) => { b.dataset.keep = '1'; }); const p = document.querySelectorAll('.rich-prose > p')[3]; document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.setStart(p.firstChild, 3); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return [hs.length > 100, document.querySelector('.rich-prose').classList.contains('rich-large') || document.querySelector('#pane-rich').classList.contains('rich-large') || !!document.querySelector('.rich-large')]; })()", log: true, wait: 400 },
@@ -62,8 +64,8 @@ child.on('exit', () => {
   assert.deepEqual(health1, [true, ['a', 'b'], 2]); assert.deepEqual(health2, [true, ['[[Missing page]]']]);
   assert(fs.existsSync(path.join(ws, 'Nowhere.md')), 'Create page wrote the page');
   console.log('  ✓ the link check lists every broken reference by page; Create page makes the page and the list updates');
-  assert.equal(infoEn, 'Details'); assert.deepEqual(lang, ['Lingua', 'it', true, 'it']); assert.equal(infoIt, 'Dettagli');
-  console.log('  ✓ the Language setting translates the settings sheet and the Info tab at once, and sets the page language');
+  assert.equal(infoEn, 'Details'); assert.deepEqual(lang, ['it', 'Nuova nota', 'Cerca note', 'Struttura', 'it']); assert.equal(infoIt, 'Dettagli');
+  console.log('  ✓ the Language setting reloads the window in Italian: the shell, the side panel and the Info tab are translated, and <html lang> follows');
   assert.deepEqual(ready[0], true);
   assert.equal(perf[0], perf[1], `heading chevrons were rebuilt while typing: ${JSON.stringify(perf)}`); assert(perf[2], `typing took ${perf[3]} ms per key`);
   console.log(`  ✓ typing in a ${'4,000-paragraph'} page keeps every heading chevron (${perf[1]} of ${perf[0]}), ${perf[3]} ms per key`);

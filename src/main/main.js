@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { tl, setLocale } from '../renderer/i18n.js';
 import { createNotes, NOTE_EXT } from './notes.js';
 import { createHistory } from './history.js';
 import { createGitLog } from './git-log.js';
@@ -146,12 +147,13 @@ h('settings:set', async (patch) => {
   const before = { ...settings };
   Object.assign(settings, patch);
   if ('theme' in patch) nativeTheme.themeSource = settings.theme;
+  if ('language' in patch) { setLocale(settings.language); buildMenu(); }
   saveSettings();
   if (patch.mcpEnabled !== undefined || patch.mcpPort !== before.mcpPort) await restartMcp();
   return { ...settings, token: undefined };
 });
 h('workspace:choose', async () => {
-  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: 'Open a folder of notes' });
+  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;
   await setWorkspace(r.filePaths[0]);
   return r.filePaths[0];
@@ -220,20 +222,20 @@ h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));
 h('fs:save-image', (noteRel, name, bytes) => assets.save(noteRel, name, bytes));
 h('fs:pick-image', async (noteRel) => {
-  const r = await dialog.showOpenDialog(win, { title: 'Insert image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }] });
+  const r = await dialog.showOpenDialog(win, { title: tl('dlg', 'Insert image'), properties: ['openFile'], filters: [{ name: tl('dlg', 'Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   return assets.importFile(noteRel, r.filePaths[0]);
 });
 h('fs:pick-media', async (noteRel, kind) => {
   const FILTERS = {
-    font: [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }],
-    video: [{ name: 'Video', extensions: ['mp4', 'webm', 'mov', 'm4v'] }],
-    audio: [{ name: 'Audio', extensions: ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }],
+    font: [{ name: tl('dlg', 'Fonts'), extensions: ['woff2', 'woff', 'ttf', 'otf'] }],
+    video: [{ name: tl('dlg', 'Video'), extensions: ['mp4', 'webm', 'mov', 'm4v'] }],
+    audio: [{ name: tl('dlg', 'Audio'), extensions: ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }],
     pdf: [{ name: 'PDF', extensions: ['pdf'] }],
     file: [],
   };
-  const TITLES = { font: 'Add a font file', video: 'Insert a video', audio: 'Insert audio', pdf: 'Insert a PDF', file: 'Attach a file' };
-  const r = await dialog.showOpenDialog(win, { title: TITLES[kind] || 'Insert video or audio', properties: ['openFile'], filters: FILTERS[kind] ?? [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
+  const TITLES = { font: tl('dlg', 'Add a font file'), video: tl('dlg', 'Insert a video'), audio: tl('dlg', 'Insert audio'), pdf: tl('dlg', 'Insert a PDF'), file: tl('dlg', 'Attach a file') };
+  const r = await dialog.showOpenDialog(win, { title: TITLES[kind] || tl('dlg', 'Insert video or audio'), properties: ['openFile'], filters: FILTERS[kind] ?? [{ name: tl('dlg', 'Video and audio'), extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   return assets.importFile(noteRel, r.filePaths[0]);
 });
@@ -274,7 +276,7 @@ h('templates:fetch', async (url) => {
   } catch (e) { throw new Error(e.name === 'AbortError' ? 'The download took too long.' : e.message); } finally { clearTimeout(timer); }
 });
 h('templates:import-files', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Import templates', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }] });
+  const r = await dialog.showOpenDialog(win, { title: tl('dlg', 'Import templates'), properties: ['openFile', 'multiSelections'], filters: [{ name: tl('dlg', 'Markdown'), extensions: ['md', 'markdown', 'txt'] }] });
   if (r.canceled) return [];
   const out = [];
   for (const f of r.filePaths.slice(0, 50)) { const st = await fs.stat(f); if (st.size > TEMPLATE_MAX) continue; out.push({ name: path.basename(f).replace(/\.(md|markdown|txt)$/i, ''), text: await fs.readFile(f, 'utf8') }); }
@@ -285,7 +287,7 @@ h('clipboard:write', (text) => clipboard.writeText(text));
 h('clipboard:read', () => ({ text: clipboard.readText(), html: clipboard.readHTML() }));
 /* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */
 h('import:document', async () => {
-  const pick = !app.isPackaged && process.env.FOLIO_IMPORT_FILE ? { filePaths: [process.env.FOLIO_IMPORT_FILE] } : await dialog.showOpenDialog(win, { title: 'Import a document', properties: ['openFile'], filters: [{ name: 'Documents', extensions: ['docx', 'html', 'htm'] }] });
+  const pick = !app.isPackaged && process.env.FOLIO_IMPORT_FILE ? { filePaths: [process.env.FOLIO_IMPORT_FILE] } : await dialog.showOpenDialog(win, { title: tl('dlg', 'Import a document'), properties: ['openFile'], filters: [{ name: tl('dlg', 'Documents'), extensions: ['docx', 'html', 'htm'] }] });
   const f = pick.filePaths?.[0]; if (pick.canceled || !f) return null;
   const st = await fs.stat(f); if (st.size > 60 * 1024 * 1024) throw new Error('That file is larger than 60 MB.');
   const name = path.basename(f).replace(/\.(docx|html?)$/i, '');
@@ -497,52 +499,52 @@ h('connections:remove', async (id) => {
 function buildMenu() {
   const cmd = (id) => () => win?.webContents.send('menu:command', id);
   const template = [
-    ...(isMac ? [{ label: 'Folio', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'Cmd+,', click: cmd('settings') }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }] : []),
-    { label: 'File', submenu: [
-      { label: 'New Note', accelerator: 'CmdOrCtrl+N', click: cmd('new-note') },
-      { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: cmd('open-folder') },
-      { label: 'Quick Open…', accelerator: 'CmdOrCtrl+P', click: cmd('quick-open') },
+    ...(isMac ? [{ label: 'Folio', submenu: [{ role: 'about' }, { type: 'separator' }, { label: tl('menu', 'Settings…'), accelerator: 'Cmd+,', click: cmd('settings') }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }] : []),
+    { label: tl('menu', 'File'), submenu: [
+      { label: tl('menu', 'New Note'), accelerator: 'CmdOrCtrl+N', click: cmd('new-note') },
+      { label: tl('menu', 'Open Folder…'), accelerator: 'CmdOrCtrl+O', click: cmd('open-folder') },
+      { label: tl('menu', 'Quick Open…'), accelerator: 'CmdOrCtrl+P', click: cmd('quick-open') },
       { type: 'separator' },
-      { label: 'Save', accelerator: 'CmdOrCtrl+S', click: cmd('save') },
-      { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
+      { label: tl('menu', 'Save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
+      { label: tl('menu', 'Close Tab'), accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
       { type: 'separator' },
-      { label: 'Import Word or HTML…', click: cmd('import-document') },
-      { label: 'Export…', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export') },
-      { label: 'Export as PDF…', click: cmd('export-pdf') },
-      { label: 'Export as Word…', click: cmd('export-docx') },
-      { label: 'Export as HTML…', click: cmd('export-html') },
-      { label: 'Export as Portable Markdown…', click: cmd('export-md') },
-      ...(isMac ? [] : [{ type: 'separator' }, { label: 'Settings…', accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
+      { label: tl('menu', 'Import Word or HTML…'), click: cmd('import-document') },
+      { label: tl('menu', 'Export…'), accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export') },
+      { label: tl('menu', 'Export as PDF…'), click: cmd('export-pdf') },
+      { label: tl('menu', 'Export as Word…'), click: cmd('export-docx') },
+      { label: tl('menu', 'Export as HTML…'), click: cmd('export-html') },
+      { label: tl('menu', 'Export as Portable Markdown…'), click: cmd('export-md') },
+      ...(isMac ? [] : [{ type: 'separator' }, { label: tl('menu', 'Settings…'), accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
     ] },
-    { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { label: 'Paste as Plain Text', accelerator: 'CmdOrCtrl+Shift+V', click: cmd('paste-plain') }, { role: 'selectAll' }, { type: 'separator' },
-      { label: 'Find in Note', accelerator: 'CmdOrCtrl+F', click: cmd('find') },
-      { label: 'Find and Replace…', accelerator: process.platform === 'darwin' ? 'Cmd+Alt+H' : 'Ctrl+H', click: cmd('replace') },
-      { label: 'Search All Notes', accelerator: 'CmdOrCtrl+Shift+F', click: cmd('search') }] },
-    { label: 'Format', submenu: [
-      { label: 'Bold', accelerator: 'CmdOrCtrl+B', click: cmd('bold') },
-      { label: 'Italic', accelerator: 'CmdOrCtrl+I', click: cmd('italic') },
-      { label: 'Link', accelerator: 'CmdOrCtrl+K', click: cmd('link') },
-      { label: 'Inline Code', accelerator: 'CmdOrCtrl+E', click: cmd('code') },
-      { label: 'Task', accelerator: 'CmdOrCtrl+L', click: cmd('task') }] },
-    { label: 'View', submenu: [
-      { label: 'Editor', accelerator: 'CmdOrCtrl+1', click: cmd('mode-edit') },
-      { label: 'Split', accelerator: 'CmdOrCtrl+2', click: cmd('mode-split') },
-      { label: 'Preview', accelerator: 'CmdOrCtrl+3', click: cmd('mode-preview') },
+    { label: tl('menu', 'Edit'), submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { label: tl('menu', 'Paste as Plain Text'), accelerator: 'CmdOrCtrl+Shift+V', click: cmd('paste-plain') }, { role: 'selectAll' }, { type: 'separator' },
+      { label: tl('menu', 'Find in Note'), accelerator: 'CmdOrCtrl+F', click: cmd('find') },
+      { label: tl('menu', 'Find and Replace…'), accelerator: process.platform === 'darwin' ? 'Cmd+Alt+H' : 'Ctrl+H', click: cmd('replace') },
+      { label: tl('menu', 'Search All Notes'), accelerator: 'CmdOrCtrl+Shift+F', click: cmd('search') }] },
+    { label: tl('menu', 'Format'), submenu: [
+      { label: tl('menu', 'Bold'), accelerator: 'CmdOrCtrl+B', click: cmd('bold') },
+      { label: tl('menu', 'Italic'), accelerator: 'CmdOrCtrl+I', click: cmd('italic') },
+      { label: tl('menu', 'Link'), accelerator: 'CmdOrCtrl+K', click: cmd('link') },
+      { label: tl('menu', 'Inline Code'), accelerator: 'CmdOrCtrl+E', click: cmd('code') },
+      { label: tl('menu', 'Task'), accelerator: 'CmdOrCtrl+L', click: cmd('task') }] },
+    { label: tl('menu', 'View'), submenu: [
+      { label: tl('menu', 'Editor'), accelerator: 'CmdOrCtrl+1', click: cmd('mode-edit') },
+      { label: tl('menu', 'Split'), accelerator: 'CmdOrCtrl+2', click: cmd('mode-split') },
+      { label: tl('menu', 'Preview'), accelerator: 'CmdOrCtrl+3', click: cmd('mode-preview') },
       { type: 'separator' },
-      { label: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+\\', click: cmd('toggle-sidebar') },
-      { label: 'Toggle Outline', accelerator: 'CmdOrCtrl+Shift+O', click: cmd('toggle-outline') },
-      { label: 'Focus Mode', accelerator: 'CmdOrCtrl+.', click: cmd('focus') },
-      { label: 'Command Palette…', accelerator: 'CmdOrCtrl+Shift+P', click: cmd('palette') },
+      { label: tl('menu', 'Toggle Sidebar'), accelerator: 'CmdOrCtrl+\\', click: cmd('toggle-sidebar') },
+      { label: tl('menu', 'Toggle Outline'), accelerator: 'CmdOrCtrl+Shift+O', click: cmd('toggle-outline') },
+      { label: tl('menu', 'Focus Mode'), accelerator: 'CmdOrCtrl+.', click: cmd('focus') },
+      { label: tl('menu', 'Command Palette…'), accelerator: 'CmdOrCtrl+Shift+P', click: cmd('palette') },
       { type: 'separator' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }, { role: 'togglefullscreen' },
       ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }])] },
-    { label: 'AI', submenu: [{ label: 'Connect AI Assistants…', accelerator: 'CmdOrCtrl+Shift+A', click: cmd('ai') }] },
+    { label: tl('menu', 'AI'), submenu: [{ label: tl('menu', 'Connect AI Assistants…'), accelerator: 'CmdOrCtrl+Shift+A', click: cmd('ai') }] },
     { role: 'windowMenu' },
     { role: 'help', submenu: [
-      { label: 'Shortcuts and Syntax', accelerator: 'F1', click: cmd('help') },
-      { label: 'About Folio', click: () => app.showAboutPanel() },
-      { label: 'Source code and license', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio') },
-      { label: 'Report a problem', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/issues/new/choose') },
-      { label: 'File formats', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/FORMATS.md') },
+      { label: tl('menu', 'Shortcuts and Syntax'), accelerator: 'F1', click: cmd('help') },
+      { label: tl('menu', 'About Folio'), click: () => app.showAboutPanel() },
+      { label: tl('menu', 'Source code and license'), click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio') },
+      { label: tl('menu', 'Report a problem'), click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/issues/new/choose') },
+      { label: tl('menu', 'File formats'), click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/FORMATS.md') },
     ] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -566,6 +568,7 @@ app.on('second-instance', (_e, argv) => {
 });
 app.whenReady().then(async () => {
   nativeTheme.themeSource = settings.theme;
+  setLocale(settings.language);
   buildMenu();
   if (settings.workspace && fss.existsSync(settings.workspace)) await setWorkspace(settings.workspace);
   else settings.workspace = null;

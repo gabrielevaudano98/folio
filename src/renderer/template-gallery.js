@@ -1,11 +1,12 @@
 // Folio — the template gallery (Confluence and Notion): browse by source and category, search, preview the filled
 // page, star favourites, use a template in this page or for a new one, save the collection's or the community's
 // templates to Templates/, import from files or links, create and organise your own. The host (app.js) owns files.
+import { t as tr, tl } from './i18n.js';
 import { parseProps } from './page-props.js';
 import { CATEGORIES } from './template-starters.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const SOURCE = { mine: 'My templates', starter: 'Folio collection', community: 'Community' };
+const SOURCE = { mine: tl('gal', 'My templates'), starter: tl('gal', 'Folio collection'), community: 'Community' };
 const ICON = { Meetings: '📝', Planning: '🎯', Product: '📦', Engineering: '🛠️', Reports: '📊', Docs: '📘', Personal: '🧭', General: '📄', Community: '🌐' };
 const iconOf = (t) => t.icon || ICON[t.category] || '📄';
 
@@ -29,33 +30,33 @@ export function openGallery(dialog, host) {
 
     dialog.className = 'sheet tg-dialog';
     dialog.innerHTML = `<div class="tg-shell">
-      <nav class="tg-nav" aria-label="Template sources"></nav>
+      <nav class="tg-nav" aria-label="${tr('gal.template-sources')}"></nav>
       <section class="tg-main" aria-live="polite"></section>
-      <aside class="tg-preview" aria-label="Preview"></aside>
+      <aside class="tg-preview" aria-label="${tr('gal.preview')}"></aside>
     </div>`;
     const nav = dialog.querySelector('.tg-nav'), main = dialog.querySelector('.tg-main'), prev = dialog.querySelector('.tg-preview');
 
     const navBtn = (v, label, n, icon) => `<button type="button" class="tg-nav-item" data-view="${esc(v)}"${view === v ? ' aria-current="true"' : ''}>${icon ? `<span class="tg-nav-ic" aria-hidden="true">${icon}</span>` : ''}<span class="tg-nav-label">${esc(label)}</span>${n != null ? `<span class="tg-n">${n}</span>` : ''}</button>`;
     function drawNav() {
       const mine = items.filter((t) => t.source === 'mine');
-      nav.innerHTML = `<div class="tg-search">${ic('find')}<input type="search" placeholder="Search templates" aria-label="Search templates" value="${esc(query)}"></div>
+      nav.innerHTML = `<div class="tg-search">${ic('find')}<input type="search" placeholder="${tr('gal.search-templates')}" aria-label="${tr('gal.search-templates')}" value="${esc(query)}"></div>
         <div class="tg-nav-list">
-          ${navBtn('all', 'All templates', items.length)}
-          ${navBtn('recent', 'Recently used', recent.filter(byId).length)}
-          ${navBtn('favs', 'Favourites', [...favs].filter(byId).length, '★')}
-          <h3>My templates</h3>
-          ${navBtn('mine', 'All of mine', mine.length)}
+          ${navBtn('all', tl('gal', 'All templates'), items.length)}
+          ${navBtn('recent', tl('gal', 'Recently used'), recent.filter(byId).length)}
+          ${navBtn('favs', tl('gal', 'Favourites'), [...favs].filter(byId).length, '★')}
+          <h3>${tr('gal.my-templates')}</h3>
+          ${navBtn('mine', tl('gal', 'All of mine'), mine.length)}
           ${cats('mine').map((c) => navBtn('mine:' + c, c, mine.filter((t) => t.category === c).length)).join('')}
-          ${mine.length ? '' : '<p class="tg-hint">Pages in Templates/ appear here.</p>'}
-          <h3>Folio collection</h3>
+          ${mine.length ? '' : '<p class="tg-hint">' + tr('gal.pages-in-templates-appear-here') + '</p>'}
+          <h3>${tr('gal.folio-collection')}</h3>
           ${cats('starter').map((c) => navBtn('starter:' + c, c, items.filter((t) => t.source === 'starter' && t.category === c).length, ICON[c])).join('')}
-          <h3>Community</h3>
-          ${navBtn('community', community ? 'All community' : 'Browse online', community ? community.length : null, '🌐')}
+          <h3>${tr('gal.community')}</h3>
+          ${navBtn('community', community ? tl('gal', 'All community') : tl('gal', 'Browse online'), community ? community.length : null, '🌐')}
           ${community ? [...new Set(community.map((t) => t.category))].sort().map((c) => navBtn('community:' + c, c, community.filter((t) => t.category === c).length)).join('') : ''}
         </div>
         <div class="tg-nav-foot">
-          <button type="button" class="btn" data-act="create">${ic('plus')}<span>New template</span></button>
-          <button type="button" class="btn" data-act="import" aria-haspopup="menu">${ic('folder')}<span>Import</span></button>
+          <button type="button" class="btn" data-act="create">${ic('plus')}<span>${tr('gal.new-template')}</span></button>
+          <button type="button" class="btn" data-act="import" aria-haspopup="menu">${ic('folder')}<span>${tr('gal.import')}</span></button>
           ${host.page ? `<button type="button" class="btn btn-quiet" data-act="saveCurrent">Save “${esc(host.page)}” as a template</button>` : ''}
         </div>`;
     }
@@ -69,14 +70,14 @@ export function openGallery(dialog, host) {
       const list = src === 'community' ? community || [] : items.filter((t) => t.source === src);
       return cat ? list.filter((t) => t.category === cat) : list;
     }
-    const title = () => (query.trim() ? `Results for “${query.trim()}”` : view === 'all' ? 'All templates' : view === 'recent' ? 'Recently used' : view === 'favs' ? 'Favourites' : view.includes(':') ? view.split(':')[1] : SOURCE[view] || view);
+    const title = () => (query.trim() ? `Results for “${query.trim()}”` : view === 'all' ? tl('gal', 'All templates') : view === 'recent' ? tl('gal', 'Recently used') : view === 'favs' ? 'Favourites' : view.includes(':') ? view.split(':')[1] : SOURCE[view] || view);
     function drawMain() {
       const list = shown();
-      const empty = view === 'favs' ? 'Star a template to keep it here.' : view === 'recent' ? 'Templates you use appear here.' : view === 'mine' ? 'Create a template, import one, or save one from the collection or the community.'
-        : view.startsWith('community') && !community ? (communityError ? `Could not reach the community gallery: ${communityError}` : 'Loading the community gallery…') : 'No templates match.';
+      const empty = view === 'favs' ? tl('gal', 'Star a template to keep it here.') : view === 'recent' ? tl('gal', 'Templates you use appear here.') : view === 'mine' ? tl('gal', 'Create a template, import one, or save one from the collection or the community.')
+        : view.startsWith('community') && !community ? (communityError ? `Could not reach the community gallery: ${communityError}` : tl('gal', 'Loading the community gallery…')) : tl('gal', 'No templates match.');
       main.innerHTML = `<header class="tg-main-head"><h2 id="tg-title">${esc(title())}</h2><span class="tg-n">${list.length || ''}</span>
-          <button type="button" class="rb tg-close" data-act="close" aria-label="Close" data-tip="Close (Esc)">${ic('close')}</button></header>
-        ${view.startsWith('community') && communityError ? `<p class="tg-error">${esc(empty)} <button type="button" class="btn btn-quiet" data-act="retry">Try again</button></p>` : ''}
+          <button type="button" class="rb tg-close" data-act="close" aria-label="${tr('gal.close')}" data-tip="${tr('gal.close-esc')}">${ic('close')}</button></header>
+        ${view.startsWith('community') && communityError ? `<p class="tg-error">${esc(empty)} <button type="button" class="btn btn-quiet" data-act="retry">${tr('gal.try-again')}</button></p>` : ''}
         <div class="tg-grid" role="list" aria-labelledby="tg-title">${list.map((t) => `<div class="tg-card${current?.id === t.id ? ' is-current' : ''}" role="listitem"${current?.id === t.id ? ' aria-current="true"' : ''} tabindex="0" data-id="${esc(t.id)}">
             <span class="tg-thumb" aria-hidden="true"><span class="tg-thumb-page prose">${thumbs.has(t.id) ? thumbs.get(t.id) : ''}</span></span>
             <span class="tg-card-ic" aria-hidden="true">${esc(iconOf(t))}</span>
@@ -109,26 +110,26 @@ export function openGallery(dialog, host) {
     }
     async function drawPreview() {
       const t = current;
-      if (!t) { prev.innerHTML = `<div class="tg-preview-empty"><p>Choose a template to see the page it makes.</p><p class="tg-hint">Templates give a page its shape: the sections to fill, the properties to set, the questions to answer.</p></div>`; return; }
+      if (!t) { prev.innerHTML = `<div class="tg-preview-empty"><p>${tr('gal.choose-a-template-to-see-the-page-it-m')}</p><p class="tg-hint">${tr('gal.templates-give-a-page-its-shape-the-se')}</p></div>`; return; }
       const n = ++seq;
       prev.innerHTML = `<div class="tg-preview-head"><span class="tg-card-ic" aria-hidden="true">${esc(iconOf(t))}</span><div><h3>${esc(t.name)}</h3><p>${esc(t.desc)}</p></div>
           <button type="button" class="tg-star" data-star="${esc(t.id)}" aria-pressed="${favs.has(t.id)}" aria-label="${favs.has(t.id) ? 'Remove from' : 'Add to'} favourites">★</button></div>
         <div class="tg-preview-meta"><span class="tg-chip">${esc(t.category)}</span><span>${esc(SOURCE[t.source])}${t.author ? ` · ${esc(t.author)}` : ''}</span></div>
         <div class="tg-preview-props"></div>
-        <div class="tg-preview-doc prose" tabindex="0" aria-label="Preview of the page"><p class="tg-hint">Loading…</p></div>
+        <div class="tg-preview-doc prose" tabindex="0" aria-label="${tr('gal.preview-of-the-page')}"><p class="tg-hint">${tr('gal.loading')}</p></div>
         <div class="tg-actions">
-          ${host.mode === 'new' || !host.page ? `<label class="tg-name"><span>Page name</span><input class="input" type="text" value="${esc(t.name)}" spellcheck="false"></label>` : ''}
+          ${host.mode === 'new' || !host.page ? `<label class="tg-name"><span>${tr('gal.page-name')}</span><input class="input" type="text" value="${esc(t.name)}" spellcheck="false"></label>` : ''}
           <div class="tg-row">
-            ${host.mode === 'new' || !host.page ? `<button type="button" class="btn btn-primary" data-act="useNew">Create page</button>` : `<button type="button" class="btn btn-primary" data-act="useHere">Use in “${esc(host.page)}”</button><button type="button" class="btn" data-act="useNew">New page</button>`}
-            ${t.source === 'mine' ? `<button type="button" class="btn" data-act="edit">Edit</button><button type="button" class="rb" data-act="more" aria-haspopup="menu" aria-label="More" data-tip="Rename, category, duplicate, delete">${ic('more')}</button>`
-              : `<button type="button" class="btn" data-act="save" data-tip="Copy it into Templates/ to change it">${t.source === 'community' ? 'Download' : 'Customise'}</button>`}
+            ${host.mode === 'new' || !host.page ? `<button type="button" class="btn btn-primary" data-act="useNew">${tr('gal.create-page')}</button>` : `<button type="button" class="btn btn-primary" data-act="useHere">Use in “${esc(host.page)}”</button><button type="button" class="btn" data-act="useNew">${tr('gal.new-page')}</button>`}
+            ${t.source === 'mine' ? `<button type="button" class="btn" data-act="edit">${tr('gal.edit')}</button><button type="button" class="rb" data-act="more" aria-haspopup="menu" aria-label="${tr('gal.more')}" data-tip="${tr('gal.rename-category-duplicate-delete')}">${ic('more')}</button>`
+              : `<button type="button" class="btn" data-act="save" data-tip="${tr('gal.copy-it-into-templates-to-change-it')}">${t.source === 'community' ? 'Download' : 'Customise'}</button>`}
           </div>
         </div>`;
       try {
         const raw = await host.text(t); if (n !== seq) return;
         const html = await host.preview(raw, t); if (n !== seq) return;
         prev.querySelector('.tg-preview-doc').innerHTML = html.html;
-        prev.querySelectorAll('.tg-preview-doc input[type=checkbox]:not([aria-label])').forEach((c) => c.setAttribute('aria-label', (c.closest('li')?.textContent || 'Task').trim().slice(0, 80) || 'Task'));
+        prev.querySelectorAll('.tg-preview-doc input[type=checkbox]:not([aria-label])').forEach((c) => c.setAttribute('aria-label', (c.closest('li')?.textContent || 'Task').trim().slice(0, 80) || tl('gal', 'Task')));
         const props = parseProps(html.text).props.filter((p) => !p.readOnly);
         prev.querySelector('.tg-preview-props').innerHTML = props.length ? props.map((p) => `<span class="tg-prop"><b>${esc(p.key)}</b> ${esc(Array.isArray(p.value) ? p.value.join(', ') : String(p.value ?? ''))}</span>`).join('') : '';
       } catch (e) { if (n === seq) prev.querySelector('.tg-preview-doc').innerHTML = `<p class="tg-error">${esc(e.message)}</p>`; }
@@ -164,17 +165,17 @@ export function openGallery(dialog, host) {
       if (act === 'saveCurrent') { done(null); host.saveCurrent(); return; }
       if (act === 'import') {
         host.menu(e.target.closest('[data-act]'), [
-          { label: 'From files on this computer…', run: async () => { const n = await host.importFiles(); if (n) { view = 'mine'; await reload(); } } },
-          { label: 'From a link (https://…/template.md)…', run: async () => { const id = await host.importLink(); if (id) { view = 'mine'; await reload(id); } } },
+          { label: tr('gal.from-files-on-this-computer'), run: async () => { const n = await host.importFiles(); if (n) { view = 'mine'; await reload(); } } },
+          { label: tr('gal.from-a-link-https-template-md'), run: async () => { const id = await host.importLink(); if (id) { view = 'mine'; await reload(id); } } },
         ]);
         return;
       }
       if (act === 'more' && t) {
         host.menu(e.target.closest('[data-act]'), [
-          { label: 'Rename…', run: async () => { const id = await host.rename(t); if (id) await reload(id); } },
-          { label: 'Change category…', run: async () => { if (await host.setCategory(t)) await reload(t.id); } },
-          { label: 'Duplicate', run: async () => { const id = await host.duplicate(t); if (id) await reload(id); } },
-          { label: 'Delete', danger: true, run: async () => { if (await host.remove(t)) { current = null; await reload(); } } },
+          { label: tr('gal.rename'), run: async () => { const id = await host.rename(t); if (id) await reload(id); } },
+          { label: tr('gal.change-category'), run: async () => { if (await host.setCategory(t)) await reload(t.id); } },
+          { label: tr('gal.duplicate'), run: async () => { const id = await host.duplicate(t); if (id) await reload(id); } },
+          { label: tr('gal.delete'), danger: true, run: async () => { if (await host.remove(t)) { current = null; await reload(); } } },
         ]);
       }
     });

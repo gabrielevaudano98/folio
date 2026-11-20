@@ -5,10 +5,11 @@
 //   [[Note]]  [[Note#Heading]]  [[Note#^id]]   a link          [[2026-11-21]]  a day (daily note in Journal/)
 //   [[People/Ada]]                              a person       [status:: Done]  a chip (inline field)
 //   #tag                                        a tag          😀               an emoji character
+import { t as tr, tl } from './i18n.js';
 import { fuzzy, fuzzyItem } from './fuzzy.js';
 import { resolveTarget, docKind, parseRef } from './refs-syntax.js';
 
-export const STATUSES = ['Not started', 'In progress', 'Blocked', 'Done'];
+export const STATUSES = [tl('men', 'Not started'), tl('men', 'In progress'), 'Blocked', 'Done'];
 /** the status words a page offers: front matter `folio: status: [A, B]` (or a `- A` list), else the defaults */
 export function statusOptions(text) {
   const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text || '')); if (!fm) return STATUSES;
@@ -33,7 +34,7 @@ export const FIELD = /\[([A-Za-z][\w ]{0,29}?)::[ \t]*([^\]\n]{0,80}?)[ \t]*\]/g
 const norm = (p) => String(p).replace(/\\/g, '/');
 export const stemOf = (p) => norm(p).split('/').pop().replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx|txt)$/i, '');
 export const isPerson = (p) => /(^|\/)people\//i.test(norm(p));
-const KIND = { page: 'Page', slides: 'Slides', board: 'Board', sheet: 'Sheet' };
+const KIND = { page: 'Page', slides: tl('men', 'Slides'), board: tl('men', 'Board'), sheet: tl('men', 'Sheet') };
 const pad = (n) => String(n).padStart(2, '0');
 export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const longDay = (d) => d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -113,7 +114,7 @@ export async function linkEntries(q, ctx) {
     const name = docQ ? (ctx.refName ? ctx.refName(path) : docQ) : '';
     if (part.startsWith('^')) {
       const blocks = (await ctx.blocksOf(path)).map((b) => ({ b, f: fuzzy(part.slice(1), `${b.text} ${b.id}`) })).filter((x) => x.f).sort((a, b) => b.f.score - a.f.score).slice(0, 12);
-      if (!blocks.length) return [{ item: { label: 'No blocks to link to yet', desc: 'Use “Copy link to block” in a block’s menu to give one an id', icon: 'info' }, marks: [], group: 'Blocks', disabled: true }];
+      if (!blocks.length) return [{ item: { label: tl('men', 'No blocks to link to yet'), desc: tl('men', 'Use “Copy link to block” in a block’s menu to give one an id'), icon: 'info' }, marks: [], group: 'Blocks', disabled: true }];
       return blocks.map(({ b }) => ({ item: { label: b.text.length > 70 ? b.text.slice(0, 69) + '…' : b.text || b.id, desc: '^' + b.id, icon: 'link' }, marks: [], group: 'Blocks', insert: `[[${name}#^${b.id}]]` }));
     }
     const heads = (await ctx.headingsOf(path)).map((h) => ({ h, f: fuzzy(part, h.text) })).filter((x) => x.f).slice(0, 14);
@@ -122,8 +123,8 @@ export async function linkEntries(q, ctx) {
   const docs = [...docEntries(q, ctx, { people: false, limit: 9 }), ...docEntries(q, ctx, { people: true, limit: 4 })];
   const out = docs.slice(0, 12);
   const t = q.trim();
-  if (t && !docs.some((d) => d.item.label.toLowerCase() === t.toLowerCase()) && !DAY.test(t)) out.push({ item: { label: `Create “${t}”`, desc: 'A new page next to this one', icon: 'plus' }, marks: [], group: 'Create', create: t });
-  if (DAY.test(t) && !out.length) out.push({ item: { label: t, desc: 'Daily note', icon: 'calendar' }, marks: [], group: 'Dates', insert: `[[${t}]]` });
+  if (t && !docs.some((d) => d.item.label.toLowerCase() === t.toLowerCase()) && !DAY.test(t)) out.push({ item: { label: tr('men.create', { t }), desc: tl('men', 'A new page next to this one'), icon: 'plus' }, marks: [], group: 'Create', create: t });
+  if (DAY.test(t) && !out.length) out.push({ item: { label: t, desc: tl('men', 'Daily note'), icon: 'calendar' }, marks: [], group: 'Dates', insert: `[[${t}]]` });
   return out;
 }
 
@@ -137,7 +138,7 @@ export async function atEntries(q, ctx) {
   const t = q.trim();
   if (t) {
     const hit = ['status', ...statuses].some((s) => fuzzy(t, s));
-    if (hit) for (const s of statuses) { const f = t.toLowerCase() === 'status' || fuzzy(t, s) ? { marks: fuzzy(t, s)?.marks || [] } : null; if (f) out.push({ item: { label: s, desc: 'Status chip', icon: 'status' }, marks: f.marks, group: 'Status', insert: `[status:: ${s}]` }); }
+    if (hit) for (const s of statuses) { const f = t.toLowerCase() === 'status' || fuzzy(t, s) ? { marks: fuzzy(t, s)?.marks || [] } : null; if (f) out.push({ item: { label: s, desc: tl('men', 'Status chip'), icon: 'status' }, marks: f.marks, group: 'Status', insert: `[status:: ${s}]` }); }
   }
   return out.slice(0, 16);
 }
@@ -147,8 +148,8 @@ export async function tagEntries(q, ctx) {
   const t = q.trim(); if (!t) return [];
   const all = await ctx.tags();
   const rows = all.map((x) => ({ x, f: fuzzy(t, x.tag) })).filter((r) => r.f).sort((a, b) => b.f.score - a.f.score || b.x.count - a.x.count).slice(0, 10);
-  const out = rows.map(({ x, f }) => ({ item: { label: '#' + x.tag, desc: x.count === 1 ? '1 page' : `${x.count} pages`, icon: 'tag' }, marks: f.marks.map(([a, b]) => [a + 1, b + 1]), group: 'Tags', insert: `#${x.tag} ` }));
-  if (!all.some((x) => x.tag.toLowerCase() === t.toLowerCase()) && /^[\p{L}\p{N}_\-/]+$/u.test(t) && /[\p{L}_]/u.test(t)) out.push({ item: { label: `New tag #${t}`, desc: 'Use it on this page', icon: 'plus' }, marks: [], group: 'Tags', insert: `#${t} ` });
+  const out = rows.map(({ x, f }) => ({ item: { label: '#' + x.tag, desc: tr('men.n-pages', { n: x.count }), icon: 'tag' }, marks: f.marks.map(([a, b]) => [a + 1, b + 1]), group: 'Tags', insert: `#${x.tag} ` }));
+  if (!all.some((x) => x.tag.toLowerCase() === t.toLowerCase()) && /^[\p{L}\p{N}_\-/]+$/u.test(t) && /[\p{L}_]/u.test(t)) out.push({ item: { label: tr('men.new-tag', { t }), desc: tl('men', 'Use it on this page'), icon: 'plus' }, marks: [], group: 'Tags', insert: `#${t} ` });
   return out;
 }
 

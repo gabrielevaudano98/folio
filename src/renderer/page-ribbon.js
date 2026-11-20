@@ -7,6 +7,9 @@
 //   ins:<id>  an item of the insert registry (inserts.js)
 //   app:<id>  a command the app owns (focus mode, outline, spelling)
 
+import { t as tr, tl } from './i18n.js';
+const L = (s) => tl('rib', s);
+
 const MODE_KEY = 'folio.ribbon';
 export const ribbonMode = () => { try { return localStorage.getItem(MODE_KEY) === 'full' ? 'full' : 'compact'; } catch { return 'compact'; } };
 const saveMode = (m) => { try { localStorage.setItem(MODE_KEY, m); } catch { /* storage unavailable */ } };
@@ -90,32 +93,32 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions }) {
   const ic = (n) => (n && icons[n]) || '';
-  const tip = (b) => `${b.tip || b.label}${b.key ? ` (${keyLabel(b.key)})` : ''}`;
+  const tip = (b) => `${L(b.tip || b.label)}${b.key ? ` (${keyLabel(b.key)})` : ''}`;
   const button = (b, cls = '') => {
     const pressed = b.pressable ? ' aria-pressed="false"' : '';
     const menu = b.menu ? ' aria-haspopup="menu" aria-expanded="false"' : '';
-    if (b.big) return `<button type="button" class="rb rb-big${cls}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}<span>${esc(b.label)}</span>${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
-    if (b.text) return `<button type="button" class="rb rb-wide${cls}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}<span>${esc(b.label)}</span>${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
-    if (b.label100) return `<button type="button" class="rb rb-zoom" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}" aria-label="Reset zoom"><span class="rb-zoom-val">100%</span></button>`;
-    return `<button type="button" class="rb${cls}" data-cmd="${b.cmd}" aria-label="${esc(b.label)}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
+    if (b.big) return `<button type="button" class="rb rb-big${cls}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}<span>${esc(L(b.label))}</span>${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
+    if (b.text) return `<button type="button" class="rb rb-wide${cls}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}<span>${esc(L(b.label))}</span>${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
+    if (b.label100) return `<button type="button" class="rb rb-zoom" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}" aria-label="${tr('rib.reset-zoom')}"><span class="rb-zoom-val">100%</span></button>`;
+    return `<button type="button" class="rb${cls}" data-cmd="${b.cmd}" aria-label="${esc(L(b.label))}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
   };
-  const styles = `<div class="rb-styles" role="listbox" aria-label="Styles">${STYLE_TILES.map(([v, l]) => `<button type="button" class="rb-style-tile" role="option" aria-selected="false" data-style="${v}"><span class="rb-style-sample" data-s="${v}">${v === 'code' ? 'code()' : 'AaBb'}</span><span class="rb-style-name">${l}</span></button>`).join('')}</div>`;
+  const styles = `<div class="rb-styles" role="listbox" aria-label="${tr('rib.styles')}">${STYLE_TILES.map(([v, l]) => `<button type="button" class="rb-style-tile" role="option" aria-selected="false" data-style="${v}"><span class="rb-style-sample" data-s="${v}">${v === 'code' ? 'code()' : 'AaBb'}</span><span class="rb-style-name">${L(l)}</span></button>`).join('')}</div>`;
   const groupIcon = (g) => (g.styles ? 'heading' : g.items.map((c) => (Array.isArray(c) ? c.flat()[0] : c)).find(Boolean)?.icon || 'more');
-  const group = (g, i, all) => `<div class="rb-g" role="group" aria-label="${esc(g.label)}" data-rank="${g.rank ?? all.length - i}"><button type="button" class="rb rb-big rb-g-more" aria-haspopup="true" aria-expanded="false" data-tip="${esc(g.label)}">${ic(groupIcon(g))}<span>${esc(g.label)}</span><i class="rb-caret" aria-hidden="true"></i></button><div class="rb-g-body">${g.styles ? styles : g.items.map((col) => (Array.isArray(col)
+  const group = (g, i, all) => `<div class="rb-g" role="group" aria-label="${esc(L(g.label))}" data-rank="${g.rank ?? all.length - i}"><button type="button" class="rb rb-big rb-g-more" aria-haspopup="true" aria-expanded="false" data-tip="${esc(L(g.label))}">${ic(groupIcon(g))}<span>${esc(L(g.label))}</span><i class="rb-caret" aria-hidden="true"></i></button><div class="rb-g-body">${g.styles ? styles : g.items.map((col) => (Array.isArray(col)
     ? `<div class="rb-col">${col.map((row) => `<div class="rb-row">${row.map((b) => button(b)).join('')}</div>`).join('')}</div>`
     : button(col))).join('')}</div><div class="rb-g-label" aria-hidden="true">${esc(g.label)}</div></div>`;
-  const tabs = TABS.map((t) => `<button type="button" role="tab" class="rb-tab${t.contextual ? ' rb-tab-ctx' : ''}" id="rb-tab-${t.id}" data-tab="${t.id}" aria-controls="rb-panel-${t.id}" aria-selected="false" tabindex="-1"${t.contextual ? ' hidden' : ''}>${esc(t.label)}</button>`).join('');
+  const tabs = TABS.map((t) => `<button type="button" role="tab" class="rb-tab${t.contextual ? ' rb-tab-ctx' : ''}" id="rb-tab-${t.id}" data-tab="${t.id}" aria-controls="rb-panel-${t.id}" aria-selected="false" tabindex="-1"${t.contextual ? ' hidden' : ''}>${esc(L(t.label))}</button>`).join('');
   const panels = TABS.map((t) => `<div class="rb-panel" role="tabpanel" id="rb-panel-${t.id}" aria-labelledby="rb-tab-${t.id}" data-panel="${t.id}" hidden>${t.groups.map(group).join('')}</div>`).join('');
   const compact = COMPACT.map((g) => {
-    if (g === 'style') return `<div class="rb-group"><label class="visually-hidden" for="rb-style">Paragraph style</label><select class="rb-select" id="rb-style" data-tip="Paragraph style">${styleOptions}</select></div>`;
-    if (g === 'table') return `<div class="rb-group rb-table" role="group" aria-label="Table" hidden><span class="rb-label">Table</span>${[B('rowAfter', 'Row below', 'rowBelow'), B('colAfter', 'Column right', 'colRight'), B('delRow', 'Delete row', 'rowDelete'), B('delCol', 'Delete column', 'colDelete'), B('tableMenu', 'More table commands', 'more', null, { menu: true })].map((b) => button(b)).join('')}</div>`;
+    if (g === 'style') return `<div class="rb-group"><label class="visually-hidden" for="rb-style">${tr('rib.paragraph-style')}</label><select class="rb-select" id="rb-style" data-tip="${tr('rib.paragraph-style')}">${styleOptions}</select></div>`;
+    if (g === 'table') return `<div class="rb-group rb-table" role="group" aria-label="${tr('rib.table')}" hidden><span class="rb-label">${tr('rib.table')}</span>${[B('rowAfter', 'Row below', 'rowBelow'), B('colAfter', 'Column right', 'colRight'), B('delRow', 'Delete row', 'rowDelete'), B('delCol', 'Delete column', 'colDelete'), B('tableMenu', 'More table commands', 'more', null, { menu: true })].map((b) => button(b)).join('')}</div>`;
     return `<div class="rb-group">${g.map((b) => button(b)).join('')}</div>`;
   }).join('');
-  const modeBtn = (to) => `<button type="button" class="rb rb-mode" data-cmd="ribbonMode" aria-label="${to === 'full' ? 'Show the full ribbon' : 'Show the simplified ribbon'}" data-tip="${to === 'full' ? 'Full ribbon, with tabs like Word' : 'Simplified ribbon, one row'}">${ic(to === 'full' ? 'chevronDown' : 'chevronUp')}</button>`;
-  return `<div class="ribbon" role="toolbar" aria-label="Formatting" data-mode="compact">
+  const modeBtn = (to) => `<button type="button" class="rb rb-mode" data-cmd="ribbonMode" aria-label="${tr(to === 'full' ? 'rib.show-full' : 'rib.show-simple')}" data-tip="${tr(to === 'full' ? 'rib.tip-full' : 'rib.tip-simple')}">${ic(to === 'full' ? 'chevronDown' : 'chevronUp')}</button>`;
+  return `<div class="ribbon" role="toolbar" aria-label="${tr('rib.formatting')}" data-mode="compact">
     <div class="rb-compact">${compact}<span class="rb-spacer"></span><div class="rb-group">${button(B('find', 'Find and replace', 'find', 'Mod+F'))}${modeBtn('full')}</div></div>
     <div class="rb-full">
-      <div class="rb-tabs"><div class="rb-quick" role="group" aria-label="Quick access">${button(B('undo', 'Undo', 'undo', 'Mod+Z'))}${button(B('redo', 'Redo', 'redo', 'Mod+Shift+Z'))}</div><div class="rb-tablist" role="tablist" aria-label="Ribbon tabs">${tabs}</div><span class="rb-spacer"></span>${modeBtn('compact')}</div>
+      <div class="rb-tabs"><div class="rb-quick" role="group" aria-label="${tr('rib.quick-access')}">${button(B('undo', 'Undo', 'undo', 'Mod+Z'))}${button(B('redo', 'Redo', 'redo', 'Mod+Shift+Z'))}</div><div class="rb-tablist" role="tablist" aria-label="${tr('rib.ribbon-tabs')}">${tabs}</div><span class="rb-spacer"></span>${modeBtn('compact')}</div>
       <div class="rb-panels">${panels}</div>
     </div>
   </div>`;

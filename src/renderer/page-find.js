@@ -1,6 +1,7 @@
 // Folio — find and replace in the Write view (D7). Matches are found per text block (a paragraph, heading, cell),
 // across bold or links inside it; other inline nodes (maths, footnotes) count as one character that never matches.
 // Replace all is one transaction, so one Undo puts everything back.
+import { t as tr, tl } from './i18n.js';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -106,14 +107,14 @@ export function mountFindBar(host, editor, { icons, keyLabel = (k) => k }) {
   const t = (cmd, label, icon, key) => `<button type="button" class="rb" data-f="${cmd}" aria-label="${label}" data-tip="${label}${key ? ` (${keyLabel(key)})` : ''}">${icon}</button>`;
   const opt = (k, label, text) => `<button type="button" class="find-opt" data-opt="${k}" aria-pressed="false" aria-label="${label}" data-tip="${label}">${text}</button>`;
   bar.innerHTML = `<div class="find-row">
-      <div class="find-field">${icons.find}<input class="find-q" type="text" placeholder="Find" aria-label="Find" spellcheck="false">${opt('matchCase', 'Match case', 'Aa')}${opt('wholeWord', 'Whole words', '<u>ab</u>')}${opt('regex', 'Regular expression', '.*')}</div>
+      <div class="find-field">${icons.find}<input class="find-q" type="text" placeholder="${tr('find.find')}" aria-label="${tr('find.find')}" spellcheck="false">${opt('matchCase', tl('find', 'Match case'), 'Aa')}${opt('wholeWord', tl('find', 'Whole words'), '<u>' + tr('find.ab') + '</u>')}${opt('regex', tl('find', 'Regular expression'), '.*')}</div>
       <span class="find-count" aria-live="polite"></span>
-      ${t('prev', 'Previous match', icons.arrowUp, 'Shift+Enter')}${t('next', 'Next match', icons.arrowDown, 'Enter')}
-      ${t('toggleReplace', 'Replace', icons.replace, 'Mod+H')}${t('close', 'Close', icons.close, 'Escape')}
+      ${t('prev', tl('find', 'Previous match'), icons.arrowUp, 'Shift+Enter')}${t('next', tl('find', 'Next match'), icons.arrowDown, 'Enter')}
+      ${t('toggleReplace', tl('find', 'Replace'), icons.replace, 'Mod+H')}${t('close', tl('find', 'Close'), icons.close, 'Escape')}
     </div>
     <div class="find-row find-replace" hidden>
-      <div class="find-field">${icons.replace}<input class="find-r" type="text" placeholder="Replace with" aria-label="Replace with" spellcheck="false"></div>
-      <button type="button" class="btn" data-f="one">Replace</button><button type="button" class="btn" data-f="all">Replace all</button>
+      <div class="find-field">${icons.replace}<input class="find-r" type="text" placeholder="${tr('find.replace-with')}" aria-label="${tr('find.replace-with')}" spellcheck="false"></div>
+      <button type="button" class="btn" data-f="one">${tr('find.replace')}</button><button type="button" class="btn" data-f="all">${tr('find.replace-all')}</button>
     </div>`;
   host.prepend(bar);
   const q = bar.querySelector('.find-q'), r = bar.querySelector('.find-r'), count = bar.querySelector('.find-count'), repRow = bar.querySelector('.find-replace');
@@ -123,7 +124,7 @@ export function mountFindBar(host, editor, { icons, keyLabel = (k) => k }) {
     const s = findState(editor.state); const n = s.matches.length;
     const bad = q.value && opts.regex && !pattern(q.value, opts);
     q.toggleAttribute('aria-invalid', !!bad);
-    count.textContent = !q.value ? '' : bad ? 'Not a valid pattern' : n ? `${s.current + 1} of ${n > 5000 ? '5000+' : n}` : 'No results';
+    count.textContent = !q.value ? '' : bad ? tl('find', 'Not a valid pattern') : n ? `${s.current + 1} of ${n > 5000 ? '5000+' : n}` : tl('find', 'No results');
   };
   const reveal = () => {
     const s = findState(editor.state); const m = s.matches[s.current]; if (!m) return;
@@ -148,7 +149,7 @@ export function mountFindBar(host, editor, { icons, keyLabel = (k) => k }) {
     const tr = editor.state.tr; if (text) tr.replaceWith(m.from, m.to, editor.state.schema.text(text, marks)); else tr.delete(m.from, m.to);
     tr.setMeta(KEY, { near: m.from + text.length }); editor.view.dispatch(tr); reveal(); paint();
   };
-  const all = () => { const n = replaceAll(editor.state, (tr) => editor.view.dispatch(tr), q.value, r.value, opts); search(); count.textContent = n ? `Replaced ${n}` : 'No results'; };
+  const all = () => { const n = replaceAll(editor.state, (tr) => editor.view.dispatch(tr), q.value, r.value, opts); search(); count.textContent = n ? `Replaced ${n}` : tl('find', 'No results'); };
   q.addEventListener('input', search);
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(e.shiftKey ? -1 : 1); } if (e.key === 'Escape') { e.preventDefault(); close(); } });
   r.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.metaKey || e.ctrlKey) all(); else replaceOne(); } if (e.key === 'Escape') { e.preventDefault(); close(); } });

@@ -1,4 +1,5 @@
 // Folio — "mini Word" rich editor for Markdown. TipTap 3 (ProseMirror) with Markdown in and out.
+import { t as tr, tl } from './i18n.js';
 import { Editor, Extension, InputRule } from '@tiptap/core';
 import katex from 'katex';
 import Typography from '@tiptap/extension-typography';
@@ -33,7 +34,7 @@ import { createPageCodec } from './page-core.js';
 /* code blocks: mermaid and chart blocks show the drawing, the source opens on demand */
 const VISUAL = ['mermaid', 'chart', 'template-button'];
 /* languages offered in a code block's menu (any other name typed in the file is kept) */
-const LANGS = [['', 'Plain text'], ['js', 'JavaScript'], ['ts', 'TypeScript'], ['json', 'JSON'], ['python', 'Python'], ['bash', 'Shell'], ['html', 'HTML'], ['css', 'CSS'], ['sql', 'SQL'], ['yaml', 'YAML'], ['markdown', 'Markdown'], ['java', 'Java'], ['kotlin', 'Kotlin'], ['swift', 'Swift'], ['go', 'Go'], ['rust', 'Rust'], ['c', 'C'], ['cpp', 'C++'], ['csharp', 'C#'], ['php', 'PHP'], ['ruby', 'Ruby'], ['xml', 'XML'], ['diff', 'Diff'], ['ini', 'INI / TOML'], ['mermaid', 'Diagram (Mermaid)'], ['chart', 'Chart']];
+const LANGS = [['', tl('rich', 'Plain text')], ['js', tl('rich', 'JavaScript')], ['ts', tl('rich', 'TypeScript')], ['json', 'JSON'], ['python', tl('rich', 'Python')], ['bash', tl('rich', 'Shell')], ['html', 'HTML'], ['css', 'CSS'], ['sql', 'SQL'], ['yaml', 'YAML'], ['markdown', tl('rich', 'Markdown')], ['java', tl('rich', 'Java')], ['kotlin', tl('rich', 'Kotlin')], ['swift', tl('rich', 'Swift')], ['go', tl('rich', 'Go')], ['rust', tl('rich', 'Rust')], ['c', 'C'], ['cpp', 'C++'], ['csharp', 'C#'], ['php', 'PHP'], ['ruby', tl('rich', 'Ruby')], ['xml', 'XML'], ['diff', tl('rich', 'Diff')], ['ini', 'INI / TOML'], ['mermaid', tl('rich', 'Diagram (Mermaid)')], ['chart', tl('rich', 'Chart')]];
 
 /* syntax colours in code blocks: highlight.js (as the Read view) turned into decorations; the text is never touched */
 const HL = new PluginKey('codeHighlight');
@@ -105,7 +106,7 @@ const FolioCodeBlock = CodeBlock.extend({
         const visual = VISUAL.includes(lang);
         dom.classList.toggle('is-visual', visual); dom.classList.toggle('is-editing', !visual || editing);
         const known = LANGS.some(([v]) => v === lang);
-        const select = `<select class="rich-code-lang" aria-label="Code language">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+        const select = `<select class="rich-code-lang" aria-label="${tr('rich.code-language')}">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
         bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select;
         if (visual) draw(n.textContent); else preview.innerHTML = '';
       };
@@ -130,9 +131,9 @@ const FolioCodeBlock = CodeBlock.extend({
 /** `![[Note#Heading]]` alone on a line is shown live under the line (read-only; the text stays as written) */
 function embedCard(target, opts) {
   const box = document.createElement('div'); box.className = 'rich-embed'; box.contentEditable = 'false'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', `Embedded ${target}`);
-  box.innerHTML = '<div class="rich-embed-bar"><span></span><button type="button" class="btn btn-quiet">Open</button></div><div class="rich-embed-body prose">Loading…</div>';
+  box.innerHTML = '<div class="rich-embed-bar"><span></span><button type="button" class="btn btn-quiet">' + tr('rich.open') + '</button></div><div class="rich-embed-body prose">' + tr('rich.loading') + '</div>';
   box.querySelector('span').textContent = target; box.querySelector('button').onclick = () => opts.onWikiLink?.(target);
-  Promise.resolve(opts.preview(target)).then((html) => { box.querySelector('.rich-embed-body').innerHTML = html || '<p class="rich-embed-missing">This target does not exist yet.</p>'; }, () => { box.querySelector('.rich-embed-body').textContent = 'Could not load this embed.'; });
+  Promise.resolve(opts.preview(target)).then((html) => { box.querySelector('.rich-embed-body').innerHTML = html || '<p class="rich-embed-missing">' + tr('rich.this-target-does-not-exist-yet') + '</p>'; }, () => { box.querySelector('.rich-embed-body').textContent = tl('rich', 'Could not load this embed.'); });
   return box;
 }
 
@@ -159,23 +160,23 @@ const Decorate = Extension.create({
         }
         if (n.isText) {
           const bid = /\s\^[A-Za-z0-9-]+\s*$/.exec(n.text);
-          if (bid && pos + n.nodeSize === doc.resolve(pos).end()) deco.push(Decoration.inline(pos + bid.index, pos + n.text.length, { class: 'rich-block-id', title: 'Block id: links like [[Note#^id]] point here' }));
+          if (bid && pos + n.nodeSize === doc.resolve(pos).end()) deco.push(Decoration.inline(pos + bid.index, pos + n.text.length, { class: 'rich-block-id', title: tr('rich.block-id-links-like-note-id-point-here') }));
           const re = /\[\[([^\]\n]+)\]\]/g; let m;
           while ((m = re.exec(n.text))) {
             const embed = n.text[m.index - 1] === '!';
             const target = m[1].replace(/\|.*$/, ''); const kind = embed ? null : opts.linkKind?.(target);
-            deco.push(Decoration.inline(pos + m.index - (embed ? 1 : 0), pos + m.index + m[0].length, { class: embed ? 'rich-ref' : `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}`, 'data-target': target, title: embed ? 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open' : kind === 'missing' ? 'No page with this name yet. Ctrl or ⌘ click to create it' : 'Ctrl or ⌘ click to open' }));
+            deco.push(Decoration.inline(pos + m.index - (embed ? 1 : 0), pos + m.index + m[0].length, { class: embed ? 'rich-ref' : `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}`, 'data-target': target, title: embed ? tl('rich', 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open') : kind === 'missing' ? tl('rich', 'No page with this name yet. Ctrl or ⌘ click to create it') : tl('rich', 'Ctrl or ⌘ click to open') }));
           }
           if (!n.marks.some((mk) => mk.type.name === 'code')) {
             TAG.lastIndex = 0; let t;
-            while ((t = TAG.exec(n.text))) { const from = pos + t.index + t[1].length; deco.push(Decoration.inline(from, from + t[2].length + 1, { class: 'rich-tag', title: 'Tag. Ctrl or ⌘ click to see every page with it' })); }
+            while ((t = TAG.exec(n.text))) { const from = pos + t.index + t[1].length; deco.push(Decoration.inline(from, from + t[2].length + 1, { class: 'rich-tag', title: tr('rich.tag-ctrl-or-click-to-see-every-page-wi') })); }
             FIELD.lastIndex = 0; let f;
-            while ((f = FIELD.exec(n.text))) { const key = f[1].trim().toLowerCase(); deco.push(Decoration.inline(pos + f.index, pos + f.index + f[0].length, { class: key === 'status' ? `rich-field rich-status is-${statusClass(f[2])}` : 'rich-field', 'data-key': key, title: key === 'status' ? 'Status' : f[1] })); }
+            while ((f = FIELD.exec(n.text))) { const key = f[1].trim().toLowerCase(); deco.push(Decoration.inline(pos + f.index, pos + f.index + f[0].length, { class: key === 'status' ? `rich-field rich-status is-${statusClass(f[2])}` : 'rich-field', 'data-key': key, title: key === 'status' ? tl('rich', 'Status') : f[1] })); }
           }
           const rv = /\{\{([^}\n]+?)\}\}/g;
           while ((m = rv.exec(n.text))) {
             const raw = m[1].trim(); const end = pos + m.index + m[0].length;
-            deco.push(Decoration.inline(pos + m.index, end, { class: 'rich-ref', 'data-target': raw.replace(/\|.*$/, ''), title: 'Live value. Ctrl or ⌘ click to open the source' }));
+            deco.push(Decoration.inline(pos + m.index, end, { class: 'rich-ref', 'data-target': raw.replace(/\|.*$/, ''), title: tr('rich.live-value-ctrl-or-click-to-open-the-s') }));
             if (opts.resolveValue) deco.push(Decoration.widget(end, () => { const sp = document.createElement('span'); sp.className = 'rich-ref-out'; sp.contentEditable = 'false'; sp.textContent = '…'; opts.resolveValue(raw).then((v) => { sp.textContent = '= ' + v; }, (e) => { sp.textContent = '= ?'; sp.title = e.message; sp.classList.add('is-broken'); }); return sp; }, { side: 1, key: 'ref:' + raw + ':' + end }));
           }
         }
@@ -241,7 +242,7 @@ function sourceBlockView({ attr, label, draw, clean = (v) => v.replace(/^\n+|\s+
   return ({ node, editor, getPos }) => {
     const dom = document.createElement('div'); dom.className = `rich-raw rich-${node.type.name}`; dom.contentEditable = 'false';
     const bar = document.createElement('div'); bar.className = 'rich-raw-bar';
-    bar.innerHTML = `<span>${label}</span><button type="button" class="btn btn-quiet">Edit source</button>`;
+    bar.innerHTML = `<span>${label}</span><button type="button" class="btn btn-quiet">${tr('rich.edit-source')}</button>`;
     const preview = document.createElement('div'); preview.className = 'rich-raw-preview prose';
     const area = document.createElement('textarea'); area.className = 'rich-raw-src'; area.spellcheck = false; area.setAttribute('aria-label', `${label}: source`); area.hidden = true;
     dom.append(bar, preview, area);
@@ -249,11 +250,11 @@ function sourceBlockView({ attr, label, draw, clean = (v) => v.replace(/^\n+|\s+
     let editing = false;
     const fit = () => { area.style.height = 'auto'; area.style.height = area.scrollHeight + 'px'; };
     const open = () => {
-      if (editing) return; editing = true; dom.classList.add('raw-editing'); btn.textContent = 'Done';
+      if (editing) return; editing = true; dom.classList.add('raw-editing'); btn.textContent = tl('rich', 'Done');
       area.hidden = false; area.value = node.attrs[attr]; fit(); area.focus();
     };
     const close = () => {
-      if (!editing) return; editing = false; dom.classList.remove('raw-editing'); btn.textContent = 'Edit source'; area.hidden = true;
+      if (!editing) return; editing = false; dom.classList.remove('raw-editing'); btn.textContent = tl('rich', 'Edit source'); area.hidden = true;
       const pos = typeof getPos === 'function' ? getPos() : null;
       const value = clean(area.value);
       if (value !== node.attrs[attr] && pos != null) {
@@ -292,7 +293,7 @@ function sourceInlineView({ attr, className, draw, title }) {
     const open = () => {
       if (editing) return; editing = true;
       const input = document.createElement('input'); input.className = 'rich-src-input'; input.spellcheck = false; input.value = node.attrs[attr];
-      input.setAttribute('aria-label', title ? title('') : 'Source');
+      input.setAttribute('aria-label', title ? title('') : tl('rich', 'Source'));
       input.size = Math.max(4, input.value.length + 1);
       dom.replaceChildren(input); input.focus(); input.select();
       const done = (commit) => {
@@ -336,7 +337,7 @@ const RawBlock = FolioRaw.extend({
   addKeyboardShortcuts: openOnEnter('folioRaw'),
   addNodeView() {
     return sourceBlockView({
-      attr: 'source', label: 'Kept as written',
+      attr: 'source', label: tr('rich.kept-as-written'),
       draw: (el, src) => {
         el.innerHTML = render(src);
         if (!el.textContent.trim() && !el.querySelector('img, svg, table, hr, math')) { el.innerHTML = '<pre class="rich-raw-plain"></pre>'; el.firstChild.textContent = src; }
@@ -353,16 +354,16 @@ const BlockMathView = BlockMath.extend({
     } })];
   },
   addNodeView() {
-    return sourceBlockView({ attr: 'latex', label: 'Maths', clean: (v) => v.replace(/^\n+|\s+$/g, ''), draw: (el, v) => { el.innerHTML = v ? katexHtml(v, true) : '<p class="rich-raw-plain">Empty formula</p>'; } });
+    return sourceBlockView({ attr: 'latex', label: tr('rich.maths'), clean: (v) => v.replace(/^\n+|\s+$/g, ''), draw: (el, v) => { el.innerHTML = v ? katexHtml(v, true) : '<p class="rich-raw-plain">' + tr('rich.empty-formula') + '</p>'; } });
   },
 });
 const InlineMathView = InlineMath.extend({
   addKeyboardShortcuts: openOnEnter('inlineMath'),
-  addNodeView() { return sourceInlineView({ attr: 'latex', className: 'rich-math', draw: (el, v) => { el.innerHTML = katexHtml(v, false); }, title: () => 'Maths (double-click or Enter to edit)' }); },
+  addNodeView() { return sourceInlineView({ attr: 'latex', className: 'rich-math', draw: (el, v) => { el.innerHTML = katexHtml(v, false); }, title: () => tl('rich', 'Maths (double-click or Enter to edit)') }); },
 });
 const FootnoteInlineView = FootnoteInline.extend({
   addKeyboardShortcuts: openOnEnter('footnoteInline'),
-  addNodeView() { return sourceInlineView({ attr: 'text', className: 'rich-fn is-inline', draw: (el) => { el.textContent = '*'; }, title: (v) => (v ? `Note: ${v}` : 'Note text') }); },
+  addNodeView() { return sourceInlineView({ attr: 'text', className: 'rich-fn is-inline', draw: (el) => { el.textContent = '*'; }, title: (v) => (v ? `Note: ${v}` : tl('rich', 'Note text')) }); },
 });
 const footnoteText = (doc, label) => { let t = ''; doc.descendants((n) => { if (!t && n.type.name === 'footnoteDef' && n.attrs.label === label) t = n.textContent; return !t; }); return t; };
 const FootnoteRefView = FootnoteRef.extend({
@@ -370,7 +371,7 @@ const FootnoteRefView = FootnoteRef.extend({
     return ({ node, editor }) => {
       const dom = document.createElement('sup'); dom.className = 'rich-fn'; dom.contentEditable = 'false';
       const paint = () => { dom.textContent = node.attrs.label; };
-      dom.addEventListener('mouseenter', () => { const t = footnoteText(editor.state.doc, node.attrs.label); dom.title = t ? `${t}\n\nCtrl or ⌘ click to go to the note` : 'No text for this footnote yet'; });
+      dom.addEventListener('mouseenter', () => { const t = footnoteText(editor.state.doc, node.attrs.label); dom.title = t ? `${t}\n\nCtrl or ⌘ click to go to the note` : tl('rich', 'No text for this footnote yet'); });
       dom.addEventListener('click', (e) => {
         if (!(e.metaKey || e.ctrlKey)) return;
         let at = null; editor.state.doc.descendants((n, pos) => { if (at == null && n.type.name === 'footnoteDef' && n.attrs.label === node.attrs.label) at = pos; return at == null; });
@@ -433,7 +434,7 @@ const FolioImage = PageImage.extend({
         body = document.createElement('div'); body.className = 'rich-img-wrap';
         const img = document.createElement('img'); img.alt = node.attrs.alt || ''; img.decoding = 'async'; setSrc(img, node.attrs.src || '');
         const w = parseInt(node.attrs.size, 10); if (w) img.style.width = `${w}px`;
-        const grip = document.createElement('span'); grip.className = 'rich-img-resize'; grip.setAttribute('aria-hidden', 'true'); grip.title = 'Drag to resize';
+        const grip = document.createElement('span'); grip.className = 'rich-img-resize'; grip.setAttribute('aria-hidden', 'true'); grip.title = tl('rich', 'Drag to resize');
         grip.addEventListener('pointerdown', (e) => {
           e.preventDefault(); grip.setPointerCapture(e.pointerId);
           const start = e.clientX, from = img.getBoundingClientRect().width, max = dom.parentElement?.getBoundingClientRect().width || 2000;
@@ -457,7 +458,7 @@ const FolioImage = PageImage.extend({
       const cap = document.createElement('figcaption'); cap.className = 'rich-caption';
       const paintCap = () => { cap.textContent = node.attrs.title || ''; cap.dataset.empty = node.attrs.title ? '' : 'Add a caption'; };
       cap.addEventListener('dblclick', () => {
-        const input = document.createElement('input'); input.className = 'rich-src-input rich-caption-input'; input.value = node.attrs.title || ''; input.placeholder = 'Caption'; input.setAttribute('aria-label', 'Caption');
+        const input = document.createElement('input'); input.className = 'rich-src-input rich-caption-input'; input.value = node.attrs.title || ''; input.placeholder = tl('rich', 'Caption'); input.setAttribute('aria-label', tl('rich', 'Caption'));
         cap.replaceChildren(input); input.focus();
         const done = (save) => { if (save) commit({ title: input.value.trim() || null }); else paintCap(); };
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); done(true); } if (e.key === 'Escape') { e.preventDefault(); done(false); } });
@@ -541,12 +542,12 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   const paint = () => {
     let html = '', group = null;
     items.forEach((x, i) => {
-      if (x.group !== group) { if (group !== null) html += '</div>'; group = x.group; html += `<div class="slash-group" role="group" aria-label="${group}"><div class="slash-head" aria-hidden="true">${group}</div>`; }
+      if (x.group !== group) { if (group !== null) html += '</div>'; group = x.group; html += `<div class="slash-group" role="group" aria-label="${tl('grp', group)}"><div class="slash-head" aria-hidden="true">${tl('grp', group)}</div>`; }
       const k = x.item.key ? `<kbd>${opts.keyLabel(x.item.key)}</kbd>` : '';
       html += `<div class="slash-item" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${k}</div>`;
     });
     if (group !== null) html += '</div>';
-    list.innerHTML = html || (props?.loading ? '' : '<div class="slash-empty">No matches. Keep typing, or press Esc.</div>');
+    list.innerHTML = html || (props?.loading ? '' : '<div class="slash-empty">' + tr('rich.no-matches-keep-typing-or-press-esc') + '</div>');
     view?.dom.setAttribute('aria-activedescendant', items.length ? `slash-${sel}` : '');
     list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   };
@@ -561,7 +562,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
     onStart(p) {
       props = p; view = p.editor.view; items = p.items; sel = 0;
       el = document.createElement('div'); el.className = 'slash-menu';
-      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">↑↓ to move · Enter to choose · Esc to close</div>';
+      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">' + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
       list = el.firstChild; document.body.append(el);
       view.dom.setAttribute('aria-controls', 'slash-list'); // aria-expanded is not allowed on a textbox: the list is announced through aria-activedescendant
       list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
@@ -587,7 +588,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
 
 /* [[ @ # : — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
 const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji') };
-const MENTION_LABEL = { link: 'Link to a page', at: 'Mention a person, page or date', tag: 'Tags', emoji: 'Emoji' };
+const MENTION_LABEL = { link: tl('rich', 'Link to a page'), at: tl('rich', 'Mention a person, page or date'), tag: 'Tags', emoji: 'Emoji' };
 const Mentions = Extension.create({
   name: 'folioMentions',
   addOptions() { return { ctx: () => null, keyLabel: (k) => k }; },
@@ -659,11 +660,11 @@ const WordKeys = Extension.create({
 });
 
 const TURN = [
-  ['p', 'Text'], ['h1', 'Heading 1'], ['h2', 'Heading 2'], ['h3', 'Heading 3'], ['bullet', 'Bulleted list'], ['ordered', 'Numbered list'], ['task', 'Checklist'], ['quote', 'Quote'], ['code', 'Code block'],
+  ['p', tl('rich', 'Text')], ['h1', tl('rich', 'Heading 1')], ['h2', tl('rich', 'Heading 2')], ['h3', tl('rich', 'Heading 3')], ['bullet', tl('rich', 'Bulleted list')], ['ordered', tl('rich', 'Numbered list')], ['task', tl('rich', 'Checklist')], ['quote', tl('rich', 'Quote')], ['code', tl('rich', 'Code block')],
 ];
 const STYLES = [
-  ['p', 'Normal text'], ['h1', 'Heading 1'], ['h2', 'Heading 2'], ['h3', 'Heading 3'], ['h4', 'Heading 4'], ['h5', 'Heading 5'], ['h6', 'Heading 6'],
-  ['quote', 'Quote'], ['code', 'Code block'],
+  ['p', tl('rich', 'Normal text')], ['h1', tl('rich', 'Heading 1')], ['h2', tl('rich', 'Heading 2')], ['h3', tl('rich', 'Heading 3')], ['h4', tl('rich', 'Heading 4')], ['h5', tl('rich', 'Heading 5')], ['h6', tl('rich', 'Heading 6')],
+  ['quote', tl('rich', 'Quote')], ['code', tl('rich', 'Code block')],
 ];
 
 function btn(id, label, icon, key) {
@@ -674,23 +675,23 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
-    <div class="bubble" role="toolbar" aria-label="Selection">
-      <label class="visually-hidden" for="rb-turn">Turn into</label>
-      <select class="bubble-select" id="rb-turn" data-tip="Turn into">${TURN.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+    <div class="bubble" role="toolbar" aria-label="${tr('rich.selection')}">
+      <label class="visually-hidden" for="rb-turn">${tr('rich.turn-into')}</label>
+      <select class="bubble-select" id="rb-turn" data-tip="${tr('rich.turn-into')}">${TURN.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
       <span class="bubble-sep"></span>
-      ${btn('bold', 'Bold', icons.bold)}${btn('italic', 'Italic', icons.italic)}${btn('underline', 'Underline', icons.underline)}${btn('strike', 'Strikethrough', icons.strike)}
-      ${btn('highlight', 'Highlight', icons.highlighter)}${btn('code', 'Inline code', icons.codeInline)}${btn('linkInline', 'Link', icons.link)}${btn('comment', 'Comment', icons.comment)}
+      ${btn('bold', tl('rich', 'Bold'), icons.bold)}${btn('italic', tl('rich', 'Italic'), icons.italic)}${btn('underline', tl('rich', 'Underline'), icons.underline)}${btn('strike', tl('rich', 'Strikethrough'), icons.strike)}
+      ${btn('highlight', tl('rich', 'Highlight'), icons.highlighter)}${btn('code', tl('rich', 'Inline code'), icons.codeInline)}${btn('linkInline', tl('rich', 'Link'), icons.link)}${btn('comment', tl('rich', 'Comment'), icons.comment)}
       <span class="bubble-sep"></span>
-      ${btn('superscript', 'Superscript', icons.superscript)}${btn('subscript', 'Subscript', icons.subscript)}${btn('colour', 'Text colour', icons.palette)}${btn('inlineMath', 'Maths', icons.sigma)}${btn('hiddenComment', 'Hidden comment', icons.commentHidden)}
+      ${btn('superscript', tl('rich', 'Superscript'), icons.superscript)}${btn('subscript', tl('rich', 'Subscript'), icons.subscript)}${btn('colour', tl('rich', 'Text colour'), icons.palette)}${btn('inlineMath', tl('rich', 'Maths'), icons.sigma)}${btn('hiddenComment', tl('rich', 'Hidden comment'), icons.commentHidden)}
       <div class="bubble-link" hidden>
-        <input type="url" placeholder="Paste or type a link, Enter to apply" aria-label="Link address" spellcheck="false">
-        ${btn('linkRemove', 'Remove link', icons.clear)}
+        <input type="url" placeholder="${tr('rich.paste-or-type-a-link-enter-to-apply')}" aria-label="${tr('rich.link-address')}" spellcheck="false">
+        ${btn('linkRemove', tl('rich', 'Remove link'), icons.clear)}
       </div>
     </div>
-    <div class="rb-pop" id="rb-colours" role="dialog" aria-label="Text colour" hidden>
-      <span class="rb-pop-title">Text</span>
+    <div class="rb-pop" id="rb-colours" role="dialog" aria-label="${tr('rich.text-colour')}" hidden>
+      <span class="rb-pop-title">${tr('rich.text')}</span>
       <div class="rb-swatches">${['', ...COLORS].map((c) => `<button type="button" class="rb-swatch" data-colour="${c}" aria-label="${c ? `${c[0].toUpperCase()}${c.slice(1)} text` : 'Default text'}"><span ${c ? `data-color="${c}"` : ''}>A</span></button>`).join('')}</div>
-      <span class="rb-pop-title">Background</span>
+      <span class="rb-pop-title">${tr('rich.background')}</span>
       <div class="rb-swatches">${['', ...COLORS].map((c) => `<button type="button" class="rb-swatch" data-bgc="${c}" aria-label="${c ? `${c[0].toUpperCase()}${c.slice(1)} background` : 'No background'}"><span class="sw" ${c ? `data-bg="${c}"` : ''}></span></button>`).join('')}</div>
     </div>`;
 
@@ -724,7 +725,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply) }),
       Markdown.configure({ markedOptions: { gfm: true } }),
-      Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : 'Write, or select text to format it') }),
+      Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : tl('rich', 'Write, or select text to format it')) }),
       BubbleMenu.configure({ element: bubble, shouldShow: ({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && !(state.selection instanceof NodeSelection) }),
       WordKeys,
     ],
@@ -767,7 +768,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       case 'tableGrid': return openTableGrid(btn);
       case 'insertMenu': return openInsertMenu(btn);
       case 'align': return openAlignMenu(btn);
-      case 'tableMenu': return popupMenu(btn, tableMenuItems(editor, { icons, toSheet: () => tableToSheet(editor) }), { label: 'Table' });
+      case 'tableMenu': return popupMenu(btn, tableMenuItems(editor, { icons, toSheet: () => tableToSheet(editor) }), { label: tr('rich.table') });
       case 'slash': return openSlash();
       case 'emoji': return typeTrigger(':');
       case 'counts': return showCounts(btn);
@@ -896,19 +897,19 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   function openInsertMenu(btn) {
     const items = COMPACT_INSERTS.map((id) => INSERTS.find((i) => i.id === id)).filter(Boolean).map((i) => ({ label: i.label, icon: icons[i.icon] || `<span class="slash-badge">${i.badge || ''}</span>`, run: () => api.insert(i.id) }));
     btn?.setAttribute('aria-expanded', 'true');
-    popupMenu(btn, [...items, '-', { label: 'All blocks…', icon: icons.plus, key: '/', run: openSlash }], { label: 'Insert', onClose: () => btn?.setAttribute('aria-expanded', 'false') });
+    popupMenu(btn, [...items, '-', { label: tr('rich.all-blocks'), icon: icons.plus, key: '/', run: openSlash }], { label: tr('rich.insert'), onClose: () => btn?.setAttribute('aria-expanded', 'false') });
   }
   function openAlignMenu(btn) {
     const cur = editor.getAttributes('paragraph').textAlign ?? editor.getAttributes('heading').textAlign ?? 'left';
     const a = (v, label, icon, key) => ({ label, icon: icons[icon], key: keyLabel(key), checked: (cur || 'left') === v, run: () => pageCmd.align(editor, v) });
-    popupMenu(btn, [a('left', 'Align left', 'alignLeft', 'Mod+Shift+L'), a('center', 'Centre', 'alignCenter', 'Mod+Alt+E'), a('right', 'Align right', 'alignRight', 'Mod+Shift+R'), a('justify', 'Justify', 'alignJustify', 'Mod+Shift+J')], { label: 'Alignment' });
+    popupMenu(btn, [a('left', tl('rich', 'Align left'), 'alignLeft', 'Mod+Shift+L'), a('center', 'Centre', 'alignCenter', 'Mod+Alt+E'), a('right', tl('rich', 'Align right'), 'alignRight', 'Mod+Shift+R'), a('justify', 'Justify', 'alignJustify', 'Mod+Shift+J')], { label: tr('rich.alignment') });
   }
   /* Word's table grid: point at the size, click to insert */
   function openTableGrid(btn) {
     const R = 8, C = 10; let pick = [3, 3];
     const cells = Array.from({ length: R * C }, (_, i) => `<button type="button" class="tg-cell" data-r="${Math.floor(i / C) + 1}" data-c="${(i % C) + 1}" aria-label="${Math.floor(i / C) + 1} by ${(i % C) + 1}"></button>`).join('');
-    const { menu, close } = popupMenu(btn, [{ html: `<div class="tg"><div class="tg-label">Insert a 3 × 3 table</div><div class="tg-grid" style="grid-template-columns:repeat(${C},16px)">${cells}</div></div>` }, '-',
-      { label: 'Table from pasted cells: copy them in Excel or Sheets, then paste', icon: icons.paste, disabled: true, run() {} }], { label: 'Insert table' });
+    const { menu, close } = popupMenu(btn, [{ html: `<div class="tg"><div class="tg-label">${tr('rich.insert-a-3-3-table')}</div><div class="tg-grid" style="grid-template-columns:repeat(${C},16px)">${cells}</div></div>` }, '-',
+      { label: tr('rich.table-from-pasted-cells-copy-them-in-e'), icon: icons.paste, disabled: true, run() {} }], { label: tr('rich.insert-table') });
     const paint = () => { menu.querySelector('.tg-label').textContent = `Insert a ${pick[0]} × ${pick[1]} table`; menu.querySelectorAll('.tg-cell').forEach((b) => b.classList.toggle('on', +b.dataset.r <= pick[0] && +b.dataset.c <= pick[1])); };
     menu.addEventListener('mouseover', (e) => { const b = e.target.closest('.tg-cell'); if (b) { pick = [+b.dataset.r, +b.dataset.c]; paint(); } });
     menu.addEventListener('focusin', (e) => { const b = e.target.closest('.tg-cell'); if (b) { pick = [+b.dataset.r, +b.dataset.c]; paint(); } });
@@ -970,7 +971,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     const st = api.stats(); const f = new Intl.NumberFormat();
     const row = (l, a, b) => `<div class="counts-row"><span>${l}</span><b>${f.format(a)}</b>${b != null ? `<b>${f.format(b)}</b>` : '<b></b>'}</div>`;
     const sel = st.selection;
-    popupMenu(btn || visibleBtn('find') || host, [{ html: `<div class="counts"><div class="counts-row counts-head"><span></span><span>Document</span><span>${sel ? 'Selection' : ''}</span></div>${row('Words', st.words, sel?.words)}${row('Characters', st.chars, sel?.chars)}${row('Characters without spaces', st.charsNoSpace, sel?.charsNoSpace)}${row('Paragraphs', st.paragraphs, sel?.paragraphs)}${row('Pages', Math.max(1, Math.ceil(st.words / 500)))}<div class="counts-note">About ${Math.max(1, Math.round(st.words / 230))} min to read</div></div>` }], { label: 'Word count' });
+    popupMenu(btn || visibleBtn('find') || host, [{ html: `<div class="counts"><div class="counts-row counts-head"><span></span><span>${tr('rich.document')}</span><span>${sel ? 'Selection' : ''}</span></div>${row(tl('rich', 'Words'), st.words, sel?.words)}${row(tl('rich', 'Characters'), st.chars, sel?.chars)}${row(tl('rich', 'Characters without spaces'), st.charsNoSpace, sel?.charsNoSpace)}${row(tl('rich', 'Paragraphs'), st.paragraphs, sel?.paragraphs)}${row(tl('rich', 'Pages'), Math.max(1, Math.ceil(st.words / 500)))}<div class="counts-note">About ${Math.max(1, Math.round(st.words / 230))} min to read</div></div>` }], { label: tr('rich.word-count') });
   }
 
   /* find and replace */

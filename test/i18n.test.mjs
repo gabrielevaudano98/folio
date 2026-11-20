@@ -4,15 +4,21 @@ import fs from 'node:fs'; import path from 'node:path';
 import assert from 'node:assert/strict';
 import en from '../src/renderer/locales/en.js';
 import it from '../src/renderer/locales/it.js';
-import { t, setLocale, LOCALES } from '../src/renderer/i18n.js';
+import { t, setLocale, LOCALES, instance, slugKey } from '../src/renderer/i18n.js';
 import { helpSections, SYNTAX } from '../src/renderer/page-help.js';
 
 console.log('\ntranslations');
 const dir = 'src/renderer';
 const used = new Set();
-for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/\bt\('([a-z][\w]*\.[\w.]+)'/g)) used.add(m[1]);
-const missing = [...used].filter((k) => !(k in en) && !(`${k}.other` in en));
+for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+  const src = fs.readFileSync(path.join(dir, f), 'utf8');
+  for (const m of src.matchAll(/\b(?:t|tr)\('([a-z][\w-]*\.[\w.-]+)'/g)) used.add(m[1]);
+  // tl('prefix', 'English text') looks the text up as prefix.slugKey(text); a text with no entry simply stays English, so only literal pairs that have an entry are checked
+  for (const m of src.matchAll(/\btl\('([a-z]+)', '((?:[^'\\]|\\.)*)'\)/g)) { const k = `${m[1]}.${slugKey(m[2].replace(/\\'/g, "'"))}`; if (k in en || `${k}_one` in en) used.add(k); }
+}
+const missing = [...used].filter((k) => !(k in en) && !(`${k}_other` in en));
 assert.deepEqual(missing, [], `keys used but not in en.js: ${missing}`);
+assert.deepEqual(Object.entries(en).filter(([, v]) => v.includes('{{')).map(([k]) => k), [], 'no {{ in the catalogue (i18next prefix is a single brace)');
 console.log(`  ✓ the ${used.size} keys used in the code all exist in the English catalogue`);
 
 for (const [code, { dict }] of Object.entries(LOCALES)) {
@@ -28,20 +34,25 @@ const cmdBlock = appSrc.slice(appSrc.indexOf('const COMMANDS = ['), appSrc.index
 const cmds = [...cmdBlock.matchAll(/\{ id: '([\w-]+)', title: '((?:[^'\\]|\\.)*)'/g)].map((m) => [m[1], m[2].replace(/\\'/g, "'")]);
 assert.ok(cmds.length > 70, `found ${cmds.length} commands`);
 for (const [id, title] of cmds) { assert.equal(en[`cmd.${id}`], title, `en cmd.${id} matches the title in app.js`); assert.ok(it[`cmd.${id}`], `it has cmd.${id}`); }
-assert.equal(Object.keys(en).filter((k) => k.startsWith('cmd.')).length, cmds.length, 'no catalogue entry without a command');
+assert.equal(Object.keys(en).filter((k) => k.startsWith('cmd.') && !k.endsWith('-mac')).length, cmds.length, 'no catalogue entry without a command');
 console.log(`  ✓ the ${cmds.length} palette commands are translated and match app.js`);
 
-setLocale('it'); assert.equal(t('review.accept'), 'Accetta'); assert.equal(t('info.minAgo', { n: 3 }), '3 min fa');
+setLocale('it');
+assert.equal(t('app.words', { n: 1 }), '1 parola'); assert.equal(t('app.words', { n: 12 }), '12 parole'); assert.equal(t('app.words', { n: 2000000 }), '2.000.000 parole', 'Italian “many” falls back to other');
+assert.equal(t('app.you-removed', { n: 1, what: 'a.png', size: '1 KB' }).startsWith('Hai rimosso'), true);
+assert.equal(t('review.accept'), 'Accetta'); assert.equal(t('info.minAgo', { n: 3 }), '3 min fa');
 assert.equal(t('settings.language'), 'Lingua');
-delete LOCALES.it.dict['review.reject'];
-assert.equal(t('review.reject'), 'Reject', 'a missing key falls back to English'); LOCALES.it.dict['review.reject'] = it['review.reject'] ?? 'Rifiuta';
+instance.addResource('en', 'translation', 't.only.english', 'English only');
+assert.equal(t('t.only.english'), 'English only', 'a key the language lacks falls back to English');
 assert.equal(t('no.such.key'), 'no.such.key');
 assert.equal(setLocale('xx'), 'en', 'an unknown language falls back to English');
 console.log('  ✓ Italian works; a missing key falls back to English, then to the key itself');
 
-// plurals: key.one / key.other with {n}
-en['t.items.one'] = '{n} item'; en['t.items.other'] = '{n} items';
-assert.equal(t('t.items', { n: 1 }), '1 item'); assert.equal(t('t.items', { n: 1200 }), '1,200 items'); delete en['t.items.one']; delete en['t.items.other'];
+// plurals (i18next): name_one / name_other with {n}; Italian has its own categories and number format
+instance.addResources('en', 'translation', { 't.items_one': '{n} item', 't.items_other': '{n} items' });
+instance.addResources('it', 'translation', { 't.items_one': '{n} elemento', 't.items_many': '{n} di elementi', 't.items_other': '{n} elementi' });
+setLocale('en'); assert.equal(t('t.items', { n: 1 }), '1 item'); assert.equal(t('t.items', { n: 1200 }), '1,200 items');
+setLocale('it'); assert.equal(t('t.items', { n: 1 }), '1 elemento'); assert.equal(t('t.items', { n: 12000 }), '12.000 elementi');
 console.log('  ✓ plurals and number formatting follow the language');
 
 setLocale('en');

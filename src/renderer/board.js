@@ -1,4 +1,5 @@
 // Folio — board surface: a draw.io-style canvas on top of board-md.
+import { t as tr, tl } from './i18n.js';
 import { LIBRARY, SHAPES, CONTAINERS, ARROWS, parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, autoLayout, edgePath, shapeSvg, labelBox, defaultSize, fitAuto, ports, applyEdgeStyle } from './board-core.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -7,7 +8,7 @@ const GRID = 10;
 const snap = (v) => Math.round(v / GRID) * GRID;
 const FILLS = ['', '#ffffff', '#f2f2f2', '#e3e3e3', '#cfcfcf', '#a8a8a8', '#6e6e6e', '#3a3a3a', '#1c1c1c'];
 const STROKES = ['', '#1c1c1c', '#5c5c5c', '#9a9a9a', '#d0d0d0', '#ffffff'];
-const MARKERS = [['', 'None'], ['arrow', 'Arrow'], ['open', 'Open arrow'], ['triangle', 'Hollow triangle'], ['diamond', 'Filled diamond'], ['diamondOpen', 'Hollow diamond'], ['circle', 'Circle']];
+const MARKERS = [['', tl('board', 'None')], ['arrow', tl('board', 'Arrow')], ['open', tl('board', 'Open arrow')], ['triangle', tl('board', 'Hollow triangle')], ['diamond', tl('board', 'Filled diamond')], ['diamondOpen', tl('board', 'Hollow diamond')], ['circle', tl('board', 'Circle')]];
 
 let measureCtx;
 function wrap(text, width, font) {
@@ -28,26 +29,26 @@ function wrap(text, width, font) {
 export function mountBoard(host, ctx) {
   const { icons } = ctx;
   host.innerHTML = `
-    <div class="sf-toolbar" role="toolbar" aria-label="Board">
-      <button class="rb" type="button" data-b="undo" aria-label="Undo" data-tip="Undo (${ctx.keyLabel('Mod+Z')})">${icons.undo}</button>
-      <button class="rb" type="button" data-b="redo" aria-label="Redo" data-tip="Redo (${ctx.keyLabel('Mod+Shift+Z')})">${icons.redo}</button>
+    <div class="sf-toolbar" role="toolbar" aria-label="${tr('board.board')}">
+      <button class="rb" type="button" data-b="undo" aria-label="${tr('board.undo')}" data-tip="Undo (${ctx.keyLabel('Mod+Z')})">${icons.undo}</button>
+      <button class="rb" type="button" data-b="redo" aria-label="${tr('board.redo')}" data-tip="Redo (${ctx.keyLabel('Mod+Shift+Z')})">${icons.redo}</button>
       <div class="sf-sep"></div>
-      <button class="btn" type="button" data-b="layout" aria-haspopup="menu">Auto layout</button>
-      <button class="btn" type="button" data-b="arrange" aria-haspopup="menu">Arrange</button>
+      <button class="btn" type="button" data-b="layout" aria-haspopup="menu">${tr('board.auto-layout')}</button>
+      <button class="btn" type="button" data-b="arrange" aria-haspopup="menu">${tr('board.arrange')}</button>
       <div class="sf-sep"></div>
-      <button class="rb" type="button" data-b="zoom-out" aria-label="Zoom out">${icons.minus || '−'}</button>
-      <button class="btn bd-zoom" type="button" data-b="fit" data-tip="Fit to screen">100%</button>
-      <button class="rb" type="button" data-b="zoom-in" aria-label="Zoom in">${icons.plus}</button>
+      <button class="rb" type="button" data-b="zoom-out" aria-label="${tr('board.zoom-out')}">${icons.minus || '−'}</button>
+      <button class="btn bd-zoom" type="button" data-b="fit" data-tip="${tr('board.fit-to-screen')}">100%</button>
+      <button class="rb" type="button" data-b="zoom-in" aria-label="${tr('board.zoom-in')}">${icons.plus}</button>
       <div class="sf-spacer"></div>
       <span class="bd-errors" hidden></span>
       <button class="btn" type="button" data-b="export" aria-haspopup="menu">${icons.export} Export</button>
     </div>
     <div class="bd-main">
-      <aside class="bd-lib" aria-label="Shapes">
-        <label class="sidebar-search bd-search"><span class="search-glyph">${icons.search}</span><input type="search" placeholder="Search shapes" aria-label="Search shapes"></label>
+      <aside class="bd-lib" aria-label="${tr('board.shapes')}">
+        <label class="sidebar-search bd-search"><span class="search-glyph">${icons.search}</span><input type="search" placeholder="${tr('board.search-shapes')}" aria-label="${tr('board.search-shapes')}"></label>
         <div class="bd-lib-list"></div>
       </aside>
-      <div class="bd-canvas" tabindex="0" aria-label="Board canvas. Delete removes, arrows move, Enter edits the label.">
+      <div class="bd-canvas" tabindex="0" aria-label="${tr('board.board-canvas-delete-removes-arrows-mov')}">
         <svg class="bd-svg" xmlns="${NS}">
           <defs>
             <pattern id="bd-grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" class="bd-dot"/></pattern>
@@ -57,10 +58,10 @@ export function mountBoard(host, ctx) {
           <g class="bd-view"><g class="bd-nodes-back"></g><g class="bd-edges"></g><g class="bd-nodes"></g><g class="bd-over"></g></g>
           <rect class="bd-marquee" hidden/>
         </svg>
-        <textarea class="bd-editor" hidden spellcheck="true" aria-label="Edit label"></textarea>
-        <div class="bd-empty" hidden><p><b>Empty board.</b> Drag a shape from the left, or write it in code: <code>a: rect "Idea"</code>, then <code>a -> b</code>.</p></div>
+        <textarea class="bd-editor" hidden spellcheck="true" aria-label="${tr('board.edit-label')}"></textarea>
+        <div class="bd-empty" hidden><p><b>${tr('board.empty-board')}</b> ${tr('board.drag-a-shape-from-the-left-or-write-it')} <code>${tr('board.a-rect-idea')}</code>${tr('board.then')} <code>a -> b</code>.</p></div>
       </div>
-      <aside class="bd-inspector" aria-label="Format"></aside>
+      <aside class="bd-inspector" aria-label="${tr('board.format')}"></aside>
     </div>`;
 
   const svg = host.querySelector('.bd-svg'), viewG = host.querySelector('.bd-view');
@@ -103,7 +104,7 @@ export function mountBoard(host, ctx) {
     if (['class', 'interface', 'table'].includes(n.shape)) {
       const head = 30;
       inner += `<path class="b-line" d="M0,${head} H${n.w}"/>`;
-      inner += n.shape === 'interface' ? `<text class="b-text" x="${n.w / 2}" y="12" text-anchor="middle" font-size="10">«interface»</text><text class="b-text" x="${n.w / 2}" y="25" text-anchor="middle" font-weight="600" font-size="${fs}">${esc(n.label)}</text>`
+      inner += n.shape === 'interface' ? `<text class="b-text" x="${n.w / 2}" y="12" text-anchor="middle" font-size="10">${tr('board.interface')}</text><text class="b-text" x="${n.w / 2}" y="25" text-anchor="middle" font-weight="600" font-size="${fs}">${esc(n.label)}</text>`
         : `<text class="b-text" x="${n.w / 2}" y="${head / 2 + 5}" text-anchor="middle" font-weight="600" font-size="${fs}">${esc(n.label)}</text>`;
       let y = head + 4;
       for (const l of n.body) {
@@ -215,7 +216,7 @@ export function mountBoard(host, ctx) {
     host.querySelector('.bd-lib-list').innerHTML = LIBRARY.map(([cat, list]) => {
       const items = list.filter(([s, name]) => !ql || name.toLowerCase().includes(ql) || s.includes(ql) || cat.toLowerCase().includes(ql));
       return items.length ? `<details class="bd-cat" open><summary>${esc(cat)}</summary><div class="bd-tiles">${items.map(([s, name]) => libTile(s, name)).join('')}</div></details>` : '';
-    }).join('') || '<p class="side-empty">No shapes match.</p>';
+    }).join('') || '<p class="side-empty">' + tr('board.no-shapes-match') + '</p>';
   }
   function addShape(shape, at) {
     const [w, h] = defaultSize(shape);
@@ -365,13 +366,13 @@ export function mountBoard(host, ctx) {
     if (g && !sel.has(g.dataset.id)) { sel = new Set([g.dataset.id]); render(); }
     if (eg) { sel = new Set(['e:' + eg.dataset.e]); render(); }
     const at = { x: ev.clientX, y: ev.clientY };
-    if (!sel.size) { const [mx, my] = toModel(ev); return ctx.showMenu(null, [{ label: 'Paste', run: () => paste([mx, my]) }, { label: 'Select all', run: selectAll }, '-', { label: 'Auto layout', run: () => layoutAll('LR') }], at); }
+    if (!sel.size) { const [mx, my] = toModel(ev); return ctx.showMenu(null, [{ label: tr('board.paste'), run: () => paste([mx, my]) }, { label: tr('board.select-all'), run: selectAll }, '-', { label: tr('board.auto-layout'), run: () => layoutAll('LR') }], at); }
     ctx.showMenu(null, [
-      { label: 'Edit label', key: 'Enter', run: () => editLabel([...sel][0]) },
-      { label: 'Duplicate', key: 'Mod+D', run: duplicate }, { label: 'Copy', key: 'Mod+C', run: copy }, '-',
-      { label: 'Bring to front', run: () => zorder(1) }, { label: 'Send to back', run: () => zorder(-1) }, '-',
-      ...(g ? [{ label: 'Copy link to shape', run: () => ctx.copyRef?.(g.dataset.id, 'link') }, { label: 'Copy embed reference', run: () => ctx.copyRef?.(g.dataset.id, 'embed') }, '-'] : []),
-      { label: 'Delete', danger: true, key: 'Delete', run: remove },
+      { label: tr('board.edit-label'), key: 'Enter', run: () => editLabel([...sel][0]) },
+      { label: tr('board.duplicate'), key: 'Mod+D', run: duplicate }, { label: tr('board.copy'), key: 'Mod+C', run: copy }, '-',
+      { label: tr('board.bring-to-front'), run: () => zorder(1) }, { label: tr('board.send-to-back'), run: () => zorder(-1) }, '-',
+      ...(g ? [{ label: tr('board.copy-link-to-shape'), run: () => ctx.copyRef?.(g.dataset.id, 'link') }, { label: tr('board.copy-embed-reference'), run: () => ctx.copyRef?.(g.dataset.id, 'embed') }, '-'] : []),
+      { label: tr('board.delete'), danger: true, key: 'Delete', run: remove },
     ], at);
   });
 
@@ -465,14 +466,14 @@ export function mountBoard(host, ctx) {
   host.querySelector('[data-b="fit"]').onclick = fit;
   host.querySelector('[data-b="zoom-in"]').onclick = () => { const r = canvas.getBoundingClientRect(); zoomAt(view.k * 1.2, r.width / 2, r.height / 2); };
   host.querySelector('[data-b="zoom-out"]').onclick = () => { const r = canvas.getBoundingClientRect(); zoomAt(view.k / 1.2, r.width / 2, r.height / 2); };
-  host.querySelector('[data-b="layout"]').onclick = (e) => ctx.showMenu(e.currentTarget, [{ label: 'Left to right', run: () => layoutAll('LR') }, { label: 'Top to bottom', run: () => layoutAll('TB') }, { label: 'Right to left', run: () => layoutAll('RL') }, { label: 'Bottom to top', run: () => layoutAll('BT') }]);
+  host.querySelector('[data-b="layout"]').onclick = (e) => ctx.showMenu(e.currentTarget, [{ label: tr('board.left-to-right'), run: () => layoutAll('LR') }, { label: tr('board.top-to-bottom'), run: () => layoutAll('TB') }, { label: tr('board.right-to-left'), run: () => layoutAll('RL') }, { label: tr('board.bottom-to-top'), run: () => layoutAll('BT') }]);
   host.querySelector('[data-b="arrange"]').onclick = (e) => ctx.showMenu(e.currentTarget, [
-    { head: 'Align (two or more shapes)' }, { label: 'Align left', run: () => align('left') }, { label: 'Align center', run: () => align('center') }, { label: 'Align right', run: () => align('right') },
-    { label: 'Align top', run: () => align('top') }, { label: 'Align middle', run: () => align('middle') }, { label: 'Align bottom', run: () => align('bottom') }, '-',
-    { label: 'Distribute horizontally', run: () => align('hdist') }, { label: 'Distribute vertically', run: () => align('vdist') }, '-',
-    { label: 'Bring to front', run: () => zorder(1) }, { label: 'Send to back', run: () => zorder(-1) },
+    { head: tr('board.align-two-or-more-shapes') }, { label: tr('board.align-left'), run: () => align('left') }, { label: tr('board.align-center'), run: () => align('center') }, { label: tr('board.align-right'), run: () => align('right') },
+    { label: tr('board.align-top'), run: () => align('top') }, { label: tr('board.align-middle'), run: () => align('middle') }, { label: tr('board.align-bottom'), run: () => align('bottom') }, '-',
+    { label: tr('board.distribute-horizontally'), run: () => align('hdist') }, { label: tr('board.distribute-vertically'), run: () => align('vdist') }, '-',
+    { label: tr('board.bring-to-front'), run: () => zorder(1) }, { label: tr('board.send-to-back'), run: () => zorder(-1) },
   ]);
-  host.querySelector('[data-b="export"]').onclick = (e) => ctx.showMenu(e.currentTarget, [{ label: 'PNG image…', run: () => exportImage('png') }, { label: 'SVG image…', run: () => exportImage('svg') }]);
+  host.querySelector('[data-b="export"]').onclick = (e) => ctx.showMenu(e.currentTarget, [{ label: tr('board.png-image'), run: () => exportImage('png') }, { label: tr('board.svg-image'), run: () => exportImage('svg') }]);
 
   /* ---------- inspector ---------- */
   function swatches(list, cur, attr) {
@@ -482,10 +483,10 @@ export function mountBoard(host, ctx) {
     const ns = [...sel].filter((s) => !s.startsWith('e:')).map(node).filter(Boolean);
     const es = [...sel].filter((s) => s.startsWith('e:')).map((s) => model.edges[Number(s.slice(2))]).filter(Boolean);
     if (!ns.length && !es.length) {
-      inspector.innerHTML = `<h3 class="bd-ins-h">Board</h3>
+      inspector.innerHTML = `<h3 class="bd-ins-h">${tr('board.board')}</h3>
         <p class="bd-ins-note">Double-click empty space to add a shape. Drag from the dots on a shape to connect it. Hold Space or the middle button to pan, ${esc(ctx.keyLabel('Mod'))} and scroll to zoom.</p>
-        <div class="bd-ins-row"><button class="btn" type="button" data-ins="layout-lr">Auto layout →</button><button class="btn" type="button" data-ins="layout-tb">Auto layout ↓</button></div>
-        <h3 class="bd-ins-h">In code</h3>
+        <div class="bd-ins-row"><button class="btn" type="button" data-ins="layout-lr">${tr('board.auto-layout-2')}</button><button class="btn" type="button" data-ins="layout-tb">${tr('board.auto-layout-3')}</button></div>
+        <h3 class="bd-ins-h">${tr('board.in-code')}</h3>
         <pre class="bd-cheat">a: rect "Idea" @40,40
 b: diamond "Ok?"
 c: class "Order" [
@@ -503,14 +504,14 @@ A o-- B   aggregation</pre>`;
     }
     if (es.length && !ns.length) {
       const e = es[0];
-      inspector.innerHTML = `<h3 class="bd-ins-h">Connector</h3>
-        <div class="field"><label>Label</label><input class="input" data-e-label value="${esc(e.label)}"></div>
-        <div class="field"><label>Line</label><select class="select" data-e="line"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select></div>
-        <div class="field"><label>Route</label><select class="select" data-e="route"><option value="orthogonal">Right angles</option><option value="straight">Straight</option><option value="curved">Curved</option></select></div>
-        <div class="field"><label>Start</label><select class="select" data-e="start">${MARKERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
-        <div class="field"><label>End</label><select class="select" data-e="end">${MARKERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
-        <div class="field"><label>Color</label>${swatches(STROKES, e.style.stroke, 'estroke')}</div>
-        <div class="bd-ins-row"><button class="btn" type="button" data-ins="swap">Reverse</button><button class="btn" type="button" data-ins="delete">Delete</button></div>`;
+      inspector.innerHTML = `<h3 class="bd-ins-h">${tr('board.connector')}</h3>
+        <div class="field"><label>${tr('board.label')}</label><input class="input" data-e-label value="${esc(e.label)}"></div>
+        <div class="field"><label>${tr('board.line')}</label><select class="select" data-e="line"><option value="solid">${tr('board.solid')}</option><option value="dashed">${tr('board.dashed')}</option><option value="dotted">${tr('board.dotted')}</option></select></div>
+        <div class="field"><label>${tr('board.route')}</label><select class="select" data-e="route"><option value="orthogonal">${tr('board.right-angles')}</option><option value="straight">${tr('board.straight')}</option><option value="curved">${tr('board.curved')}</option></select></div>
+        <div class="field"><label>${tr('board.start')}</label><select class="select" data-e="start">${MARKERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+        <div class="field"><label>${tr('board.end')}</label><select class="select" data-e="end">${MARKERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+        <div class="field"><label>${tr('board.color')}</label>${swatches(STROKES, e.style.stroke, 'estroke')}</div>
+        <div class="bd-ins-row"><button class="btn" type="button" data-ins="swap">${tr('board.reverse')}</button><button class="btn" type="button" data-ins="delete">${tr('board.delete')}</button></div>`;
       inspector.querySelector('[data-e="line"]').value = e.line || 'solid';
       inspector.querySelector('[data-e="route"]').value = e.style.route || 'orthogonal';
       inspector.querySelector('[data-e="start"]').value = e.start || '';
@@ -519,17 +520,17 @@ A o-- B   aggregation</pre>`;
     }
     const n = ns[0], one = ns.length === 1;
     inspector.innerHTML = `<h3 class="bd-ins-h">${one ? 'Shape' : `${ns.length} shapes`}</h3>
-      ${one ? `<div class="field"><label>Type</label><select class="select" data-n="shape">${SHAPES.map((s) => `<option value="${s}">${s}</option>`).join('')}</select></div>
-      <div class="field"><label>Label</label><textarea class="input bd-label-input" data-n-label rows="${n.body.length ? 5 : 2}">${esc(n.body.length ? [n.label, ...n.body].join('\n') : n.label)}</textarea></div>` : ''}
-      <div class="field"><label>Fill</label>${swatches(FILLS, n.style.fill, 'fill')}</div>
-      <div class="field"><label>Line</label>${swatches(STROKES, n.style.stroke, 'stroke')}
-        <div class="bd-ins-row"><select class="select" data-n="line"><option value="">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>
-        <select class="select" data-n="width"><option value="">1.5 pt</option><option value="1">1 pt</option><option value="2">2 pt</option><option value="3">3 pt</option></select></div></div>
-      <div class="field"><label>Text</label><div class="bd-ins-row"><select class="select" data-n="size"><option value="">13 pt</option>${[11, 12, 15, 18, 22, 28, 36].map((v) => `<option value="${v}">${v} pt</option>`).join('')}</select>
-        <button class="rb" type="button" data-ins="bold" aria-pressed="${!!n.style.bold}" aria-label="Bold">${icons.bold}</button>
-        <select class="select" data-n="align"><option value="">Center</option><option value="left">Left</option><option value="right">Right</option></select></div></div>
-      ${one ? `<div class="field"><label>Position and size</label><div class="bd-xywh">${['x', 'y', 'w', 'h'].map((k) => `<label><span>${k.toUpperCase()}</span><input class="input" data-geo="${k}" inputmode="numeric" value="${Math.round(n[k])}"></label>`).join('')}</div></div>` : ''}
-      <div class="bd-ins-row"><button class="btn" type="button" data-ins="front">Front</button><button class="btn" type="button" data-ins="back">Back</button><button class="btn" type="button" data-ins="delete">Delete</button></div>`;
+      ${one ? `<div class="field"><label>${tr('board.type')}</label><select class="select" data-n="shape">${SHAPES.map((s) => `<option value="${s}">${s}</option>`).join('')}</select></div>
+      <div class="field"><label>${tr('board.label')}</label><textarea class="input bd-label-input" data-n-label rows="${n.body.length ? 5 : 2}">${esc(n.body.length ? [n.label, ...n.body].join('\n') : n.label)}</textarea></div>` : ''}
+      <div class="field"><label>${tr('board.fill')}</label>${swatches(FILLS, n.style.fill, 'fill')}</div>
+      <div class="field"><label>${tr('board.line')}</label>${swatches(STROKES, n.style.stroke, 'stroke')}
+        <div class="bd-ins-row"><select class="select" data-n="line"><option value="">${tr('board.solid')}</option><option value="dashed">${tr('board.dashed')}</option><option value="dotted">${tr('board.dotted')}</option></select>
+        <select class="select" data-n="width"><option value="">${tr('board.1-5-pt')}</option><option value="1">${tr('board.1-pt')}</option><option value="2">${tr('board.2-pt')}</option><option value="3">${tr('board.3-pt')}</option></select></div></div>
+      <div class="field"><label>${tr('board.text')}</label><div class="bd-ins-row"><select class="select" data-n="size"><option value="">${tr('board.13-pt')}</option>${[11, 12, 15, 18, 22, 28, 36].map((v) => `<option value="${v}">${v} pt</option>`).join('')}</select>
+        <button class="rb" type="button" data-ins="bold" aria-pressed="${!!n.style.bold}" aria-label="${tr('board.bold')}">${icons.bold}</button>
+        <select class="select" data-n="align"><option value="">${tr('board.center')}</option><option value="left">${tr('board.left')}</option><option value="right">${tr('board.right')}</option></select></div></div>
+      ${one ? `<div class="field"><label>${tr('board.position-and-size')}</label><div class="bd-xywh">${['x', 'y', 'w', 'h'].map((k) => `<label><span>${k.toUpperCase()}</span><input class="input" data-geo="${k}" inputmode="numeric" value="${Math.round(n[k])}"></label>`).join('')}</div></div>` : ''}
+      <div class="bd-ins-row"><button class="btn" type="button" data-ins="front">${tr('board.front')}</button><button class="btn" type="button" data-ins="back">${tr('board.back')}</button><button class="btn" type="button" data-ins="delete">${tr('board.delete')}</button></div>`;
     if (one) inspector.querySelector('[data-n="shape"]').value = n.shape;
     inspector.querySelector('[data-n="line"]').value = n.style.line || (n.style.dashed ? 'dashed' : '');
     inspector.querySelector('[data-n="width"]').value = n.style.width || '';
@@ -580,9 +581,9 @@ A o-- B   aggregation</pre>`;
   }
   async function exportImage(kind) {
     const out = exportSvgString();
-    if (!out) return ctx.toast('The board is empty.');
+    if (!out) return ctx.toast(tr('board.the-board-is-empty'));
     try {
-      if (kind === 'svg') { const r = await ctx.saveBinary('svg', new TextEncoder().encode(out.svg)); if (r) ctx.toast('Board exported as SVG.'); return; }
+      if (kind === 'svg') { const r = await ctx.saveBinary('svg', new TextEncoder().encode(out.svg)); if (r) ctx.toast(tr('board.board-exported-as-svg')); return; }
       const img = new Image();
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(out.svg);
       await img.decode();
@@ -590,8 +591,8 @@ A o-- B   aggregation</pre>`;
       const g = c.getContext('2d'); g.scale(2, 2); g.drawImage(img, 0, 0);
       const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
       const r = await ctx.saveBinary('png', new Uint8Array(await blob.arrayBuffer()));
-      if (r) ctx.toast('Board exported as PNG.');
-    } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+      if (r) ctx.toast(tr('board.board-exported-as-png'));
+    } catch (e) { ctx.toast(tr('board.export-failed-message', { message: e.message }), { kind: 'error' }); }
   }
 
   new ResizeObserver(() => { if (!fitted && model.nodes.length && canvas.clientWidth) { fitted = true; fit(); } }).observe(canvas);

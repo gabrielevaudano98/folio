@@ -1,4 +1,5 @@
 // Folio — sheet surface: an Excel-style grid over sheet-md.
+import { t as tr, tl } from './i18n.js';
 import { parseWorkbook, serializeWorkbook, evaluator, display, colName, colIndex, addr, parseAddr, shiftFormula, FORMATS, formulaRefs } from './sheet-core.js';
 import { chartHtml, CHART_TYPES, specToText } from './chart.js';
 
@@ -9,46 +10,46 @@ const FUNCS = ['SUM', 'AVERAGE', 'COUNT', 'COUNTA', 'COUNTIF', 'SUMIF', 'AVERAGE
 export function mountSheet(host, ctx) {
   const { icons } = ctx;
   host.innerHTML = `
-    <div class="sf-toolbar" role="toolbar" aria-label="Sheet">
-      <button class="rb" type="button" data-s="undo" aria-label="Undo" data-tip="Undo (${ctx.keyLabel('Mod+Z')})">${icons.undo}</button>
-      <button class="rb" type="button" data-s="redo" aria-label="Redo" data-tip="Redo (${ctx.keyLabel('Mod+Shift+Z')})">${icons.redo}</button>
+    <div class="sf-toolbar" role="toolbar" aria-label="${tr('sheet.sheet')}">
+      <button class="rb" type="button" data-s="undo" aria-label="${tr('sheet.undo')}" data-tip="Undo (${ctx.keyLabel('Mod+Z')})">${icons.undo}</button>
+      <button class="rb" type="button" data-s="redo" aria-label="${tr('sheet.redo')}" data-tip="Redo (${ctx.keyLabel('Mod+Shift+Z')})">${icons.redo}</button>
       <div class="sf-sep"></div>
-      <label class="visually-hidden" for="sh-fmt-${host.id}">Number format</label>
-      <select class="rb-select sh-fmt" id="sh-fmt-${host.id}" data-tip="Number format">${FORMATS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
-      <button class="rb" type="button" data-s="bold" aria-label="Bold" data-tip="Bold (${ctx.keyLabel('Mod+B')})">${icons.bold}</button>
-      <button class="rb" type="button" data-s="italic" aria-label="Italic" data-tip="Italic (${ctx.keyLabel('Mod+I')})">${icons.italic}</button>
-      <button class="rb" type="button" data-s="align-left" aria-label="Align left">${icons.alignLeft}</button>
-      <button class="rb" type="button" data-s="align-center" aria-label="Align center">${icons.alignCenter}</button>
-      <button class="rb" type="button" data-s="align-right" aria-label="Align right">${icons.alignRight}</button>
+      <label class="visually-hidden" for="sh-fmt-${host.id}">${tr('sheet.number-format')}</label>
+      <select class="rb-select sh-fmt" id="sh-fmt-${host.id}" data-tip="${tr('sheet.number-format')}">${FORMATS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+      <button class="rb" type="button" data-s="bold" aria-label="${tr('sheet.bold')}" data-tip="Bold (${ctx.keyLabel('Mod+B')})">${icons.bold}</button>
+      <button class="rb" type="button" data-s="italic" aria-label="${tr('sheet.italic')}" data-tip="Italic (${ctx.keyLabel('Mod+I')})">${icons.italic}</button>
+      <button class="rb" type="button" data-s="align-left" aria-label="${tr('sheet.align-left')}">${icons.alignLeft}</button>
+      <button class="rb" type="button" data-s="align-center" aria-label="${tr('sheet.align-center')}">${icons.alignCenter}</button>
+      <button class="rb" type="button" data-s="align-right" aria-label="${tr('sheet.align-right')}">${icons.alignRight}</button>
       <div class="sf-sep"></div>
-      <button class="btn" type="button" data-s="insert" aria-haspopup="menu">Insert</button>
-      <button class="btn" type="button" data-s="delete" aria-haspopup="menu">Delete</button>
-      <button class="btn" type="button" data-s="sort" aria-haspopup="menu">Sort</button>
-      <button class="btn" type="button" data-s="sum" data-tip="Insert a SUM below the selection">Σ Sum</button>
-      <button class="btn" type="button" data-s="chart" data-tip="Chart the selected cells">${icons.chart} Chart</button>
+      <button class="btn" type="button" data-s="insert" aria-haspopup="menu">${tr('sheet.insert')}</button>
+      <button class="btn" type="button" data-s="delete" aria-haspopup="menu">${tr('sheet.delete')}</button>
+      <button class="btn" type="button" data-s="sort" aria-haspopup="menu">${tr('sheet.sort')}</button>
+      <button class="btn" type="button" data-s="sum" data-tip="${tr('sheet.insert-a-sum-below-the-selection')}">${tr('sheet.sum')}</button>
+      <button class="btn" type="button" data-s="chart" data-tip="${tr('sheet.chart-the-selected-cells')}">${icons.chart} Chart</button>
       <div class="sf-spacer"></div>
-      <div class="segmented sh-views" role="radiogroup" aria-label="Sheet view">
-        <button type="button" role="radio" data-sv="grid" aria-checked="true" aria-label="Grid" data-tip="Grid">${icons.grid}</button>
-        <button type="button" role="radio" data-sv="kanban" aria-checked="false" aria-label="Kanban" data-tip="Kanban by a column">${icons.kanban}</button>
+      <div class="segmented sh-views" role="radiogroup" aria-label="${tr('sheet.sheet-view')}">
+        <button type="button" role="radio" data-sv="grid" aria-checked="true" aria-label="${tr('sheet.grid')}" data-tip="${tr('sheet.grid')}">${icons.grid}</button>
+        <button type="button" role="radio" data-sv="kanban" aria-checked="false" aria-label="${tr('sheet.kanban')}" data-tip="${tr('sheet.kanban-by-a-column')}">${icons.kanban}</button>
       </div>
       <button class="btn" type="button" data-s="export" aria-haspopup="menu">${icons.export} Export</button>
     </div>
     <div class="sh-formula">
-      <input class="sh-addr" aria-label="Cell address, type one to jump" spellcheck="false">
-      <span class="sh-fx" aria-hidden="true">fx</span>
-      <input class="sh-input" aria-label="Cell contents" spellcheck="false" autocomplete="off">
+      <input class="sh-addr" aria-label="${tr('sheet.cell-address-type-one-to-jump')}" spellcheck="false">
+      <span class="sh-fx" aria-hidden="true">${tr('sheet.fx')}</span>
+      <input class="sh-input" aria-label="${tr('sheet.cell-contents')}" spellcheck="false" autocomplete="off">
     </div>
     <div class="sh-body">
-      <div class="sh-wrap" tabindex="0" aria-label="Spreadsheet grid">
+      <div class="sh-wrap" tabindex="0" aria-label="${tr('sheet.spreadsheet-grid')}">
         <table class="sh-grid" role="grid"><colgroup></colgroup><thead></thead><tbody></tbody></table>
-        <div class="sh-sel" hidden><div class="sh-fill" title="Drag to fill"></div></div>
-        <textarea class="sh-editor" hidden spellcheck="false" aria-label="Edit cell"></textarea>
+        <div class="sh-sel" hidden><div class="sh-fill" title="${tr('sheet.drag-to-fill')}"></div></div>
+        <textarea class="sh-editor" hidden spellcheck="false" aria-label="${tr('sheet.edit-cell')}"></textarea>
         <ul class="sh-suggest" hidden role="listbox"></ul>
       </div>
       <div class="sh-kanban" hidden></div>
-      <aside class="sh-charts" aria-label="Charts" hidden></aside>
+      <aside class="sh-charts" aria-label="${tr('sheet.charts')}" hidden></aside>
     </div>
-    <div class="sh-tabs" role="tablist" aria-label="Sheets"></div>`;
+    <div class="sh-tabs" role="tablist" aria-label="${tr('sheet.sheets')}"></div>`;
 
   const wrap = host.querySelector('.sh-wrap'), table = host.querySelector('.sh-grid'), selBox = host.querySelector('.sh-sel');
   const editor = host.querySelector('.sh-editor'), fInput = host.querySelector('.sh-input'), aInput = host.querySelector('.sh-addr');
@@ -133,17 +134,17 @@ export function mountSheet(host, ctx) {
     const panel = host.querySelector('.sh-charts');
     panel.hidden = !list.length;
     if (!list.length) { panel.innerHTML = ''; return; }
-    panel.innerHTML = `<h3 class="bd-ins-h">Charts</h3>` + list.map((c, i) => `<section class="sh-chart" data-chart="${i}">
-      <div class="sh-chart-head"><input class="input" data-ch="title" value="${esc(c.title || '')}" placeholder="Chart title" aria-label="Chart title">
-        <select class="select" data-ch="type" aria-label="Chart type">${CHART_TYPES.map(([v, l]) => `<option value="${v}"${(c.type || 'column') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+    panel.innerHTML = `<h3 class="bd-ins-h">${tr('sheet.charts')}</h3>` + list.map((c, i) => `<section class="sh-chart" data-chart="${i}">
+      <div class="sh-chart-head"><input class="input" data-ch="title" value="${esc(c.title || '')}" placeholder="${tr('sheet.chart-title')}" aria-label="${tr('sheet.chart-title')}">
+        <select class="select" data-ch="type" aria-label="${tr('sheet.chart-type')}">${CHART_TYPES.map(([v, l]) => `<option value="${v}"${(c.type || 'column') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="sh-chart-svg">${chartHtml(rangeValues(c.range), c, { width: 420, height: 260 })}</div>
       <div class="bd-ins-row"><button class="btn btn-quiet" type="button" data-ch-act="select">${esc(c.range)}</button>
-        <label class="sf-check"><input type="checkbox" data-ch="stacked"${c.stacked ? ' checked' : ''}> Stacked</label>
-        <label class="sf-check"><input type="checkbox" data-ch="rows"${c.by === 'rows' ? ' checked' : ''}> Series in rows</label></div>
-      <div class="bd-ins-row"><button class="btn" type="button" data-ch-act="copy">Copy for slides or pages</button><button class="btn" type="button" data-ch-act="delete">Delete</button></div>
+        <label class="sf-check"><input type="checkbox" data-ch="stacked"${c.stacked ? ' checked' : ''}> ${tr('sheet.stacked')}</label>
+        <label class="sf-check"><input type="checkbox" data-ch="rows"${c.by === 'rows' ? ' checked' : ''}> ${tr('sheet.series-in-rows')}</label></div>
+      <div class="bd-ins-row"><button class="btn" type="button" data-ch-act="copy">${tr('sheet.copy-for-slides-or-pages')}</button><button class="btn" type="button" data-ch-act="delete">${tr('sheet.delete')}</button></div>
     </section>`).join('');
   }
-  const errorHelp = (v) => ({ '#DIV/0!': 'Division by zero', '#NAME?': 'Unknown function or name', '#REF!': 'Reference to a cell that does not exist', '#VALUE!': 'Wrong type of value', '#N/A': 'Value not found', '#CYCLE!': 'The formula refers to itself', '#ERROR!': 'The formula could not be read', '#NUM!': 'Invalid number' }[v] || 'Error');
+  const errorHelp = (v) => ({ '#DIV/0!': tl('sheet', 'Division by zero'), '#NAME?': tl('sheet', 'Unknown function or name'), '#REF!': tl('sheet', 'Reference to a cell that does not exist'), '#VALUE!': tl('sheet', 'Wrong type of value'), '#N/A': tl('sheet', 'Value not found'), '#CYCLE!': tl('sheet', 'The formula refers to itself'), '#ERROR!': tl('sheet', 'The formula could not be read'), '#NUM!': tl('sheet', 'Invalid number') }[v] || 'Error');
   function cellEl(r, c) { return table.tBodies[0].rows[r]?.cells[c + 1]; }
   function drawSel() {
     const [r0, c0, r1, c1] = range();
@@ -184,7 +185,7 @@ export function mountSheet(host, ctx) {
     for (const a of ['left', 'center', 'right']) host.querySelector(`[data-s="align-${a}"]`).setAttribute('aria-pressed', String(st.align === a));
   }
   function renderTabs() {
-    host.querySelector('.sh-tabs').innerHTML = sheets().map((s, i) => `<button type="button" role="tab" class="sh-tab" data-tab="${i}" aria-selected="${i === si}">${esc(s.name)}</button>`).join('') + `<button type="button" class="rb sh-addtab" data-addtab aria-label="Add sheet" data-tip="Add sheet">${icons.plus}</button>`;
+    host.querySelector('.sh-tabs').innerHTML = sheets().map((s, i) => `<button type="button" role="tab" class="sh-tab" data-tab="${i}" aria-selected="${i === si}">${esc(s.name)}</button>`).join('') + `<button type="button" class="rb sh-addtab" data-addtab aria-label="${tr('sheet.add-sheet')}" data-tip="${tr('sheet.add-sheet')}">${icons.plus}</button>`;
   }
 
   /* ---------- editing ---------- */
@@ -445,8 +446,8 @@ export function mountSheet(host, ctx) {
     const R = rows(); const head = R[0] || [];
     const by = groupCol();
     const groups = new Map();
-    R.slice(1).forEach((row, i) => { if (row.every((v) => v === '')) return; const k = String(display(ev.value(i + 1, by), fmtOf(i + 1, by)) || 'No value'); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i + 1); });
-    kanban.innerHTML = `<div class="kb-bar"><label class="sf-field"><span>Group by</span><select class="rb-select" data-kb-by>${head.map((h, c) => `<option value="${c}"${c === by ? ' selected' : ''}>${esc(h || colName(c))}</option>`).join('')}</select></label><span class="kb-hint">Drag cards between columns to change “${esc(head[by] || colName(by))}”.</span></div>
+    R.slice(1).forEach((row, i) => { if (row.every((v) => v === '')) return; const k = String(display(ev.value(i + 1, by), fmtOf(i + 1, by)) || tl('sheet', 'No value')); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i + 1); });
+    kanban.innerHTML = `<div class="kb-bar"><label class="sf-field"><span>${tr('sheet.group-by')}</span><select class="rb-select" data-kb-by>${head.map((h, c) => `<option value="${c}"${c === by ? ' selected' : ''}>${esc(h || colName(c))}</option>`).join('')}</select></label><span class="kb-hint">Drag cards between columns to change “${esc(head[by] || colName(by))}”.</span></div>
       <div class="kb-cols">${[...groups.entries()].map(([k, list]) => `<section class="kb-col" data-group="${esc(k)}"><h3>${esc(k)} <span>${list.length}</span></h3>
         ${list.map((r) => `<article class="kb-card" draggable="true" data-row="${r}" tabindex="0"><h4>${esc(display(ev.value(r, 0), fmtOf(r, 0)) || 'Untitled')}</h4>
           <dl>${head.map((h, c) => (c === 0 || c === by || raw(r, c) === '' ? '' : `<dt>${esc(h || colName(c))}</dt><dd>${esc(display(ev.value(r, c), fmtOf(r, c)))}</dd>`)).join('')}</dl></article>`).join('')}
@@ -459,7 +460,7 @@ export function mountSheet(host, ctx) {
   kanban.addEventListener('drop', (e) => { const col = e.target.closest('.kb-col'); if (col && kbDrag != null) { e.preventDefault(); const by = groupCol(); setRaw(kbDrag, by, col.dataset.group === 'No value' ? '' : col.dataset.group); kbDrag = null; commit(); } });
   kanban.addEventListener('click', async (e) => {
     const add = e.target.closest('[data-kb-add]');
-    if (add) { const name = await ctx.prompt({ title: 'New card', label: rows()[0][0] || 'Title', value: '', action: 'Add', validate: false }); if (!name) return; const by = groupCol(); const r = rows().length; setRaw(r, 0, name); setRaw(r, by, add.dataset.kbAdd === 'No value' ? '' : add.dataset.kbAdd); commit(); }
+    if (add) { const name = await ctx.prompt({ title: tr('sheet.new-card'), label: rows()[0][0] || tl('sheet', 'Title'), value: '', action: tr('sheet.add'), validate: false }); if (!name) return; const by = groupCol(); const r = rows().length; setRaw(r, 0, name); setRaw(r, by, add.dataset.kbAdd === 'No value' ? '' : add.dataset.kbAdd); commit(); }
     const card = e.target.closest('[data-row]');
     if (card && !add) { meta().view = 'grid'; render(); select(Number(card.dataset.row), 0); commit({ history: false }); }
   });
@@ -482,10 +483,10 @@ export function mountSheet(host, ctx) {
       (meta().charts ||= []).push({ type: 'column', title: '', range: `${addr(r0, c0)}:${addr(r1, c1)}` });
       commit();
     }
-    if (a === 'insert') ctx.showMenu(b, [{ label: 'Row above', run: () => insertRows(r0, r1 - r0 + 1) }, { label: 'Row below', run: () => insertRows(r1 + 1, r1 - r0 + 1) }, { label: 'Column left', run: () => insertCols(c0, c1 - c0 + 1) }, { label: 'Column right', run: () => insertCols(c1 + 1, c1 - c0 + 1) }]);
-    if (a === 'delete') ctx.showMenu(b, [{ label: r1 > r0 ? `Rows ${r0 + 1} to ${r1 + 1}` : `Row ${r0 + 1}`, run: () => deleteRows(r0, r1 - r0 + 1) }, { label: c1 > c0 ? `Columns ${colName(c0)} to ${colName(c1)}` : `Column ${colName(c0)}`, run: () => deleteCols(c0, c1 - c0 + 1) }, '-', { label: 'Clear contents', run: () => setRange((x, y) => setRaw(x, y, '')) }]);
-    if (a === 'sort') ctx.showMenu(b, [{ label: `Sort by ${rows()[0]?.[c0] || colName(c0)}, A to Z`, run: () => sortBy(c0, 1) }, { label: `Sort by ${rows()[0]?.[c0] || colName(c0)}, Z to A`, run: () => sortBy(c0, -1) }]);
-    if (a === 'export') ctx.showMenu(b, [{ label: 'CSV (this sheet)…', run: exportCsv }, { label: 'Excel workbook (.xlsx)…', run: exportXlsx }]);
+    if (a === 'insert') ctx.showMenu(b, [{ label: tr('sheet.row-above'), run: () => insertRows(r0, r1 - r0 + 1) }, { label: tr('sheet.row-below'), run: () => insertRows(r1 + 1, r1 - r0 + 1) }, { label: tr('sheet.column-left'), run: () => insertCols(c0, c1 - c0 + 1) }, { label: tr('sheet.column-right'), run: () => insertCols(c1 + 1, c1 - c0 + 1) }]);
+    if (a === 'delete') ctx.showMenu(b, [{ label: r1 > r0 ? `Rows ${r0 + 1} to ${r1 + 1}` : `Row ${r0 + 1}`, run: () => deleteRows(r0, r1 - r0 + 1) }, { label: c1 > c0 ? `Columns ${colName(c0)} to ${colName(c1)}` : `Column ${colName(c0)}`, run: () => deleteCols(c0, c1 - c0 + 1) }, '-', { label: tr('sheet.clear-contents'), run: () => setRange((x, y) => setRaw(x, y, '')) }]);
+    if (a === 'sort') ctx.showMenu(b, [{ label: tr('sheet.sort-by-c0-a-to-z', { c0: rows()[0]?.[c0] || colName(c0) }), run: () => sortBy(c0, 1) }, { label: tr('sheet.sort-by-c0-z-to-a', { c0: rows()[0]?.[c0] || colName(c0) }), run: () => sortBy(c0, -1) }]);
+    if (a === 'export') ctx.showMenu(b, [{ label: tr('sheet.csv-this-sheet'), run: exportCsv }, { label: tr('sheet.excel-workbook-xlsx'), run: exportXlsx }]);
   });
   host.querySelector('.sh-fmt').addEventListener('change', (e) => styleRange('format', e.target.value));
   const chartsPanel = host.querySelector('.sh-charts');
@@ -505,7 +506,7 @@ export function mountSheet(host, ctx) {
     if (b.dataset.chAct === 'select') { const [a, z] = c.range.split(':').map(parseAddr); anchor = a; focus = z; drawSel(); wrap.focus(); }
     if (b.dataset.chAct === 'copy') {
       const block = '```chart\n' + specToText({ ...c, source: '/' + ctx.getPath(), sheet: sheet().name }) + '\n```';
-      await ctx.copy(block); ctx.toast('Chart copied. Paste it into a page or a slide; it stays linked to this sheet.');
+      await ctx.copy(block); ctx.toast(tr('sheet.chart-copied-paste-it-into-a-page-or-a'));
     }
   });
 
@@ -522,15 +523,15 @@ export function mountSheet(host, ctx) {
   host.querySelector('.sh-tabs').addEventListener('dblclick', async (e) => {
     const t = e.target.closest('[data-tab]'); if (!t) return;
     const s = sheets()[Number(t.dataset.tab)];
-    const name = await ctx.prompt({ title: 'Rename sheet', label: 'Name', value: s.name, action: 'Rename' });
+    const name = await ctx.prompt({ title: tr('sheet.rename-sheet'), label: tr('sheet.name'), value: s.name, action: tr('sheet.rename') });
     if (name) { s.name = name; s.named = true; commit(); }
   });
   host.querySelector('.sh-tabs').addEventListener('contextmenu', (e) => {
     const t = e.target.closest('[data-tab]'); if (!t) return; e.preventDefault();
     const i = Number(t.dataset.tab);
-    ctx.showMenu(null, [{ label: 'Rename…', run: () => t.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) }, { label: 'Delete sheet', danger: true, run: async () => {
-      if (sheets().length === 1) return ctx.toast('A workbook needs at least one sheet.');
-      if (!(await ctx.confirm({ title: `Delete “${sheets()[i].name}”?`, body: 'You can undo this.', action: 'Delete', danger: true }))) return;
+    ctx.showMenu(null, [{ label: tr('sheet.rename-2'), run: () => t.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) }, { label: tr('sheet.delete-sheet'), danger: true, run: async () => {
+      if (sheets().length === 1) return ctx.toast(tr('sheet.a-workbook-needs-at-least-one-sheet'));
+      if (!(await ctx.confirm({ title: tr('sheet.delete-name', { name: sheets()[i].name }), body: tr('sheet.you-can-undo-this'), action: tr('sheet.delete'), danger: true }))) return;
       blocks.splice(blocks.indexOf(sheets()[i]), 1); si = Math.max(0, i - 1); commit();
     } }], { x: e.clientX, y: e.clientY });
   });
@@ -539,15 +540,15 @@ export function mountSheet(host, ctx) {
     const td = e.target.closest('td, th'); if (!td) return; e.preventDefault();
     const [r0, c0, r1, c1] = range();
     ctx.showMenu(null, [
-      { label: 'Cut', key: 'Mod+X', run: () => document.execCommand('cut') }, { label: 'Copy', key: 'Mod+C', run: () => document.execCommand('copy') }, { label: 'Paste', key: 'Mod+V', run: () => document.execCommand('paste') }, '-',
-      { label: 'Insert row above', run: () => insertRows(r0) }, { label: 'Insert column left', run: () => insertCols(c0) },
-      { label: 'Delete row', run: () => deleteRows(r0, r1 - r0 + 1) }, { label: 'Delete column', run: () => deleteCols(c0, c1 - c0 + 1) }, '-',
-      { label: 'Sort A to Z', run: () => sortBy(c0, 1) }, { label: 'Sort Z to A', run: () => sortBy(c0, -1) }, '-',
+      { label: tr('sheet.cut'), key: 'Mod+X', run: () => document.execCommand('cut') }, { label: tr('sheet.copy'), key: 'Mod+C', run: () => document.execCommand('copy') }, { label: tr('sheet.paste'), key: 'Mod+V', run: () => document.execCommand('paste') }, '-',
+      { label: tr('sheet.insert-row-above'), run: () => insertRows(r0) }, { label: tr('sheet.insert-column-left'), run: () => insertCols(c0) },
+      { label: tr('sheet.delete-row'), run: () => deleteRows(r0, r1 - r0 + 1) }, { label: tr('sheet.delete-column'), run: () => deleteCols(c0, c1 - c0 + 1) }, '-',
+      { label: tr('sheet.sort-a-to-z'), run: () => sortBy(c0, 1) }, { label: tr('sheet.sort-z-to-a'), run: () => sortBy(c0, -1) }, '-',
       ...(() => {
         const nm = /^[\w-]+$/.test(sheets()[si].name) ? sheets()[si].name : `'${sheets()[si].name}'`;
         const part = `${nm}!${addr(r0, c0)}${r1 > r0 || c1 > c0 ? ':' + addr(r1, c1) : ''}`;
         const one = r1 === r0 && c1 === c0;
-        return [one ? { label: 'Copy live value reference', run: () => ctx.copyRef?.(part, 'value') } : { label: 'Copy embed reference', run: () => ctx.copyRef?.(part, 'embed') }, { label: 'Copy link to cells', run: () => ctx.copyRef?.(part, 'link') }];
+        return [one ? { label: tr('sheet.copy-live-value-reference'), run: () => ctx.copyRef?.(part, 'value') } : { label: tr('sheet.copy-embed-reference'), run: () => ctx.copyRef?.(part, 'embed') }, { label: tr('sheet.copy-link-to-cells'), run: () => ctx.copyRef?.(part, 'link') }];
       })(),
     ], { x: e.clientX, y: e.clientY });
   });
@@ -558,15 +559,15 @@ export function mountSheet(host, ctx) {
     const q = (s) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
     const csv = R.map((row, r) => Array.from({ length: n }, (_, c) => q(display(ev.value(r, c), fmtOf(r, c)))).join(',')).join('\n');
     const out = await ctx.saveBinary('csv', new TextEncoder().encode(csv));
-    if (out) ctx.toast('Sheet exported as CSV.');
+    if (out) ctx.toast(tr('sheet.sheet-exported-as-csv'));
   }
   async function exportXlsx() {
     try {
       const { buildXlsx } = await import('./sheet-xlsx.js');
       const bytes = await buildXlsx(sheets());
       const out = await ctx.saveBinary('xlsx', bytes);
-      if (out) ctx.toast('Workbook exported for Excel.');
-    } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+      if (out) ctx.toast(tr('sheet.workbook-exported-for-excel'));
+    } catch (e) { ctx.toast(tr('sheet.export-failed-message', { message: e.message }), { kind: 'error' }); }
   }
 
   return {

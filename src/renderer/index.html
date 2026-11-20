@@ -12,10 +12,10 @@
   <div class="app" id="app" data-sidebar="open" data-outline="open" data-mode-view="split">
 
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar" aria-label="Workspace">
+    <aside class="sidebar" id="sidebar" aria-label="Workspace" data-i18n-attr="aria-label:ui.workspace">
       <div class="sidebar-top drag">
         <div class="traffic-space"></div>
-        <button class="icon-btn no-drag" type="button" id="btn-new" aria-label="New note" data-tip="New note (⌘N)"></button>
+        <button class="icon-btn no-drag" type="button" id="btn-new" aria-label="New note" data-tip="New note (⌘N)" data-i18n-attr="aria-label:ui.new-note;data-tip:ui.new-note-cmdn"></button>
       </div>
 
       <button class="workspace-switch no-drag" type="button" id="workspace-switch" aria-haspopup="menu">
@@ -25,26 +25,26 @@
 
       <label class="sidebar-search">
         <span class="search-glyph" aria-hidden="true"></span>
-        <input id="sidebar-search" type="search" placeholder="Search notes" aria-label="Search all notes" autocomplete="off" spellcheck="false">
+        <input id="sidebar-search" type="search" placeholder="Search notes" aria-label="Search all notes" autocomplete="off" spellcheck="false" data-i18n-attr="aria-label:ui.search-all-notes;placeholder:ui.search-notes">
         <kbd class="kbd" id="search-kbd">⌘⇧F</kbd>
       </label>
 
       <div class="sidebar-scroll" id="sidebar-scroll">
         <section class="side-section" id="section-files">
-          <h2 class="side-head">Notes</h2>
-          <div class="tree" id="tree" role="tree" aria-label="Notes"></div>
+          <h2 class="side-head" data-i18n="ui.notes">Notes</h2>
+          <div class="tree" id="tree" role="tree" aria-label="Notes" data-i18n-attr="aria-label:ui.notes"></div>
         </section>
         <section class="side-section" id="section-results" hidden>
           <h2 class="side-head" id="results-head">Results</h2>
           <div class="results" id="results"></div>
         </section>
         <section class="side-section side-tags" id="section-tags">
-          <h2 class="side-head"><button type="button" class="side-fold" id="tags-head" aria-expanded="true" aria-controls="tags-list">Tags</button></h2>
+          <h2 class="side-head"><button type="button" class="side-fold" id="tags-head" aria-expanded="true" aria-controls="tags-list" data-i18n="ui.tags">Tags</button></h2>
           <div class="tags-list" id="tags-list"></div>
         </section>
       </div>
 
-      <button class="ai-status no-drag" type="button" id="ai-status" data-tip="AI connections">
+      <button class="ai-status no-drag" type="button" id="ai-status" data-tip="AI connections" data-i18n-attr="data-tip:ui.ai-connections">
         <span class="ai-status-icon" aria-hidden="true"></span>
         <span class="ai-status-text">
           <span class="ai-status-title" id="ai-status-title">AI access</span>
@@ -53,51 +53,51 @@
       </button>
     </aside>
 
-    <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="200" aria-valuemax="420" aria-valuenow="260" tabindex="0"></div>
+    <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="200" aria-valuemax="420" aria-valuenow="260" tabindex="0" data-i18n-attr="aria-label:ui.resize-sidebar"></div>
 
     <!-- Main -->
     <main class="main" id="main">
       <header class="titlebar drag" id="titlebar">
-        <button class="icon-btn no-drag" type="button" id="btn-sidebar" aria-label="Toggle sidebar" data-tip="Sidebar (⌘\)"></button>
-        <nav class="tabs no-drag" id="tabs" role="tablist" aria-label="Open notes"></nav>
+        <button class="icon-btn no-drag" type="button" id="btn-sidebar" aria-label="Toggle sidebar" data-tip="Sidebar (⌘\)" data-i18n-attr="aria-label:ui.toggle-sidebar;data-tip:ui.sidebar-cmd"></button>
+        <nav class="tabs no-drag" id="tabs" role="tablist" aria-label="Open notes" data-i18n-attr="aria-label:ui.open-notes"></nav>
         <div class="titlebar-spacer"></div>
-        <div class="segmented no-drag" role="radiogroup" aria-label="View" id="view-switch">
-          <button type="button" role="radio" data-view="edit" aria-checked="false" aria-label="Write" data-tip="Write (⌘1)"></button>
-          <button type="button" role="radio" data-view="split" aria-checked="true" aria-label="Split" data-tip="Split (⌘2)"></button>
-          <button type="button" role="radio" data-view="preview" aria-checked="false" aria-label="Read" data-tip="Read (⌘3)"></button>
+        <div class="segmented no-drag" role="radiogroup" aria-label="View" id="view-switch" data-i18n-attr="aria-label:ui.view">
+          <button type="button" role="radio" data-view="edit" aria-checked="false" aria-label="Write" data-tip="Write (⌘1)" data-i18n-attr="aria-label:ui.write;data-tip:ui.write-cmd1"></button>
+          <button type="button" role="radio" data-view="split" aria-checked="true" aria-label="Split" data-tip="Split (⌘2)" data-i18n-attr="aria-label:ui.split;data-tip:ui.split-cmd2"></button>
+          <button type="button" role="radio" data-view="preview" aria-checked="false" aria-label="Read" data-tip="Read (⌘3)" data-i18n-attr="aria-label:ui.read;data-tip:ui.read-cmd3"></button>
         </div>
-        <button class="icon-btn no-drag" type="button" id="btn-outline" aria-label="Toggle outline" data-tip="Outline (⌘⇧O)"></button>
-        <button class="icon-btn no-drag" type="button" id="btn-more" aria-label="More actions" aria-haspopup="menu" data-tip="More"></button>
+        <button class="icon-btn no-drag" type="button" id="btn-outline" aria-label="Toggle outline" data-tip="Outline (⌘⇧O)" data-i18n-attr="aria-label:ui.toggle-outline;data-tip:ui.outline-cmdshifto"></button>
+        <button class="icon-btn no-drag" type="button" id="btn-more" aria-label="More actions" aria-haspopup="menu" data-tip="More" data-i18n-attr="aria-label:ui.more-actions;data-tip:ui.more"></button>
         <div class="winctl-space"></div>
       </header>
 
       <div class="ai-banner" id="ai-banner" role="status" hidden>
         <span class="ai-banner-mark" aria-hidden="true"></span>
         <p class="ai-banner-text" id="ai-banner-text"></p>
-        <button class="btn btn-quiet" type="button" id="ai-banner-review">Review</button>
-        <button class="btn btn-quiet" type="button" id="ai-banner-undo">Undo</button>
-        <button class="icon-btn" type="button" id="ai-banner-close" aria-label="Dismiss"></button>
+        <button class="btn btn-quiet" type="button" id="ai-banner-review" data-i18n="ui.banner-review">Review</button>
+        <button class="btn btn-quiet" type="button" id="ai-banner-undo" data-i18n="ui.undo">Undo</button>
+        <button class="icon-btn" type="button" id="ai-banner-close" aria-label="Dismiss" data-i18n-attr="aria-label:ui.dismiss"></button>
       </div>
 
       <div class="workspace" id="workspace">
         <section id="history" hidden></section>
-        <section class="pane pane-rich" id="pane-rich" aria-label="Document"></section>
-        <section class="pane pane-editor" id="pane-editor" aria-label="Editor"><div class="editor-host" id="editor"></div></section>
-        <div class="pane-divider" id="pane-divider" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"></div>
-        <section class="pane pane-preview" id="pane-preview" aria-label="Preview"><article class="prose" id="preview"></article></section>
-        <section class="pane pane-surface" id="pane-surface" aria-label="Visual editor"></section>
-        <aside class="outline" id="outline" aria-label="Side panel">
-          <div class="dock-tabs" role="tablist" aria-label="Side panel">
-            <button type="button" role="tab" id="dock-tab-outline" data-dock="outline" aria-selected="true" aria-controls="dock-outline">Outline</button>
-            <button type="button" role="tab" id="dock-tab-review" data-dock="review" aria-selected="false" aria-controls="dock-review">Review<span class="dock-badge" id="dock-badge" hidden></span></button>
-            <button type="button" role="tab" id="dock-tab-info" data-dock="info" aria-selected="false" aria-controls="dock-info">Info</button>
+        <section class="pane pane-rich" id="pane-rich" aria-label="Document" data-i18n-attr="aria-label:ui.document"></section>
+        <section class="pane pane-editor" id="pane-editor" aria-label="Editor" data-i18n-attr="aria-label:ui.editor"><div class="editor-host" id="editor"></div></section>
+        <div class="pane-divider" id="pane-divider" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0" data-i18n-attr="aria-label:ui.resize-panes"></div>
+        <section class="pane pane-preview" id="pane-preview" aria-label="Preview" data-i18n-attr="aria-label:ui.preview"><article class="prose" id="preview"></article></section>
+        <section class="pane pane-surface" id="pane-surface" aria-label="Visual editor" data-i18n-attr="aria-label:ui.visual-editor"></section>
+        <aside class="outline" id="outline" aria-label="Side panel" data-i18n-attr="aria-label:ui.side-panel">
+          <div class="dock-tabs" role="tablist" aria-label="Side panel" data-i18n-attr="aria-label:ui.side-panel">
+            <button type="button" role="tab" id="dock-tab-outline" data-dock="outline" aria-selected="true" aria-controls="dock-outline" data-i18n="ui.outline">Outline</button>
+            <button type="button" role="tab" id="dock-tab-review" data-dock="review" aria-selected="false" aria-controls="dock-review"><span data-i18n="ui.review">Review</span><span class="dock-badge" id="dock-badge" hidden></span></button>
+            <button type="button" role="tab" id="dock-tab-info" data-dock="info" aria-selected="false" aria-controls="dock-info" data-i18n="ui.info">Info</button>
           </div>
           <div class="dock-panel dock-outline" id="dock-outline" role="tabpanel" aria-labelledby="dock-tab-outline">
-            <h2 class="side-head">On this page</h2>
+            <h2 class="side-head" data-i18n="ui.on-this-page">On this page</h2>
             <ol class="outline-list" id="outline-list"></ol>
-            <h2 class="side-head side-head-links">Linked from</h2>
+            <h2 class="side-head side-head-links" data-i18n="ui.linked-from">Linked from</h2>
             <ul class="links-list" id="backlinks"></ul>
-            <h2 class="side-head side-head-links" id="unlinked-head" hidden>Unlinked mentions</h2>
+            <h2 class="side-head side-head-links" id="unlinked-head" hidden data-i18n="ui.unlinked-mentions">Unlinked mentions</h2>
             <ul class="links-list unlinked-list" id="unlinked" hidden></ul>
             <div class="links-broken" id="broken-links" hidden></div>
           </div>
@@ -113,17 +113,17 @@
         <span class="statusbar-spacer"></span>
         <button class="st-links" type="button" id="st-links" hidden aria-haspopup="menu"></button>
         <span id="st-save"></span>
-        <button type="button" class="st-words" id="st-words" data-tip="Word count (Ctrl+Shift+C)"></button>
+        <button type="button" class="st-words" id="st-words" data-tip="Word count (⌘⇧C)" data-i18n-attr="data-tip:ui.word-count-cmdshiftc"></button>
         <span id="st-time"></span>
         <span id="st-cursor"></span>
-        <span class="st-zoom" id="st-zoom" hidden><button type="button" class="st-zoom-btn" data-zoom="-1" aria-label="Zoom out">−</button><button type="button" class="st-zoom-btn st-zoom-val" id="st-zoom-val" data-zoom="0" aria-label="Reset zoom to 100%" data-tip="Page zoom. Click for 100%">100%</button><button type="button" class="st-zoom-btn" data-zoom="1" aria-label="Zoom in">+</button></span>
+        <span class="st-zoom" id="st-zoom" hidden><button type="button" class="st-zoom-btn" data-zoom="-1" aria-label="Zoom out" data-i18n-attr="aria-label:ui.zoom-out">−</button><button type="button" class="st-zoom-btn st-zoom-val" id="st-zoom-val" data-zoom="0" aria-label="Reset zoom to 100%" data-tip="Page zoom. Click for 100%" data-i18n-attr="aria-label:ui.reset-zoom-to-100;data-tip:ui.page-zoom-click-for-100">100%</button><button type="button" class="st-zoom-btn" data-zoom="1" aria-label="Zoom in" data-i18n-attr="aria-label:ui.zoom-in">+</button></span>
       </footer>
     </main>
   </div>
 
   <!-- Overlays -->
   <div class="palette-scrim" id="palette" hidden>
-    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette" data-i18n-attr="aria-label:ui.command-palette">
       <div class="palette-field">
         <span class="search-glyph" aria-hidden="true"></span>
         <input id="palette-input" type="text" autocomplete="off" spellcheck="false" aria-controls="palette-list" aria-autocomplete="list" role="combobox" aria-expanded="true">
@@ -140,7 +140,7 @@
   <dialog class="sheet" id="sheet-settings" aria-labelledby="settings-title"></dialog>
   <dialog class="sheet" id="sheet-assets" aria-labelledby="assets-title"></dialog>
   <dialog class="sheet sheet-small" id="sheet-prompt" aria-labelledby="prompt-title"></dialog>
-  <dialog class="sheet tg-dialog" id="sheet-gallery" aria-label="Templates"></dialog>
+  <dialog class="sheet tg-dialog" id="sheet-gallery" aria-label="Templates" data-i18n-attr="aria-label:ui.templates"></dialog>
 
   <div class="menu" id="menu" popover role="menu"></div>
   <div class="toasts" id="toasts" aria-live="polite"></div>

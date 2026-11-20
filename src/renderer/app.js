@@ -12,7 +12,7 @@ import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMen
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { docInfo, infoRows } from './page-info.js';
-import { t as tr, setLocale, LOCALES } from './i18n.js';
+import { t as tr, setLocale, locale, applyStatic, LOCALES, tl } from './i18n.js';
 import { helpSections } from './page-help.js';
 import { renameTag, setTypeOverrides } from './page-props.js';
 import { listTemplates, fillTemplate, askVars, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
@@ -41,13 +41,13 @@ const SURFACES = { slides: mountSlides, board: mountBoard, sheet: mountSheet };
 const NEW_BOARD = (t) => `# ${t}\n\nA board in board-md. Shapes: \`id: shape "Label" @x,y\`. Connectors: \`a -> b "label"\`.\n\n\`\`\`board\nstart: terminator "Start" @40,60\nidea: rect "Write the idea" @230,55\nok: diamond "Clear?" @430,45\ndone: terminator "Share" @620,60\nnote: note "Double-click to edit, drag from the dots to connect" @220,190 200x80\n\nstart -> idea\nidea -> ok\nok -> done "yes"\nok.bottom -> idea.bottom "no" {route: orthogonal}\n\`\`\`\n`;
 const NEW_SHEET = (t) => `# ${t}\n\n## Sheet1\n\n| Item | Quantity | Price | Total |\n| --- | --- | --- | --- |\n| Notebooks | 4 | 3.5 | =B2*C2 |\n| Pens | 12 | 1.2 | =B3*C3 |\n| Folders | 6 | 2.1 | =B4*C4 |\n| Total |  |  | =SUM(D2:D4) |\n\n<!-- sheet: {"cols":{"C":{"format":"currency"},"D":{"format":"currency"}}} -->\n`;
 const NEW_CONTENT = { md: (t) => `# ${t}\n\n`, slides: () => NEW_DECK, board: NEW_BOARD, sheet: NEW_SHEET };
-const TYPE_INFO = { md: ['Page', 'A Markdown document'], slides: ['Slides', 'A deck in slides-md, Marp compatible'], board: ['Board', 'A whiteboard in board-md'], sheet: ['Sheet', 'A spreadsheet in sheet-md'] };
+const TYPE_INFO = { md: 1, slides: 1, board: 1, sheet: 1 }; // names and descriptions: app.type-<id> and app.typedesc-<id>
 function docTypeAny(p) { const m = p?.match(/\.(slides|board|sheet)\.md$/i); return m ? m[1].toLowerCase() : 'md'; }
 function docType(p) { const m = p?.match(/\.(slides|board|sheet)\.md$/i); const t = m ? m[1].toLowerCase() : 'md'; return SURFACES[t] ? t : 'md'; }
 const typeIcon = (t) => ({ slides: icons.slides, board: icons.board, sheet: icons.sheet }[t] || icons.doc);
 function viewsFor(type) {
-  if (type === 'md') return [['edit', 'Write', icons.viewWrite, 'Mod+1'], ['split', 'Split', icons.viewSplit, 'Mod+2'], ['preview', 'Read', icons.viewRead, 'Mod+3']];
-  return [['visual', TYPE_INFO[type][0], typeIcon(type), 'Mod+1'], ['split', 'Code and visual', icons.viewSplit, 'Mod+2'], ['code', 'Code', icons.source, 'Mod+3']];
+  if (type === 'md') return [['edit', tr('ui.write'), icons.viewWrite, 'Mod+1'], ['split', tr('ui.split'), icons.viewSplit, 'Mod+2'], ['preview', tr('ui.read'), icons.viewRead, 'Mod+3']];
+  return [['visual', tr(`app.type-${type}`), typeIcon(type), 'Mod+1'], ['split', tr('app.view-code-and-visual'), icons.viewSplit, 'Mod+2'], ['code', tr('app.view-code'), icons.source, 'Mod+3']];
 }
 function storedView(type) { const v = type === 'md' ? (S.settings.mode || 'edit') : localStorageGet('folio.view.' + type) || 'visual'; return viewsFor(type).some(([id]) => id === v) ? v : viewsFor(type)[0][0]; }
 function renderViewSwitch(type) {
@@ -115,7 +115,8 @@ const isRich = () => app.dataset.modeView === 'edit';
 
 async function boot() {
   const init = await folio.init();
-  setLocale(init.settings.language); localizeCommands();
+  { const before = locale(); setLocale(init.settings.language); if (locale() !== before) { location.reload(); return; } } // menus and tables are built at load: start again in the new language
+  localizeCommands();
   S.platform = init.platform; S.settings = init.settings; S.mcp = init.mcp; S.version = init.version;
   folio.userName().then((n) => { S.userName = n || ''; }).catch(() => {});
   document.documentElement.dataset.platform = init.platform;
@@ -143,13 +144,13 @@ async function boot() {
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
     readNote: (src) => readRelative(src),
     isDark: () => S.dark,
-    onWikiLink: async (name) => { if (DAY.test(parseRef(name).target) && !resolveWiki(name)) return openDailyNote(parseRef(name).target); const f = resolveWiki(name); if (f) return openRef(f, parseRef(name).part); if (await confirmSheet({ title: `Create “${name}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
+    onWikiLink: async (name) => { if (DAY.test(parseRef(name).target) && !resolveWiki(name)) return openDailyNote(parseRef(name).target); const f = resolveWiki(name); if (f) return openRef(f, parseRef(name).part); if (await confirmSheet({ title: tr('app.create-name', { name }), body: tr('app.this-note-does-not-exist-yet'), action: tr('app.create-note') })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
     resolveValue: (raw) => resolveRef(raw, refEnv()).then((r) => r.value),
     smartTypography: () => S.settings.smartTypography !== false,
     pickRef: (o) => pickRef(o),
     breadcrumb: () => breadcrumbHtml(S.active),
     pickMedia: (kind) => folio.pickMedia(S.active, kind).catch((e) => { toast(e.message, { kind: 'error' }); return null; }),
-    askUrl: (title) => prompt({ title, label: 'Address', placeholder: 'https://', action: 'Insert' }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
+    askUrl: (title) => prompt({ title, label: tr('app.address'), placeholder: tr('app.https'), action: tr('app.insert') }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
     openMedia: (src) => openMedia(src),
     createDoc: createDocHere,
     onCommand: (id) => { if (id === 'template') return insertTemplateCmd(); if (id === 'daily-note') return openDailyNote(todayKey()); if (id === 'template-button') return insertTemplateButton(); if (id === 'help') return openHelp(); if (id === 'link-health') return openLinkHealth(); if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
@@ -170,16 +171,16 @@ async function boot() {
       const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return folio.saveImage(t.path, `pasted.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
     },
-    onError: (e) => toast(`Paste failed. ${e.message}`, { kind: 'error' }),
-    onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(`Copied ${t}. Paste it anywhere to link to this block.`); },
-    onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
+    onError: (e) => toast(tr('app.paste-failed-message', { message: e.message }), { kind: 'error' }),
+    onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(tr('app.copied-t-paste-it-anywhere-to-link-to', { t })); },
+    onLink: (prev) => prompt({ title: tr(prev ? 'app.edit-link' : 'app.add-link'), label: tr('app.address'), value: prev || 'https://', hint: tr('app.leave-empty-to-remove-the-link'), action: tr('app.apply'), allowEmpty: true, validate: false }),
   });
   $('#pane-rich').addEventListener('paste', async (e) => {
     const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
     if (!file) return; e.preventDefault(); e.stopPropagation();
     const t = activeTab(); if (!t) return;
     try { const rel = await folio.saveImage(t.path, file.name || 'pasted.png', new Uint8Array(await file.arrayBuffer())); rich.editor.chain().focus().setImage({ src: encodeURI(rel), alt: 'image' }).run(); }
-    catch (er) { toast(`Could not save the image. ${er.message}`, { kind: 'error' }); }
+    catch (er) { toast(tr('app.could-not-save-the-image-message', { message: er.message }), { kind: 'error' }); }
   }, true);
   $('.rich-scroll').addEventListener('scroll', () => { if (isRich()) markOutlineCurrent(); }, { passive: true });
 
@@ -221,7 +222,13 @@ function paintStaticIcons() {
   $('.ai-banner-mark').innerHTML = icons.spark;
   $('#ai-banner-close').innerHTML = icons.close;
   $('#search-kbd').textContent = keyLabel('Mod+Shift+F');
-  $$('[data-tip]').forEach((el) => (el.dataset.tip = el.dataset.tip.replace(/⌘/g, mod()).replace(/⇧/g, shift())));
+  translateStatic();
+}
+/* the HTML's own words, in the language chosen; ⌘ and ⇧ become what this keyboard calls them */
+function translateStatic() {
+  const keys = (s) => s.replace(/⌘/g, mod()).replace(/⇧/g, shift());
+  applyStatic(document, keys);
+  $$('[data-tip]:not([data-i18n-attr])').forEach((el) => (el.dataset.tip = keys(el.dataset.tip)));
 }
 
 function applyLayoutSettings() {
@@ -334,7 +341,7 @@ async function refreshTree() {
     S.files = flatten(S.tree);
     renderTree(); tagsStale();
   } catch (e) {
-    $('#tree').innerHTML = `<div class="side-empty">Could not read this folder. ${esc(e.message)}<br><button class="btn" type="button" data-act="choose">Choose another folder…</button></div>`;
+    $('#tree').innerHTML = `<div class="side-empty">${esc(tr('app.could-not-read-folder', { message: e.message }))}<br><button class="btn" type="button" data-act="choose">${tr('app.choose-another-folder')}</button></div>`;
   }
 }
 function flatten(nodes, out = []) { for (const n of nodes) { if (n.type === 'file') out.push(n.path); else flatten(n.children, out); } return out; }
@@ -342,7 +349,7 @@ function flatten(nodes, out = []) { for (const n of nodes) { if (n.type === 'fil
 function renderTree() {
   const host = $('#tree');
   if (!S.tree.length) {
-    host.innerHTML = `<div class="side-empty">This folder has no Markdown notes yet.<br><button class="btn" type="button" data-act="new">${icons.plus} New note</button></div>`;
+    host.innerHTML = `<div class="side-empty">${tr('app.this-folder-has-no-markdown-notes-yet')}<br><button class="btn" type="button" data-act="new">${icons.plus} New note</button></div>`;
     return;
   }
   const row = (n, depth) => {
@@ -352,7 +359,7 @@ function renderTree() {
         <span class="twisty">${icons.chevron}</span><span class="glyph">${icons.folder}</span><span class="label">${esc(n.name)}</span></button>
         <div class="tree-children" role="group" ${open ? '' : 'hidden'}>${n.children.map((c) => row(c, depth + 1)).join('')}</div></div>`;
     }
-    const ai = S.aiEdits.has(n.path) ? '<span class="ai-tag">AI</span>' : '';
+    const ai = S.aiEdits.has(n.path) ? '<span class="ai-tag">' + tr('app.ai') + '</span>' : '';
     return `<button class="tree-row" type="button" role="treeitem" data-file="${esc(n.path)}" aria-selected="${n.path === S.active}" style="--depth:${depth}" draggable="true" title="${esc(n.path)}">
       <span class="twisty"></span><span class="glyph">${typeIcon(docTypeAny(n.path))}</span><span class="label">${esc(stem(n.name))}</span>${ai}</button>`;
   };
@@ -435,7 +442,7 @@ function onEditorChange(text, isRemote, from = 'source') {
     if (from === 'source' && app.dataset.modeView === 'split') surfaceSoon(text);
     if (from === 'surface' && app.dataset.modeView === 'split') editor.applyRemote(text);
   }
-  if (!isRemote) { autosave(); setSaveState('Edited'); }
+  if (!isRemote) { autosave(); setSaveState('edited'); }
   renderTabsDirty();
   previewSoon(); renderStatus();
 }
@@ -452,19 +459,19 @@ function renderTabsDirty() {
 async function saveTab(t) {
   if (t.text === t.saved) return;
   const text = t.text, before = t.saved;
-  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
-  catch (e) { toast(`Could not save ${base(t.path)}. ${e.message}`, { kind: 'error', action: ['Retry', () => saveTab(t)] }); setSaveState('Not saved'); }
+  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
+  catch (e) { toast(tr('app.could-not-save-path-message', { path: base(t.path), message: e.message }), { kind: 'error', action: [tr('app.retry'), () => saveTab(t)] }); setSaveState('failed'); }
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
 let saveStateTimer;
-function setSaveState(s) { $('#st-save').textContent = s; clearTimeout(saveStateTimer); if (s === 'Saved') saveStateTimer = setTimeout(() => ($('#st-save').textContent = ''), 1600); }
+function setSaveState(s) { $('#st-save').textContent = tr(`app.save-${s}`); clearTimeout(saveStateTimer); if (s === 'saved') saveStateTimer = setTimeout(() => ($('#st-save').textContent = ''), 1600); }
 
 async function pasteImage(file, view) {
   const t = activeTab(); if (!t) return;
   try {
     const rel = await folio.saveImage(t.path, file.name || 'pasted.png', new Uint8Array(await file.arrayBuffer()));
     editor.insert(`![${(file.name || 'image').replace(/\.\w+$/, '')}](${encodeURI(rel)})`);
-  } catch (e) { toast(`Could not save the image. ${e.message}`, { kind: 'error' }); }
+  } catch (e) { toast(tr('app.could-not-save-the-image-message', { message: e.message }), { kind: 'error' }); }
 }
 
 /* ============ preview ============ */
@@ -493,7 +500,7 @@ async function renderPreview() {
   }
   for (const pre of el.querySelectorAll('pre:not(.mermaid-src)')) {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'btn copy-code'; b.textContent = 'Copy';
+    b.type = 'button'; b.className = 'btn copy-code'; b.textContent = tr('app.copy');
     pre.appendChild(b);
   }
   for (const cb of el.querySelectorAll('.task-list-item input')) cb.removeAttribute('disabled');
@@ -509,7 +516,7 @@ function openMedia(src) {
   if (!src) return;
   if (/^(https?|mailto):/i.test(src)) return folio.openExternal(src);
   const d = dirOf(S.active || ''); const rel = normalize(d ? `${d}/${decodeURI(src).replace(/^\.\//, '')}` : decodeURI(src));
-  return folio.openFile(rel).catch((e) => toast(`Could not open ${base(rel)}. ${e.message}`, { kind: 'error' }));
+  return folio.openFile(rel).catch((e) => toast(tr('app.could-not-open-rel-message', { rel: base(rel), message: e.message }), { kind: 'error' }));
 }
 /* [BREADCRUMB]: where this page sits in the workspace */
 function breadcrumbHtml(p) {
@@ -531,8 +538,8 @@ function refText(kind, path, part = '', label = '') {
 async function partsOf(path) {
   const text = tabOf(path)?.text ?? await folio.read(path).catch(() => '');
   const kind = docKind(path);
-  if (kind === 'sheet') { const { parseWorkbook } = await import('./sheet-core.js'); return parseWorkbook(text).filter((b) => b.type === 'sheet').map((b) => ({ value: `${b.name}!A1`, label: `Sheet ${b.name} (edit the cell or range)` })); }
-  if (kind === 'slides') { const { parseDeck } = await import('./slides-core.js'); return parseDeck(text).slides.map((sl, i) => ({ value: String(i + 1), label: `Slide ${i + 1}${sl.title ? ': ' + sl.title : ''}` })); }
+  if (kind === 'sheet') { const { parseWorkbook } = await import('./sheet-core.js'); return parseWorkbook(text).filter((b) => b.type === 'sheet').map((b) => ({ value: `${b.name}!A1`, label: tr('app.sheet-name-edit-the-cell-or-range', { name: b.name }) })); }
+  if (kind === 'slides') { const { parseDeck } = await import('./slides-core.js'); return parseDeck(text).slides.map((sl, i) => ({ value: String(i + 1), label: tr('app.slide-i-title', { i: i + 1, title: sl.title ? ': ' + sl.title : '' }) })); }
   if (kind === 'board') { const { splitBoardDoc, parseBoard } = await import('./board-core.js'); return parseBoard(splitBoardDoc(text).code).nodes.filter((n) => !n.implicit).map((n) => ({ value: n.id, label: `${n.label} (${n.id})` })); }
   return headings(text).map((h) => ({ value: h.text.replace(/[*_`]/g, ''), label: `${'  '.repeat(h.level - 1)}${h.text}` }));
 }
@@ -541,31 +548,31 @@ function pickRef({ kind = 'link' } = {}) {
     const d = $('#sheet-prompt');
     const docs = S.files.filter((f) => f !== S.active);
     d.innerHTML = `<form method="dialog" class="prompt-form ref-form">
-      <div class="sheet-head"><div><h2 id="prompt-title">Insert reference</h2><p>Point at another document, a part of it, or a live result.</p></div></div>
+      <div class="sheet-head"><div><h2 id="prompt-title">${tr('app.insert-reference')}</h2><p>${tr('app.point-at-another-document-a-part-of-it')}</p></div></div>
       <div class="sheet-body">
-        <div class="field"><label for="ref-doc">Document</label><input class="input" id="ref-doc" list="ref-docs" autocomplete="off" spellcheck="false" placeholder="Type to search"><datalist id="ref-docs">${docs.map((f) => `<option value="${esc(f)}">${esc(stem(f))}</option>`).join('')}</datalist></div>
-        <div class="field"><label for="ref-part-pick">Part</label><select class="rb-select" id="ref-part-pick"><option value="">Whole document</option></select>
-          <input class="input" id="ref-part" spellcheck="false" placeholder="Optional, e.g. Costs!H6 or 3" aria-label="Part"></div>
-        <fieldset class="field ref-kinds"><legend>Show as</legend>
-          <label><input type="radio" name="ref-kind" value="link"${kind === 'link' ? ' checked' : ''}> Link</label>
-          <label><input type="radio" name="ref-kind" value="value"${kind === 'value' ? ' checked' : ''}> Live value</label>
-          <label><input type="radio" name="ref-kind" value="embed"${kind === 'embed' ? ' checked' : ''}> Embed</label></fieldset>
+        <div class="field"><label for="ref-doc">${tr('app.document')}</label><input class="input" id="ref-doc" list="ref-docs" autocomplete="off" spellcheck="false" placeholder="${tr('app.type-to-search')}"><datalist id="ref-docs">${docs.map((f) => `<option value="${esc(f)}">${esc(stem(f))}</option>`).join('')}</datalist></div>
+        <div class="field"><label for="ref-part-pick">${tr('app.part')}</label><select class="rb-select" id="ref-part-pick"><option value="">${tr('app.whole-document')}</option></select>
+          <input class="input" id="ref-part" spellcheck="false" placeholder="${tr('app.optional-e-g-costs-h6-or-3')}" aria-label="${tr('app.part')}"></div>
+        <fieldset class="field ref-kinds"><legend>${tr('app.show-as')}</legend>
+          <label><input type="radio" name="ref-kind" value="link"${kind === 'link' ? ' checked' : ''}> ${tr('app.link')}</label>
+          <label><input type="radio" name="ref-kind" value="value"${kind === 'value' ? ' checked' : ''}> ${tr('app.live-value')}</label>
+          <label><input type="radio" name="ref-kind" value="embed"${kind === 'embed' ? ' checked' : ''}> ${tr('app.embed')}</label></fieldset>
         <p class="ref-preview" id="ref-preview" aria-live="polite"></p>
       </div>
-      <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Insert</button></div></form>`;
+      <div class="sheet-foot"><button class="btn" type="button" data-cancel>${tr('app.cancel')}</button><button class="btn btn-primary" type="submit">${tr('app.insert')}</button></div></form>`;
     const docEl = $('#ref-doc', d), pick = $('#ref-part-pick', d), partEl = $('#ref-part', d), prev = $('#ref-preview', d);
     const path = () => S.files.includes(docEl.value) ? docEl.value : resolveTarget(docEl.value, S.files, S.active || '');
     const current = () => { const p = path(); if (!p) return null; return refText(d.querySelector('[name=ref-kind]:checked').value, p, partEl.value.trim()); };
     let seq = 0;
     const preview = async () => {
       const t = current(); const n = ++seq;
-      if (!t) { prev.textContent = docEl.value ? 'No document with that name.' : ''; return; }
+      if (!t) { prev.textContent = docEl.value ? tr('app.no-document-with-that-name') : ''; return; }
       prev.innerHTML = `<code>${esc(t)}</code>`;
       try { const r = await resolveRef(t.replace(/^!?\[\[|\]\]$|^\{\{|\}\}$/g, '').replace(/\|.*$/, ''), refEnv()); if (n === seq) prev.innerHTML = `<code>${esc(t)}</code> <span>shows ${esc(String(r.value).slice(0, 80))}</span>`; }
       catch (e) { if (n === seq) prev.innerHTML = `<code>${esc(t)}</code> <span class="ref-preview-err">${esc(e.message)}</span>`; }
     };
     docEl.addEventListener('change', async () => {
-      const p = path(); pick.innerHTML = '<option value="">Whole document</option>'; partEl.value = '';
+      const p = path(); pick.innerHTML = '<option value="">' + tr('app.whole-document') + '</option>'; partEl.value = '';
       if (p) { for (const o of await partsOf(p)) pick.insertAdjacentHTML('beforeend', `<option value="${esc(o.value)}">${esc(o.label)}</option>`); }
       preview();
     });
@@ -574,7 +581,7 @@ function pickRef({ kind = 'link' } = {}) {
     partEl.addEventListener('input', preview);
     d.querySelectorAll('[name=ref-kind]').forEach((r) => r.addEventListener('change', preview));
     const done = (v) => { d.close(); resolve(v); };
-    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); const t = current(); if (!t) { prev.textContent = 'Choose a document first.'; docEl.focus(); return; } done(t); };
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); const t = current(); if (!t) { prev.textContent = tr('app.choose-a-document-first'); docEl.focus(); return; } done(t); };
     d.querySelector('[data-cancel]').onclick = () => done(null);
     d.oncancel = () => resolve(null);
     d.showModal(); docEl.focus();
@@ -586,9 +593,9 @@ async function insertRef(kind) {
   if (type === 'md') { if (isRich()) rich.editor.chain().focus().insertContent({ type: 'text', text: t }).run(); else editor.insert(t); }
   else if (type === 'slides' && app.dataset.modeView !== 'code') curSurface()?.insertText?.(t);
   else editor.insert(t);
-  toast('Reference inserted.');
+  toast(tr('app.reference-inserted'));
 }
-function copyRef(path, part, kind) { const t = refText(kind, path, part); folio.copy(t); toast(`Copied ${t}`); }
+function copyRef(path, part, kind) { const t = refText(kind, path, part); folio.copy(t); toast(tr('app.copied-t', { t })); }
 function refEnv() {
   return {
     files: S.files, from: S.active || '',
@@ -626,7 +633,7 @@ async function createDocHere({ type, name, content }) {
   while (S.files.includes(pathOf(title))) title = `${name} ${++n}`;
   try {
     const p = await folio.create(pathOf(title), content ? content(title) : (NEW_CONTENT[type] || NEW_CONTENT.md)(title));
-    await refreshTree(); toast(`Created ${base(p)}. Ctrl or ⌘ click the link to open it.`);
+    await refreshTree(); toast(tr('app.created-p-ctrl-or-click-the-link-to-op', { p: base(p) }));
     return { path: p, ref: refName(p) };
   } catch (e) { toast(e.message, { kind: 'error' }); return null; }
 }
@@ -651,7 +658,7 @@ async function renderTags() {
   $('#tags-head').setAttribute('aria-expanded', String(tagsOpen())); box.hidden = !tagsOpen();
   if (!S.workspace) { box.innerHTML = ''; return; }
   const all = await tagIndex();
-  if (!all.length) { box.innerHTML = '<div class="side-empty">Write #tag in a page, or add tags in its properties.</div>'; return; }
+  if (!all.length) { box.innerHTML = '<div class="side-empty">' + tr('app.write-tag-in-a-page-or-add-tags-in-its') + '</div>'; return; }
   // parents of nested tags are listed even when no page uses them alone; they count every page under them
   const byKey = new Map(all.map((t) => [t.tag.toLowerCase(), { ...t, files: [...t.files] }]));
   for (const t of all) { const parts = t.tag.split('/'); for (let i = 1; i < parts.length; i++) { const p = parts.slice(0, i).join('/'); const k = p.toLowerCase(); const e = byKey.get(k) || { tag: p, count: 0, files: [] }; e.files = [...new Set([...e.files, ...t.files])]; e.count = e.files.length; byKey.set(k, e); } }
@@ -667,9 +674,9 @@ function showTag(tag) {
   runSearch(si.value); renderTags();
 }
 async function renameTagEverywhere(tag) {
-  const to = await prompt({ title: `Rename #${tag}`, label: 'New name', value: tag, hint: 'Every page that uses it is updated, nested tags too (#tag/child).', action: 'Rename' });
+  const to = await prompt({ title: tr('app.rename-tag-2', { tag }), label: tr('app.new-name'), value: tag, hint: tr('app.every-page-that-uses-it-is-updated-nes'), action: tr('app.rename-2') });
   const next = (to || '').trim().replace(/^#/, ''); if (!next || next === tag) return;
-  if (!/^[\p{L}\p{N}_\-/]+$/u.test(next) || !/[\p{L}_]/u.test(next)) { toast('A tag has letters, numbers, - _ or /, and at least one letter.', { kind: 'error' }); return; }
+  if (!/^[\p{L}\p{N}_\-/]+$/u.test(next) || !/[\p{L}_]/u.test(next)) { toast(tr('app.a-tag-has-letters-numbers-or-and-at-le'), { kind: 'error' }); return; }
   const files = (await tagIndex()).filter((t) => t.tag.toLowerCase() === tag.toLowerCase() || t.tag.toLowerCase().startsWith(tag.toLowerCase() + '/')).flatMap((t) => t.files);
   let changed = 0;
   for (const f of [...new Set(files)]) {
@@ -718,9 +725,9 @@ async function askFilled(t, opts) {
   const answers = await new Promise((resolve) => {
     const d = $('#sheet-prompt'); d.classList.remove('sheet-small');
     const field = (q, i) => `<div class="field"><label for="ask-${i}">${esc(q.label)}</label>${q.kind === 'long' ? `<textarea class="input" id="ask-${i}" rows="3" data-q="${esc(q.label)}"></textarea>` : `<input class="input" id="ask-${i}" data-q="${esc(q.label)}" type="${q.kind === 'date' ? 'date' : 'text'}" autocomplete="off"${q.kind === 'people' ? ' list="ask-people"' : ''}>`}</div>`;
-    d.innerHTML = `<form method="dialog" class="prompt-form"><div class="sheet-head"><div><h2 id="prompt-title">${esc(t.name)}</h2><p>A few details to fill in. You can leave any empty.</p></div></div>
+    d.innerHTML = `<form method="dialog" class="prompt-form"><div class="sheet-head"><div><h2 id="prompt-title">${esc(t.name)}</h2><p>${tr('app.a-few-details-to-fill-in-you-can-leave')}</p></div></div>
       <div class="sheet-body">${qs.map(field).join('')}<datalist id="ask-people">${people.map((n) => `<option value="${esc(n)}">`).join('')}</datalist></div>
-      <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Create</button></div></form>`;
+      <div class="sheet-foot"><button class="btn" type="button" data-cancel>${tr('app.cancel')}</button><button class="btn btn-primary" type="submit">${tr('app.create')}</button></div></form>`;
     const done = (v) => { d.close(); resolve(v); };
     d.querySelector('form').onsubmit = (e) => { e.preventDefault(); done(Object.fromEntries([...d.querySelectorAll('[data-q]')].map((i) => [i.dataset.q, i.value.trim()]))); };
     d.querySelector('[data-cancel]').onclick = () => done(null); d.oncancel = () => resolve(null);
@@ -728,15 +735,15 @@ async function askFilled(t, opts) {
   });
   return answers ? filled(raw, { ...opts, answers }) : null;
 }
-function pickTemplate({ title = 'Insert template', note = 'Its properties join this page’s and its text goes at the cursor.', action = 'Insert' } = {}) {
+function pickTemplate({ title = tr('app.insert-template'), note = tr('app.template-note'), action = tr('app.insert') } = {}) {
   return new Promise((resolve) => {
     const d = $('#sheet-prompt'); const list = listTemplates(S.files);
     d.innerHTML = `<form method="dialog" class="prompt-form tpl-form">
       <div class="sheet-head"><div><h2 id="prompt-title">${esc(title)}</h2><p>${esc(note)} Your own templates are the pages in <b>${TEMPLATE_DIR}/</b>.</p></div></div>
-      <div class="sheet-body"><fieldset class="tpl-list"><legend class="visually-hidden">Template</legend>
-        ${list.map((t, i) => `<label class="tpl-card"><input type="radio" name="tpl" value="${i}"${i === 0 ? ' checked' : ''}><span class="tpl-name">${esc(t.name)}</span><span class="tpl-desc">${esc(t.starter ? t.desc : t.path)}</span>${t.starter ? '<span class="tpl-badge">Starter</span>' : ''}</label>`).join('')}
+      <div class="sheet-body"><fieldset class="tpl-list"><legend class="visually-hidden">${tr('app.template')}</legend>
+        ${list.map((t, i) => `<label class="tpl-card"><input type="radio" name="tpl" value="${i}"${i === 0 ? ' checked' : ''}><span class="tpl-name">${esc(t.name)}</span><span class="tpl-desc">${esc(t.starter ? t.desc : t.path)}</span>${t.starter ? '<span class="tpl-badge">' + tr('app.starter') + '</span>' : ''}</label>`).join('')}
       </fieldset></div>
-      <div class="sheet-foot"><button class="btn" type="button" data-edit>All templates…</button><span class="rb-spacer"></span><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`;
+      <div class="sheet-foot"><button class="btn" type="button" data-edit>${tr('app.all-templates')}</button><span class="rb-spacer"></span><button class="btn" type="button" data-cancel>${tr('app.cancel')}</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`;
     const done = (v) => { d.close(); resolve(v); };
     d.querySelector('form').onsubmit = (e) => { e.preventDefault(); done(list[+d.querySelector('[name=tpl]:checked').value]); };
     d.querySelector('[data-cancel]').onclick = () => done(null);
@@ -796,38 +803,38 @@ async function templateGallery(mode = 'insert') {
       try {
         const raw = await templateText(t);
         const p = await writeTemplate(t.name, setMeta(raw, { description: t.desc, category: t.category, icon: t.icon, ...(t.url ? { source: t.url } : {}) }));
-        toast(`Saved to ${p}. Edit it there: it is yours now.`); return p;
+        toast(tr('app.saved-to-p-edit-it-there-it-is-yours-n', { p })); return p;
       } catch (e) { toast(e.message, { kind: 'error' }); return null; }
     },
     edit: (t) => openFile(t.path),
-    remove: async (t) => { if (!await confirmSheet({ title: `Delete the template “${t.name}”?`, body: 'It moves to the trash. Pages made from it stay as they are.', action: 'Delete', danger: true })) return false; await folio.trash(t.path); await refreshTree(); return true; },
-    rename: async (t) => { const name = await prompt({ title: 'Rename template', label: 'Name', value: t.name, action: 'Rename' }); if (!name || name === t.name) return null; const to = `${dirOf(t.path)}/${templateFileName(name)}.md`; await movePath(t.path, to, false); return to; },
+    remove: async (t) => { if (!await confirmSheet({ title: tr('app.delete-the-template-name', { name: t.name }), body: tr('app.it-moves-to-the-trash-pages-made-from'), action: tr('app.delete'), danger: true })) return false; await folio.trash(t.path); await refreshTree(); return true; },
+    rename: async (t) => { const name = await prompt({ title: tr('app.rename-template'), label: tr('app.name'), value: t.name, action: tr('app.rename-2') }); if (!name || name === t.name) return null; const to = `${dirOf(t.path)}/${templateFileName(name)}.md`; await movePath(t.path, to, false); return to; },
     setCategory: async (t) => {
-      const cat = await prompt({ title: 'Category', label: 'Category', value: t.category, hint: 'For example Meetings, Planning, Product, Engineering, Reports, Docs, Personal, or your own.', action: 'Save' });
+      const cat = await prompt({ title: tr('app.category'), label: tr('app.category'), value: t.category, hint: tr('app.for-example-meetings-planning-product'), action: tr('app.save') });
       if (!cat) return false; const text = await textOf(t.path); await folio.write(t.path, setMeta(text, { category: cat.trim() })); const tab = tabOf(t.path); if (tab) { tab.text = tab.saved = setMeta(text, { category: cat.trim() }); } return true;
     },
     duplicate: async (t) => writeTemplate(`${t.name} copy`, await templateText(t)),
-    create: async () => { const p = await writeTemplate('New template', setMeta('# {{title}}\n\n{{cursor}}\n', { description: 'What this template is for', category: 'General' })); await openFile(p); toast('A template is a page: write it as you want new pages to start. {{title}}, {{date}} and {{cursor}} are filled in when it is used.'); },
-    saveCurrent: async () => { const tab = activeTab(); const p = await writeTemplate(stem(S.active), setMeta(tab.text, { description: '', category: 'General' })); toast(`Saved as a template: ${p}.`); },
-    importFiles: async () => { const list = await folio.importTemplateFiles(); for (const f of list) await writeTemplate(f.name, Object.keys(templateMeta(f.text)).length ? f.text : setMeta(f.text, { category: 'Imported' })); if (list.length) toast(`Imported ${list.length} ${list.length === 1 ? 'template' : 'templates'}.`); return list.length; },
+    create: async () => { const p = await writeTemplate('New template', setMeta('# {{title}}\n\n{{cursor}}\n', { description: tr('app.what-this-template-is-for'), category: 'General' })); await openFile(p); toast(tr('app.a-template-is-a-page-write-it-as-you-w', { title: '{{title}}', date: '{{date}}', cursor: '{{cursor}}' })); },
+    saveCurrent: async () => { const tab = activeTab(); const p = await writeTemplate(stem(S.active), setMeta(tab.text, { description: '', category: 'General' })); toast(tr('app.saved-as-a-template-p', { p })); },
+    importFiles: async () => { const list = await folio.importTemplateFiles(); for (const f of list) await writeTemplate(f.name, Object.keys(templateMeta(f.text)).length ? f.text : setMeta(f.text, { category: 'Imported' })); if (list.length) toast(tr('app.imported-length-templates', { n: list.length })); return list.length; },
     importLink: async () => {
-      const url = await prompt({ title: 'Import a template from a link', label: 'Link to a Markdown file', value: 'https://', hint: 'A raw .md file, for example from GitHub (raw) or a gist.', action: 'Import' });
+      const url = await prompt({ title: tr('app.import-a-template-from-a-link'), label: tr('app.link-to-a-markdown-file'), value: 'https://', hint: tr('app.a-raw-md-file-for-example-from-github'), action: tr('app.import-2') });
       if (!url || url === 'https://') return null;
       try { const text = await folio.fetchTemplate(url.trim()); const name = templateMeta(text).name || /^#\s+(.+)$/m.exec(withoutMeta(text))?.[1]?.replace(/\{\{[^}]*\}\}/g, '').trim() || decodeURIComponent(url.split('/').pop().replace(/\.(md|markdown|txt)$/i, '')) || 'Imported template';
-        const p = await writeTemplate(name, Object.keys(templateMeta(text)).length ? text : setMeta(text, { category: 'Imported', source: url.trim() })); toast(`Imported ${p}.`); return p; }
+        const p = await writeTemplate(name, Object.keys(templateMeta(text)).length ? text : setMeta(text, { category: 'Imported', source: url.trim() })); toast(tr('app.imported-p', { p })); return p; }
       catch (e) { toast(e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { kind: 'error' }); return null; }
     },
-    menu: (anchor, items) => popupMenu(anchor, items, { label: 'Template actions' }),
+    menu: (anchor, items) => popupMenu(anchor, items, { label: tr('app.template-actions') }),
   });
 }
 async function insertTemplateButton() {
-  const t = await pickTemplate({ title: 'Template button', note: 'A button in the page that inserts this template below it, as in Notion.', action: 'Add button' }); if (!t) return;
-  const src = buttonSource({ label: `New ${t.name.toLowerCase()}`, template: t.name });
+  const t = await pickTemplate({ title: tr('app.template-button'), note: tr('app.a-button-in-the-page-that-inserts-this'), action: tr('app.add-button') }); if (!t) return;
+  const src = buttonSource({ label: tr('app.new-tolowercase', { toLowerCase: t.name.toLowerCase() }), template: t.name });
   if (isRich()) rich.insertTemplate(src); else editor.insert(`\n${src}\n`);
 }
 async function runTemplateButton(b, pos) {
   const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === (b.template || '').toLowerCase());
-  if (!t) { toast(`No template called “${b.template}”. Templates are the pages in ${TEMPLATE_DIR}/.`, { kind: 'error' }); return; }
+  if (!t) { toast(tr('app.no-template-called-template-templates', { template: b.template, TEMPLATE_DIR }), { kind: 'error' }); return; }
   applyTemplate(t, pos);
 }
 /* the card shown when you rest the pointer on a link: the start of the target, or the section it points at */
@@ -860,9 +867,9 @@ function renderOutline() {
     ? currentHeads.map((h, i) => {
       const kids = currentHeads[i + 1] && currentHeads[i + 1].level > h.level;
       const hidden = currentHeads.some((p, k) => k < i && outlineFolded.has(k) && p.level < h.level && !currentHeads.slice(k + 1, i).some((q) => q.level <= p.level));
-      return `<li${hidden ? ' hidden' : ''}>${kids ? `<button type="button" class="outline-fold" data-fold="${i}" aria-expanded="${!outlineFolded.has(i)}" aria-label="${outlineFolded.has(i) ? 'Show' : 'Hide'} the headings under ${esc(h.text)}">${icons.chevron}</button>` : ''}<a href="#" draggable="true" data-line="${h.line}" data-i="${i}" style="--lvl:${Math.min(h.level, 4)}" title="Drag to move this section. Alt+Shift+arrows to move or change its level">${esc(h.text)}</a></li>`;
+      return `<li${hidden ? ' hidden' : ''}>${kids ? `<button type="button" class="outline-fold" data-fold="${i}" aria-expanded="${!outlineFolded.has(i)}" aria-label="${esc(tr(outlineFolded.has(i) ? 'app.show-headings-under' : 'app.hide-headings-under', { text: h.text }))}">${icons.chevron}</button>` : ''}<a href="#" draggable="true" data-line="${h.line}" data-i="${i}" style="--lvl:${Math.min(h.level, 4)}" title="${tr('app.drag-to-move-this-section-alt-shift-ar')}">${esc(h.text)}</a></li>`;
     }).join('')
-    : '<li class="outline-empty">Headings appear here as you write them.</li>';
+    : '<li class="outline-empty">' + tr('app.headings-appear-here-as-you-write-them') + '</li>';
   markOutlineCurrent();
   if (activeTab()?.path !== blPath) renderBacklinks();
 }
@@ -875,15 +882,15 @@ async function renderBacklinks() {
   renderUnlinked(mentions);
   const kindLabel = { link: 'link', value: 'value', embed: 'embed' };
   $('#backlinks').innerHTML = bl.length ? bl.map((b) => `<li><a href="#" data-bl="${esc(b.path)}" data-bl-line="${b.line}" title="${esc(b.text)}"><span class="bl-name">${esc(stem(b.path))}</span><span class="bl-kind">${kindLabel[b.kind] || b.kind}</span><span class="bl-ref">${esc(b.ref)}</span></a></li>`).join('')
-    : '<li class="outline-empty">No other document links here yet.</li>';
+    : '<li class="outline-empty">' + tr('app.no-other-document-links-here-yet') + '</li>';
   const st = $('#st-links'); st.hidden = !bl.length && !broken.length;
   st.textContent = [bl.length ? `${bl.length} ${bl.length === 1 ? 'link' : 'links'} here` : '', broken.length ? `${broken.length} broken` : ''].filter(Boolean).join(' · ');
   st.onclick = () => showMenu(st, [
-    ...(bl.length ? [{ head: 'Linked from' }, ...bl.map((b) => ({ label: `${stem(b.path)}: ${b.ref}`, run: () => openFile(b.path, { line: b.line }) }))] : []),
-    ...(broken.length ? [{ head: 'Broken references here' }, ...broken.map((b) => ({ label: `Line ${b.line}: ${b.ref}`, run: () => openFile(t.path, { line: b.line }) }))] : []),
+    ...(bl.length ? [{ head: tr('app.linked-from') }, ...bl.map((b) => ({ label: `${stem(b.path)}: ${b.ref}`, run: () => openFile(b.path, { line: b.line }) }))] : []),
+    ...(broken.length ? [{ head: tr('app.broken-references-here') }, ...broken.map((b) => ({ label: tr('app.line-line-ref', { line: b.line, ref: b.ref }), run: () => openFile(t.path, { line: b.line }) }))] : []),
   ]);
   const box = $('#broken-links'); box.hidden = !broken.length;
-  box.innerHTML = broken.length ? `<b>${broken.length} broken ${broken.length === 1 ? 'reference' : 'references'}</b>${broken.map((b) => { const nm = /^\[\[([^\]|#]+)\]\]$/.exec(b.ref)?.[1]?.trim(); return `<span class="broken-row"><a href="#" data-bl="${esc(t.path)}" data-bl-line="${b.line}">Line ${b.line}: ${esc(b.ref)}</a>${nm && !/\.\w{2,5}$/.test(nm) ? `<button type="button" class="btn btn-quiet" data-create-page="${esc(nm)}">Create page</button>` : ''}</span>`; }).join('')}` : '';
+  box.innerHTML = broken.length ? `<b>${tr('app.broken-references', { n: broken.length })}</b>${broken.map((b) => { const nm = /^\[\[([^\]|#]+)\]\]$/.exec(b.ref)?.[1]?.trim(); return `<span class="broken-row"><a href="#" data-bl="${esc(t.path)}" data-bl-line="${b.line}">${esc(tr('app.line-line-ref', { line: b.line, ref: b.ref }))}</a>${nm && !/\.\w{2,5}$/.test(nm) ? `<button type="button" class="btn btn-quiet" data-create-page="${esc(nm)}">${tr('app.create-page')}</button>` : ''}</span>`; }).join('')}` : '';
 }
 /* unlinked mentions: the name of this page written without a link, with a one-click "Link" (Obsidian, Notion) */
 function renderUnlinked(list) {
@@ -892,7 +899,7 @@ function renderUnlinked(list) {
   ul.innerHTML = (list.length > 1 ? `<li class="unlinked-all"><button type="button" class="btn btn-quiet" data-link-all>${esc(tr('links.linkAll', { n: list.length }))}</button></li>` : '') + list.slice(0, 50).map((m, i) => {
     const t = m.text, k = t.toLowerCase().indexOf(m.match.toLowerCase());
     const snip = k < 0 ? esc(t) : `${esc(t.slice(0, k))}<mark>${esc(t.slice(k, k + m.match.length))}</mark>${esc(t.slice(k + m.match.length))}`;
-    return `<li class="unlinked-row"><a href="#" data-bl="${esc(m.path)}" data-bl-line="${m.line}" title="${esc(m.path)}"><span class="bl-name">${esc(stem(m.path))}</span><span class="bl-ref unlinked-snip">${snip}</span></a><button type="button" class="btn btn-quiet" data-link-mention="${i}" aria-label="Link this mention in ${esc(stem(m.path))}">Link</button></li>`;
+    return `<li class="unlinked-row"><a href="#" data-bl="${esc(m.path)}" data-bl-line="${m.line}" title="${esc(m.path)}"><span class="bl-name">${esc(stem(m.path))}</span><span class="bl-ref unlinked-snip">${snip}</span></a><button type="button" class="btn btn-quiet" data-link-mention="${i}" aria-label="Link this mention in ${esc(stem(m.path))}">${tr('app.link')}</button></li>`;
   }).join('');
   ul._list = list;
 }
@@ -900,11 +907,11 @@ async function linkOneMention(m) {
   const tab = tabOf(m.path);
   const text = tab ? tab.text : await folio.read(m.path);
   const hit = findMentions(text, m.name).find((x) => x.start === m.start) || findMentions(text, m.name).find((x) => x.line === m.line);
-  if (!hit) { toast('That mention changed. Refreshing.'); return renderBacklinks(); }
+  if (!hit) { toast(tr('app.that-mention-changed-refreshing')); return renderBacklinks(); }
   const next = linkMention(text, hit, m.name);
   if (tab) { tab.text = next; if (S.active === tab.path) setActiveText(next); await saveTab(tab); }
   else await folio.write(m.path, next);
-  toast(`Linked “${m.name}” in ${stem(m.path)}.`, { action: ['Undo', async () => { if (tab) { tab.text = text; if (S.active === tab.path) setActiveText(text); await saveTab(tab); } else await folio.write(m.path, text); renderBacklinks(); }] });
+  toast(tr('app.linked-name-in-path', { name: m.name, path: stem(m.path) }), { action: [tr('app.undo'), async () => { if (tab) { tab.text = text; if (S.active === tab.path) setActiveText(text); await saveTab(tab); } else await folio.write(m.path, text); renderBacklinks(); }] });
   renderBacklinks();
 }
 /* Link all: every mention of this page's name, in every document, one undoable step */
@@ -923,18 +930,18 @@ async function linkAllMentionsNow(list) {
 $('#unlinked').addEventListener('click', (e) => { if (e.target.closest('[data-link-all]')) { e.preventDefault(); return linkAllMentionsNow($('#unlinked')._list); } const b = e.target.closest('[data-link-mention]'); if (b) { e.preventDefault(); linkOneMention($('#unlinked')._list[Number(b.dataset.linkMention)]); } });
 $('#broken-links').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-create-page]'); if (!b) return; e.preventDefault();
-  try { const p = await folio.create(b.dataset.createPage + '.md', `# ${b.dataset.createPage}\n\n`); await refreshTree(); toast(`Created ${p}.`); renderBacklinks(); } catch (er) { toast(er.message, { kind: 'error' }); }
+  try { const p = await folio.create(b.dataset.createPage + '.md', `# ${b.dataset.createPage}\n\n`); await refreshTree(); toast(tr('app.created-p', { p })); renderBacklinks(); } catch (er) { toast(er.message, { kind: 'error' }); }
 });
 $('#outline-list').addEventListener('contextmenu', (e) => {
   const a = e.target.closest('a[data-i]'); if (!a || curType() !== 'md') return; e.preventDefault();
   const h = currentHeads[Number(a.dataset.i)]; const part = h.text.replace(/[*_`]/g, '');
   const i = Number(a.dataset.i);
   showMenu(null, [
-    { label: 'Promote (one level up)', disabled: h.level <= 1, run: () => shiftSectionAt(i, -1) }, { label: 'Demote (one level down)', disabled: h.level >= 6, run: () => shiftSectionAt(i, 1) },
-    { label: 'Move section up', run: () => { let k = i - 1; while (k >= 0 && currentHeads[k].level > h.level) k--; if (k >= 0) moveSectionTo(i, k); } },
-    { label: 'Move section to the end', run: () => moveSectionTo(i, -1) },
+    { label: tr('app.promote-one-level-up'), disabled: h.level <= 1, run: () => shiftSectionAt(i, -1) }, { label: tr('app.demote-one-level-down'), disabled: h.level >= 6, run: () => shiftSectionAt(i, 1) },
+    { label: tr('app.move-section-up'), run: () => { let k = i - 1; while (k >= 0 && currentHeads[k].level > h.level) k--; if (k >= 0) moveSectionTo(i, k); } },
+    { label: tr('app.move-section-to-the-end'), run: () => moveSectionTo(i, -1) },
     '-',
-    { label: 'Copy link to this section', run: () => copyRef(S.active, part, 'link') }, { label: 'Copy embed reference', run: () => copyRef(S.active, part, 'embed') }], { x: e.clientX, y: e.clientY });
+    { label: tr('app.copy-link-to-this-section'), run: () => copyRef(S.active, part, 'link') }, { label: tr('app.copy-embed-reference'), run: () => copyRef(S.active, part, 'embed') }], { x: e.clientX, y: e.clientY });
 });
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-bl]'); if (!a) return; e.preventDefault();
@@ -1033,7 +1040,7 @@ function updateStart() {
   const on = !!t && curType() === 'md' && isRich() && S.workspace && !t.path.startsWith(TEMPLATE_DIR + '/') && emptyPage(t.text);
   if (!on) { if (startEl) startEl.hidden = true; return; }
   if (!startEl) {
-    startEl = document.createElement('div'); startEl.className = 'start-with'; startEl.setAttribute('role', 'group'); startEl.setAttribute('aria-label', 'Start with');
+    startEl = document.createElement('div'); startEl.className = 'start-with'; startEl.setAttribute('role', 'group'); startEl.setAttribute('aria-label', tr('app.start-with'));
     $('#pane-rich .rich-page').append(startEl);
     startEl.addEventListener('click', (e) => {
       const b = e.target.closest('[data-start]'); if (!b) return;
@@ -1049,11 +1056,11 @@ function updateStart() {
   const picks = []; for (const id of [...recent, ...all.filter((x) => x.source === 'mine').map((x) => x.id), 'Meeting notes', 'Project brief', 'Decision log', 'Status report']) { const x = byId(id); if (x && !picks.includes(x)) picks.push(x); if (picks.length === 4) break; }
   startEl.hidden = false; placeStart();
   const sig = picks.map((x) => x.id).join('|'); if (startEl.dataset.sig === sig) return; startEl.dataset.sig = sig;
-  startEl.innerHTML = `<p class="start-title">Start with</p><div class="start-grid">
-    <button type="button" class="start-card" data-start="empty">${icons.file || ''}<span class="start-name">Empty page</span><span class="start-sub">Just start writing</span></button>
+  startEl.innerHTML = `<p class="start-title">${tr('app.start-with')}</p><div class="start-grid">
+    <button type="button" class="start-card" data-start="empty">${icons.file || ''}<span class="start-name">${tr('app.empty-page')}</span><span class="start-sub">${tr('app.just-start-writing')}</span></button>
     ${picks.map((x) => `<button type="button" class="start-card" data-start="${esc(x.id)}"><span class="start-glyph" aria-hidden="true">${esc(x.icon || '📄')}</span><span class="start-name">${esc(x.name)}</span><span class="start-sub">${esc(x.desc || x.category || '')}</span></button>`).join('')}
-    <button type="button" class="start-card start-more" data-start="gallery">${icons.template || icons.plus || ''}<span class="start-name">All templates…</span><span class="start-sub">Browse the gallery</span></button>
-    <button type="button" class="start-card start-more" data-start="import">${icons.upload || icons.plus || ''}<span class="start-name">Import…</span><span class="start-sub">Word or HTML</span></button></div>`;
+    <button type="button" class="start-card start-more" data-start="gallery">${icons.template || icons.plus || ''}<span class="start-name">${tr('app.all-templates')}</span><span class="start-sub">${tr('app.browse-the-gallery')}</span></button>
+    <button type="button" class="start-card start-more" data-start="import">${icons.upload || icons.plus || ''}<span class="start-name">${tr('app.import')}</span><span class="start-sub">${tr('app.word-or-html')}</span></button></div>`;
 }
 function renderStatus() {
   updateStart();
@@ -1063,15 +1070,15 @@ function renderStatus() {
   const words = (t.text.replace(/^---[\s\S]*?---/, '').replace(/```[\s\S]*?```/g, '').match(/[\p{L}\p{N}’'-]+/gu) || []).length;
   const fmt = new Intl.NumberFormat();
   $('#st-path').textContent = t.path;
-  if (curType() !== 'md') { $('#st-words').textContent = S.surfaceStatus || ''; $('#st-time').textContent = ''; $('#st-cursor').textContent = app.dataset.modeView === 'visual' ? '' : `Line ${S.cursor.line}, column ${S.cursor.col}`; return; }
-  $('#st-words').textContent = `${fmt.format(words)} ${words === 1 ? 'word' : 'words'}`;
-  $('#st-time').textContent = `${Math.max(1, Math.round(words / 230))} min read`;
-  $('#st-cursor').textContent = isRich() ? '' : S.cursor.selection ? `${fmt.format(S.cursor.selection.length)} selected` : `Line ${S.cursor.line}, column ${S.cursor.col}`;
+  if (curType() !== 'md') { $('#st-words').textContent = S.surfaceStatus || ''; $('#st-time').textContent = ''; $('#st-cursor').textContent = app.dataset.modeView === 'visual' ? '' : tr('app.cursor-pos', { line: S.cursor.line, col: S.cursor.col }); return; }
+  $('#st-words').textContent = tr('app.words', { n: words });
+  $('#st-time').textContent = tr('app.min-read', { n: Math.max(1, Math.round(words / 230)) });
+  $('#st-cursor').textContent = isRich() ? '' : S.cursor.selection ? tr('app.n-selected', { n: S.cursor.selection.length }) : tr('app.cursor-pos', { line: S.cursor.line, col: S.cursor.col });
   const st = isRich() ? S.richStats : null; const zoomEl = $('#st-zoom');
   if (st) {
-    $('#st-words').textContent = st.selection ? `${fmt.format(st.selection.words)} of ${fmt.format(st.words)} words` : `${fmt.format(st.words)} ${st.words === 1 ? 'word' : 'words'}`;
-    $('#st-time').textContent = st.selection ? `${fmt.format(st.selection.chars)} characters selected` : `${fmt.format(st.chars)} characters · ${Math.max(1, Math.round(st.words / 230))} min read`;
-    zoomEl.hidden = false; $('#st-zoom-val').textContent = `${Math.round(st.zoom * 100)}%`; $('#st-zoom-val').setAttribute('aria-label', `${Math.round(st.zoom * 100)}% zoom, reset to 100%`);
+    $('#st-words').textContent = st.selection ? tr('app.words-of', { n: st.selection.words, total: fmt.format(st.words) }) : tr('app.words', { n: st.words });
+    $('#st-time').textContent = st.selection ? tr('app.chars-selected', { n: st.selection.chars }) : `${tr('app.chars', { n: st.chars })} · ${tr('app.min-read', { n: Math.max(1, Math.round(st.words / 230)) })}`;
+    zoomEl.hidden = false; $('#st-zoom-val').textContent = `${Math.round(st.zoom * 100)}%`; $('#st-zoom-val').setAttribute('aria-label', tr('app.zoom-reset', { pct: Math.round(st.zoom * 100) }));
   } else zoomEl.hidden = true;
 }
 
@@ -1080,28 +1087,28 @@ function showEmpty(html) { const e = $('#empty-state'); e.innerHTML = `<div clas
 function hideEmpty() { $('#empty-state').hidden = true; }
 function showWelcome() {
   S.workspace = null; S.tabs = []; S.active = null;
-  $('#workspace-name').textContent = 'No folder';
-  $('#tree').innerHTML = '<div class="side-empty">Open a folder to see its notes here.</div>';
+  $('#workspace-name').textContent = tr('ui.no-folder');
+  $('#tree').innerHTML = '<div class="side-empty">' + tr('app.open-a-folder-to-see-its-notes-here') + '</div>';
   renderTabs(); renderStatus(); hideAiBanner();
   const recent = (S.settings.recent || []).slice(0, 5);
   showEmpty(`
-    <h1>Open a folder and start writing</h1>
-    <p>Folio edits plain Markdown files on your disk. Connect Claude, Cursor or any MCP app, and they read and edit the same notes while you watch.</p>
+    <h1>${tr('app.open-a-folder-and-start-writing')}</h1>
+    <p>${tr('app.folio-edits-plain-markdown-files-on-yo')}</p>
     <div class="empty-actions">
-      <button class="btn btn-primary btn-lg" type="button" data-act="choose">Open folder…</button>
-      <button class="btn btn-lg" type="button" data-act="ai">Connect an AI</button>
+      <button class="btn btn-primary btn-lg" type="button" data-act="choose">${tr('app.open-folder')}</button>
+      <button class="btn btn-lg" type="button" data-act="ai">${tr('app.connect-an-ai')}</button>
     </div>
-    ${recent.length ? `<div class="recent"><h2>Recent folders</h2><ul class="recent-list">${recent.map((d) => `<li><button type="button" data-recent="${esc(d)}"><span class="recent-name">${esc(d.split(/[\\/]/).filter(Boolean).pop())}</span><span class="recent-path">${esc(d)}</span></button></li>`).join('')}</ul></div>` : ''}`);
+    ${recent.length ? `<div class="recent"><h2>${tr('app.recent-folders')}</h2><ul class="recent-list">${recent.map((d) => `<li><button type="button" data-recent="${esc(d)}"><span class="recent-name">${esc(d.split(/[\\/]/).filter(Boolean).pop())}</span><span class="recent-path">${esc(d)}</span></button></li>`).join('')}</ul></div>` : ''}`);
 }
 function showNoNote() {
   hideAiBanner();
   $('#preview').innerHTML = ''; editor.setDoc(''); renderOutline(); renderStatus();
   showEmpty(`
-    <h1>Pick a note, or start a new one</h1>
-    <p>Everything saves as you type. Press ${keyLabel('Mod+P')} to jump to any note by name.</p>
+    <h1>${tr('app.pick-a-note-or-start-a-new-one')}</h1>
+    <p>${tr('app.everything-saves', { key: keyLabel('Mod+P') })}</p>
     <div class="empty-actions">
-      <button class="btn btn-primary btn-lg" type="button" data-act="new">New note</button>
-      <button class="btn btn-lg" type="button" data-act="quick-open">Quick open…</button>
+      <button class="btn btn-primary btn-lg" type="button" data-act="new">${tr('app.new-note-2')}</button>
+      <button class="btn btn-lg" type="button" data-act="quick-open">${tr('app.quick-open')}</button>
     </div>`);
 }
 
@@ -1129,23 +1136,23 @@ function newDocSheet({ folder, type = 'md', fromTemplate = false }) {
     const d = $('#sheet-prompt');
     const types = Object.keys(TYPE_INFO).filter((t) => t === 'md' || SURFACES[t]);
     d.innerHTML = `<form method="dialog">
-      <div class="sheet-head"><div><h2 id="prompt-title">New document</h2><p>${folder ? `In ${esc(folder)}` : 'At the top of the folder'}. Every type is a Markdown file your AI can read and edit.</p></div></div>
+      <div class="sheet-head"><div><h2 id="prompt-title">${tr('app.new-document')}</h2><p>${folder ? `In ${esc(folder)}` : 'At the top of the folder'}. Every type is a Markdown file your AI can read and edit.</p></div></div>
       <div class="sheet-body">
-        <fieldset class="type-pick"><legend class="visually-hidden">Type</legend>
-          ${types.map((t) => `<label class="type-card"><input type="radio" name="type" value="${t}" ${t === type ? 'checked' : ''}><span class="type-icon">${typeIcon(t)}</span><span class="type-name">${TYPE_INFO[t][0]}</span><span class="type-desc">${TYPE_INFO[t][1]}</span></label>`).join('')}
+        <fieldset class="type-pick"><legend class="visually-hidden">${tr('app.type')}</legend>
+          ${types.map((t) => `<label class="type-card"><input type="radio" name="type" value="${t}" ${t === type ? 'checked' : ''}><span class="type-icon">${typeIcon(t)}</span><span class="type-name">${tr(`app.type-${t}`)}</span><span class="type-desc">${tr(`app.typedesc-${t}`)}</span></label>`).join('')}
         </fieldset>
-        <div class="field" style="margin-top:var(--space-md)"><label for="prompt-input">Name</label>
+        <div class="field" style="margin-top:var(--space-md)"><label for="prompt-input">${tr('app.name')}</label>
           <input class="input" id="prompt-input" type="text" autocomplete="off" spellcheck="false" value="Untitled" required aria-describedby="prompt-help"><span class="field-help" id="prompt-help"></span></div>
-        <div class="field new-tpl" style="margin-top:var(--space-sm)"><label for="new-template">Template</label>
-          <select class="rb-select" id="new-template"><option value="">Blank page</option>${listTemplates(S.files).map((t, i) => `<option value="${i}">${esc(t.name)}${t.starter ? ' (starter)' : ''}</option>`).join('')}</select></div>
+        <div class="field new-tpl" style="margin-top:var(--space-sm)"><label for="new-template">${tr('app.template')}</label>
+          <select class="rb-select" id="new-template"><option value="">${tr('app.blank-page')}</option>${listTemplates(S.files).map((t, i) => `<option value="${i}">${esc(t.name)}${t.starter ? ' (starter)' : ''}</option>`).join('')}</select></div>
       </div>
-      <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Create</button></div></form>`;
+      <div class="sheet-foot"><button class="btn" type="button" data-cancel>${tr('app.cancel')}</button><button class="btn btn-primary" type="submit">${tr('app.create')}</button></div></form>`;
     const input = $('#prompt-input', d);
     const done = (v) => { d.close(); resolve(v); };
     d.querySelector('form').onsubmit = (e) => {
       e.preventDefault();
       const v = input.value.trim();
-      if (!v || /[\\:*?"<>|]/.test(v)) { $('#prompt-help', d).textContent = 'Use a name without \\ : * ? " < > |'; $('#prompt-help', d).dataset.error = 'true'; input.focus(); return; }
+      if (!v || /[\\:*?"<>|]/.test(v)) { $('#prompt-help', d).textContent = tr('app.bad-name'); $('#prompt-help', d).dataset.error = 'true'; input.focus(); return; }
       const tv = $('#new-template', d).value;
       done({ name: v, type: d.querySelector('input[name=type]:checked').value, template: tv === '' ? null : listTemplates(S.files)[+tv] });
     };
@@ -1158,12 +1165,12 @@ function newDocSheet({ folder, type = 'md', fromTemplate = false }) {
   });
 }
 async function newFolder(parent = '') {
-  const name = await prompt({ title: 'New folder', label: 'Name', value: '', action: 'Create' });
+  const name = await prompt({ title: tr('app.new-folder-2'), label: tr('app.name'), value: '', action: tr('app.create') });
   if (!name) return;
   try { const p = (parent ? parent + '/' : '') + name; await folio.mkdir(p); S.expanded.add(p); await refreshTree(); } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 async function renamePath(p, isDir) {
-  const name = await prompt({ title: isDir ? 'Rename folder' : 'Rename note', label: 'Name', value: isDir ? base(p) : stem(p), action: 'Rename' });
+  const name = await prompt({ title: tr(isDir ? 'app.rename-folder' : 'app.rename-note'), label: tr('app.name'), value: isDir ? base(p) : stem(p), action: tr('app.rename-2') });
   if (!name) return;
   const ext = isDir ? '' : (p.match(/(\.(slides|board|sheet))?\.\w+$/i)?.[0] || '.md');
   const to = (dirOf(p) ? dirOf(p) + '/' : '') + name + (isDir || /\.\w+$/.test(name) ? '' : ext);
@@ -1175,7 +1182,7 @@ async function movePath(from, to, isDir) {
     const r = await folio.rename(from, to);
     retargetTabs(from, to);
     const n = r?.changed?.length || 0;
-    if (n) toast(`Updated links in ${n} ${n === 1 ? 'document' : 'documents'}.`, { action: ['Undo', () => movePath(to, from, isDir)] });
+    if (n) toast(tr('app.updated-links-in-n-documents', { n: n }), { action: [tr('app.undo'), () => movePath(to, from, isDir)] });
     await refreshTree();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
@@ -1190,7 +1197,7 @@ function retargetTabs(from, to) {
   renderTabs(); renderStatus(); persistTabs();
 }
 async function trashPath(p, isDir) {
-  const ok = await confirmSheet({ title: `Move “${isDir ? base(p) : stem(p)}” to the Trash?`, body: 'You can restore it from the system Trash.', action: 'Move to Trash', danger: true });
+  const ok = await confirmSheet({ title: tr('app.move-p-to-the-trash', { p: isDir ? base(p) : stem(p) }), body: tr('app.you-can-restore-it-from-the-system-tra'), action: tr('app.move-to-trash'), danger: true });
   if (!ok) return;
   try {
     await folio.trash(p);
@@ -1220,7 +1227,7 @@ const runSearch = debounce(async (q) => {
   const files = $('#section-files'), res = $('#section-results');
   if (!q.trim()) { files.hidden = false; res.hidden = true; return; }
   files.hidden = true; res.hidden = false;
-  if (!S.workspace) { $('#results').innerHTML = '<div class="side-empty">Open a folder to search it.</div>'; return; }
+  if (!S.workspace) { $('#results').innerHTML = '<div class="side-empty">' + tr('app.open-a-folder-to-search-it') + '</div>'; return; }
   const tagQ = /^(?:#|tag:#?)([\p{L}\p{N}_\-/]+)$/u.exec(q.trim());
   if (tagQ) {
     const want = tagQ[1].toLowerCase(); const all = await tagIndex();
@@ -1232,15 +1239,15 @@ const runSearch = debounce(async (q) => {
   try {
     const results = await folio.search(q, { limit: 80 });
     const total = results.reduce((n, r) => n + r.total, 0);
-    $('#results-head').textContent = results.length ? `${total} ${total === 1 ? 'match' : 'matches'} in ${results.length} ${results.length === 1 ? 'note' : 'notes'}` : 'No matches';
+    $('#results-head').textContent = results.length ? `${tr('app.n-matches', { n: total })} ${tr('app.in-n-notes', { n: results.length })}` : tr('app.no-matches-head');
     const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     $('#results').innerHTML = results.length ? results.map((r) => `
       <button class="result" type="button" data-file="${esc(r.path)}" data-line="${r.matches[0]?.line || 1}">
         <span class="result-name">${esc(stem(r.path))}</span>
         ${dirOf(r.path) ? `<span class="result-folder">${esc(dirOf(r.path))}</span>` : ''}
         ${r.matches.slice(0, 2).map((m) => `<span class="result-line">${esc(m.text).replace(re, (x) => `<mark>${x}</mark>`)}</span>`).join('')}
-      </button>`).join('') : `<div class="side-empty">Nothing in this folder matches “${esc(q)}”.</div>`;
-  } catch (e) { $('#results').innerHTML = `<div class="side-empty">Search failed. ${esc(e.message)}</div>`; }
+      </button>`).join('') : `<div class="side-empty">${esc(tr('app.nothing-matches', { q }))}</div>`;
+  } catch (e) { $('#results').innerHTML = `<div class="side-empty">${esc(tr('app.search-failed', { message: e.message }))}</div>`; }
 }, 160);
 
 /* ============ AI edits: the signature ============ */
@@ -1265,10 +1272,10 @@ function onAiEdit({ path: p, before, after, client, created, orphans }) {
   if (t) {
     const userDirty = t.text !== t.saved;
     t.saved = after;
-    if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(`${client} changed this note while you had unsaved edits. Press ${keyLabel('Mod+Z')} to get yours back.`); }
+    if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(tr('app.client-changed-this-note-while-you-had', { client, Z: keyLabel('Mod+Z') })); }
     else t.text = after;
   } else {
-    toast(`${client} ${created ? 'created' : 'edited'} ${stem(p)}.`, { action: ['Open', () => openFile(p)] });
+    toast(tr(created ? 'app.ai-created' : 'app.ai-edited', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] });
   }
   if (created) refreshTree(); else renderTree();
   renderTabs();
@@ -1300,9 +1307,9 @@ function showAiBanner(p) {
   const rec = S.aiEdits.get(p); if (!rec) return;
   const { added, removed } = rec.stats;
   const bits = [added && `${added} ${added === 1 ? 'line' : 'lines'} added`, removed && `${removed} removed`].filter(Boolean).join(', ');
-  $('#ai-banner-text').innerHTML = `<strong>${esc(rec.client)}</strong> ${rec.created ? 'created' : 'edited'} this note <span>${bits ? `(${bits})` : ''} at ${new Date(rec.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+  $('#ai-banner-text').innerHTML = `<strong>${esc(rec.client)}</strong> ${tr(rec.created ? 'app.ai-banner-created' : 'app.ai-banner-edited')} <span>${bits ? `(${bits})` : ''} ${tr('app.at-time', { time: new Date(rec.at).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) })}</span>`;
   $('#ai-banner').hidden = false;
-  $('#ai-banner-undo').textContent = rec.created ? 'Remove note' : 'Undo';
+  $('#ai-banner-undo').textContent = tr(rec.created ? 'app.remove-note' : 'ui.undo');
 }
 function hideAiBanner() { $('#ai-banner').hidden = true; }
 function dismissAi(p = S.active) {
@@ -1318,8 +1325,8 @@ async function undoAi(p = S.active) {
     const t = tabOf(p);
     if (t) { t.saved = rec.before; if (p === S.active) setActiveText(rec.before); else t.text = rec.before; }
     dismissAi(p); renderPreview(); renderOutline();
-    toast(`Restored ${stem(p)} to how it was before ${rec.client} edited it.`);
-  } catch (e) { toast(`Could not undo. ${e.message}`, { kind: 'error' }); }
+    toast(tr('app.restored-p-to-how-it-was-before-client', { p: stem(p), client: rec.client }));
+  } catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); }
 }
 function openDiff(p = S.active) {
   const rec = S.aiEdits.get(p); if (!rec) return;
@@ -1331,17 +1338,17 @@ function openDiff(p = S.active) {
       const keep = lines.length > 7 && idx !== 0 && idx !== parts.length - 1 ? [...lines.slice(0, 3).map((l, i) => [l, a + i, b + i]), null, ...lines.slice(-3).map((l, i) => [l, a + lines.length - 3 + i, b + lines.length - 3 + i])]
         : lines.length > 4 && (idx === 0 || idx === parts.length - 1) ? (idx === 0 ? [null, ...lines.slice(-3).map((l, i) => [l, a + lines.length - 3 + i, b + lines.length - 3 + i])] : [...lines.slice(0, 3).map((l, i) => [l, a + i, b + i]), null])
         : lines.map((l, i) => [l, a + i, b + i]);
-      for (const k of keep) rows.push(k ? `<div class="diff-line"><span class="n">${k[2]}</span><span class="s"></span><span class="t">${esc(k[0]) || ' '}</span></div>` : '<div class="diff-gap">Unchanged lines hidden</div>');
+      for (const k of keep) rows.push(k ? `<div class="diff-line"><span class="n">${k[2]}</span><span class="s"></span><span class="t">${esc(k[0]) || ' '}</span></div>` : '<div class="diff-gap">' + tr('app.unchanged-lines-hidden') + '</div>');
       a += lines.length; b += lines.length;
     } else if (part.removed) { lines.forEach((l, i) => rows.push(`<div class="diff-line del"><span class="n">${a + i}</span><span class="s">−</span><span class="t">${esc(l) || ' '}</span></div>`)); a += lines.length; }
     else { lines.forEach((l, i) => rows.push(`<div class="diff-line add"><span class="n">${b + i}</span><span class="s">+</span><span class="t">${esc(l) || ' '}</span></div>`)); b += lines.length; }
   });
   const d = $('#sheet-diff');
   d.innerHTML = `
-    <div class="sheet-head"><div><h2 id="diff-title">Changes by ${esc(rec.client)}</h2><p>${esc(p)}, compared with the note before the first AI edit in this session.</p></div>
-      <button class="icon-btn" type="button" data-close-sheet aria-label="Close">${icons.close}</button></div>
+    <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))}</p></div>
+      <button class="icon-btn" type="button" data-close-sheet aria-label="${tr('app.close')}">${icons.close}</button></div>
     <div class="sheet-body"><div class="diff-summary"><span>+ ${rec.stats.added} added</span><span>− ${rec.stats.removed} removed</span></div><div class="diff">${rows.join('')}</div></div>
-    <div class="sheet-foot"><button class="btn" type="button" data-diff="undo">Undo all changes</button><button class="btn btn-primary" type="button" data-diff="keep">Keep changes</button></div>`;
+    <div class="sheet-foot"><button class="btn" type="button" data-diff="undo">${tr('app.undo-all-changes')}</button><button class="btn btn-primary" type="button" data-diff="keep">${tr('app.keep-changes')}</button></div>`;
   d.showModal(); d.querySelector('[data-diff="keep"]').focus();
 }
 
@@ -1351,8 +1358,8 @@ function renderAiStatus() {
   const el = $('#ai-status');
   const recent = m.activity?.[0];
   el.dataset.state = m.port ? 'on' : 'off';
-  $('#ai-status-title').textContent = m.port ? (m.allowWrite ? 'AI can read and edit' : 'AI can read only') : 'AI access off';
-  $('#ai-status-sub').textContent = m.error ? m.error : !m.enabled ? 'Turn on in AI settings' : recent ? `Last used by ${recent.client}` : 'Connect Claude, Cursor and more';
+  $('#ai-status-title').textContent = tr(m.port ? (m.allowWrite ? 'app.ai-read-edit' : 'app.ai-read-only') : 'app.ai-off');
+  $('#ai-status-sub').textContent = m.error ? m.error : !m.enabled ? tr('app.ai-turn-on') : recent ? tr('app.ai-last-used', { client: recent.client }) : tr('app.ai-connect-more');
 }
 async function openAiSheet() {
   const d = $('#sheet-ai');
@@ -1360,44 +1367,44 @@ async function openAiSheet() {
   const m = S.mcp || {};
   const logos = { claude: 'C', cursor: 'Cu', vscode: 'VS', windsurf: 'W', lmstudio: 'LM' };
   d.innerHTML = `
-    <div class="sheet-head"><div><h2 id="ai-title">Connect your AI</h2><p>Folio runs an MCP server on this computer. Apps you connect can list, search, read and edit the notes in the open folder, and every edit appears here with an undo.</p></div>
-      <button class="icon-btn" type="button" data-close-sheet aria-label="Close">${icons.close}</button></div>
+    <div class="sheet-head"><div><h2 id="ai-title">${tr('app.connect-your-ai')}</h2><p>${tr('app.folio-runs-an-mcp-server-on-this-compu')}</p></div>
+      <button class="icon-btn" type="button" data-close-sheet aria-label="${tr('app.close')}">${icons.close}</button></div>
     <div class="sheet-body">
       <section class="group"><div class="rows">
-        <div class="row"><div class="row-main"><span class="row-title">Allow AI access</span><span class="row-sub">${m.port ? `Listening on 127.0.0.1, port ${m.port}` : m.error ? esc(m.error) : 'The server is stopped.'}</span></div>
-          <label class="switch"><input type="checkbox" role="switch" data-setting="mcpEnabled" ${m.enabled ? 'checked' : ''} aria-label="Allow AI access"></label></div>
-        <div class="row"><div class="row-main"><span class="row-title">Let AI edit notes</span><span class="row-sub">Off means assistants can only read and search.</span></div>
-          <label class="switch"><input type="checkbox" role="switch" data-setting="allowWrite" ${m.allowWrite ? 'checked' : ''} aria-label="Let AI edit notes"></label></div>
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.allow-ai-access')}</span><span class="row-sub">${m.port ? `Listening on 127.0.0.1, port ${m.port}` : m.error ? esc(m.error) : 'The server is stopped.'}</span></div>
+          <label class="switch"><input type="checkbox" role="switch" data-setting="mcpEnabled" ${m.enabled ? 'checked' : ''} aria-label="${tr('app.allow-ai-access')}"></label></div>
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.let-ai-edit-notes')}</span><span class="row-sub">${tr('app.off-means-assistants-can-only-read-and')}</span></div>
+          <label class="switch"><input type="checkbox" role="switch" data-setting="allowWrite" ${m.allowWrite ? 'checked' : ''} aria-label="${tr('app.let-ai-edit-notes')}"></label></div>
       </div></section>
 
-      <section class="group"><h3>Apps on this computer</h3><p class="group-note">Connect writes Folio into the app’s MCP config file and keeps a backup of the old one.</p>
+      <section class="group"><h3>${tr('app.apps-on-this-computer')}</h3><p class="group-note">${tr('app.connect-writes-folio-into-the-app-s-mc')}</p>
         <div class="rows">${conn ? conn.list.map((c) => `
           <div class="row"><span class="app-logo" aria-hidden="true">${logos[c.id] || c.name[0]}</span>
-            <div class="row-main"><span class="row-title">${esc(c.name)}</span><span class="row-sub">${c.installed ? esc(c.restart) : c.appPresent ? 'Found on this computer' : 'Not found, the config is created when you connect'}</span></div>
+            <div class="row-main"><span class="row-title">${esc(c.name)}</span><span class="row-sub">${c.installed ? esc(c.restart) : tr(c.appPresent ? 'app.found-here' : 'app.not-found')}</span></div>
             <span class="row-state" data-on="${c.installed}">${c.installed ? `${icons.check} Connected` : ''}</span>
             <div class="row-actions">
-              <button class="icon-btn" type="button" data-copy-snippet="${c.id}" aria-label="Copy ${esc(c.name)} config" data-tip="Copy config">${icons.copy}</button>
-              ${c.installed ? `<button class="btn" type="button" data-uninstall="${c.id}">Disconnect</button>` : `<button class="btn" type="button" data-install="${c.id}">Connect</button>`}
-            </div></div>`).join('') : '<div class="row"><span class="row-sub">Could not read the app configs.</span></div>'}
+              <button class="icon-btn" type="button" data-copy-snippet="${c.id}" aria-label="${esc(tr('app.copy-name-config', { name: c.name }))}" data-tip="${tr('app.copy-config')}">${icons.copy}</button>
+              ${c.installed ? `<button class="btn" type="button" data-uninstall="${c.id}">${tr('app.disconnect')}</button>` : `<button class="btn" type="button" data-install="${c.id}">${tr('app.connect')}</button>`}
+            </div></div>`).join('') : '<div class="row"><span class="row-sub">' + tr('app.could-not-read-the-app-configs') + '</span></div>'}
         </div></section>
 
-      <section class="group"><h3>Claude Code</h3><p class="group-note">Run this once in a terminal.</p>
-        <div class="codebox"><code id="cc-cmd">${esc(conn?.claudeCode || '')}</code><button class="icon-btn" type="button" data-copy="#cc-cmd" aria-label="Copy command">${icons.copy}</button></div></section>
+      <section class="group"><h3>${tr('app.claude-code')}</h3><p class="group-note">${tr('app.run-this-once-in-a-terminal')}</p>
+        <div class="codebox"><code id="cc-cmd">${esc(conn?.claudeCode || '')}</code><button class="icon-btn" type="button" data-copy="#cc-cmd" aria-label="${tr('app.copy-command')}">${icons.copy}</button></div></section>
 
-      <section class="group"><h3>Any other MCP client</h3><p class="group-note">Streamable HTTP, local only. Send the token as a bearer header.</p>
+      <section class="group"><h3>${tr('app.any-other-mcp-client')}</h3><p class="group-note">${tr('app.streamable-http-local-only-send-the-to')}</p>
         <div class="rows">
-          <div class="row"><div class="row-main"><span class="row-title">URL</span><span class="row-sub" id="mcp-url">${esc(conn?.httpUrl || 'Server stopped')}</span></div><button class="icon-btn" type="button" data-copy="#mcp-url" aria-label="Copy URL">${icons.copy}</button></div>
-          <div class="row"><div class="row-main"><span class="row-title">Token</span><span class="row-sub" id="mcp-token" data-secret="${esc(token)}">${'•'.repeat(24)}</span></div>
-            <button class="btn btn-quiet" type="button" data-reveal-token>Show</button><button class="icon-btn" type="button" data-copy-token aria-label="Copy token">${icons.copy}</button><button class="btn" type="button" data-rotate>New token</button></div>
+          <div class="row"><div class="row-main"><span class="row-title">${tr('app.url')}</span><span class="row-sub" id="mcp-url">${esc(conn?.httpUrl || 'Server stopped')}</span></div><button class="icon-btn" type="button" data-copy="#mcp-url" aria-label="${tr('app.copy-url')}">${icons.copy}</button></div>
+          <div class="row"><div class="row-main"><span class="row-title">${tr('app.token')}</span><span class="row-sub" id="mcp-token" data-secret="${esc(token)}">${'•'.repeat(24)}</span></div>
+            <button class="btn btn-quiet" type="button" data-reveal-token>${tr('app.show')}</button><button class="icon-btn" type="button" data-copy-token aria-label="${tr('app.copy-token')}">${icons.copy}</button><button class="btn" type="button" data-rotate>${tr('app.new-token')}</button></div>
         </div></section>
 
-      <section class="group"><h3>Recent activity</h3><div class="rows" id="ai-activity">${activityHtml()}</div></section>
+      <section class="group"><h3>${tr('app.recent-activity')}</h3><div class="rows" id="ai-activity">${activityHtml()}</div></section>
     </div>`;
   if (!d.open) { d.showModal(); d.querySelector('.sheet-body input, .sheet-body button')?.focus(); }
 }
 function activityHtml() {
   const a = S.mcp?.activity || [];
-  if (!a.length) return '<p class="activity-empty">No assistant has used Folio yet. Once connected, ask it something like “summarise my notes about the roadmap”.</p>';
+  if (!a.length) return '<p class="activity-empty">' + tr('app.no-assistant-has-used-folio-yet-once-c') + '</p>';
   const verbs = { list_notes: 'listed notes', read_note: 'read', search_notes: 'searched for', get_outline: 'read the outline of', get_open_note: 'looked at your open note', create_note: 'created', write_note: 'rewrote', edit_note: 'edited', append_to_note: 'appended to', move_note: 'moved', open_note: 'opened' };
   return `<ul class="activity">${a.slice(0, 12).map((x) => `<li><span class="a-time">${new Date(x.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span class="a-client">${esc(x.client)}</span><span class="a-what">${esc(verbs[x.tool] || x.tool)} ${esc(x.path || '')}</span></li>`).join('')}</ul>`;
 }
@@ -1407,28 +1414,28 @@ function openSettings() {
   const s = S.settings;
   const d = $('#sheet-settings');
   d.innerHTML = `
-    <div class="sheet-head"><div><h2 id="settings-title">Settings</h2><p>Saved on this computer.</p></div><button class="icon-btn" type="button" data-close-sheet aria-label="Close">${icons.close}</button></div>
+    <div class="sheet-head"><div><h2 id="settings-title">${tr('app.settings-2')}</h2><p>${tr('app.saved-on-this-computer')}</p></div><button class="icon-btn" type="button" data-close-sheet aria-label="${tr('app.close')}">${icons.close}</button></div>
     <div class="sheet-body">
-      <section class="group"><h3>Appearance</h3><div class="rows">
-        <div class="row"><div class="row-main"><label class="row-title" for="set-theme">Theme</label></div>
-          <select class="select" id="set-theme" data-setting="theme"><option value="system">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+      <section class="group"><h3>${tr('app.appearance')}</h3><div class="rows">
+        <div class="row"><div class="row-main"><label class="row-title" for="set-theme">${tr('app.theme')}</label></div>
+          <select class="select" id="set-theme" data-setting="theme"><option value="system">${tr('app.match-system')}</option><option value="light">${tr('app.light')}</option><option value="dark">${tr('app.dark')}</option></select></div>
         <div class="row"><div class="row-main"><label class="row-title" for="set-lang">${esc(tr('settings.language'))}</label><span class="row-sub">${esc(tr('settings.languageHint'))}</span></div>
           <select class="select" id="set-lang" data-setting="language">${Object.entries(LOCALES).map(([c, l]) => `<option value="${c}">${esc(l.name)}</option>`).join('')}</select></div>
-        <div class="row"><div class="row-main"><label class="row-title" for="set-size">Text size</label><span class="row-sub">Editor and preview</span></div>
+        <div class="row"><div class="row-main"><label class="row-title" for="set-size">${tr('app.text-size')}</label><span class="row-sub">${tr('app.editor-and-preview')}</span></div>
           <select class="select" id="set-size" data-setting="fontSize">${[14, 15, 16, 17, 18, 20, 22].map((n) => `<option value="${n}">${n} pt</option>`).join('')}</select></div>
-        <div class="row"><div class="row-main"><label class="row-title" for="set-width">Line length</label><span class="row-sub">Characters per line</span></div>
+        <div class="row"><div class="row-main"><label class="row-title" for="set-width">${tr('app.line-length')}</label><span class="row-sub">${tr('app.characters-per-line')}</span></div>
           <select class="select" id="set-width" data-setting="lineWidth">${[60, 66, 72, 80, 96, 120].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></div>
       </div></section>
-      <section class="group"><h3>Writing</h3><div class="rows">
-        <div class="row"><div class="row-main"><span class="row-title">Check spelling</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="spellcheck" ${s.spellcheck ? 'checked' : ''} aria-label="Check spelling"></label></div>
-        <div class="row"><div class="row-main"><span class="row-title">Smart quotes and dashes</span><span class="row-sub">Typing " -- ... becomes “ – … in the Write view</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="Smart quotes and dashes"></label></div>
+      <section class="group"><h3>${tr('app.writing')}</h3><div class="rows">
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.check-spelling')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="spellcheck" ${s.spellcheck ? 'checked' : ''} aria-label="${tr('app.check-spelling')}"></label></div>
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.smart-quotes-and-dashes')}</span><span class="row-sub">${tr('app.typing-becomes-in-the-write-view')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="${tr('app.smart-quotes-and-dashes')}"></label></div>
       </div></section>
-      <section class="group"><h3>About</h3><div class="rows">
-        <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">Based on Folio by Gabriele Vaudano. Free software under the GNU AGPL-3.0: you may change and share it, keeping this attribution and publishing your changes.</span></div>
-          <button class="btn" type="button" data-open-url="https://github.com/gabrielevaudano98/folio">Source code</button></div>
+      <section class="group"><h3>${tr('app.about')}</h3><div class="rows">
+        <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">${tr('app.based-on-folio-by-gabriele-vaudano-fre')}</span></div>
+          <button class="btn" type="button" data-open-url="https://github.com/gabrielevaudano98/folio">${tr('app.source-code')}</button></div>
       </div></section>
-      <section class="group"><h3>AI server</h3><div class="rows">
-        <div class="row"><div class="row-main"><label class="row-title" for="set-port">Port</label><span class="row-sub field-help" id="port-help">Local only, 1024 to 65535</span></div>
+      <section class="group"><h3>${tr('app.ai-server')}</h3><div class="rows">
+        <div class="row"><div class="row-main"><label class="row-title" for="set-port">${tr('app.port')}</label><span class="row-sub field-help" id="port-help">${tr('app.local-only-1024-to-65535')}</span></div>
           <input class="input" id="set-port" type="text" inputmode="numeric" name="port" autocomplete="off" value="${s.mcpPort}" style="width:7rem" aria-describedby="port-help"></div>
       </div></section>
     </div>`;
@@ -1469,7 +1476,7 @@ function openHelp(query = '') {
 }
 
 /* command titles come from the catalogue (cmd.<id>); English stays in `en`, which the dedupe below compares against */
-function localizeCommands() { for (const c of COMMANDS) { c.en ??= c.title; const k = `cmd.${c.id}`; const v = tr(k); c.title = v === k ? c.en : v; } }
+function localizeCommands() { for (const c of COMMANDS) { c.en ??= c.title; const k = c.id === 'reveal' && S.platform === 'darwin' ? 'cmd.reveal-mac' : `cmd.${c.id}`; const v = tr(k); c.title = v === k ? c.en : v; } }
 
 /* ============ palette ============ */
 const COMMANDS = [
@@ -1523,7 +1530,7 @@ const COMMANDS = [
   { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
   { id: 'export-pdf', title: 'Export as PDF…', run: () => exportAs('pdf') },
-  { id: 'reveal', title: S.platform === 'darwin' ? 'Reveal in Finder' : 'Show in folder', run: () => folio.reveal(S.active || '') },
+  { id: 'reveal', title: 'Show in folder', run: () => folio.reveal(S.active || '') },
   { id: 'rename', title: 'Rename note…', run: () => S.active && renamePath(S.active, false) },
   { id: 'trash', title: 'Move note to Trash', run: () => S.active && trashPath(S.active, false) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
@@ -1560,13 +1567,13 @@ const COMMANDS = [
 ];
 /* everything the / menu offers is in the palette too (the Write view inserts it, the source view types its Markdown) */
 for (const it of INSERTS) {
-  const title = `${it.turn ? 'Turn into' : 'Insert'}: ${it.label}`;
+  const title = `${tr(it.turn ? 'app.turn-into' : 'app.insert-colon')}: ${it.label}`;
   if (COMMANDS.some((c) => c.title.toLowerCase().replace(/…$/, '') === title.toLowerCase())) continue;
   COMMANDS.push({ id: 'ins-' + it.id, title, key: it.key, run: () => {
-    if (curType() !== 'md') return toast('This inserts into pages.');
+    if (curType() !== 'md') return toast(tr('app.this-inserts-into-pages'));
     if (isRich()) return rich.insert(it.id);
     if (it.md != null) return insertMd(it.md);
-    toast('Switch to the Write view to insert this.');
+    toast(tr('app.switch-to-the-write-view-to-insert-thi'));
   } });
 }
 function fmt(id, n) {
@@ -1589,7 +1596,7 @@ function openPalette(mode = 'commands') {
   pal = { mode, items: [], sel: 0, opener: document.activeElement };
   const input = $('#palette-input');
   input.value = mode === 'commands' ? '>' : '';
-  input.placeholder = mode === 'commands' ? 'Type a command' : 'Go to note by name';
+  input.placeholder = tr(mode === 'commands' ? 'app.type-a-command' : 'app.go-to-note');
   $('#palette-hint').textContent = mode === 'commands' ? 'Delete the > to search notes instead.' : 'Type > for commands.';
   $('#palette').hidden = false;
   $$('#app, .toasts').forEach((e) => (e.inert = true));
@@ -1608,11 +1615,11 @@ function updatePalette() {
     pal.items = S.files.map((p) => ({ p, f: fuzzy(q, stem(p)) || (q.includes('/') ? fuzzy(q, p) : null) })).filter((x) => x.f)
       .sort((a, b) => b.f.score - a.f.score || (tabOf(b.p) ? 1 : 0) - (tabOf(a.p) ? 1 : 0)).slice(0, 60)
       .map(({ p, f }) => ({ html: `${icons.doc}<span class="palette-title">${highlight(stem(p), f.marks.filter(([a]) => a < stem(p).length))}</span><span class="palette-sub">${esc(dirOf(p))}</span>`, run: () => openFile(p) }));
-    if (q && !pal.items.length && S.workspace) pal.items.push({ html: `${icons.plus}<span class="palette-title">Create note “${esc(q)}”</span>`, run: async () => { try { const p = await folio.create(q.endsWith('.md') ? q : q + '.md', `# ${q.split('/').pop()}\n\n`); await refreshTree(); openFile(p); } catch (e) { toast(e.message, { kind: 'error' }); } } });
+    if (q && !pal.items.length && S.workspace) pal.items.push({ html: `${icons.plus}<span class="palette-title">${esc(tr('app.create-note-q', { q }))}</span>`, run: async () => { try { const p = await folio.create(q.endsWith('.md') ? q : q + '.md', `# ${q.split('/').pop()}\n\n`); await refreshTree(); openFile(p); } catch (e) { toast(e.message, { kind: 'error' }); } } });
   }
   pal.sel = Math.min(pal.sel, Math.max(0, pal.items.length - 1));
   $('#palette-list').innerHTML = pal.items.length ? pal.items.map((it, i) => `<li class="palette-item" role="option" id="pi-${i}" data-i="${i}" aria-selected="${i === pal.sel}">${it.html}</li>`).join('')
-    : `<li class="palette-empty">${S.workspace || isCmd ? 'No matches.' : 'Open a folder first.'}</li>`;
+    : `<li class="palette-empty">${tr(S.workspace || isCmd ? 'app.no-matches' : 'app.open-a-folder-first')}</li>`;
   $('#palette-input').setAttribute('aria-activedescendant', pal.items.length ? `pi-${pal.sel}` : '');
 }
 function runPalette(i = pal.sel) { const it = pal.items[i]; if (!it) return; closePalette(); it.run(); }
@@ -1621,29 +1628,29 @@ function runPalette(i = pal.sel) { const it = pal.items[i]; if (!it) return; clo
 const EXPORT_KEY = 'folio.export';
 const exportPrefs = () => { try { return { format: 'pdf', size: 'A4', landscape: false, margins: 'normal', pageNumbers: true, header: false, review: 'keep', ...JSON.parse(localStorage.getItem(EXPORT_KEY) || '{}') }; } catch { return { format: 'pdf', size: 'A4', landscape: false, margins: 'normal', pageNumbers: true, header: false, review: 'keep' }; } };
 function openExport() {
-  const t = activeTab(); if (!t) return toast('Open a note to export it.');
+  const t = activeTab(); if (!t) return toast(tr('app.open-a-note-to-export-it'));
   if (curType() !== 'md') return exportAs('pdf');
   const p = exportPrefs(); const d = $('#sheet-prompt');
   const seg = (name, opts, cur) => `<div class="segmented" role="radiogroup" aria-label="${name}">${opts.map(([v, l]) => `<button type="button" role="radio" data-${name}="${v}" aria-checked="${String(cur) === String(v)}">${l}</button>`).join('')}</div>`;
   d.classList.remove('sheet-small');
   d.innerHTML = `<form method="dialog">
-    <div class="sheet-head"><div><h2 id="prompt-title">Export “${esc(stem(t.path))}”</h2><p>Choose a format and how the pages look.</p></div><button class="icon-btn" type="button" data-cancel aria-label="Close">${icons.close}</button></div>
+    <div class="sheet-head"><div><h2 id="prompt-title">${esc(tr('app.export-title', { name: stem(t.path) }))}</h2><p>${tr('app.choose-a-format-and-how-the-pages-look')}</p></div><button class="icon-btn" type="button" data-cancel aria-label="${tr('app.close')}">${icons.close}</button></div>
     <div class="sheet-body">
-      <section class="group"><h3>Format</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">File type</span></div>${seg('format', [['pdf', 'PDF'], ['docx', 'Word'], ['html', 'HTML'], ['md', 'Markdown']], p.format)}</div></div></section>
-      <section class="group" data-pages><h3>Pages</h3><div class="rows">
-        <div class="row"><div class="row-main"><span class="row-title">Paper</span></div>${seg('size', [['A4', 'A4'], ['Letter', 'Letter'], ['A5', 'A5'], ['Legal', 'Legal']], p.size)}</div>
-        <div class="row"><div class="row-main"><span class="row-title">Orientation</span></div>${seg('landscape', [['false', 'Portrait'], ['true', 'Landscape']], p.landscape)}</div>
-        <div class="row"><div class="row-main"><span class="row-title">Margins</span></div>${seg('margins', [['normal', 'Normal'], ['narrow', 'Narrow'], ['wide', 'Wide']], p.margins)}</div>
-        <div class="row"><div class="row-main"><span class="row-title">Page numbers</span></div><label class="switch"><input type="checkbox" role="switch" name="pageNumbers" ${p.pageNumbers ? 'checked' : ''} aria-label="Page numbers"></label></div>
-        <div class="row"><div class="row-main"><span class="row-title">Title in the header</span></div><label class="switch"><input type="checkbox" role="switch" name="header" ${p.header ? 'checked' : ''} aria-label="Title in the header"></label></div>
+      <section class="group"><h3>${tr('app.format')}</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">${tr('app.file-type')}</span></div>${seg('format', [['pdf', 'PDF'], ['docx', tl('app', 'Word')], ['html', 'HTML'], ['md', tl('app', 'Markdown')]], p.format)}</div></div></section>
+      <section class="group" data-pages><h3>${tr('app.pages')}</h3><div class="rows">
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.paper')}</span></div>${seg('size', [['A4', 'A4'], ['Letter', 'Letter'], ['A5', 'A5'], ['Legal', 'Legal']], p.size)}</div>
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.orientation')}</span></div>${seg('landscape', [['false', tl('app', 'Portrait')], ['true', tl('app', 'Landscape')]], p.landscape)}</div>
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.margins')}</span></div>${seg('margins', [['normal', tl('app', 'Normal')], ['narrow', tl('app', 'Narrow')], ['wide', tl('app', 'Wide')]], p.margins)}</div>
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.page-numbers')}</span></div><label class="switch"><input type="checkbox" role="switch" name="pageNumbers" ${p.pageNumbers ? 'checked' : ''} aria-label="${tr('app.page-numbers')}"></label></div>
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.title-in-the-header')}</span></div><label class="switch"><input type="checkbox" role="switch" name="header" ${p.header ? 'checked' : ''} aria-label="${tr('app.title-in-the-header')}"></label></div>
       </div></section>
-      <section class="group" data-review><h3>Suggestions and comments</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">In the file</span><span class="row-sub" data-review-sub></span></div>${seg('review', [['keep', 'Keep'], ['clean', 'Final text only']], p.review)}</div></div></section>
+      <section class="group" data-review><h3>${tr('app.suggestions-and-comments')}</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">${tr('app.in-the-file')}</span><span class="row-sub" data-review-sub></span></div>${seg('review', [['keep', tl('app', 'Keep')], ['clean', tl('app', 'Final text only')]], p.review)}</div></div></section>
     </div>
-    <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Export</button></div></form>`;
+    <div class="sheet-foot"><button class="btn" type="button" data-cancel>${tr('app.cancel')}</button><button class="btn btn-primary" type="submit">${tr('app.export-2')}</button></div></form>`;
   const sync = () => {
     d.querySelector('[data-pages]').hidden = !/^(pdf|docx)$/.test(p.format);
     d.querySelector('[data-review]').hidden = !/^(pdf|docx|html)$/.test(p.format) || !/\{(\+\+|--|~~|==|>>)/.test(t.text);
-    d.querySelector('[data-review-sub]').textContent = p.format === 'docx' ? 'Word shows them as tracked changes and comments' : 'Clean removes comments and accepts every suggestion';
+    d.querySelector('[data-review-sub]').textContent = tr(p.format === 'docx' ? 'app.review-docx' : 'app.review-clean');
     for (const b of d.querySelectorAll('[role=radio]')) { const k = Object.keys(b.dataset)[0]; b.setAttribute('aria-checked', String(String(p[k]) === b.dataset[k])); }
   };
   d.onclick = (e) => {
@@ -1662,14 +1669,14 @@ async function importDocument() {
     const { markdown, images } = htmlToMarkdown(r.html, { source: 'web' });
     const rel = `${r.name}.md`; let md = markdown;
     const target = await folio.create(rel, `# ${r.name}\n\n`).catch(() => null);
-    if (!target) return toast('Could not create the page.', { kind: 'error' });
+    if (!target) return toast(tr('app.could-not-create-the-page'), { kind: 'error' });
     for (const src of images) { try { const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(src); if (!m) continue; const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); const saved = await folio.saveImage(target, `image.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes); md = md.split(src).join(encodeURI(saved)); } catch {} }
     md = md.replace(/^# .*\n+/, (h) => h); // keep the document's own title if it has one
     const body = /^#\s/.test(md) ? md : `# ${r.name}\n\n${md}`;
     await folio.write(target, body + '\n');
     await refreshTree(); openFile(target);
     toast(r.messages?.length ? `Imported ${r.name}. Some Word formatting could not be kept.` : `Imported ${r.name}.`);
-  } catch (e) { toast(`Import failed. ${e.message}`, { kind: 'error' }); }
+  } catch (e) { toast(tr('app.import-failed-message', { message: e.message }), { kind: 'error' }); }
 }
 async function pastePlain() {
   if (!isRich() || curType() !== 'md') return document.execCommand?.('paste');
@@ -1692,7 +1699,7 @@ async function exportWord(t, o) {
       },
       async rasterize(el) { const svg = el.querySelector('svg'); if (!svg) return null; const xml = new XMLSerializer().serializeToString(svg); const box = svg.getBoundingClientRect(); return rasterUrl('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml), box.width, box.height); },
     });
-    const out = await folio.exportBinary(t.path, 'docx', bytes); if (out) toast(`Exported to ${base(out)}.`);
+    const out = await folio.exportBinary(t.path, 'docx', bytes); if (out) toast(tr('app.exported-to-out', { out: base(out) }));
   } finally { host.remove(); }
 }
 async function rasterUrl(url, w, h) {
@@ -1702,23 +1709,23 @@ async function rasterUrl(url, w, h) {
   const b = bytesOf(c.toDataURL('image/png')); return { data: b.data, type: 'png', width: W, height: H };
 }
 async function exportAs(kind, o = null) {
-  const t = activeTab(); if (!t) return toast('Open a note to export it.');
+  const t = activeTab(); if (!t) return toast(tr('app.open-a-note-to-export-it'));
   if (!o && curType() === 'md' && (kind === 'pdf' || kind === 'docx')) o = exportPrefs();
-  if (kind === 'docx') { if (curType() !== 'md') return toast('Word export is for pages.'); try { return await exportWord(t, o); } catch (e) { return toast(`Export failed. ${e.message}`, { kind: 'error' }); } }
+  if (kind === 'docx') { if (curType() !== 'md') return toast(tr('app.word-export-is-for-pages')); try { return await exportWord(t, o); } catch (e) { return toast(tr('app.export-failed-message', { message: e.message }), { kind: 'error' }); } }
   const s = curSurface();
   if (kind === 'md') {
-    if (curType() !== 'md') return toast('Portable Markdown export is for pages.');
-    try { const out = await folio.exportBinary(t.path, 'md', new TextEncoder().encode(portableMarkdown(t.text))); if (out) toast(`Exported to ${base(out)}. Folio colour and alignment were removed.`); }
-    catch (e) { toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+    if (curType() !== 'md') return toast(tr('app.portable-markdown-export-is-for-pages'));
+    try { const out = await folio.exportBinary(t.path, 'md', new TextEncoder().encode(portableMarkdown(t.text))); if (out) toast(tr('app.exported-to-out-folio-colour-and-align', { out: base(out) })); }
+    catch (e) { toast(tr('app.export-failed-message', { message: e.message }), { kind: 'error' }); }
     return;
   }
-  if (s) { if (kind === 'pdf' && s.exportPdf) return s.exportPdf(); if (kind === 'pptx' && s.exportPptx) return s.exportPptx(); if (kind === 'html') return toast('HTML export is for pages. Use PDF for this document.'); }
+  if (s) { if (kind === 'pdf' && s.exportPdf) return s.exportPdf(); if (kind === 'pptx' && s.exportPptx) return s.exportPptx(); if (kind === 'html') return toast(tr('app.html-export-is-for-pages-use-pdf-for-t')); }
   const prose = stylesCss.slice(stylesCss.indexOf('/* ---------- preview prose')).split('/* ---------- palette')[0];
   const css = tokensCss + '\nbody{margin:0;font-family:var(--font-sans);color:var(--color-ink);background:var(--color-paper);-webkit-print-color-adjust:exact}' + prose + '\n.copy-code{display:none}.prose{padding:48px 24px}@media print{.prose{padding:0}}';
   const page = o && curType() === 'md' ? pageCss(o) : '';
   const html = exportDocument(stem(t.path), o ? render(exportText(t, o)) : (!isRich() && $('#preview').innerHTML) || render(t.text), css + page);
-  try { const out = kind === 'pdf' ? await folio.exportPdf(t.path, html, o && curType() === 'md' ? { print: pdfOptions(o, stem(t.path)) } : undefined) : await folio.exportHtml(t.path, html); if (out) toast(`Exported to ${base(out)}.`); }
-  catch (e) { toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+  try { const out = kind === 'pdf' ? await folio.exportPdf(t.path, html, o && curType() === 'md' ? { print: pdfOptions(o, stem(t.path)) } : undefined) : await folio.exportHtml(t.path, html); if (out) toast(tr('app.exported-to-out', { out: base(out) })); }
+  catch (e) { toast(tr('app.export-failed-message', { message: e.message }), { kind: 'error' }); }
 }
 
 /* ============ toggles ============ */
@@ -1739,25 +1746,25 @@ function initHistory() {
     copyAs: async (path, text, v) => {
       const dot = path.lastIndexOf('.'); const when = new Date(v.t).toISOString().slice(0, 16).replace('T', ' ');
       let target = `${path.slice(0, dot)} (${v.name || when})${path.slice(dot)}`;
-      try { const p = await folio.create(target, text); await refreshTree(); hist.close(); openFile(p); toast('Made a copy from that version.'); }
-      catch (e) { toast(`Could not make a copy. ${e.message}`, { kind: 'error' }); }
+      try { const p = await folio.create(target, text); await refreshTree(); hist.close(); openFile(p); toast(tr('app.made-a-copy-from-that-version')); }
+      catch (e) { toast(tr('app.could-not-make-a-copy-message', { message: e.message }), { kind: 'error' }); }
     },
     opened: async (p) => { await refreshTree(); openFile(p); },
     onClose: () => { $('#workspace').removeAttribute('data-history'); },
   });
 }
 async function openHistory() {
-  if (!S.active) return toast('Open a document first.');
+  if (!S.active) return toast(tr('app.open-a-document-first'));
   if (hist.isOpen()) return hist.close();
   await saveActive(); $('#workspace').dataset.history = 'true'; await hist.open();
 }
 async function nameCurrentVersion() {
   const t = activeTab(); if (!t) return;
-  const name = await prompt({ title: 'Name this version', label: 'Name', hint: 'Named versions are kept for good.', action: 'Save' }); if (!name) return;
+  const name = await prompt({ title: tr('app.name-this-version'), label: tr('app.name'), hint: tr('app.named-versions-are-kept-for-good'), action: tr('app.save') }); if (!name) return;
   await saveActive();
   const v = await folio.historySnapshot(t.path, t.text, 'named', true);
   const list = await folio.historyList(t.path); const id = v?.id || list[0]?.id;
-  if (id) { await folio.historyName(t.path, id, name); toast(`Saved the version “${name}”.`); }
+  if (id) { await folio.historyName(t.path, id, name); toast(tr('app.saved-the-version-name', { name })); }
 }
 
 /* ============ small UI kit: toast, prompt, confirm, menu, tooltip ============ */
@@ -1772,17 +1779,17 @@ const missingWarned = new Set();
 /** on open and when the window is focused again: bring back files a page needs from the asset trash, and say which are really gone */
 async function checkAssets(t, { rerender = false } = {}) {
   const r = await folio.assetsHeal(t.path, t.text);
-  if (r.restored?.length) { toast(`Restored ${r.restored.length} ${r.restored.length === 1 ? 'file' : 'files'} this page uses from the asset trash.`); if (rerender && t.path === S.active && t.text === t.saved) activate(t.path); }
+  if (r.restored?.length) { toast(tr('app.restored-length-files-this-page-uses-f', { n: r.restored.length })); if (rerender && t.path === S.active && t.text === t.saved) activate(t.path); }
   const fresh = (r.missing || []).filter((m) => !missingWarned.has(m));
   if (fresh.length) {
     fresh.forEach((m) => missingWarned.add(m));
-    toast(`${fresh.length === 1 ? `“${assetName(fresh[0])}” is` : `${fresh.length} files are`} missing from the .asset folder. It may have been deleted outside Folio.`, { kind: 'error', action: ['Details', openAssets] });
+    toast(fresh.length === 1 ? tr('app.asset-missing-one', { name: assetName(fresh[0]) }) : tr('app.asset-missing-many', { n: fresh.length }), { kind: 'error', action: [tr('app.details'), openAssets] });
   }
 }
 function assetsAfterSave(t, before, after) {
   if (!ASSET_HINT.test(before) && !ASSET_HINT.test(after)) return;
   folio.assetsSync(t.path, before, after).then((r) => {
-    if (r.restored?.length) toast(`Restored ${r.restored.length} ${r.restored.length === 1 ? 'file' : 'files'} from the asset trash.`);
+    if (r.restored?.length) toast(tr('app.restored-length-files-from-the-asset-t', { n: r.restored.length }));
     const keepRefs = new Set(r.refs || []); const pend = pendingAssets.get(t.path) || new Map();
     for (const p of [...pend.keys()]) if (keepRefs.has(p)) pend.delete(p); // the picture is back (undo)
     for (const o of r.orphans || []) pend.set(o.path, o.bytes);
@@ -1797,19 +1804,19 @@ async function askAssetRemoval() {
   const clear = () => pendingAssets.clear();
   const run = async (permanent) => {
     const n = await folio.assetsRemove(paths, permanent); clear();
-    toast(permanent ? `Deleted ${n} ${n === 1 ? 'file' : 'files'}.` : `Moved ${n} ${n === 1 ? 'file' : 'files'} to the asset trash.`, permanent ? {} : { action: ['Undo', () => folio.assetsRestore(paths).then(() => { const t = activeTab(); if (t) checkAssets(t, { rerender: true }); })] });
+    toast(permanent ? `Deleted ${n} ${n === 1 ? 'file' : 'files'}.` : `Moved ${n} ${n === 1 ? 'file' : 'files'} to the asset trash.`, permanent ? {} : { action: [tr('app.undo'), () => folio.assetsRestore(paths).then(() => { const t = activeTab(); if (t) checkAssets(t, { rerender: true }); })] });
   };
   if (mode === 'keep') return clear();
   if (mode === 'trash' || mode === 'delete') return run(mode === 'delete');
   assetCard?.remove();
   const el = assetCard = document.createElement('div');
   el.className = 'toast asset-toast'; el.setAttribute('role', 'status');
-  const what = files.length === 1 ? `“${assetName(paths[0])}”` : `${files.length} files`;
-  el.innerHTML = `<div class="asset-toast-body"><p>You removed ${esc(what)} (${fmtSize(bytes)}) from the page. Remove the ${files.length === 1 ? 'file' : 'files'} from the folder too?</p>
-    <label class="sf-check"><input type="checkbox" data-perm> Delete permanently, skip the asset trash</label>
-    <label class="sf-check"><input type="checkbox" data-always> Always do this, don’t ask again</label>
-    <div class="asset-toast-actions"><button class="btn btn-quiet" type="button" data-keep>Keep</button><button class="btn" type="button" data-remove>Remove</button></div></div>
-    <button class="icon-btn" type="button" aria-label="Dismiss">${icons.close}</button>`;
+  const what = files.length === 1 ? `“${assetName(paths[0])}”` : tr('app.n-files', { n: files.length });
+  el.innerHTML = `<div class="asset-toast-body"><p>${esc(tr('app.you-removed', { what, size: fmtSize(bytes), n: files.length }))}</p>
+    <label class="sf-check"><input type="checkbox" data-perm> ${tr('app.delete-permanently-skip-the-asset-tras')}</label>
+    <label class="sf-check"><input type="checkbox" data-always> ${tr('app.always-do-this-don-t-ask-again')}</label>
+    <div class="asset-toast-actions"><button class="btn btn-quiet" type="button" data-keep>${tr('app.keep')}</button><button class="btn" type="button" data-remove>${tr('app.remove')}</button></div></div>
+    <button class="icon-btn" type="button" aria-label="${tr('app.dismiss')}">${icons.close}</button>`;
   $('#toasts').appendChild(el);
   const close = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), 280); assetCard = null; };
   el.querySelector('.icon-btn').onclick = () => { clear(); close(); };
@@ -1827,28 +1834,28 @@ async function openAssets() {
   try { u = await folio.assetsUsage(); } catch (e) { return toast(e.message, { kind: 'error' }); }
   const sel = new Set(u.unused.map((f) => f.path));
   const render = () => {
-    d.innerHTML = `<div class="sheet-head"><div><h2 id="assets-title">Files in your pages</h2>
-      <p>${u.used.length} in use (${fmtSize(u.usedBytes)}), ${u.unused.length} unused (${fmtSize(u.unusedBytes)}). They live in hidden <code>.asset</code> folders next to your pages.</p></div></div>
+    d.innerHTML = `<div class="sheet-head"><div><h2 id="assets-title">${tr('app.files-in-your-pages')}</h2>
+      <p>${u.used.length} in use (${fmtSize(u.usedBytes)}), ${u.unused.length} unused (${fmtSize(u.unusedBytes)}). ${tr('app.usage-summary-tail', { code: '<code>.asset</code>' })}</p></div></div>
       <div class="sheet-body">
-      ${u.missing.length ? `<section class="asset-section"><h3>Missing (${u.missing.length})</h3><ul class="asset-list">${u.missing.map((m, i) => `<li><span class="asset-name">${esc(assetName(m.path))} <span class="asset-size">in ${esc(m.note)}:${m.line}</span></span><button class="btn btn-quiet" type="button" data-open="${i}">Open page</button></li>`).join('')}</ul></section>` : ''}
-      ${u.unused.length ? `<section class="asset-section"><h3>Unused (${u.unused.length})</h3><ul class="asset-list">${u.unused.map((f, i) => `<li><label class="sf-check asset-name"><input type="checkbox" data-sel="${i}" ${sel.has(f.path) ? 'checked' : ''}> ${esc(assetName(f.path))}</label><span class="asset-size">${fmtSize(f.bytes)}</span></li>`).join('')}</ul></section>` : '<p>No unused files.</p>'}
-      ${u.legacy ? `<section class="asset-section"><h3>Old folders</h3><p>${u.legacy} ${u.legacy === 1 ? 'file is' : 'files are'} still in visible <code>assets</code> folders.</p><button class="btn" type="button" data-migrate>Move to .asset</button></section>` : ''}
+      ${u.missing.length ? `<section class="asset-section"><h3>${tr('app.missing-count', { n: u.missing.length })}</h3><ul class="asset-list">${u.missing.map((m, i) => `<li><span class="asset-name">${esc(assetName(m.path))} <span class="asset-size">${esc(tr('app.in-note-line', { note: m.note, line: m.line }))}</span></span><button class="btn btn-quiet" type="button" data-open="${i}">${tr('app.open-page')}</button></li>`).join('')}</ul></section>` : ''}
+      ${u.unused.length ? `<section class="asset-section"><h3>${tr('app.unused-count', { n: u.unused.length })}</h3><ul class="asset-list">${u.unused.map((f, i) => `<li><label class="sf-check asset-name"><input type="checkbox" data-sel="${i}" ${sel.has(f.path) ? 'checked' : ''}> ${esc(assetName(f.path))}</label><span class="asset-size">${fmtSize(f.bytes)}</span></li>`).join('')}</ul></section>` : '<p>' + tr('app.no-unused-files') + '</p>'}
+      ${u.legacy ? `<section class="asset-section"><h3>${tr('app.old-folders')}</h3><p>${tr('app.legacy-files', { n: u.legacy, code: '<code>assets</code>' })}</p><button class="btn" type="button" data-migrate>${tr('app.move-to-asset')}</button></section>` : ''}
       </div>
-      <div class="sheet-foot"><button class="btn" type="button" data-close>Close</button>
-        ${u.unused.length ? `<button class="btn" type="button" data-delete ${sel.size ? '' : 'disabled'}>Delete permanently</button><button class="btn btn-primary" type="button" data-trash ${sel.size ? '' : 'disabled'}>Move ${sel.size} to the trash</button>` : ''}</div>`;
+      <div class="sheet-foot"><button class="btn" type="button" data-close>${tr('app.close')}</button>
+        ${u.unused.length ? `<button class="btn" type="button" data-delete ${sel.size ? '' : 'disabled'}>${tr('app.delete-permanently')}</button><button class="btn btn-primary" type="button" data-trash ${sel.size ? '' : 'disabled'}>${tr('app.move-n-to-trash', { n: sel.size })}</button>` : ''}</div>`;
     d.querySelector('[data-close]').onclick = () => d.close();
     d.querySelectorAll('[data-sel]').forEach((c) => (c.onchange = () => { const p = u.unused[Number(c.dataset.sel)].path; c.checked ? sel.add(p) : sel.delete(p); render(); d.querySelector(`[data-sel="${c.dataset.sel}"]`)?.focus(); }));
     d.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => { const m = u.missing[Number(b.dataset.open)]; d.close(); openFile(m.note, { line: m.line }).catch((e) => toast(e.message, { kind: 'error' })); }));
     const drop = async (permanent) => {
-      if (permanent && !(await confirmSheet({ title: 'Delete these files permanently?', body: `${sel.size} ${sel.size === 1 ? 'file' : 'files'} will be deleted and cannot be restored.`, action: 'Delete', danger: true }))) return;
+      if (permanent && !(await confirmSheet({ title: tr('app.delete-these-files-permanently'), body: tr('app.size-files-will-be-deleted-and-cannot', { n: sel.size }), action: tr('app.delete'), danger: true }))) return;
       const n = await folio.assetsRemove([...sel], permanent);
-      toast(permanent ? `Deleted ${n} files.` : `Moved ${n} files to the asset trash. They are purged after 30 days.`); d.close(); openAssets();
+      toast(permanent ? tr('app.deleted-n-files', { n }) : tr('app.moved-n-to-asset-trash', { n })); d.close(); openAssets();
     };
     d.querySelector('[data-trash]')?.addEventListener('click', () => drop(false));
     d.querySelector('[data-delete]')?.addEventListener('click', () => drop(true));
     d.querySelector('[data-migrate]')?.addEventListener('click', async () => {
-      if (!(await confirmSheet({ title: 'Move files to .asset?', body: 'Pages that point to assets/… are updated (a version is kept first). The old files stay in the asset trash for 30 days.', action: 'Move' }))) return;
-      try { const r = await folio.assetsMigrate(); toast(`Moved ${r.files} ${r.files === 1 ? 'file' : 'files'}, updated ${r.notes} ${r.notes === 1 ? 'page' : 'pages'}.`); d.close(); refreshTree?.(); } catch (e) { toast(e.message, { kind: 'error' }); }
+      if (!(await confirmSheet({ title: tr('app.move-files-to-asset'), body: tr('app.pages-that-point-to-assets-are-updated'), action: tr('app.move') }))) return;
+      try { const r = await folio.assetsMigrate(); toast(`${tr('app.moved-n-files', { n: r.files })}, ${tr('app.updated-n-pages', { n: r.notes })}.`); d.close(); refreshTree?.(); } catch (e) { toast(e.message, { kind: 'error' }); }
     });
   };
   render(); d.showModal();
@@ -1857,7 +1864,7 @@ window.addEventListener('focus', () => { const t = activeTab(); if (t && ASSET_H
 function toast(text, { kind = 'info', action } = {}) {
   const el = document.createElement('div');
   el.className = 'toast'; el.dataset.kind = kind; el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
-  el.innerHTML = `<p>${esc(text)}</p>${action ? `<button class="btn btn-quiet" type="button">${esc(action[0])}</button>` : ''}<button class="icon-btn" type="button" aria-label="Dismiss">${icons.close}</button>`;
+  el.innerHTML = `<p>${esc(text)}</p>${action ? `<button class="btn btn-quiet" type="button">${esc(action[0])}</button>` : ''}<button class="icon-btn" type="button" aria-label="${tr('app.dismiss')}">${icons.close}</button>`;
   $('#toasts').appendChild(el);
   const remove = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), 280); };
   if (action) el.querySelector('.btn').onclick = () => { remove(); action[1](); };
@@ -1874,7 +1881,7 @@ function prompt({ title, label, value = '', hint = '', action = 'OK', allowEmpty
       <div class="sheet-body"><div class="field"><label for="prompt-input">${esc(label)}</label>
         <input class="input" id="prompt-input" name="name" type="text" autocomplete="off" spellcheck="false" value="${esc(value)}" ${allowEmpty ? '' : 'required'} aria-describedby="prompt-help">
         <span class="field-help" id="prompt-help">${esc(hint)}</span></div></div>
-      <div class="sheet-foot"><button class="btn" type="button" value="cancel" data-cancel>Cancel</button><button class="btn btn-primary" type="submit" value="ok">${esc(action)}</button></div></form>`;
+      <div class="sheet-foot"><button class="btn" type="button" value="cancel" data-cancel>${tr('app.cancel')}</button><button class="btn btn-primary" type="submit" value="ok">${esc(action)}</button></div></form>`;
     const input = $('#prompt-input', d);
     const done = (v) => { d.close(); resolve(v); };
     d.querySelector('form').onsubmit = (e) => {
@@ -1882,7 +1889,7 @@ function prompt({ title, label, value = '', hint = '', action = 'OK', allowEmpty
       const v = input.value.trim();
       if (allowEmpty && !v) return done('');
       if (!validate && v) return done(v);
-      if (!v || /[\\:*?"<>|]/.test(v) || v.split('/').some((s) => s === '..')) { $('#prompt-help', d).textContent = 'Use a name without \\ : * ? " < > |'; $('#prompt-help', d).dataset.error = 'true'; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
+      if (!v || /[\\:*?"<>|]/.test(v) || v.split('/').some((s) => s === '..')) { $('#prompt-help', d).textContent = tr('app.bad-name'); $('#prompt-help', d).dataset.error = 'true'; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
       done(v);
     };
     d.querySelector('[data-cancel]').onclick = () => done(null);
@@ -1894,7 +1901,7 @@ function confirmSheet({ title, body, action, danger }) {
   return new Promise((resolve) => {
     const d = $('#sheet-prompt');
     d.innerHTML = `<div class="sheet-head"><div><h2 id="prompt-title">${esc(title)}</h2><p>${esc(body)}</p></div></div>
-      <div class="sheet-foot"><button class="btn" type="button" data-no>Cancel</button><button class="btn ${danger ? '' : 'btn-primary'}" type="button" data-yes>${esc(action)}</button></div>`;
+      <div class="sheet-foot"><button class="btn" type="button" data-no>${tr('app.cancel')}</button><button class="btn ${danger ? '' : 'btn-primary'}" type="button" data-yes>${esc(action)}</button></div>`;
     const done = (v) => { d.close(); resolve(v); };
     d.querySelector('[data-no]').onclick = () => done(false);
     d.querySelector('[data-yes]').onclick = () => done(true);
@@ -1956,7 +1963,7 @@ function bindChrome() {
   $('#tags-list').addEventListener('click', (e) => { const b = e.target.closest('[data-tag]'); if (b) showTag(b.dataset.tag); });
   $('#tags-list').addEventListener('contextmenu', (e) => {
     const b = e.target.closest('[data-tag]'); if (!b) return; e.preventDefault(); const tag = b.dataset.tag;
-    showMenu(null, [{ label: `Show pages tagged #${tag}`, run: () => showTag(tag) }, { label: 'Rename tag…', run: () => renameTagEverywhere(tag) }, { label: 'Copy tag', run: () => { folio.copy('#' + tag); toast(`Copied #${tag}`); } }], { x: e.clientX, y: e.clientY });
+    showMenu(null, [{ label: tr('app.show-pages-tagged-tag', { tag }), run: () => showTag(tag) }, { label: tr('app.rename-tag'), run: () => renameTagEverywhere(tag) }, { label: tr('app.copy-tag'), run: () => { folio.copy('#' + tag); toast(tr('app.copied-tag', { tag })); } }], { x: e.clientX, y: e.clientY });
   });
   $('#st-zoom').addEventListener('click', (e) => { const b = e.target.closest('[data-zoom]'); if (b && isRich()) rich.zoom(+b.dataset.zoom); });
   $('#st-words').addEventListener('click', () => { if (isRich() && curType() === 'md') rich.run('counts', $('#st-words')); });
@@ -1968,19 +1975,19 @@ function bindChrome() {
     const v = views[(i + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; setView(v); $(`#view-switch [data-view="${v}"]`).focus();
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
-    { label: 'Version history', key: 'Mod+Alt+Shift+H', run: () => openHistory() },
-    { label: 'Export…', key: 'Mod+Shift+E', run: openExport },
-    { label: 'Import Word or HTML…', run: importDocument }, '-',
-    { label: 'Focus mode', key: 'Mod+.', run: toggleFocus },
-    { label: 'Command palette…', key: 'Mod+Shift+P', run: () => openPalette('commands') }, '-',
-    { label: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
-    { label: 'Settings…', key: 'Mod+,', run: openSettings },
+    { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
+    { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
+    { label: tr('app.import-word-or-html'), run: importDocument }, '-',
+    { label: tr('app.focus-mode'), key: 'Mod+.', run: toggleFocus },
+    { label: tr('app.command-palette'), key: 'Mod+Shift+P', run: () => openPalette('commands') }, '-',
+    { label: tr('app.connect-ai-assistants'), key: 'Mod+Shift+A', run: openAiSheet },
+    { label: tr('app.settings'), key: 'Mod+,', run: openSettings },
   ]);
   $('#workspace-switch').onclick = (e) => showMenu(e.currentTarget, [
     ...(S.settings.recent || []).filter((d) => d !== S.workspace).slice(0, 5).map((d) => ({ label: d.split(/[\\/]/).filter(Boolean).pop(), run: () => switchWorkspace(d).catch((er) => toast(er.message, { kind: 'error' })) })),
     ...((S.settings.recent || []).length > 1 ? ['-'] : []),
-    { label: 'Open folder…', key: 'Mod+O', run: chooseFolder },
-    ...(S.workspace ? [{ label: S.platform === 'darwin' ? 'Reveal in Finder' : 'Show in folder', run: () => folio.reveal('') }, { label: 'New folder…', run: () => newFolder('') }] : []),
+    { label: tr('app.open-folder'), key: 'Mod+O', run: chooseFolder },
+    ...(S.workspace ? [{ label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal('') }, { label: tr('app.new-folder'), run: () => newFolder('') }] : []),
   ]);
 
   // sidebar tree
@@ -1995,17 +2002,17 @@ function bindChrome() {
     e.preventDefault();
     const at = { x: e.clientX, y: e.clientY };
     if (f) { const p = f.dataset.file; showMenu(null, [
-      { label: 'Open', run: () => openFile(p) }, '-',
-      { label: 'Rename…', run: () => renamePath(p, false) },
-      { label: S.platform === 'darwin' ? 'Reveal in Finder' : 'Show in folder', run: () => folio.reveal(p) },
-      { label: 'Copy relative path', run: () => folio.copy(p) }, '-',
-      { label: 'Move to Trash', danger: true, run: () => trashPath(p, false) }], at); }
+      { label: tr('app.open'), run: () => openFile(p) }, '-',
+      { label: tr('app.rename'), run: () => renamePath(p, false) },
+      { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) },
+      { label: tr('app.copy-relative-path'), run: () => folio.copy(p) }, '-',
+      { label: tr('app.move-to-trash'), danger: true, run: () => trashPath(p, false) }], at); }
     else if (d) { const p = d.dataset.dir; showMenu(null, [
-      { label: 'New note here…', run: () => newNote(p) }, { label: 'New folder here…', run: () => newFolder(p) }, '-',
-      { label: 'Rename…', run: () => renamePath(p, true) },
-      { label: S.platform === 'darwin' ? 'Reveal in Finder' : 'Show in folder', run: () => folio.reveal(p) }, '-',
-      { label: 'Move to Trash', danger: true, run: () => trashPath(p, true) }], at); }
-    else if (S.workspace) showMenu(null, [{ label: 'New note…', run: () => newNote('') }, { label: 'New folder…', run: () => newFolder('') }], at);
+      { label: tr('app.new-note-here'), run: () => newNote(p) }, { label: tr('app.new-folder-here'), run: () => newFolder(p) }, '-',
+      { label: tr('app.rename'), run: () => renamePath(p, true) },
+      { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) }, '-',
+      { label: tr('app.move-to-trash'), danger: true, run: () => trashPath(p, true) }], at); }
+    else if (S.workspace) showMenu(null, [{ label: tr('app.new-note'), run: () => newNote('') }, { label: tr('app.new-folder'), run: () => newFolder('') }], at);
   });
   tree.addEventListener('keydown', (e) => {
     const rows = $$('.tree-row', tree).filter((r) => r.offsetParent);
@@ -2066,7 +2073,7 @@ function bindChrome() {
     if (tb) {
       const box = tb.closest('[data-line]'); const b = JSON.parse(decodeURIComponent(box.dataset.spec));
       const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === (b.template || '').toLowerCase());
-      if (!t) { toast(`No template called “${b.template}”.`, { kind: 'error' }); return; }
+      if (!t) { toast(tr('app.no-template-called-template', { template: b.template }), { kind: 'error' }); return; }
       const text0 = await askFilled(t, { title: stem(S.active) }); if (text0 == null) return; const textB = text0.split(CURSOR).join('');
       const { fm, body } = splitTemplate(textB); const tab = activeTab(); let text = tab.text;
       const lines = text.split('\n'); const at = b.where === 'above' ? Number(box.dataset.line) : Number(box.dataset.lineEnd);
@@ -2076,7 +2083,7 @@ function bindChrome() {
       editor.applyRemote(text); tab.text = text; if (isRich()) rich.setMarkdown(text); renderPreview(); autosave(); return;
     }
     const copy = e.target.closest('.copy-code');
-    if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = 'Copied'; setTimeout(() => (copy.textContent = 'Copy'), 1400); return; }
+    if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = tr('app.copied'); setTimeout(() => (copy.textContent = tr('app.copy')), 1400); return; }
     const box = e.target.closest('.task-list-item input');
     if (box) {
       const li = box.closest('[data-line]'); if (!li) return;
@@ -2086,7 +2093,7 @@ function bindChrome() {
     }
     const a = e.target.closest('a'); if (!a) return;
     e.preventDefault();
-    if (a.dataset.wikilink) { const f = resolveWiki(a.dataset.wikilink); if (f) openRef(f, parseRef(a.dataset.wikilink).part); else if (await confirmSheet({ title: `Create “${a.dataset.wikilink}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(a.dataset.wikilink + '.md', `# ${a.dataset.wikilink}\n\n`); await refreshTree(); openFile(p); } return; }
+    if (a.dataset.wikilink) { const f = resolveWiki(a.dataset.wikilink); if (f) openRef(f, parseRef(a.dataset.wikilink).part); else if (await confirmSheet({ title: tr('app.create-wikilink', { wikilink: a.dataset.wikilink }), body: tr('app.this-note-does-not-exist-yet'), action: tr('app.create-note') })) { const p = await folio.create(a.dataset.wikilink + '.md', `# ${a.dataset.wikilink}\n\n`); await refreshTree(); openFile(p); } return; }
     const href = a.getAttribute('href') || '';
     if (href.startsWith('#')) { const id = decodeURIComponent(href.slice(1)); const el = [...$('#preview').querySelectorAll('[id]')].find((x) => x.id === id); el?.scrollIntoView(); return; }
     if (/^(https?|mailto):/.test(href)) return folio.openExternal(href);
@@ -2113,13 +2120,13 @@ function bindChrome() {
     const url = e.target.closest('[data-open-url]'); if (url) folio.openExternal(url.dataset.openUrl);
     const diff = e.target.closest('[data-diff]'); if (diff) { $('#sheet-diff').close(); if (diff.dataset.diff === 'undo') undoAi(); else dismissAi(); }
     const inst = e.target.closest('[data-install]');
-    if (inst) { inst.disabled = true; inst.textContent = 'Connecting…'; try { const r = await folio.install(inst.dataset.install); toast(`Connected. ${r.restart}`); } catch (er) { toast(er.message, { kind: 'error' }); } openAiSheet(); }
+    if (inst) { inst.disabled = true; inst.textContent = tr('app.connecting'); try { const r = await folio.install(inst.dataset.install); toast(tr('app.connected-restart', { restart: r.restart })); } catch (er) { toast(er.message, { kind: 'error' }); } openAiSheet(); }
     const un = e.target.closest('[data-uninstall]'); if (un) { await folio.uninstall(un.dataset.uninstall).catch((er) => toast(er.message, { kind: 'error' })); openAiSheet(); }
     const cp = e.target.closest('[data-copy]'); if (cp) { await folio.copy($(cp.dataset.copy).textContent); flashCopied(cp); }
     const cs = e.target.closest('[data-copy-snippet]'); if (cs) { const c = await folio.connections(); await folio.copy(c.list.find((x) => x.id === cs.dataset.copySnippet).snippet); flashCopied(cs); }
     const ct = e.target.closest('[data-copy-token]'); if (ct) { await folio.copy($('#mcp-token').dataset.secret); flashCopied(ct); }
-    const rv = e.target.closest('[data-reveal-token]'); if (rv) { const t = $('#mcp-token'); const shown = rv.textContent === 'Hide'; t.textContent = shown ? '•'.repeat(24) : t.dataset.secret; rv.textContent = shown ? 'Show' : 'Hide'; }
-    const rot = e.target.closest('[data-rotate]'); if (rot) { if (await confirmSheet({ title: 'Make a new token?', body: 'Clients that use the HTTP URL will need the new token. Apps connected above keep working.', action: 'New token' })) { await folio.rotateToken(); openAiSheet(); } }
+    const rv = e.target.closest('[data-reveal-token]'); if (rv) { const t = $('#mcp-token'); const shown = rv.textContent === 'Hide'; t.textContent = shown ? '•'.repeat(24) : t.dataset.secret; rv.textContent = shown ? tl('app', 'Show') : tl('app', 'Hide'); }
+    const rot = e.target.closest('[data-rotate]'); if (rot) { if (await confirmSheet({ title: tr('app.make-a-new-token'), body: tr('app.clients-that-use-the-http-url-will-nee'), action: tr('app.new-token') })) { await folio.rotateToken(); openAiSheet(); } }
   });
   document.addEventListener('change', async (e) => {
     const el = e.target.closest('[data-setting]'); if (!el) return;
@@ -2127,13 +2134,13 @@ function bindChrome() {
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
-    if (k === 'language') { setLocale(v); localizeCommands(); renderInfo(false); if ($('#sheet-settings').open) openSettings(); }
+    if (k === 'language') { for (const t of S.tabs) await saveTab(t); setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });
   document.addEventListener('input', (e) => {
     if (e.target.id !== 'set-port') return;
     const n = Number(e.target.value), help = $('#port-help'), ok = Number.isInteger(n) && n >= 1024 && n <= 65535;
-    help.dataset.error = String(!ok); help.textContent = ok ? 'Local only, 1024 to 65535' : 'Enter a whole number from 1024 to 65535';
+    help.dataset.error = String(!ok); help.textContent = ok ? tl('app', 'Local only, 1024 to 65535') : tl('app', 'Enter a whole number from 1024 to 65535');
     e.target.setAttribute('aria-invalid', String(!ok));
     if (ok) debouncedPort(n);
   });
@@ -2185,15 +2192,15 @@ function bindIpc() {
     if (p !== S.active && /\{\{|!\[\[|```chart/.test(activeTab()?.text || '')) { renderPreview(); curSurface()?.refresh?.(); }
     const t = tabOf(p); if (!t || content === t.saved) return;
     if (t.text === t.saved) { t.saved = content; if (p === S.active) { setActiveText(content); renderPreview(); renderOutline(); } else t.text = content; }
-    else toast(`${stem(p)} changed on disk while you were editing.`, { action: ['Use disk version', () => { t.saved = content; if (p === S.active) setActiveText(content); else t.text = content; }] });
+    else toast(tr('app.p-changed-on-disk-while-you-were-editi', { p: stem(p) }), { action: [tr('app.use-disk-version'), () => { t.saved = content; if (p === S.active) setActiveText(content); else t.text = content; }] });
   });
   folio.onAiEdit(onAiEdit);
-  folio.onAiMove(({ from, to, client }) => { retargetTabs(from, to); refreshTree(); toast(`${client} moved ${stem(from)} to ${to}.`); });
+  folio.onAiMove(({ from, to, client }) => { retargetTabs(from, to); refreshTree(); toast(tr('app.client-moved-from-to-to', { client, from: stem(from), to })); });
   folio.onAiActivity((m) => { S.mcp = m; renderAiStatus(); const box = $('#ai-activity'); if (box) box.innerHTML = activityHtml(); });
   folio.onAiAsk(async ({ id, kind, payload }) => {
     if (kind === 'open-note') {
       const t = activeTab();
-      folio.answer(id, t ? { path: t.path, content: t.text, unsavedChanges: t.text !== t.saved, cursorLine: S.cursor.line, selection: S.cursor.selection || null } : { path: null, message: 'No note is open in Folio.' });
+      folio.answer(id, t ? { path: t.path, content: t.text, unsavedChanges: t.text !== t.saved, cursorLine: S.cursor.line, selection: S.cursor.selection || null } : { path: null, message: tr('app.no-note-is-open-in-folio') });
     } else if (kind === 'show-note') {
       try { await openFile(payload.path, { line: payload.line }); folio.answer(id, true); } catch (e) { folio.answer(id, false); }
     }
@@ -2215,4 +2222,4 @@ function bindIpc() {
 window.__folioErrors = [];
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message, e.error?.stack || ''); });
 addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); console.error('[folio-error]', e.reason?.message || e.reason); });
-boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>Folio could not start. ${esc(e.message)}</p></div></div>`); console.error(e); });
+boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>${esc(tr('app.could-not-start', { message: e.message }))}</p></div></div>`); console.error(e); });

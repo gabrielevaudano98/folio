@@ -1,5 +1,6 @@
 // Folio — page structure in the Write view: callouts (type menu, fold), collapsible headings, live table of contents,
 // breadcrumb and page break. Folding headings and opening folded callouts are view state; the file is not changed.
+import { t as tr, tl } from './i18n.js';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -36,7 +37,7 @@ export const CalloutUI = Extension.create({
         const folded = c.fold === '-' ? !toggled.has(pos) : c.fold === '+' ? toggled.has(pos) : false;
         deco.push(Decoration.node(pos, pos + n.nodeSize, { class: `rich-callout callout-${c.type} callout-c-${c.color}${folded ? ' is-folded' : ''}`, 'data-fold': c.fold || '' }));
         const start = pos + 2;
-        deco.push(Decoration.inline(start, start + c.markerLength, { class: 'rich-callout-marker', 'data-label': c.type === 'callout' && c.emoji ? '' : c.label, 'data-pos': String(pos), role: 'button', 'aria-label': `${c.label} callout. Click to change the type`, title: 'Change the callout type' }));
+        deco.push(Decoration.inline(start, start + c.markerLength, { class: 'rich-callout-marker', 'data-label': c.type === 'callout' && c.emoji ? '' : c.label, 'data-pos': String(pos), role: 'button', 'aria-label': `${c.label} callout. Click to change the type`, title: tr('pui.change-the-callout-type') }));
         deco.push(Decoration.widget(start, () => {
           const s = document.createElement('span'); s.className = 'rich-callout-icon'; s.contentEditable = 'false'; s.setAttribute('aria-hidden', 'true');
           s.innerHTML = c.emoji ? esc(c.emoji) : (opts.icons[CALLOUT_TYPES[c.type].icon] || '');
@@ -47,7 +48,7 @@ export const CalloutUI = Extension.create({
         if (c.fold) {
           deco.push(Decoration.widget(start, () => {
             const b = document.createElement('button'); b.type = 'button'; b.className = 'rich-callout-fold'; b.contentEditable = 'false';
-            b.dataset.pos = String(pos); b.setAttribute('aria-expanded', String(!folded)); b.setAttribute('aria-label', folded ? 'Show the callout' : 'Fold the callout');
+            b.dataset.pos = String(pos); b.setAttribute('aria-expanded', String(!folded)); b.setAttribute('aria-label', folded ? tl('pui', 'Show the callout') : tl('pui', 'Fold the callout'));
             b.innerHTML = opts.icons.chevron || '›';
             return b;
           }, { side: -2, key: `cf:${pos}:${folded}` }));
@@ -66,10 +67,10 @@ export const CalloutUI = Extension.create({
       closeMenu();
       const node = view.state.doc.nodeAt(pos); const first = node?.firstChild; if (!first) return;
       const c = parseCallout(first.textContent.split('\n')[0]); if (!c) return;
-      menu = document.createElement('div'); menu.className = 'block-menu callout-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Callout');
+      menu = document.createElement('div'); menu.className = 'block-menu callout-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', tl('pui', 'Callout'));
       const types = Object.entries(CALLOUT_TYPES).map(([k, t]) => `<button type="button" role="menuitemradio" aria-checked="${k === c.type}" class="block-mi block-turn callout-c-${t.color}" data-kind="${k}"><span class="block-mi-ic callout-ic" aria-hidden="true">${opts.icons[t.icon] || ''}</span>${t.label}</button>`).join('');
-      const folds = [['', 'Not foldable'], ['+', 'Foldable, open'], ['-', 'Folded']].map(([f, l]) => `<button type="button" role="menuitemradio" aria-checked="${c.fold === f}" class="block-mi" data-fold="${f}"><span>${l}</span></button>`).join('');
-      menu.innerHTML = `<div class="block-mh">Type</div><div class="block-turns" role="group" aria-label="Type">${types}</div><div class="block-sep" role="separator"></div><div class="block-mh">Fold</div>${folds}`;
+      const folds = [['', tl('pui', 'Not foldable')], ['+', tl('pui', 'Foldable, open')], ['-', 'Folded']].map(([f, l]) => `<button type="button" role="menuitemradio" aria-checked="${c.fold === f}" class="block-mi" data-fold="${f}"><span>${l}</span></button>`).join('');
+      menu.innerHTML = `<div class="block-mh">${tr('pui.type')}</div><div class="block-turns" role="group" aria-label="${tr('pui.type')}">${types}</div><div class="block-sep" role="separator"></div><div class="block-mh">${tr('pui.fold')}</div>${folds}`;
       document.body.append(menu);
       const r = anchor.getBoundingClientRect();
       menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8))}px`;
@@ -139,7 +140,7 @@ export const HeadingFold = Extension.create({
             const isFolded = folded.has(pos);
             deco.push(Decoration.widget(pos + 1, () => {
               const b = document.createElement('button'); b.type = 'button'; b.className = 'rich-hfold'; b.contentEditable = 'false';
-              b.setAttribute('aria-expanded', String(!isFolded)); b.setAttribute('aria-label', isFolded ? 'Show this section' : 'Fold this section');
+              b.setAttribute('aria-expanded', String(!isFolded)); b.setAttribute('aria-label', isFolded ? tl('pui', 'Show this section') : tl('pui', 'Fold this section'));
               b.innerHTML = opts.icons.chevron || '›'; return b;
             }, { side: -1, key: `hf:${nth}:${isFolded}` })); // keyed by order, not position: typing above does not rebuild every chevron
             if (isFolded) { deco.push(Decoration.node(pos, pos + n.nodeSize, { class: 'is-section-folded' })); hideUntil = n.attrs.level; return; }
@@ -180,11 +181,11 @@ export const HeadingFold = Extension.create({
 export const TocView = Toc.extend({
   addNodeView() {
     return ({ editor, getPos }) => {
-      const dom = document.createElement('nav'); dom.className = 'rich-toc md-toc'; dom.contentEditable = 'false'; dom.setAttribute('aria-label', 'Contents');
+      const dom = document.createElement('nav'); dom.className = 'rich-toc md-toc'; dom.contentEditable = 'false'; dom.setAttribute('aria-label', tl('pui', 'Contents'));
       const paint = () => {
         const heads = []; editor.state.doc.descendants((n, pos) => { if (n.type.name === 'heading') heads.push({ level: n.attrs.level, text: n.textContent.replace(/\s\^[\w-]+$/, '').replace(/\s+\{align=\w+\}$/, ''), pos }); });
         const top = Math.min(6, ...heads.map((h) => h.level));
-        dom.innerHTML = `<p class="md-toc-title">Contents</p>${heads.length ? `<ul>${heads.map((h) => `<li class="md-toc-l${h.level - top}"><a href="#" data-pos="${h.pos}">${esc(h.text || 'Untitled')}</a></li>`).join('')}</ul>` : '<p class="md-toc-empty">Add headings to see them here.</p>'}`;
+        dom.innerHTML = `<p class="md-toc-title">${tr('pui.contents')}</p>${heads.length ? `<ul>${heads.map((h) => `<li class="md-toc-l${h.level - top}"><a href="#" data-pos="${h.pos}">${esc(h.text || 'Untitled')}</a></li>`).join('')}</ul>` : '<p class="md-toc-empty">' + tr('pui.add-headings-to-see-them-here') + '</p>'}`;
       };
       dom.addEventListener('mousedown', (e) => {
         const a = e.target.closest('a[data-pos]'); if (!a) return;
@@ -200,11 +201,11 @@ export const TocView = Toc.extend({
 export const BreadcrumbView = Breadcrumb.extend({
   addOptions() { return { html: () => '' }; },
   addNodeView() {
-    return () => { const dom = document.createElement('nav'); dom.className = 'rich-breadcrumb md-breadcrumb'; dom.contentEditable = 'false'; dom.setAttribute('aria-label', 'Breadcrumb'); dom.innerHTML = this.options.html(); return { dom, ignoreMutation: () => true }; };
+    return () => { const dom = document.createElement('nav'); dom.className = 'rich-breadcrumb md-breadcrumb'; dom.contentEditable = 'false'; dom.setAttribute('aria-label', tl('pui', 'Breadcrumb')); dom.innerHTML = this.options.html(); return { dom, ignoreMutation: () => true }; };
   },
 });
 export const PageBreakView = PageBreak.extend({
   addNodeView() {
-    return () => { const dom = document.createElement('div'); dom.className = 'rich-page-break'; dom.contentEditable = 'false'; dom.innerHTML = '<span>Page break</span>'; return { dom }; };
+    return () => { const dom = document.createElement('div'); dom.className = 'rich-page-break'; dom.contentEditable = 'false'; dom.innerHTML = '<span>' + tr('pui.page-break') + '</span>'; return { dom }; };
   },
 });

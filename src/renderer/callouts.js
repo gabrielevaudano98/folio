@@ -1,3 +1,4 @@
+import { tl } from './i18n.js';
 // Folio — callouts: Obsidian and GitHub types, with Notion's icon and colour.
 //   > [!tip] Title            a callout with a title
 //   > [!warning]- Title       folded (Obsidian); [!warning]+ foldable, open
@@ -5,22 +6,22 @@
 // Unknown types are drawn as notes, as in Obsidian. Pure: shared by the editor and the Read view.
 
 export const CALLOUT_TYPES = {
-  note: { label: 'Note', color: 'blue', icon: 'info' },
-  abstract: { label: 'Abstract', color: 'blue', icon: 'doc' },
-  info: { label: 'Info', color: 'blue', icon: 'info' },
-  todo: { label: 'To do', color: 'blue', icon: 'check' },
-  tip: { label: 'Tip', color: 'green', icon: 'bulb' },
-  success: { label: 'Success', color: 'green', icon: 'check' },
-  question: { label: 'Question', color: 'orange', icon: 'info' },
-  warning: { label: 'Warning', color: 'orange', icon: 'alert' },
-  important: { label: 'Important', color: 'purple', icon: 'alert' },
-  failure: { label: 'Failure', color: 'red', icon: 'stop' },
-  danger: { label: 'Danger', color: 'red', icon: 'alert' },
-  caution: { label: 'Caution', color: 'red', icon: 'stop' },
-  bug: { label: 'Bug', color: 'red', icon: 'alert' },
-  example: { label: 'Example', color: 'purple', icon: 'listBullet' },
-  quote: { label: 'Quote', color: 'gray', icon: 'quote' },
-  callout: { label: 'Callout', color: 'gray', icon: 'bulb' },
+  note: { label: tl('call', 'Note'), color: 'blue', icon: 'info' },
+  abstract: { label: tl('call', 'Abstract'), color: 'blue', icon: 'doc' },
+  info: { label: tl('call', 'Info'), color: 'blue', icon: 'info' },
+  todo: { label: tl('call', 'To do'), color: 'blue', icon: 'check' },
+  tip: { label: tl('call', 'Tip'), color: 'green', icon: 'bulb' },
+  success: { label: tl('call', 'Success'), color: 'green', icon: 'check' },
+  question: { label: tl('call', 'Question'), color: 'orange', icon: 'info' },
+  warning: { label: tl('call', 'Warning'), color: 'orange', icon: 'alert' },
+  important: { label: tl('call', 'Important'), color: 'purple', icon: 'alert' },
+  failure: { label: tl('call', 'Failure'), color: 'red', icon: 'stop' },
+  danger: { label: tl('call', 'Danger'), color: 'red', icon: 'alert' },
+  caution: { label: tl('call', 'Caution'), color: 'red', icon: 'stop' },
+  bug: { label: tl('call', 'Bug'), color: 'red', icon: 'alert' },
+  example: { label: tl('call', 'Example'), color: 'purple', icon: 'listBullet' },
+  quote: { label: tl('call', 'Quote'), color: 'gray', icon: 'quote' },
+  callout: { label: tl('call', 'Callout'), color: 'gray', icon: 'bulb' },
 };
 export const CALLOUT_ALIASES = { summary: 'abstract', tldr: 'abstract', hint: 'tip', check: 'success', done: 'success', help: 'question', faq: 'question', attention: 'warning', fail: 'failure', missing: 'failure', error: 'danger', cite: 'quote' };
 const PALETTE = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];

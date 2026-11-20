@@ -1,6 +1,7 @@
 // Folio — blocks you can grab, as in Notion: a ⋮⋮ handle to drag a block or open its menu, a + to insert below,
 // and the keyboard commands that go with them (duplicate, move, turn into, copy link, select block, delete).
 // A "block" is the list item under the pointer or cursor, otherwise the top-level block.
+import { t as tr, tl } from './i18n.js';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { INSERTS, remember } from './inserts.js';
@@ -75,7 +76,7 @@ export const blockCmd = {
 };
 
 const TURN_IDS = ['text', 'h1', 'h2', 'h3', 'bullet', 'ordered', 'task', 'quote', 'code'];
-const SHORT = { text: 'Text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', bullet: 'Bullets', ordered: 'Numbers', task: 'Checklist', quote: 'Quote', code: 'Code' };
+const SHORT = { text: tr('blk.text'), h1: tl('blk', 'Heading 1'), h2: tl('blk', 'Heading 2'), h3: tl('blk', 'Heading 3'), bullet: 'Bullets', ordered: 'Numbers', task: 'Checklist', quote: 'Quote', code: 'Code' };
 
 /*
  * The handle. Options: onCopyLink(id), keyLabel(key), icons (grip, plus).
@@ -106,9 +107,9 @@ export const BlockHandles = Extension.create({
       view(view) {
         const page = view.dom.closest('.rich-page') || view.dom.parentElement;
         const bar = document.createElement('div'); bar.className = 'block-handle'; bar.hidden = true;
-        bar.innerHTML = `<button type="button" class="block-plus" aria-label="Insert below" data-tip="Insert below (type / anywhere)">${opts.icons.plus || '+'}</button><button type="button" class="block-grip" draggable="true" aria-label="Drag to move, click for options" aria-haspopup="menu" data-tip="Drag to move · Click for options">${opts.icons.grip || '⋮⋮'}</button>`;
+        bar.innerHTML = `<button type="button" class="block-plus" aria-label="${tr('blk.insert-below')}" data-tip="${tr('blk.insert-below-type-anywhere')}">${opts.icons.plus || '+'}</button><button type="button" class="block-grip" draggable="true" aria-label="${tr('blk.drag-to-move-click-for-options')}" aria-haspopup="menu" data-tip="${tr('blk.drag-to-move-click-for-options-2')}">${opts.icons.grip || '⋮⋮'}</button>`;
         page.append(bar);
-        const menu = document.createElement('div'); menu.className = 'block-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Block'); menu.hidden = true;
+        const menu = document.createElement('div'); menu.className = 'block-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', tl('blk', 'Block')); menu.hidden = true;
         document.body.append(menu);
         let target = null, raf = 0, menuFor = null;
 
@@ -174,13 +175,13 @@ export const BlockHandles = Extension.create({
         const items = () => {
           const key = (k) => (k ? `<kbd>${opts.keyLabel(k)}</kbd>` : '');
           const turns = TURN_IDS.map((id) => INSERTS.find((i) => i.id === id)).map((i) => `<button type="button" role="menuitem" class="block-mi block-turn" data-turn="${i.id}" aria-label="${i.label}"><span class="block-mi-ic" aria-hidden="true">${i.badge ? `<b>${i.badge}</b>` : opts.icons[i.icon] || ''}</span>${SHORT[i.id]}</button>`).join('');
-          return `<div class="block-mh">Turn into</div><div class="block-turns" role="group" aria-label="Turn into">${turns}</div><div class="block-sep" role="separator"></div>
-            <button type="button" role="menuitem" class="block-mi" data-act="duplicate"><span>Duplicate</span>${key('Mod+D')}</button>
-            <button type="button" role="menuitem" class="block-mi" data-act="up"><span>Move up</span>${key('Mod+Shift+Up')}</button>
-            <button type="button" role="menuitem" class="block-mi" data-act="down"><span>Move down</span>${key('Mod+Shift+Down')}</button>
-            <button type="button" role="menuitem" class="block-mi" data-act="link"><span>Copy link to block</span>${key('Mod+Alt+L')}</button>
+          return `<div class="block-mh">${tr('blk.turn-into')}</div><div class="block-turns" role="group" aria-label="${tr('blk.turn-into')}">${turns}</div><div class="block-sep" role="separator"></div>
+            <button type="button" role="menuitem" class="block-mi" data-act="duplicate"><span>${tr('blk.duplicate')}</span>${key('Mod+D')}</button>
+            <button type="button" role="menuitem" class="block-mi" data-act="up"><span>${tr('blk.move-up')}</span>${key('Mod+Shift+Up')}</button>
+            <button type="button" role="menuitem" class="block-mi" data-act="down"><span>${tr('blk.move-down')}</span>${key('Mod+Shift+Down')}</button>
+            <button type="button" role="menuitem" class="block-mi" data-act="link"><span>${tr('blk.copy-link-to-block')}</span>${key('Mod+Alt+L')}</button>
             <div class="block-sep" role="separator"></div>
-            <button type="button" role="menuitem" class="block-mi is-danger" data-act="delete"><span>Delete</span>${key('Delete')}</button>`;
+            <button type="button" role="menuitem" class="block-mi is-danger" data-act="delete"><span>${tr('blk.delete')}</span>${key('Delete')}</button>`;
         };
         const closeMenu = (refocus = true) => { if (menu.hidden) return; menu.hidden = true; grip.setAttribute('aria-expanded', 'false'); menuFor = null; if (refocus) view.focus(); };
         const openMenu = (b, { focusTurn = false } = {}) => {
