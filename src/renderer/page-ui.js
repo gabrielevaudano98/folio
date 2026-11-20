@@ -123,7 +123,7 @@ export const CalloutUI = Extension.create({
 });
 
 /* ---- collapsible headings (Word, Notion): a chevron before each heading folds its section; view state only ---- */
-const HFOLD = new PluginKey('headingFold');
+export const HFOLD = new PluginKey('headingFold');
 export const HeadingFold = Extension.create({
   name: 'headingFold',
   addOptions() { return { icons: {} }; },
@@ -156,7 +156,9 @@ export const HeadingFold = Extension.create({
           let folded = prev.folded;
           if (tr.docChanged) folded = new Set([...folded].map((p) => tr.mapping.map(p)).filter((p) => tr.doc.nodeAt(p)?.type.name === 'heading'));
           const t = tr.getMeta(HFOLD);
-          if (t != null) { folded = new Set(folded); folded.has(t) ? folded.delete(t) : folded.add(t); }
+          if (t === 'all') { folded = new Set(); tr.doc.forEach((n, pos) => { if (n.type.name === 'heading') folded.add(pos); }); }
+          else if (t === 'none') folded = new Set();
+          else if (t != null) { folded = new Set(folded); folded.has(t) ? folded.delete(t) : folded.add(t); }
           return tr.docChanged || t != null ? { folded, deco: build(tr.doc, folded) } : prev;
         },
       },

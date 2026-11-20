@@ -7,7 +7,10 @@ import { filterInserts, runInsert, INSERTS } from './inserts.js';
 import { mentionEntries, TAG, FIELD, statusClass } from './page-mentions.js';
 import { highlight } from './fuzzy.js';
 import { BlockHandles } from './page-blocks.js';
-import { CalloutUI, HeadingFold, TocView, BreadcrumbView, PageBreakView } from './page-ui.js';
+import { CalloutUI, HeadingFold, HFOLD, TocView, BreadcrumbView, PageBreakView } from './page-ui.js';
+import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
+import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
+import { FindReplace, mountFindBar } from './page-find.js';
 import { Markdown } from '@tiptap/markdown';
 import { Placeholder } from '@tiptap/extensions';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
@@ -623,41 +626,9 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null }) {
   host.innerHTML = `
-    <div class="ribbon" role="toolbar" aria-label="Formatting">
-      <div class="rb-group">${btn('undo', 'Undo', icons.undo, keyLabel('Mod+Z'))}${btn('redo', 'Redo', icons.redo, keyLabel('Mod+Shift+Z'))}</div>
-      <div class="rb-group"><label class="visually-hidden" for="rb-style">Paragraph style</label>
-        <select class="rb-select" id="rb-style" data-tip="Paragraph style">${STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
-      <div class="rb-group">
-        ${btn('bold', 'Bold', icons.bold, keyLabel('Mod+B'))}${btn('italic', 'Italic', icons.italic, keyLabel('Mod+I'))}
-        ${btn('underline', 'Underline', icons.underline, keyLabel('Mod+U'))}${btn('strike', 'Strikethrough', icons.strike, keyLabel('Mod+Shift+S'))}
-        ${btn('highlight', 'Highlight', icons.highlighter, keyLabel('Mod+Shift+H'))}${btn('code', 'Inline code', icons.codeInline, keyLabel('Mod+E'))}
-        ${btn('link', 'Link', icons.link, keyLabel('Mod+K'))}${btn('clear', 'Clear formatting', icons.clear)}
-      </div>
-      <div class="rb-group">
-        ${btn('superscript', 'Superscript', icons.superscript, keyLabel('Mod+Shift+.'))}${btn('subscript', 'Subscript', icons.subscript, keyLabel('Mod+Shift+,'))}
-        ${btn('colour', 'Text colour', icons.palette)}${btn('inlineMath', 'Maths', icons.sigma, keyLabel('Mod+Shift+M'))}
-        ${btn('footnote', 'Footnote', icons.footnote, keyLabel('Mod+Alt+F'))}${btn('hiddenComment', 'Hidden comment', icons.commentHidden)}
-      </div>
-      <div class="rb-group" role="group" aria-label="Alignment">
-        ${btn('alignLeft', 'Align left', icons.alignLeft, keyLabel('Mod+Shift+L'))}${btn('alignCenter', 'Centre', icons.alignCenter, keyLabel('Mod+Alt+E'))}
-        ${btn('alignRight', 'Align right', icons.alignRight, keyLabel('Mod+Shift+R'))}${btn('alignJustify', 'Justify', icons.alignJustify, keyLabel('Mod+Shift+J'))}
-      </div>
-      <div class="rb-group">
-        ${btn('bullet', 'Bulleted list', icons.listBullet)}${btn('ordered', 'Numbered list', icons.listOrdered)}${btn('task', 'Checklist', icons.listTask, keyLabel('Mod+L'))}
-        ${btn('outdent', 'Decrease indent', icons.outdent, 'Shift+Tab')}${btn('indent', 'Increase indent', icons.indent, 'Tab')}
-      </div>
-      <div class="rb-group">
-        ${btn('table', 'Insert table', icons.table)}${btn('image', 'Insert image', icons.image)}${btn('hr', 'Divider', icons.divider)}${btn('codeblock', 'Code block', icons.codeBlock)}${btn('blockMath', 'Maths block', icons.sigma)}
-      </div>
-      <div class="rb-group rb-table" hidden>
-        <span class="rb-label">Table</span>
-        ${btn('rowBefore', 'Row above', icons.rowAbove)}${btn('rowAfter', 'Row below', icons.rowBelow)}
-        ${btn('colBefore', 'Column left', icons.colLeft)}${btn('colAfter', 'Column right', icons.colRight)}
-        ${btn('delRow', 'Delete row', icons.rowDelete)}${btn('delCol', 'Delete column', icons.colDelete)}${btn('delTable', 'Delete table', icons.trash)}
-      </div>
-    </div>
+    ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
     <div class="bubble" role="toolbar" aria-label="Selection">
       <label class="visually-hidden" for="rb-turn">Turn into</label>
@@ -681,6 +652,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
 
   let model = null; // what was loaded, so saving rewrites only the blocks that changed
   let silent = false;
+  let ready = false; // the ribbon and its state exist (transactions can run while the editor is built)
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
 
@@ -696,6 +668,8 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       }),
       SmartTypography.configure({ enabled: smartTypography }),
       SlashMenu.configure({ keyLabel, ctx: insertCtx }),
+      TableHandles.configure({ icons, toSheet: (e) => tableToSheet(e) }),
+      FindReplace,
       Mentions.configure({ ctx: () => (mentions ? mentions() : null), keyLabel }),
       CodeHighlight,
       CalloutUI.configure({ icons }),
@@ -721,9 +695,41 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     emitTimer = setTimeout(() => onChange?.(api.getMarkdown()), 220);
   }
 
-  const run = (id) => {
+  const run = (id, btn) => {
+    if (!id) return false;
+    if (id.startsWith('ins:')) return api.insert(id.slice(4));
+    if (id.startsWith('app:')) { const r = onCommand?.(id.slice(4)); setTimeout(syncToolbar, 50); return r; }
+    if (id.startsWith('style:')) return setStyle(id.slice(6));
+    if (id.startsWith('width:')) return setWidth(id.slice(6));
     const c = editor.chain().focus();
     switch (id) {
+      case 'painter': return painter.toggle(false);
+      case 'find': return findBar.open(false);
+      case 'replace': return findBar.open(true);
+      case 'selectAll': return c.selectAll().run();
+      case 'tableGrid': return openTableGrid(btn);
+      case 'insertMenu': return openInsertMenu(btn);
+      case 'align': return openAlignMenu(btn);
+      case 'tableMenu': return popupMenu(btn, tableMenuItems(editor, { icons, toSheet: () => tableToSheet(editor) }), { label: 'Table' });
+      case 'slash': return openSlash();
+      case 'emoji': return typeTrigger(':');
+      case 'counts': return showCounts(btn);
+      case 'typewriter': pv.typewriter = !pv.typewriter; savePref('typewriter', pv.typewriter ? '1' : ''); if (pv.typewriter) centreCaret(); return syncToolbar();
+      case 'foldAll': return editor.view.dispatch(editor.state.tr.setMeta(HFOLD, 'all'));
+      case 'unfoldAll': return editor.view.dispatch(editor.state.tr.setMeta(HFOLD, 'none'));
+      case 'zoomIn': return setZoom(pv.zoom + 0.1);
+      case 'zoomOut': return setZoom(pv.zoom - 0.1);
+      case 'zoomReset': return setZoom(1);
+      case 'rowUp': return tableCmd.moveRow(editor, -1);
+      case 'rowDown': return tableCmd.moveRow(editor, 1);
+      case 'colLeft': return tableCmd.moveCol(editor, -1);
+      case 'colRight': return tableCmd.moveCol(editor, 1);
+      case 'cellLeft': return tableCmd.alignCol(editor, 'left');
+      case 'cellCenter': return tableCmd.alignCol(editor, 'center');
+      case 'cellRight': return tableCmd.alignCol(editor, 'right');
+      case 'sortAsc': return tableCmd.sort(editor, false);
+      case 'sortDesc': return tableCmd.sort(editor, true);
+      case 'tableToSheet': return tableToSheet(editor);
       case 'undo': return c.undo().run();
       case 'redo': return c.redo().run();
       case 'bold': return c.toggleBold().run();
@@ -777,8 +783,142 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     }
   };
 
-  host.addEventListener('mousedown', (e) => { if (e.target.closest('.rb')) e.preventDefault(); });
-  host.addEventListener('click', (e) => { const b = e.target.closest('.rb'); if (b) run(b.dataset.cmd); });
+  host.addEventListener('mousedown', (e) => { if (e.target.closest('.bubble .rb')) e.preventDefault(); });
+  host.addEventListener('click', (e) => { const b = e.target.closest('.bubble .rb'); if (b) run(b.dataset.cmd, b); });
+
+  /* ---- the ribbon: compact or full (page-ribbon.js) ---- */
+  const ribbonEl = host.querySelector('.ribbon');
+  const ribbon = wireRibbon(ribbonEl, { run, onModeChange: () => requestAnimationFrame(syncToolbar) });
+  ribbonEl.addEventListener('dblclick', (e) => { if (e.target.closest('[data-cmd="painter"]')) painter.toggle(true); });
+  const visibleBtn = (cmd) => [...ribbonEl.querySelectorAll(`[data-cmd="${cmd}"]`)].find((b) => b.offsetParent) || null;
+  const prefKey = (k) => `folio.page.${k}`;
+  const pref = (k, d) => { try { return localStorage.getItem(prefKey(k)) ?? d; } catch { return d; } };
+  const savePref = (k, v) => { try { localStorage.setItem(prefKey(k), v); } catch { /* storage unavailable */ } };
+  const pv = { zoom: Math.min(2, Math.max(0.5, Number(pref('zoom', '1')) || 1)), width: pref('width', 'normal'), typewriter: pref('typewriter', '') === '1' };
+
+  function setStyle(v) {
+    const c = editor.chain().focus();
+    if (v === 'p') return c.setParagraph().run();
+    if (v === 'quote') return c.setParagraph().toggleBlockquote().run();
+    if (v === 'code') return c.toggleCodeBlock().run();
+    return c.setHeading({ level: Number(v.slice(1)) }).run();
+  }
+  function setWidth(w) { pv.width = w; savePref('width', w); host.dataset.width = w; syncToolbar(); }
+  function setZoom(z) {
+    pv.zoom = Math.round(Math.min(2, Math.max(0.5, z)) * 10) / 10; savePref('zoom', String(pv.zoom));
+    page.style.zoom = pv.zoom === 1 ? '' : String(pv.zoom); syncToolbar(); onStats?.(api.stats());
+  }
+  host.dataset.width = pv.width; if (pv.zoom !== 1) page.style.zoom = String(pv.zoom);
+  host.querySelector('.rich-scroll').addEventListener('wheel', (e) => { if (!(e.ctrlKey || e.metaKey) || e.shiftKey) return; e.preventDefault(); setZoom(pv.zoom + (e.deltaY < 0 ? 0.1 : -0.1)); }, { passive: false });
+
+  /* typewriter scrolling: the line being typed stays in the middle of the window */
+  const scroller = host.querySelector('.rich-scroll');
+  function centreCaret() {
+    if (!pv.typewriter || !editor.isFocused) return;
+    let r; try { r = editor.view.coordsAtPos(editor.state.selection.head); } catch { return; }
+    const sr = scroller.getBoundingClientRect();
+    scroller.scrollTop += (r.top + r.bottom) / 2 - (sr.top + sr.height / 2);
+  }
+
+  /* the / menu from a button: on an empty line or after a space type /, otherwise open a new line below */
+  function typeTrigger(ch) {
+    const { $from, empty } = editor.state.selection; const before = $from.parent.textBetween(0, $from.parentOffset, ' ', ' ');
+    const c = editor.chain().focus();
+    if (!empty) c.setTextSelection(editor.state.selection.to);
+    return c.insertContent({ type: 'text', text: (!before || /\s$/.test(before) ? '' : ' ') + ch }).run();
+  }
+  function openSlash() {
+    const { $from } = editor.state.selection; const para = $from.parent;
+    if (para.type.name === 'paragraph' && !para.content.size) return editor.chain().focus().insertContent({ type: 'text', text: '/' }).run();
+    if ($from.depth >= 1) {
+      const end = $from.after(1);
+      return editor.chain().focus().insertContentAt(end, { type: 'paragraph', content: [{ type: 'text', text: '/' }] }).setTextSelection(end + 2).run();
+    }
+    return typeTrigger('/');
+  }
+  function openInsertMenu(btn) {
+    const items = COMPACT_INSERTS.map((id) => INSERTS.find((i) => i.id === id)).filter(Boolean).map((i) => ({ label: i.label, icon: icons[i.icon] || `<span class="slash-badge">${i.badge || ''}</span>`, run: () => api.insert(i.id) }));
+    btn?.setAttribute('aria-expanded', 'true');
+    popupMenu(btn, [...items, '-', { label: 'All blocks…', icon: icons.plus, key: '/', run: openSlash }], { label: 'Insert', onClose: () => btn?.setAttribute('aria-expanded', 'false') });
+  }
+  function openAlignMenu(btn) {
+    const cur = editor.getAttributes('paragraph').textAlign ?? editor.getAttributes('heading').textAlign ?? 'left';
+    const a = (v, label, icon, key) => ({ label, icon: icons[icon], key: keyLabel(key), checked: (cur || 'left') === v, run: () => pageCmd.align(editor, v) });
+    popupMenu(btn, [a('left', 'Align left', 'alignLeft', 'Mod+Shift+L'), a('center', 'Centre', 'alignCenter', 'Mod+Alt+E'), a('right', 'Align right', 'alignRight', 'Mod+Shift+R'), a('justify', 'Justify', 'alignJustify', 'Mod+Shift+J')], { label: 'Alignment' });
+  }
+  /* Word's table grid: point at the size, click to insert */
+  function openTableGrid(btn) {
+    const R = 8, C = 10; let pick = [3, 3];
+    const cells = Array.from({ length: R * C }, (_, i) => `<button type="button" class="tg-cell" data-r="${Math.floor(i / C) + 1}" data-c="${(i % C) + 1}" aria-label="${Math.floor(i / C) + 1} by ${(i % C) + 1}"></button>`).join('');
+    const { menu, close } = popupMenu(btn, [{ html: `<div class="tg"><div class="tg-label">Insert a 3 × 3 table</div><div class="tg-grid" style="grid-template-columns:repeat(${C},16px)">${cells}</div></div>` }, '-',
+      { label: 'Table from pasted cells: copy them in Excel or Sheets, then paste', icon: icons.paste, disabled: true, run() {} }], { label: 'Insert table' });
+    const paint = () => { menu.querySelector('.tg-label').textContent = `Insert a ${pick[0]} × ${pick[1]} table`; menu.querySelectorAll('.tg-cell').forEach((b) => b.classList.toggle('on', +b.dataset.r <= pick[0] && +b.dataset.c <= pick[1])); };
+    menu.addEventListener('mouseover', (e) => { const b = e.target.closest('.tg-cell'); if (b) { pick = [+b.dataset.r, +b.dataset.c]; paint(); } });
+    menu.addEventListener('focusin', (e) => { const b = e.target.closest('.tg-cell'); if (b) { pick = [+b.dataset.r, +b.dataset.c]; paint(); } });
+    menu.addEventListener('click', (e) => { const b = e.target.closest('.tg-cell'); if (!b) return; close('pick'); const item = INSERTS.find((i) => i.id === 'table'); runInsert(editor, { item, args: { rows: +b.dataset.r, cols: +b.dataset.c } }, insertCtx()); });
+    menu.addEventListener('keydown', (e) => {
+      const step = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] }[e.key]; if (!step) return;
+      e.preventDefault(); e.stopPropagation(); pick = [Math.min(R, Math.max(1, pick[0] + step[0])), Math.min(C, Math.max(1, pick[1] + step[1]))];
+      menu.querySelector(`.tg-cell[data-r="${pick[0]}"][data-c="${pick[1]}"]`).focus(); paint();
+    }, true);
+    menu.querySelector(`.tg-cell[data-r="3"][data-c="3"]`).focus(); paint();
+  }
+  /* "Open as sheet": the table moves to a new sheet next to the page, and an embed takes its place */
+  async function tableToSheet(ed) {
+    const data = tableCmd.rows(ed.state); if (!data || !createDoc) return false;
+    const { t } = data; let name = 'Table';
+    ed.state.doc.nodesBetween(0, t.pos, (n) => { if (n.type.name === 'heading') name = n.textContent.trim() || name; return n.type.name !== 'table'; });
+    const made = await createDoc({ type: 'sheet', name, content: (title) => sheetFromTable(title, data.rows, data.aligns) });
+    if (!made) return false;
+    const now = tableAt(ed.state) || t; const at = now.pos;
+    ed.chain().focus().insertContentAt({ from: at, to: at + now.table.nodeSize }, { type: 'paragraph', content: [{ type: 'text', text: `![[${made.ref}]]` }] }).run();
+    return true;
+  }
+
+  /* format painter (Word, Docs): copy the look of the text at the cursor, paint it on the next selection */
+  const painter = {
+    on: false, sticky: false, marks: [], block: null,
+    toggle(sticky) {
+      if (this.on && !sticky) return this.off();
+      const { $from } = editor.state.selection; const para = $from.parent;
+      this.marks = (editor.state.storedMarks || $from.marks()).filter((m) => m.type.name !== 'link');
+      this.block = { type: para.type.name, attrs: { ...para.attrs } };
+      this.on = true; this.sticky = !!sticky; host.classList.add('is-painting'); syncToolbar();
+    },
+    off() { this.on = false; this.sticky = false; host.classList.remove('is-painting'); syncToolbar(); },
+    apply() {
+      let { from, to, empty, $from } = editor.state.selection;
+      if (empty) { const t = $from.parent.textContent; let a = $from.parentOffset, b = a; while (a > 0 && /[\p{L}\p{N}_]/u.test(t[a - 1])) a--; while (b < t.length && /[\p{L}\p{N}_]/u.test(t[b])) b++; if (a === b) return; from = $from.start() + a; to = $from.start() + b; }
+      const { state } = editor; const tr = state.tr;
+      for (const name of Object.keys(state.schema.marks)) if (name !== 'link') tr.removeMark(from, to, state.schema.marks[name]);
+      for (const m of this.marks) tr.addMark(from, to, m);
+      const blk = this.block;
+      if (blk && (blk.type === 'paragraph' || blk.type === 'heading')) {
+        state.doc.nodesBetween(from, to, (n, pos) => {
+          if (!n.isTextblock) return true;
+          if (n.type.name === 'paragraph' || n.type.name === 'heading') tr.setNodeMarkup(pos, state.schema.nodes[blk.type], { ...n.attrs, ...(blk.type === 'heading' ? { level: blk.attrs.level } : {}), textAlign: blk.attrs.textAlign ?? null });
+          return false;
+        });
+      }
+      editor.view.dispatch(tr);
+      if (!this.sticky) this.off();
+    },
+  };
+  editor.view.dom.addEventListener('mouseup', () => { if (painter.on) setTimeout(() => painter.apply(), 0); });
+  editor.view.dom.addEventListener('keydown', (e) => { if (e.key === 'Escape' && painter.on) { e.preventDefault(); painter.off(); } });
+  editor.view.dom.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); painter.toggle(false); } if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); showCounts(null); } });
+
+  /* word count (Docs: Ctrl+Shift+C) */
+  function showCounts(btn) {
+    const st = api.stats(); const f = new Intl.NumberFormat();
+    const row = (l, a, b) => `<div class="counts-row"><span>${l}</span><b>${f.format(a)}</b>${b != null ? `<b>${f.format(b)}</b>` : '<b></b>'}</div>`;
+    const sel = st.selection;
+    popupMenu(btn || visibleBtn('find') || host, [{ html: `<div class="counts"><div class="counts-row counts-head"><span></span><span>Document</span><span>${sel ? 'Selection' : ''}</span></div>${row('Words', st.words, sel?.words)}${row('Characters', st.chars, sel?.chars)}${row('Characters without spaces', st.charsNoSpace, sel?.charsNoSpace)}${row('Paragraphs', st.paragraphs, sel?.paragraphs)}${row('Pages', Math.max(1, Math.ceil(st.words / 500)))}<div class="counts-note">About ${Math.max(1, Math.round(st.words / 230))} min to read</div></div>` }], { label: 'Word count' });
+  }
+
+  /* find and replace */
+  const findBar = mountFindBar(host.querySelector('.rich-scroll').parentElement === host ? host : host, editor, { icons, keyLabel });
+  host.insertBefore(host.querySelector('.find-bar'), host.querySelector('.rich-scroll'));
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {
     const v = styleSel.value, c = editor.chain().focus();
@@ -811,7 +951,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const colours = host.querySelector('#rb-colours'); let colourFrom = null;
   function toggleColours() {
     if (!colours.hidden) return hideColours();
-    const anchor = (bubble.style.visibility === 'visible' || bubble.matches('[data-show]')) && bubble.contains(document.activeElement) ? bubble.querySelector('[data-cmd="colour"]') : host.querySelector('.ribbon [data-cmd="colour"]');
+    const anchor = (bubble.style.visibility === 'visible' || bubble.matches('[data-show]')) && bubble.contains(document.activeElement) ? bubble.querySelector('[data-cmd="colour"]') : visibleBtn('colour') || host.querySelector('.ribbon [data-cmd="colour"]');
     const r = (anchor || host).getBoundingClientRect();
     colourFrom = anchor; colours.hidden = false;
     const a = editor.getAttributes('folioColor');
@@ -860,17 +1000,33 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
         b.setAttribute('aria-pressed', String((cur === 'left' ? null : cur) === ALIGN_BTN[b.dataset.cmd]));
       }
     }
-    host.querySelector('[data-cmd="undo"]').disabled = !editor.can().undo();
-    host.querySelector('[data-cmd="redo"]').disabled = !editor.can().redo();
+    const canUndo = editor.can().undo(), canRedo = editor.can().redo();
+    host.querySelectorAll('[data-cmd="undo"]').forEach((b) => { b.disabled = !canUndo; });
+    host.querySelectorAll('[data-cmd="redo"]').forEach((b) => { b.disabled = !canRedo; });
     let v = 'p';
     for (let l = 1; l <= 6; l++) if (editor.isActive('heading', { level: l })) v = 'h' + l;
     if (editor.isActive('blockquote')) v = 'quote';
     if (editor.isActive('codeBlock')) v = 'code';
     styleSel.value = v;
     turnSel.value = editor.isActive('taskList') ? 'task' : editor.isActive('bulletList') ? 'bullet' : editor.isActive('orderedList') ? 'ordered' : (['p', 'h1', 'h2', 'h3', 'quote', 'code'].includes(v) ? v : 'p');
-    host.querySelector('.rb-table').hidden = !editor.isActive('table');
+    if (!ready) return;
+    ribbon.setTable(editor.isActive('table'));
+    ribbonEl.querySelectorAll('.rb-style-tile').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.style === v)));
+    const cur = editor.getAttributes('paragraph').textAlign ?? editor.getAttributes('heading').textAlign ?? 'left';
+    const alignBtn = ribbonEl.querySelector('[data-cmd="align"]'); const ai = icons[{ left: 'alignLeft', center: 'alignCenter', right: 'alignRight', justify: 'alignJustify' }[cur || 'left']];
+    if (alignBtn && alignBtn.dataset.icon !== cur) { alignBtn.dataset.icon = cur; alignBtn.innerHTML = ai + '<i class="rb-caret" aria-hidden="true"></i>'; }
+    const ca = editor.isActive('table') ? tableCmd.colAlign(editor.state) : null;
+    const press = (cmd, on) => ribbonEl.querySelectorAll(`[data-cmd="${cmd}"]`).forEach((b) => b.setAttribute('aria-pressed', String(!!on)));
+    press('cellLeft', ca === 'left'); press('cellCenter', ca === 'center'); press('cellRight', ca === 'right');
+    press('painter', painter.on); press('typewriter', pv.typewriter);
+    for (const w of ['narrow', 'normal', 'wide']) press('width:' + w, pv.width === w);
+    for (const a of ['focus', 'outline', 'spellcheck']) press('app:' + a, isOn(a));
+    ribbonEl.querySelectorAll('.rb-zoom-val').forEach((z) => { z.textContent = `${Math.round(pv.zoom * 100)}%`; });
+    cancelAnimationFrame(statsRaf); statsRaf = requestAnimationFrame(() => { onStats?.(api.stats()); centreCaret(); });
   }
+  let statsRaf = 0;
 
+  ready = true;
   const api = {
     editor,
     setMarkdown(md) {
@@ -901,6 +1057,44 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       const scroller = host.querySelector('.rich-scroll'); const top = scroller.getBoundingClientRect().top + 60;
       let idx = -1; api.headings().forEach((pos, i) => { const d = editor.view.nodeDOM(pos); if (d && d.getBoundingClientRect().top <= top) idx = i; });
       return idx;
+    },
+    /* counts for the status bar and the Word count box: the document, and the selection when there is one */
+    stats() {
+      const count = (text, paragraphs) => ({ words: (text.match(/[\p{L}\p{N}’'-]+/gu) || []).length, chars: [...text].length, charsNoSpace: [...text.replace(/\s/g, '')].length, paragraphs });
+      let paras = 0; editor.state.doc.descendants((n) => { if (n.isTextblock && n.content.size) paras++; return !n.isTextblock; });
+      const all = count(editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n', ' '), paras);
+      all.words = api.words();
+      const { from, to, empty } = editor.state.selection;
+      let sp = 0; if (!empty) editor.state.doc.nodesBetween(from, to, (n) => { if (n.isTextblock && n.content.size) sp++; return !n.isTextblock; });
+      return { ...all, zoom: pv.zoom, selection: empty ? null : count(editor.state.doc.textBetween(from, to, '\n', ' '), sp) };
+    },
+    find(replace = false) { return findBar.open(replace); },
+    setRibbonMode(m) { ribbon.setMode(m); },
+    zoom(step) { return step === 0 ? setZoom(1) : setZoom(pv.zoom + step * 0.1); },
+    sync() { syncToolbar(); },
+    /* the outline moves and re-levels sections here, so the change is one undo step */
+    moveSection(from, before) {
+      const tops = []; editor.state.doc.forEach((n, pos) => { if (n.type.name === 'heading') tops.push({ pos, level: n.attrs.level }); });
+      const all = api.headings(); const fromPos = all[from], beforePos = before < 0 ? -1 : all[before];
+      const s = tops.findIndex((h) => h.pos === fromPos); if (s < 0 || (before >= 0 && !tops.some((h) => h.pos === beforePos))) return false;
+      const end = tops.slice(s + 1).find((h) => h.level <= tops[s].level)?.pos ?? editor.state.doc.content.size;
+      if (beforePos >= fromPos && beforePos < end) return false;
+      const slice = editor.state.doc.slice(fromPos, end);
+      const tr = editor.state.tr.delete(fromPos, end);
+      const at = beforePos < 0 ? tr.doc.content.size : tr.mapping.map(beforePos);
+      tr.insert(at, slice.content);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(at + 1)));
+      editor.view.dispatch(tr.scrollIntoView()); editor.commands.focus();
+      return true;
+    },
+    shiftSection(index, delta) {
+      const tops = []; editor.state.doc.forEach((n, pos) => { if (n.type.name === 'heading') tops.push({ pos, level: n.attrs.level }); });
+      const fromPos = api.headings()[index]; const s = tops.findIndex((h) => h.pos === fromPos); if (s < 0) return false;
+      const end = tops.slice(s + 1).find((h) => h.level <= tops[s].level)?.pos ?? editor.state.doc.content.size;
+      const inside = tops.filter((h) => h.pos >= fromPos && h.pos < end);
+      if (inside.some((h) => h.level + delta < 1 || h.level + delta > 6)) return false;
+      const tr = editor.state.tr; for (const h of inside) tr.setNodeMarkup(h.pos, undefined, { ...tr.doc.nodeAt(h.pos).attrs, level: h.level + delta });
+      editor.view.dispatch(tr); return true;
     },
     words() {
       let text = editor.state.doc.textContent;

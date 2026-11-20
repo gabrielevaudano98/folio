@@ -240,13 +240,28 @@ export function render(text) {
   });
 }
 
+/* a line of text that a following === or --- line makes a heading (setext); not a list item, quote, table or heading */
+export const setextText = (l) => !!l.trim() && !/^\s{0,3}([-*+]\s|\d+[.)]\s|>|#|\||```|~~~)/.test(l) && !/^ {4}/.test(l) && !/^ {0,3}([-*_=])( *\1){2,} *$/.test(l);
 export function headings(text) {
   const out = []; let fence = false;
-  text.split('\n').forEach((l, i) => {
-    if (/^\s*(```|~~~)/.test(l)) fence = !fence;
-    const m = !fence && l.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
-    if (m) out.push({ level: m[1].length, text: m[2].replace(/\s+\{align=\w+\}$/, '').replace(/\[([^\]]+)\]\{[^}]*\}/g, '$1').replace(/%%[^%]*%%/g, '').replace(/[*_`]/g, '').trim(), line: i });
-  });
+  const lines = text.split('\n');
+  let start = 0;
+  if (/^---\s*$/.test(lines[0] || '')) { const end = lines.findIndex((l, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(l)); if (end > 0) start = end + 1; }
+  const clean = (t) => t.replace(/\s+\{align=\w+\}$/, '').replace(/\[([^\]]+)\]\{[^}]*\}/g, '$1').replace(/%%[^%]*%%/g, '').replace(/[*_`]/g, '').trim();
+  for (let i = start; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^\s*(```|~~~)/.test(l)) { fence = !fence; continue; }
+    if (fence) continue;
+    const m = l.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (m) { out.push({ level: m[1].length, text: clean(m[2]), line: i }); continue; }
+    const u = /^ {0,3}(=+|-+)\s*$/.exec(lines[i + 1] || '');
+    // a paragraph (one or more lines) underlined with === or --- is a heading; it starts at the paragraph's first line
+    if (u && setextText(l)) {
+      let first = i; while (first > start && setextText(lines[first - 1]) && !out.some((h) => h.line === first - 1)) first--;
+      if (out.at(-1)?.line >= first) first = i;
+      out.push({ level: u[1][0] === '=' ? 1 : 2, text: clean(lines.slice(first, i + 1).map((x) => x.trim()).join(' ')), line: first, setext: true }); i++;
+    }
+  }
   return out;
 }
 

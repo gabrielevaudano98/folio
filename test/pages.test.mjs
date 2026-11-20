@@ -20,6 +20,8 @@ fs.writeFileSync(path.join(ws, 'pages', 'd2.md'), '# Blocks\n\nFirst paragraph.\
 fs.writeFileSync(path.join(ws, 'pages', 'd5.md'), '# Mentions\n\nStart here\n');
 fs.writeFileSync(path.join(ws, 'pages', 'Atlas Plan.md'), '# Atlas Plan\n\n## Goals\n\nShip the editor.\n\n## Risks\n\nNone yet.\n');
 fs.mkdirSync(path.join(ws, 'People'), { recursive: true }); fs.writeFileSync(path.join(ws, 'People', 'Ada Lovelace.md'), '# Ada Lovelace\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| --- | --- |\n| Pear | 3 |\n| Apple | 10 |\n| Fig | 2 |\n\nEnd.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
 const html = read('html.md'), obs = read('obsidian.md');
 const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
 
@@ -144,18 +146,42 @@ const steps = [
   { js: "(() => { const el = [...document.querySelectorAll('.rich-wikilink')].find((x) => x.dataset.target === 'Atlas Plan'); el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return true; })()", wait: 900 },
   { js: "(() => { const c = document.querySelector('.rich-hover'); return !!c && c.textContent.includes('Atlas Plan'); })()", log: true, wait: 100 },
   { js: "(() => { const el = document.querySelector('.rich-wikilink.is-date'); const r = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, ctrlKey: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new MouseEvent('mousedown', o)); el.dispatchEvent(new MouseEvent('mouseup', o)); return true; })()", wait: 2000 },
+  // D6: sort, centre and move a column from the Table tab; paste cells from a spreadsheet
+  { js: "document.querySelector('[data-file=\"pages/d6.md\"]').click()", wait: 1500 },
+  { js: "(() => { const td = [...document.querySelectorAll('.rich-prose td')].find((c) => c.textContent === '3'); document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.setStart(td.querySelector('p'), 0); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()", wait: 300 },
+  { js: "(() => { const shown = !document.querySelector('#rb-tab-table').hidden && !document.querySelector('.rb-compact .rb-table').hidden; document.querySelector('.ribbon [data-cmd=sortAsc]').click(); return shown; })()", log: true, wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=cellCenter]').click(); true", wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=colLeft]').click(); true", wait: 300 },
+  { js: typeAtEnd('End.', ''), wait: 200 },
+  { js: "(() => { const dt = new DataTransfer(); dt.setData('text/plain', 'A\\tB\\n1\\t2\\n'); return !document.querySelector('.rich-prose').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); })()", log: true, wait: 2500 },
+  // D7: find and replace, one undo; format painter; outline drag and demote; ribbon layouts; zoom
+  { js: "document.querySelector('[data-file=\"pages/d7.md\"]').click()", wait: 1500 },
+  { js: typeAtEnd('alpha beta alpha', ''), wait: 200 },
+  { js: "document.querySelector('.ribbon [data-cmd=replace]').click(); const q = document.querySelector('.find-q'); q.value = 'alpha'; q.dispatchEvent(new Event('input')); [document.querySelector('.find-bar').hidden, document.querySelector('.find-replace').hidden, document.querySelectorAll('.rich-prose .find-hit').length, document.querySelector('.find-count').textContent]", log: true, wait: 300 },
+  { js: "const r = document.querySelector('.find-r'); r.value = 'omega'; document.querySelector('[data-f=all]').click(); document.querySelector('.rich-prose').textContent", log: true, wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=undo]').click(); document.querySelector('.rich-prose').textContent", log: true, wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=redo]').click(); document.querySelector('[data-f=close]').click(); document.querySelector('.find-bar').hidden", log: true, wait: 300 },
+  { js: select('Painted', 10, 10), wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=painter]').click(); document.querySelector('.pane-rich, .ribbon').closest('.pane-rich')?.classList.contains('is-painting') ?? true", log: true, wait: 200 },
+  { js: select('Painted', 17, 22), wait: 300 },
+  { js: "document.querySelector('.rich-prose').dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); true", wait: 1500 },
+  { js: "(() => { const links = [...document.querySelectorAll('#outline-list a')]; const from = links.find((a) => a.textContent === 'Third'), to = links.find((a) => a.textContent === 'Second'); if (!from || !to) return links.map((a) => a.textContent); const dt = new DataTransfer(); from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt })); const r = to.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 5, clientY: r.top + 2 }; to.dispatchEvent(new DragEvent('dragover', o)); to.dispatchEvent(new DragEvent('drop', o)); from.dispatchEvent(new DragEvent('dragend', { bubbles: true })); return true; })()", log: true, wait: 1500 },
+  { js: "(() => { const a = [...document.querySelectorAll('#outline-list a')].find((x) => x.textContent === 'Second'); a.focus(); a.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, shiftKey: true, bubbles: true, cancelable: true })); return [...document.querySelectorAll('#outline-list a')].map((x) => x.textContent).join('|'); })()", log: true, wait: 1500 },
+  { js: "(() => { const r = document.querySelector('.ribbon'); document.querySelector('.rb-compact [data-cmd=ribbonMode]').click(); const full = r.dataset.mode; document.querySelector('#rb-tab-insert').click(); const ins = document.querySelector('#rb-tab-insert').getAttribute('aria-selected'); const vis = !document.querySelector('#rb-panel-insert').hidden && document.querySelector('#rb-panel-home').hidden; return [full, localStorage.getItem('folio.ribbon'), ins, vis]; })()", log: true, wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=zoomIn]').click(); [document.querySelector('.rich-page').style.zoom, document.getElementById('st-zoom-val').textContent, /words/.test(document.getElementById('st-words').textContent)]", log: true, wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=zoomReset]').click(); document.querySelector('.rb-tabs [data-cmd=ribbonMode]').click(); [document.querySelector('.rich-page').style.zoom, document.querySelector('.ribbon').dataset.mode]", log: true, wait: 2500 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
 const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: ud, FOLIO_SHOT: stepsFile }, stdio: ['ignore', 'pipe', 'pipe'] });
 let out = ''; child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
-const timer = setTimeout(() => child.kill(), 90000);
+const timer = setTimeout(() => child.kill(), 200000);
 child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 37, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, errors] = logs;
+  assert.equal(logs.length, 49, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -196,4 +222,16 @@ child.on('exit', () => {
   assert(people >= 1 && days >= 1 && tags >= 1 && statuses >= 1, chips); assert(hovered); console.log('  ✓ people, days, tags and status are drawn as chips, and resting on a link shows a preview');
   assert(fs.existsSync(path.join(ws, 'Journal', `${tomorrow}.md`)), 'daily note'); assert.match(fs.readFileSync(path.join(ws, 'Journal', `${tomorrow}.md`), 'utf8'), /^# \w+,? \d+ \w+ \d{4}\n\n$/);
   console.log('  ✓ opening a day link makes the daily note in Journal/ on first use');
+  assert(tableTab && pasted, JSON.stringify([tableTab, pasted]));
+  const norm = (t) => t.replace(/ +/g, ' ').replace(/-{3,}/g, '---');
+  assert.equal(norm(read('d6.md')), '# Table\n\n| Qty | Name |\n| :---: | --- |\n| 2 | Fig |\n| 3 | Pear |\n| 10 | Apple |\n\nEnd.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n', read('d6.md'));
+  console.log('  ✓ tables: the Table tab appears in a table; sort by a column (numbers by value), centre it, move it left; cells pasted from a spreadsheet become a table');
+  assert.deepEqual(findOpen.slice(0, 3), [false, false, 3], JSON.stringify(findOpen)); assert.match(findOpen[3], / of 3$/);
+  assert(replaced.includes('omega beta omega') && replaced.includes('omega gamma'), replaced); assert(undone.includes('alpha beta alpha') && undone.includes('Alpha gamma'), undone); assert(closed2);
+  console.log('  ✓ find and replace: matches are highlighted and counted; Replace all is undone with one Undo');
+  assert(painting && dragged2 === true, JSON.stringify([painting, dragged2])); assert.equal(outlineAfter, 'Find|Third|Second');
+  assert.equal(read('d7.md'), '# Find\n\nomega beta omega\n\nomega gamma\n\n## Third\n\nLast words\n\n### Second\n\nPainted **bold** and **plain**\n', read('d7.md'));
+  console.log('  ✓ format painter copies bold to the next selection; dragging a heading in the outline moves its section; Alt+Shift+→ demotes it');
+  assert.deepEqual(modes, ['full', 'full', 'true', true]); assert.deepEqual(zoomed, ['1.1', '110%', true]); assert.deepEqual(zoomBack, ['', 'compact']);
+  console.log('  ✓ the ribbon switches between one row and Word-style tabs and remembers it; page zoom shows in the status bar');
 });

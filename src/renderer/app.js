@@ -10,6 +10,7 @@ import { NEW_DECK, renderSlide } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
+import { moveSection, shiftSection } from './page-outline.js';
 import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
@@ -135,6 +136,9 @@ async function boot() {
     askUrl: (title) => prompt({ title, label: 'Address', placeholder: 'https://', action: 'Insert' }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
     openMedia: (src) => openMedia(src),
     createDoc: createDocHere,
+    onCommand: (id) => { if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
+    isOn: (id) => (id === 'focus' ? app.classList.contains('focus') : id === 'outline' ? app.dataset.outline === 'open' : id === 'spellcheck' ? !!S.settings.spellcheck : false),
+    onStats: (st) => { S.richStats = st; if (isRich()) renderStatus(); },
     mentions: mentionCtx,
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
     preview: previewHtml,
@@ -606,12 +610,17 @@ async function previewHtml(name) {
 }
 
 /* ============ outline ============ */
-let currentHeads = [];
+let currentHeads = [], outlineFolded = new Set(), outlineFor = null;
 function renderOutline() {
   const t = activeTab();
+  if (t?.path !== outlineFor) { outlineFolded = new Set(); outlineFor = t?.path; }
   currentHeads = t ? headings(t.text) : [];
   $('#outline-list').innerHTML = currentHeads.length
-    ? currentHeads.map((h, i) => `<li><a href="#" data-line="${h.line}" data-i="${i}" style="--lvl:${Math.min(h.level, 4)}">${esc(h.text)}</a></li>`).join('')
+    ? currentHeads.map((h, i) => {
+      const kids = currentHeads[i + 1] && currentHeads[i + 1].level > h.level;
+      const hidden = currentHeads.some((p, k) => k < i && outlineFolded.has(k) && p.level < h.level && !currentHeads.slice(k + 1, i).some((q) => q.level <= p.level));
+      return `<li${hidden ? ' hidden' : ''}>${kids ? `<button type="button" class="outline-fold" data-fold="${i}" aria-expanded="${!outlineFolded.has(i)}" aria-label="${outlineFolded.has(i) ? 'Show' : 'Hide'} the headings under ${esc(h.text)}">${icons.chevron}</button>` : ''}<a href="#" draggable="true" data-line="${h.line}" data-i="${i}" style="--lvl:${Math.min(h.level, 4)}" title="Drag to move this section. Alt+Shift+arrows to move or change its level">${esc(h.text)}</a></li>`;
+    }).join('')
     : '<li class="outline-empty">Headings appear here as you write them.</li>';
   markOutlineCurrent();
   if (activeTab()?.path !== blPath) renderBacklinks();
@@ -637,12 +646,60 @@ async function renderBacklinks() {
 $('#outline-list').addEventListener('contextmenu', (e) => {
   const a = e.target.closest('a[data-i]'); if (!a || curType() !== 'md') return; e.preventDefault();
   const h = currentHeads[Number(a.dataset.i)]; const part = h.text.replace(/[*_`]/g, '');
-  showMenu(null, [{ label: 'Copy link to this section', run: () => copyRef(S.active, part, 'link') }, { label: 'Copy embed reference', run: () => copyRef(S.active, part, 'embed') }], { x: e.clientX, y: e.clientY });
+  const i = Number(a.dataset.i);
+  showMenu(null, [
+    { label: 'Promote (one level up)', disabled: h.level <= 1, run: () => shiftSectionAt(i, -1) }, { label: 'Demote (one level down)', disabled: h.level >= 6, run: () => shiftSectionAt(i, 1) },
+    { label: 'Move section up', run: () => { let k = i - 1; while (k >= 0 && currentHeads[k].level > h.level) k--; if (k >= 0) moveSectionTo(i, k); } },
+    { label: 'Move section to the end', run: () => moveSectionTo(i, -1) },
+    '-',
+    { label: 'Copy link to this section', run: () => copyRef(S.active, part, 'link') }, { label: 'Copy embed reference', run: () => copyRef(S.active, part, 'embed') }], { x: e.clientX, y: e.clientY });
 });
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-bl]'); if (!a) return; e.preventDefault();
   openFile(a.dataset.bl, { line: Number(a.dataset.blLine) });
 });
+/* sections from the outline: drag a heading to move it with everything under it; promote and demote (Word) */
+function moveSectionTo(from, before) {
+  if (curType() !== 'md' || from === before) return;
+  if (isRich()) { rich.moveSection(from, before); return; }
+  const t = activeTab(); const h = currentHeads[from], b = before < 0 ? null : currentHeads[before];
+  const next = moveSection(t.text, h.line, b ? b.line : -1); if (next !== t.text) editor.setDoc(next, { keepHistory: true });
+}
+function shiftSectionAt(i, delta) {
+  if (curType() !== 'md') return;
+  if (isRich()) { rich.shiftSection(i, delta); return; }
+  const t = activeTab(); const next = shiftSection(t.text, currentHeads[i].line, delta); if (next !== t.text) editor.setDoc(next, { keepHistory: true });
+}
+{
+  const list = $('#outline-list'); let dragI = null;
+  list.addEventListener('dragstart', (e) => { const a = e.target.closest('a[data-i]'); if (!a || curType() !== 'md') return; dragI = +a.dataset.i; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', a.textContent); a.classList.add('is-dragging'); });
+  const clear = () => list.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+  list.addEventListener('dragover', (e) => {
+    if (dragI == null) return; const a = e.target.closest('a[data-i]'); if (!a) return; e.preventDefault(); clear();
+    const r = a.getBoundingClientRect(); a.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-before' : 'drop-after');
+  });
+  list.addEventListener('dragleave', (e) => { if (!list.contains(e.relatedTarget)) clear(); });
+  list.addEventListener('drop', (e) => {
+    const a = e.target.closest('a[data-i]'); if (dragI == null || !a) return; e.preventDefault();
+    const i = +a.dataset.i; const after = a.classList.contains('drop-after'); clear();
+    // dropping after a heading puts the section after that heading's whole section
+    let before = i;
+    if (after) { const lvl = currentHeads[i].level; const k = currentHeads.findIndex((h, j) => j > i && h.level <= lvl); before = k < 0 ? -1 : k; }
+    moveSectionTo(dragI, before); dragI = null;
+  });
+  list.addEventListener('dragend', () => { dragI = null; clear(); list.querySelectorAll('.is-dragging').forEach((x) => x.classList.remove('is-dragging')); });
+  list.addEventListener('keydown', (e) => {
+    const a = e.target.closest('a[data-i]'); if (!a || !e.altKey || !e.shiftKey) return; const i = +a.dataset.i;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); shiftSectionAt(i, e.key === 'ArrowLeft' ? -1 : 1); }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault(); const lvl = currentHeads[i].level;
+      if (e.key === 'ArrowUp') { let k = i - 1; while (k >= 0 && currentHeads[k].level > lvl) k--; if (k >= 0) moveSectionTo(i, k); }
+      else { const n = currentHeads.findIndex((h, j) => j > i && h.level <= lvl); if (n >= 0) { const m = currentHeads.findIndex((h, j) => j > n && h.level <= currentHeads[n].level); moveSectionTo(i, m < 0 ? -1 : m); } }
+    }
+    setTimeout(() => $(`#outline-list a[data-i="${Math.min(i, currentHeads.length - 1)}"]`)?.focus(), 400);
+  });
+  list.addEventListener('click', (e) => { const f = e.target.closest('[data-fold]'); if (!f) return; e.preventDefault(); const i = +f.dataset.fold; outlineFolded.has(i) ? outlineFolded.delete(i) : outlineFolded.add(i); renderOutline(); });
+}
 function markOutlineCurrent(line) {
   if (curType() !== 'md') return;
   if (isRich() && line == null) { const c = rich.currentHeading(); $$('#outline-list a').forEach((a) => a.setAttribute('aria-current', String(Number(a.dataset.i) === c))); return; }
@@ -691,6 +748,12 @@ function renderStatus() {
   $('#st-words').textContent = `${fmt.format(words)} ${words === 1 ? 'word' : 'words'}`;
   $('#st-time').textContent = `${Math.max(1, Math.round(words / 230))} min read`;
   $('#st-cursor').textContent = isRich() ? '' : S.cursor.selection ? `${fmt.format(S.cursor.selection.length)} selected` : `Line ${S.cursor.line}, column ${S.cursor.col}`;
+  const st = isRich() ? S.richStats : null; const zoomEl = $('#st-zoom');
+  if (st) {
+    $('#st-words').textContent = st.selection ? `${fmt.format(st.selection.words)} of ${fmt.format(st.words)} words` : `${fmt.format(st.words)} ${st.words === 1 ? 'word' : 'words'}`;
+    $('#st-time').textContent = st.selection ? `${fmt.format(st.selection.chars)} characters selected` : `${fmt.format(st.chars)} characters · ${Math.max(1, Math.round(st.words / 230))} min read`;
+    zoomEl.hidden = false; $('#st-zoom-val').textContent = `${Math.round(st.zoom * 100)}%`;
+  } else zoomEl.hidden = true;
 }
 
 /* ============ empty states ============ */
@@ -1041,7 +1104,16 @@ const COMMANDS = [
   { id: 'open-folder', title: 'Open folder…', key: 'Mod+O', run: chooseFolder },
   { id: 'quick-open', title: 'Go to note…', key: 'Mod+P', run: () => openPalette('files') },
   { id: 'search', title: 'Search all notes', key: 'Mod+Shift+F', run: focusSearch },
-  { id: 'find', title: 'Find in note', key: 'Mod+F', run: () => editor.run('find') },
+  { id: 'find', title: 'Find in note', key: 'Mod+F', run: () => (isRich() && curType() === 'md' ? rich.find(false) : editor.run('find')) },
+  { id: 'replace', title: 'Find and replace in note', key: 'Mod+H', run: () => (isRich() && curType() === 'md' ? rich.find(true) : editor.run('find')) },
+  { id: 'word-count', title: 'Word count', key: 'Mod+Shift+C', run: () => (isRich() ? rich.run('counts') : toast(`${$('#st-words').textContent}`)) },
+  { id: 'ribbon-full', title: 'Ribbon: show the full ribbon (tabs like Word)', run: () => rich.setRibbonMode('full') },
+  { id: 'ribbon-compact', title: 'Ribbon: show the simplified ribbon', run: () => rich.setRibbonMode('compact') },
+  { id: 'format-painter', title: 'Format painter', key: 'Mod+Alt+C', run: () => rich.run('painter') },
+  { id: 'typewriter', title: 'Typewriter scrolling', run: () => rich.run('typewriter') },
+  { id: 'page-zoom-in', title: 'Page zoom in', run: () => rich.zoom(1) },
+  { id: 'page-zoom-out', title: 'Page zoom out', run: () => rich.zoom(-1) },
+  { id: 'page-zoom-reset', title: 'Page zoom 100%', run: () => rich.zoom(0) },
   { id: 'mode-edit', title: 'View: write or visual', key: 'Mod+1', run: () => setView(viewsFor(curType())[0][0]) },
   { id: 'mode-split', title: 'View: split', key: 'Mod+2', run: () => setView('split') },
   { id: 'mode-preview', title: 'View: read or code', key: 'Mod+3', run: () => setView(viewsFor(curType())[2][0]) },
@@ -1169,8 +1241,8 @@ async function exportAs(kind) {
 
 /* ============ toggles ============ */
 function toggleSidebar() { const open = app.dataset.sidebar !== 'open'; app.dataset.sidebar = open ? 'open' : 'closed'; saveSetting({ sidebar: open }); }
-function toggleOutline() { const open = app.dataset.outline !== 'open'; app.dataset.outline = open ? 'open' : 'closed'; $('#btn-outline').setAttribute('aria-pressed', String(open)); layoutPanes(); saveSetting({ showOutline: open }); }
-function toggleFocus() { app.classList.toggle('focus'); layoutPanes(); if (app.classList.contains('focus') && app.dataset.modeView === 'split') setView('edit', { persist: false }); }
+function toggleOutline() { const open = app.dataset.outline !== 'open'; app.dataset.outline = open ? 'open' : 'closed'; $('#btn-outline').setAttribute('aria-pressed', String(open)); layoutPanes(); saveSetting({ showOutline: open }); rich?.sync?.(); }
+function toggleFocus() { app.classList.toggle('focus'); layoutPanes(); rich?.sync?.(); if (app.classList.contains('focus') && app.dataset.modeView === 'split') setView('edit', { persist: false }); }
 function focusSearch() { if (app.dataset.sidebar !== 'open') toggleSidebar(); $('#sidebar-search').focus(); $('#sidebar-search').select(); }
 
 /* ============ small UI kit: toast, prompt, confirm, menu, tooltip ============ */
@@ -1263,6 +1335,8 @@ function bindChrome() {
   $('#btn-new').onclick = () => newNote();
   $('#btn-sidebar').onclick = toggleSidebar;
   $('#btn-outline').onclick = toggleOutline;
+  $('#st-zoom').addEventListener('click', (e) => { const b = e.target.closest('[data-zoom]'); if (b && isRich()) rich.zoom(+b.dataset.zoom); });
+  $('#st-words').addEventListener('click', () => { if (isRich() && curType() === 'md') rich.run('counts', $('#st-words')); });
   $('#ai-status').onclick = openAiSheet;
   $('#view-switch').onclick = (e) => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); };
   $('#view-switch').onkeydown = (e) => {

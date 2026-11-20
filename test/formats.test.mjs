@@ -16,6 +16,11 @@ import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
 import { createPageCodec, splitBlocks } from '../src/renderer/page-core.js';
 import { mentionEntries, extractTags, blockIds, linkKind, ymd, statusClass } from '../src/renderer/page-mentions.js';
+import { parseTSV, gfmTable, sheetFromTable, compareCells } from '../src/renderer/page-table.js';
+import { findMatches, replaceAll } from '../src/renderer/page-find.js';
+import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
+import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
+import { EditorState } from '@tiptap/pm/state';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -303,6 +308,22 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     assert(h.includes('wikilink wikilink-date') && h.includes('data-wikilink="2026-11-21"'));
     assert.equal(headings(fx('pages/chips.md'))[0].text, 'Weekly note #q4');
     ok('the Read view draws tags and status chips, and a heading keeps its #tag in the outline'); }
+  { // D6: a column's alignment is written once, in the rule under the header; other rows stay as written
+    const src = '# T\n\n| Name | Qty |\n| --- | --- |\n| Pear | 3 |\n| Apple | 10 |\n\nAfter.\n';
+    const t = open(src); const ti = t.kids.findIndex((k) => k.type.name === 'table'); const table = t.kids[ti];
+    const rows = []; table.forEach((r) => { const cells = []; r.forEach((c, _, i) => cells.push(i === 1 ? c.type.create({ ...c.attrs, align: 'center' }, c.content) : c)); rows.push(r.type.create(r.attrs, cells)); });
+    const out = codec.save(t.m, withKids(t.kids.map((k, i) => (i === ti ? table.type.create(table.attrs, rows) : k))));
+    assert.match(out, /\| -+ \| :-+: \|/, out); assert(out.startsWith('# T\n\n') && out.endsWith('\n\nAfter.\n')); ok('centring a table column writes :---: and leaves the rest of the page as written'); }
+  { // D7: find and replace work across bold text inside a paragraph; replace all is one transaction
+    const f = open('# Find\n\nalpha **beta** Alpha\n\nnot alphabet\n');
+    let st = EditorState.create({ doc: f.doc });
+    assert.equal(findMatches(st.doc, 'alpha').length, 3); assert.equal(findMatches(st.doc, 'alpha', { wholeWord: true }).length, 2); assert.equal(findMatches(st.doc, 'alpha', { matchCase: true }).length, 2);
+    assert.equal(findMatches(st.doc, 'alphabeta', {}).length, 0); assert.equal(findMatches(st.doc, 'alpha beta', {}).length, 1); assert.equal(findMatches(st.doc, 'al(p)', { regex: true }).length, 3); assert.equal(findMatches(st.doc, '(', { regex: true }).length, 0);
+    let steps = 0; const n = replaceAll(st, (tr) => { st = st.apply(tr); steps++; }, 'alpha', 'omega', { wholeWord: true });
+    assert.equal(n, 2); assert.equal(steps, 1); assert.equal(codec.save(f.m, st.doc), '# Find\n\nomega **beta** omega\n\nnot alphabet\n');
+    st = EditorState.create({ doc: f.doc }); replaceAll(st, (tr) => { st = st.apply(tr); }, '(al)pha', '$1to', { regex: true });
+    assert.equal(codec.save(f.m, st.doc), '# Find\n\nalto **beta** Alto\n\nnot altobet\n');
+    ok('find: case, whole words, patterns, across bold text; replace all is one step and keeps formatting'); }
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
@@ -343,6 +364,31 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(statusClass('In progress'), 'blue'); assert.equal(statusClass('Done'), 'green'); assert.equal(statusClass('Whatever'), 'gray'); assert.equal(ymd(new Date(2026, 0, 5)), '2026-01-05'); ok('a link knows whether it is a day, a person, a page or missing; status words get their colour');
   assert(INSERTS.some((i) => i.id === 'today' && /^\[\[\d{4}-\d{2}-\d{2}\]\]$/.test(i.md)) && filterInserts('status', { recent: [] })[0].item.id === 'status'); ok('/today, /tomorrow and /status are in the / menu');
 }
+
+// D6, D7: tables from the clipboard, sections, the ribbon
+{
+  assert.deepEqual(parseTSV('Name\tQty\nPear\t3\nApple\t10\n'), [['Name', 'Qty'], ['Pear', '3'], ['Apple', '10']]);
+  assert.deepEqual(parseTSV('a\t"b\tc"\n"x ""y"""\t'), [['a', 'b\tc'], ['x "y"', '']]); assert.equal(parseTSV('no tabs here'), null); assert.deepEqual(parseTSV('a\tb\nc'), [['a', 'b'], ['c', '']]);
+  ok('cells copied from Excel or Sheets (tabs, quoted cells) become rows; plain text does not');
+  assert.equal(gfmTable([['A', 'B|C'], ['1', '2']], [null, 'right']), '| A | B\\|C |\n| --- | ---: |\n| 1 | 2 |');
+  assert.equal(sheetFromTable('Costs', [['Item', 'Price'], ['Pen', '2']]), '# Costs\n\n## Sheet1\n\n| Item | Price |\n| --- | --- |\n| Pen | 2 |\n');
+  assert.deepEqual(['10', '', '9', 'b', 'A', '1,000'].sort(compareCells), ['9', '10', '1,000', 'A', 'b', '']); ok('a table becomes a sheet; sorting puts numbers by value, then text, empty cells last');
+  const doc = 'Title\n=====\n\nIntro\n\n## A\n\na\n\n### A1\n\nx\n\n## B\n\nb\n\n```\n## not a heading\n```\n';
+  assert.deepEqual(sections(doc).map((h) => [h.line, h.level, h.end]), [[0, 1, 21], [5, 2, 13], [9, 3, 13], [13, 2, 21]]);
+  assert.equal(moveSection(doc, 13, 5), 'Title\n=====\n\nIntro\n\n## B\n\nb\n\n```\n## not a heading\n```\n\n## A\n\na\n\n### A1\n\nx\n');
+  assert.equal(moveSection(doc, 5, -1), 'Title\n=====\n\nIntro\n\n## B\n\nb\n\n```\n## not a heading\n```\n\n## A\n\na\n\n### A1\n\nx\n');
+  assert.equal(moveSection(doc, 5, 9), doc); ok('outline sections: a heading with everything under it (setext too, never inside code); moving one moves it whole');
+  assert.equal(shiftSection(doc, 5, 1), doc.replace('### A1', '#### A1').replace('## A\n', '### A\n')); assert.equal(shiftSection(doc, 5, -1), doc.replace('### A1', '## A1').replace('## A\n', '# A\n'));
+  assert.equal(shiftSection('## A\n\n###### deep\n', 0, 1), '## A\n\n###### deep\n'); assert.equal(shiftSection('Title\n=====\n\n## B\n', 0, 1), 'Title\n-----\n\n### B\n');
+  ok('promote and demote change a heading and its sub-headings together, never past H1 or H6');
+  const ids = TABS.flatMap((t) => t.groups.flatMap((g) => (g.items || []).flat(2).map((b) => b.cmd)));
+  for (const id of ids.filter((x) => x.startsWith('ins:'))) assert(INSERTS.some((i) => i.id === id.slice(4)), id);
+  assert.deepEqual(TABS.map((t) => t.label), ['Home', 'Insert', 'Layout', 'Review', 'View', 'Table']); assert(TABS.every((t) => t.groups.every((g) => g.label)));
+  const html = buildRibbon({ icons: new Proxy({}, { get: () => '<svg></svg>' }), styleOptions: '' });
+  assert(html.includes('data-mode="compact"') && html.includes('role="tablist"') && (html.match(/role="tabpanel"/g) || []).length === 6 && COMPACT.length >= 5);
+  ok("the ribbon has Word's tabs with labelled groups, a compact row, and every Insert button is a registry item");
+  assert.deepEqual(headings('---\ntitle: x\n---\n\nTitle\n=====\n\nPara\nmore\n---\n\n- item\n---\n\n***\n---\n').map((h) => [h.line, h.level, h.text]), [[4, 1, 'Title'], [7, 2, 'Para more']]);
+  ok('the outline reads setext headings (=== and ---), not lists or thematic breaks'); }
 
 // the / menu registry
 {

@@ -434,6 +434,7 @@ function buildMenu() {
     ] },
     { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
       { label: 'Find in Note', accelerator: 'CmdOrCtrl+F', click: cmd('find') },
+      { label: 'Find and Replace…', accelerator: process.platform === 'darwin' ? 'Cmd+Alt+H' : 'Ctrl+H', click: cmd('replace') },
       { label: 'Search All Notes', accelerator: 'CmdOrCtrl+Shift+F', click: cmd('search') }] },
     { label: 'Format', submenu: [
       { label: 'Bold', accelerator: 'CmdOrCtrl+B', click: cmd('bold') },
