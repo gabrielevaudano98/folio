@@ -1040,6 +1040,7 @@ function openSettings() {
       <section class="group"><h3>Writing</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">Check spelling</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="spellcheck" ${s.spellcheck ? 'checked' : ''} aria-label="Check spelling"></label></div>
       </div></section>
+      <section class="group" id="set-features" aria-busy="true"><h3>Optional features</h3></section>
       <section class="group"><h3>About</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">Based on Folio by Gabriele Vaudano. Free software under the GNU AGPL-3.0: you may change and share it, keeping this attribution and publishing your changes.</span></div>
           <button class="btn" type="button" data-open-url="https://github.com/gabrielevaudano98/folio">Source code</button></div>
@@ -1051,6 +1052,17 @@ function openSettings() {
     </div>`;
   $('#set-theme', d).value = s.theme; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth;
   d.showModal(); $('#set-theme', d).focus();
+  meeting().then((m) => m.renderSettings($('#set-features', d))).catch((e) => toast(e.message, { kind: 'error' }));
+}
+
+/* ============ meeting recorder (optional feature, loaded on demand) ============ */
+let meetingP = null;
+function meeting() {
+  return (meetingP ||= import('./meeting.js').then(({ createMeeting }) => createMeeting({
+    $, esc, toast, confirm: confirmSheet, prompt, openSettings,
+    openFile: (p) => openFile(p).catch((e) => toast(e.message, { kind: 'error' })),
+    refreshTree: () => refreshTree().catch(() => {}),
+  })));
 }
 
 /* ============ palette ============ */
@@ -1148,6 +1160,7 @@ const COMMANDS = [
   { id: 'rename', title: 'Rename note…', run: () => S.active && renamePath(S.active, false) },
   { id: 'trash', title: 'Move note to Trash', run: () => S.active && trashPath(S.active, false) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
+  { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
   { id: 'italic', title: 'Format: italic', key: 'Mod+I', run: () => fmt('italic') },
   { id: 'underline', title: 'Format: underline', key: 'Mod+U', run: () => fmt('underline') },

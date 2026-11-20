@@ -6,6 +6,8 @@ await esbuild.build({ entryPoints: ['test/formats.test.mjs'], bundle: true, plat
 run('dist/test/formats.test.mjs');
 run('test/mcp.test.mjs');
 run('test/security.test.mjs');
+run('test/features.test.mjs');
+run('test/meeting.test.mjs'); // end to end; skips itself unless FOLIO_MEETING_E2E=1
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/canvas.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/arrange.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/text.test.mjs');
