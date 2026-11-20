@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 const BUSY = new Set(['EPERM', 'EBUSY', 'EACCES']); // Windows: an antivirus, indexer or sync client has the file open
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const tmpName = (file) => path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`);
-const busyError = (target, e) => Object.assign(new Error(`${path.basename(target)} could not be saved because another program is using it. Your changes are kept in Folio; try again in a moment.`), { code: e.code, cause: e });
+const busyError = (target, e) => Object.assign(new Error(`${path.basename(target)} could not be saved because another program is using it. The file on disk is unchanged; try again in a moment.`), { code: e.code, cause: e });
 const readOnly = (target) => Object.assign(new Error(`${path.basename(target)} is read-only, so Folio did not change it.`), { code: 'EACCES' });
 /** the replacement keeps the mode of the file it replaces; a read-only file is refused, as a plain write would be */
 function modeFor(prev, mode) {
@@ -55,6 +55,11 @@ export function writeAtomicSync(file, data, { mode } = {}) {
   catch (e) { fss.closeSync(fd); fss.rmSync(tmp, { force: true }); throw e; }
   fss.closeSync(fd);
   if (m.mode !== undefined) try { fss.chmodSync(tmp, m.mode); } catch {}
-  try { fss.renameSync(tmp, target); }
-  catch (e) { fss.rmSync(tmp, { force: true }); throw BUSY.has(e.code) ? busyError(target, e) : e; }
+  for (let i = 0; ; i++) { // the same retries as writeAtomic, waiting without a timer
+    try { fss.renameSync(tmp, target); return; }
+    catch (e) {
+      if (BUSY.has(e.code) && i < 6) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * 2 ** i); continue; }
+      fss.rmSync(tmp, { force: true }); throw BUSY.has(e.code) ? busyError(target, e) : e;
+    }
+  }
 }

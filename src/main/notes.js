@@ -217,15 +217,17 @@ export function createNotes(getRoot) {
     const texts = await Promise.all(files.map((f) => fs.readFile(resolve(f), 'utf8').catch(() => '')));
     return { files, texts };
   }
-  /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten */
+  /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten, with `.failed`
+   * listing the files that could not be updated (one failure does not stop the others) */
   async function rewriteAfterMove(from, to) {
     const { files, texts } = await allTexts();
     const before = files.map((f) => (f === to ? from : f));
-    const changed = [];
+    const changed = []; changed.failed = [];
     for (let i = 0; i < files.length; i++) {
       if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
       const next = rewriteRefs(texts[i], before[i], from, to, before);
-      if (next !== texts[i]) { await writeAtomic(resolve(files[i]), next); changed.push(files[i]); }
+      if (next === texts[i]) continue;
+      try { await writeAtomic(resolve(files[i]), next); changed.push(files[i]); } catch { changed.failed.push(files[i]); }
     }
     return changed;
   }

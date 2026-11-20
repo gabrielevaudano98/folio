@@ -115,13 +115,24 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   /** writes the note into the workspace with a name that does not overwrite anything */
   async function writeNote(rel, text) {
     await fs.mkdir(path.dirname(notes.resolve(rel, { mustBeNote: true })), { recursive: true });
-    let abs;
-    for (let i = 1; ; i++) { // the name is claimed with an exclusive create, so two saves at once never pick the same one
-      abs = notes.resolve(i === 1 ? rel : rel.replace(/\.md$/, ` ${i}.md`), { mustBeNote: true });
-      try { await (await fs.open(abs, 'wx')).close(); break; } catch (e) { if (e.code !== 'EEXIST') throw e; }
+    for (let i = 1; ; i++) {
+      const abs = notes.resolve(i === 1 ? rel : rel.replace(/\.md$/, ` ${i}.md`), { mustBeNote: true });
+      // a hidden lock next to the name, taken with an exclusive create, so two saves at once never pick the same name and
+      // a crash never leaves an empty note behind; a lock older than a minute was left by a crash and is taken over
+      const lock = path.join(path.dirname(abs), `.${path.basename(abs)}.lock`);
+      try { await (await fs.open(lock, 'wx')).close(); }
+      catch (e) {
+        if (e.code !== 'EEXIST') throw e;
+        const st = await fs.stat(lock).catch(() => null);
+        if (st && Date.now() - st.mtimeMs > 60000) { await fs.rm(lock, { force: true }); i--; }
+        continue;
+      }
+      try {
+        if (await fs.stat(abs).then(() => true, () => false)) continue; // taken: try the next name
+        await writeAtomic(abs, text); // on failure the work file still holds the transcript
+        return notes.relOf(abs);
+      } finally { await fs.rm(lock, { force: true }).catch(() => {}); }
     }
-    try { await writeAtomic(abs, text); } catch (e) { await fs.rm(abs, { force: true }); throw e; } // the work file keeps the transcript
-    return notes.relOf(abs);
   }
 
   function memoryGuard() {
@@ -211,7 +222,13 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   }
 
   /** stops the recording, writes the transcript at once, then the notes when their model is installed */
-  async function stop() {
+  let stopping = null; // the stop in progress: a second caller (quit, a window crash) waits for the same save
+  function stop() {
+    if (stopping) return stopping;
+    stopping = stopNow().finally(() => { stopping = null; });
+    return stopping;
+  }
+  async function stopNow() {
     if (!session) throw new Error('Nothing is recording.');
     if (session.phase !== 'recording' && session.phase !== 'starting') return publicSession();
     const s = session;

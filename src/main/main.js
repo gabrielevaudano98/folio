@@ -44,19 +44,21 @@ let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
 // settings change often (every tab switch records the last file), so writes are batched and done off the main thread;
 // quitting writes any pending change at once. It holds the MCP token (0600) and is atomic, so a crash cannot leave it half written.
-let settingsTimer = null, settingsWrite = Promise.resolve();
+let settingsTimer = null, settingsWrite = Promise.resolve(), settingsInFlight = 0;
 function saveSettings() {
   clearTimeout(settingsTimer);
   settingsTimer = setTimeout(() => {
     settingsTimer = null;
     const text = JSON.stringify(settings, null, 2);
+    settingsInFlight++;
     settingsWrite = settingsWrite.then(async () => {
       await fs.mkdir(path.dirname(SETTINGS_FILE()), { recursive: true });
       await writeAtomic(SETTINGS_FILE(), text, { mode: 0o600 });
       writeBridge();
-    }).catch((e) => console.error('[folio] settings not saved:', e.message));
+    }).catch((e) => console.error('[folio] settings not saved:', e.message)).finally(() => { settingsInFlight--; });
   }, 200);
 }
+/** at quit: once any write already started has finished (so it cannot land after this one), writes the latest settings */
 function flushSettingsSync() {
   if (!settingsTimer) return;
   clearTimeout(settingsTimer); settingsTimer = null;
@@ -645,7 +647,9 @@ app.on('before-quit', (e) => { // a recording is saved before the app quits; a n
   if (!features.active()) { features.abortNotes(); return; }
   e.preventDefault(); features.stop().finally(() => app.quit());
 });
-app.on('before-quit', () => { flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
+app.on('before-quit', (e) => {
+  if (settingsInFlight) { e.preventDefault(); settingsWrite.finally(() => app.quit()); return; } // let it land first, then flush
+  flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
 async function devShot(w) {
