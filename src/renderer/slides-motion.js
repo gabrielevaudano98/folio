@@ -77,8 +77,17 @@ export function animText(a) {
 
 /** replace the slide's animation lines (one comment block at the end of the slide, before nothing else) */
 export function setAnimations(chunk, list) {
-  let out = chunk.replace(/<!--((?:\s*animate\s*:[^\n]*\n?)+)\s*-->\n?/g, '');
-  out = out.replace(/<!--\s*animate\s*:[^>]*-->\n?/g, '').replace(/\n+$/, '');
+  // drop every comment made only of animate: lines, scanning comment by comment (no backtracking regex)
+  let out = ''; let at = 0;
+  for (;;) {
+    const open = chunk.indexOf('<!--', at); if (open < 0) { out += chunk.slice(at); break; }
+    const close = chunk.indexOf('-->', open + 4); if (close < 0) { out += chunk.slice(at); break; }
+    const inner = chunk.slice(open + 4, close).split('\n').map((l) => l.trim()).filter(Boolean);
+    const onlyAnim = inner.length > 0 && inner.every((l) => /^animate\s*:/.test(l));
+    out += chunk.slice(at, open) + (onlyAnim ? '' : chunk.slice(open, close + 3));
+    at = close + 3; if (onlyAnim && chunk[at] === '\n') at++;
+  }
+  out = out.replace(/\n+$/, '');
   if (list.length) out += `\n\n<!--\n${list.map((a) => 'animate: ' + (typeof a === 'string' ? a : animText(a))).join('\n')}\n-->`;
   return out + '\n';
 }

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { workspace, runApp, open, errors, log, step } from './harness.mjs';
 
 const w = workspace('presenter', 47582);
-const P = 'window.__folioPresenter', S = 'window.__folioShow';
+const S = 'window.__folioShow';
 const menu = (re) => [step("document.querySelector('[data-sl=present-menu]').click()", 500), step(`[...document.querySelectorAll('.menu button')].find(b=>${re}.test(b.textContent)).click()`, 1800)];
 const key = (k, extra = '') => step(`window.__folioPresenter.overlay.dispatchEvent(new KeyboardEvent('keydown',{key:'${k}',bubbles:true,cancelable:true${extra}}))`, 350);
 const draw = `{const c=document.querySelector('.pv-cur .pr-ink');const r=c.getBoundingClientRect();const ev=(t,x,y)=>c.dispatchEvent(new PointerEvent(t,{bubbles:true,cancelable:true,pointerId:7,clientX:r.left+x*r.width,clientY:r.top+y*r.height,buttons:1}));ev('pointerdown',.2,.3);for(let k=1;k<10;k++)ev('pointermove',.2+k*.04,.3+k*.02);ev('pointerup',.6,.5);}`;
