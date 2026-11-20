@@ -11,6 +11,8 @@ AI assistants edit through MCP. Everything the user creates is a `.md` file.
 - Document types, each a pure core plus a surface: `rich.js` (pages, TipTap), `slides-core.js`/`slides.js`/`slides-pptx.js`,
   `board-core.js`/`board.js`, `sheet-core.js`/`sheet.js`/`sheet-xlsx.js`, `chart.js` (shared charts).
 - Formats are specified in `docs/FORMATS.md`. That file is also served to AI assistants by the `get_format_guide` tool.
+- `src/main/features/` and `src/main/meeting/` optional features: pinned downloads (`catalog.js`) and the meeting recorder.
+- Full documentation: `docs/README.md` (architecture in arc42, decisions in `docs/adr/`, generated references in `docs/reference/`).
 
 ## Invariants (reviewers: flag violations)
 1. **Lossless round-trip.** Opening a file must not rewrite it. Editing one thing must not reformat unrelated text.
@@ -20,8 +22,11 @@ AI assistants edit through MCP. Everything the user creates is a `.md` file.
 4. **Electron security.** `contextIsolation: true`, `sandbox: true`, no `nodeIntegration`, no remote content in the app window.
 5. **Design system.** Colours, fonts, radii and motion only through `src/renderer/tokens.css`. Grey palette only (chroma 0).
    No uppercase tracked labels, no emoji as icons, visible `:focus-visible`, `prefers-reduced-motion` respected.
-6. **Attribution.** Never remove "Based on Folio by Gabriele Vaudano" from NOTICE, README or the About window.
+6. **Responsiveness and data safety.** No synchronous I/O in the main process after startup; files are written with
+   `atomic.js`; heavy work runs outside the main process and the window ([budget](docs/performance/budget.md)).
+7. **Attribution.** Never remove "Based on Folio by Gabriele Vaudano" from NOTICE, README or the About window.
 
 ## Commands
 - `npm ci` · `npm run build` · `npm test` (formats, MCP end to end, UI smoke test under xvfb on Linux) · `npm start`
+- After changing MCP tools, IPC or the component catalog: `node scripts/docs-reference.mjs`. Performance baseline: `node scripts/perf.mjs`.
 - Packaging: `npm run dist:win`, `npm run dist:mac` (CI does both on tags).
