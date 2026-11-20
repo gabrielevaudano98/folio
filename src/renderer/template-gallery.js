@@ -78,6 +78,7 @@ export function openGallery(dialog, host) {
           <button type="button" class="rb tg-close" data-act="close" aria-label="Close" data-tip="Close (Esc)">${ic('close')}</button></header>
         ${view.startsWith('community') && communityError ? `<p class="tg-error">${esc(empty)} <button type="button" class="btn btn-quiet" data-act="retry">Try again</button></p>` : ''}
         <div class="tg-grid" role="listbox" aria-labelledby="tg-title">${list.map((t) => `<div class="tg-card${current?.id === t.id ? ' is-current' : ''}" role="option" aria-selected="${current?.id === t.id}" tabindex="0" data-id="${esc(t.id)}">
+            <span class="tg-thumb" aria-hidden="true"><span class="tg-thumb-page prose">${thumbs.has(t.id) ? thumbs.get(t.id) : ''}</span></span>
             <span class="tg-card-ic" aria-hidden="true">${esc(iconOf(t))}</span>
             <span class="tg-card-name">${esc(t.name)}</span>
             <span class="tg-card-desc">${esc(t.desc || (t.source === 'mine' ? t.path : ''))}</span>
@@ -85,6 +86,26 @@ export function openGallery(dialog, host) {
             <button type="button" class="tg-star" data-star="${esc(t.id)}" aria-pressed="${favs.has(t.id)}" aria-label="${favs.has(t.id) ? 'Remove from' : 'Add to'} favourites">★</button>
           </div>`).join('')}</div>
         ${list.length ? '' : view.startsWith('community') && communityError ? '' : `<p class="tg-empty">${esc(empty)}</p>`}`;
+      fillThumbs();
+    }
+    /* large thumbnails: the filled page, drawn small, made when a card scrolls into view (and kept) */
+    const thumbs = new Map(); let thumbObs = null;
+    function fillThumbs() {
+      thumbObs?.disconnect();
+      const cards = [...main.querySelectorAll('.tg-card')]; if (!cards.length) return;
+      const make = async (card) => {
+        const id = card.dataset.id; if (thumbs.has(id)) return;
+        const t = byId(id); if (!t) return;
+        try {
+          const raw = await host.text(t); const out = await host.preview(raw, t);
+          const html = String(out.html || '').replace(/<img[^>]*>/gi, '').slice(0, 6000);
+          thumbs.set(id, html);
+          const box = main.querySelector(`.tg-card[data-id="${CSS.escape(id)}"] .tg-thumb-page`); if (box) box.innerHTML = html;
+        } catch { thumbs.set(id, ''); }
+      };
+      if (typeof IntersectionObserver === 'undefined') { cards.slice(0, 12).forEach(make); return; }
+      thumbObs = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { thumbObs.unobserve(e.target); make(e.target); } }, { root: main, rootMargin: '200px' });
+      cards.forEach((c) => thumbObs.observe(c));
     }
     async function drawPreview() {
       const t = current;

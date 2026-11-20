@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('folio', {
   tree: () => call('fs:tree'),
   list: () => call('fs:list'),
   read: (p) => call('fs:read', p),
+  info: (p) => call('fs:info', p),
   write: (p, c) => call('fs:write', p, c),
   create: (p, c) => call('fs:create', p, c),
   mkdir: (p) => call('fs:mkdir', p),

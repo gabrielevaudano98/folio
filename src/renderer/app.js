@@ -11,6 +11,7 @@ import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
+import { docInfo, infoRows } from './page-info.js';
 import { renameTag, setTypeOverrides } from './page-props.js';
 import { listTemplates, fillTemplate, askVars, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
 import { openGallery } from './template-gallery.js';
@@ -251,17 +252,40 @@ window.addEventListener('resize', layoutPanes);
 function setDock(tab, { focus = false } = {}) {
   app.dataset.dock = tab;
   for (const b of $$('#outline .dock-tabs [role=tab]')) b.setAttribute('aria-selected', String(b.dataset.dock === tab));
-  $('#dock-outline').hidden = tab !== 'outline'; $('#dock-review').hidden = tab !== 'review';
+  $('#dock-outline').hidden = tab !== 'outline'; $('#dock-review').hidden = tab !== 'review'; $('#dock-info').hidden = tab !== 'info';
+  if (tab === 'info') { if (app.dataset.outline !== 'open') { app.dataset.outline = 'open'; $('#btn-outline').setAttribute('aria-pressed', 'true'); } renderInfo(true); }
   if (tab === 'review' && app.dataset.outline !== 'open') { app.dataset.outline = 'open'; $('#btn-outline').setAttribute('aria-pressed', 'true'); }
   layoutPanes(); rich?.sync?.();
   if (focus) $(`#dock-tab-${tab}`).focus();
 }
-$('#dock-review').addEventListener('review-toggle', (e) => { if (e.detail !== (app.dataset.dock === 'review')) setDock(e.detail ? 'review' : 'outline'); });
-$('#outline .dock-tabs').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-dock]'); if (!b) return;
-  if (b.dataset.dock === 'review') { rich.review().show(true); if (app.dataset.dock !== 'review') setDock('review'); } else { rich.review().show(false); if (app.dataset.dock !== 'outline') setDock('outline'); }
+$('#dock-review').addEventListener('review-toggle', (e) => {
+  if (e.auto && app.dataset.dock === 'info') return; // an automatic show must not pull someone out of Info
+  if (e.detail !== (app.dataset.dock === 'review')) setDock(e.detail ? 'review' : 'outline');
 });
-$('#outline .dock-tabs').addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); $(`#dock-tab-${app.dataset.dock === 'review' ? 'outline' : 'review'}`).click(); } });
+$('#outline .dock-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dock]'); if (!b) return; const tab = b.dataset.dock;
+  if (tab === 'review') { rich.review().show(true); if (app.dataset.dock !== 'review') setDock('review'); }
+  else { rich.review().show(false); if (app.dataset.dock !== tab) setDock(tab); }
+});
+const DOCK_TABS = ['outline', 'review', 'info'];
+$('#outline .dock-tabs').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return; e.preventDefault();
+  const i = DOCK_TABS.indexOf(app.dataset.dock); $(`#dock-tab-${DOCK_TABS[(i + (e.key === 'ArrowRight' ? 1 : DOCK_TABS.length - 1)) % DOCK_TABS.length]}`).click();
+  $(`#dock-tab-${app.dataset.dock}`).focus();
+});
+/* Info: what the page holds and when the file changed (the file facts come from the main process, kept per page) */
+const infoFile = {};
+async function renderInfo(refetch) {
+  if (app.dataset.dock !== 'info') return;
+  const t = activeTab(), el = $('#dock-info');
+  if (!t) { el.innerHTML = '<p class="info-empty">Open a page to see its details.</p>'; return; }
+  if (refetch || !(t.path in infoFile)) infoFile[t.path] = await folio.info(t.path).catch(() => null);
+  if (activeTab()?.path !== t.path || app.dataset.dock !== 'info') return;
+  const rows = infoRows(curType() === 'md' ? docInfo(t.text) : { words: 0, chars: 0, minutes: 1, tasks: { done: 0, open: 0 }, bytes: new TextEncoder().encode(t.text).length }, t.path, infoFile[t.path]);
+  const shown = curType() === 'md' ? rows : rows.filter(([k]) => ['Path', 'Size', 'Changed', 'Created'].includes(k));
+  el.innerHTML = `<h2 class="side-head">Details</h2><dl class="info-list">${shown.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
+}
+const infoSoon = debounce(() => renderInfo(false), 200);
 
 function setView(v, { persist = true } = {}) {
   const type = curType();
@@ -425,7 +449,7 @@ function renderTabsDirty() {
 async function saveTab(t) {
   if (t.text === t.saved) return;
   const text = t.text, before = t.saved;
-  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
+  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
   catch (e) { toast(`Could not save ${base(t.path)}. ${e.message}`, { kind: 'error', action: ['Retry', () => saveTab(t)] }); setSaveState('Not saved'); }
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
@@ -1017,6 +1041,7 @@ function updateStart() {
 }
 function renderStatus() {
   updateStart();
+  if (app.dataset.dock === 'info') infoSoon();
   const t = activeTab();
   if (!t) { ['#st-path', '#st-words', '#st-time', '#st-cursor'].forEach((s) => ($(s).textContent = '')); return; }
   const words = (t.text.replace(/^---[\s\S]*?---/, '').replace(/```[\s\S]*?```/g, '').match(/[\p{L}\p{N}’'-]+/gu) || []).length;

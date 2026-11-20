@@ -555,4 +555,16 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
 }
 
+{
+  const { docInfo, infoRows, size, ago } = await import('../src/renderer/page-info.js');
+  const t = '---\ntitle: X\n---\n# One\n\nHello [link](a.md) and [[Other]] #tag\n\n- [x] a\n- [ ] b\n\n```js\nconst ignored = 1;\n```\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n![pic](.asset/x.png) ![[Embed]] {==w==}{>>c<<} {++add++}\n';
+  const i = docInfo(t);
+  assert.equal(i.headings, 1); assert.equal(i.links, 2); assert.equal(i.images, 1); assert.equal(i.embeds, 1); assert.equal(i.tables, 1); assert.equal(i.codeBlocks, 1);
+  assert.deepEqual(i.tasks, { done: 1, open: 1 }); assert.equal(i.comments, 1); assert.equal(i.suggestions, 1); assert.deepEqual(i.tags, ['tag']);
+  assert(!/ignored/.test(JSON.stringify(i)) && i.words >= 8 && i.minutes === 1);
+  assert.equal(size(900), '900 B'); assert.equal(size(2048), '2.0 KB'); assert.equal(ago(1000, 1000 + 5 * 60000), '5 min ago');
+  assert(infoRows(i, 'a.md', { size: 100, mtimeMs: Date.now() }).some(([k, v]) => k === 'Tasks' && v === '1 of 2 done'));
+  ok('Info: words, headings, links, images, embeds, tables, tasks, comments and suggestions are counted; code and front matter are not words');
+}
+
 console.log(`\n${n} format checks passed`);

@@ -23,11 +23,15 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   const pane = document.createElement('aside'); pane.className = 'review-pane'; pane.setAttribute('aria-label', 'Comments and suggestions'); pane.hidden = true;
   (dock || main).append(pane);
   let autoShown = false, filter = 'all', items = [], timer = 0, focusDraft = false;
+  /* Google Docs: each card sits beside the line it is about (Beside text), or all of them stack in a list */
+  const ALIGN = 'folio.page.review.align';
+  let aligned = (() => { try { return localStorage.getItem(ALIGN) !== 'off'; } catch { return true; } })();
+  const anchorPos = (x) => Math.min(x.kind === 'thread' ? (x.hl ? x.from : x.start) : x.from, editor.state.doc.content.size);
   const ic = (n) => icons[n] || '';
 
   const visible = () => !pane.hidden;
   const mode = () => (!editor.isEditable ? 'view' : editor.storage.suggestMode?.on ? 'suggest' : 'edit');
-  const show = (on, persist = true) => { if (persist) autoShown = false; pane.hidden = !on; if (persist) savePref(on ? 'auto' : 'hidden'); dock && dock.dispatchEvent(new CustomEvent('review-toggle', { detail: on })); onToggle?.(on); };
+  const show = (on, persist = true) => { if (persist) autoShown = false; pane.hidden = !on; if (persist) savePref(on ? 'auto' : 'hidden'); if (dock) { const ev = new CustomEvent('review-toggle', { detail: on }); ev.auto = !persist; dock.dispatchEvent(ev); } onToggle?.(on); };
   const sel = () => editor.state.selection;
   const activeIndex = () => { const { from, to } = sel(); return items.findIndex((x) => (x.kind === 'thread' ? (from <= x.end && to >= x.from) : from <= x.to && to >= x.from)); };
 
@@ -41,17 +45,34 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     const act = activeIndex();
     pane.innerHTML = `<div class="rv-head">
         <div class="rv-title"><span class="rv-count">${threads.length} ${threads.length === 1 ? 'comment' : 'comments'} · ${changes.length} ${changes.length === 1 ? 'suggestion' : 'suggestions'}</span></div>
+        <button type="button" class="btn btn-quiet rv-align" data-rv="align" aria-pressed="${aligned}" title="Show each comment beside its line">Beside text</button>
       </div>
       <div class="rv-tools">
         <div class="rv-mode" role="radiogroup" aria-label="Mode" data-mode="${mode()}">${[['edit', 'Editing', 'Change the text directly'], ['suggest', 'Suggesting', 'Your changes become suggestions'], ['view', 'Viewing', 'Read only']].map(([k, l, t]) => `<button type="button" role="radio" aria-checked="${mode() === k}" data-mode-set="${k}" title="${t}">${l}</button>`).join('')}</div>
         <div class="rv-filter" role="radiogroup" aria-label="Show">${[['all', 'All'], ['comments', 'Comments'], ['changes', 'Suggestions']].map(([k, l]) => `<button type="button" role="radio" aria-checked="${filter === k}" data-filter="${k}">${l}</button>`).join('')}</div>
       </div>
       ${changes.length ? `<div class="rv-bulk"><button type="button" class="btn btn-quiet" data-rv="acceptAll">${ic('check')}<span>Accept all</span></button><button type="button" class="btn btn-quiet" data-rv="rejectAll">${ic('close')}<span>Reject all</span></button></div>` : ''}
-      <div class="rv-list">${list.length ? list.map((x) => card(x, items.indexOf(x), items.indexOf(x) === act)).join('') : `<p class="rv-empty">${items.length ? 'Nothing in this view.' : `No comments or suggestions yet. Select text and press <kbd>${esc(keyLabel('Mod+Alt+M'))}</kbd> to comment, or turn on Suggesting to propose changes that others accept or reject.`}</p>`}</div>`;
+      <div class="rv-list"><div class="rv-track">${list.length ? list.map((x) => card(x, items.indexOf(x), items.indexOf(x) === act)).join('') : `<p class="rv-empty">${items.length ? 'Nothing in this view.' : `No comments or suggestions yet. Select text and press <kbd>${esc(keyLabel('Mod+Alt+M'))}</kbd> to comment, or turn on Suggesting to propose changes that others accept or reject.`}</p>`}</div></div>`;
     const draft = pane.querySelector('.rv-draft textarea');
     if (draft && focusDraft) { draft.focus(); focusDraft = false; }
-    pane.querySelector('.rv-card.is-active')?.scrollIntoView?.({ block: 'nearest' });
+    place();
+    if (!aligned) pane.querySelector('.rv-card.is-active')?.scrollIntoView?.({ block: 'nearest' });
   }
+  /* put every card at the height of its line; cards that would overlap move down to the next free spot */
+  function place() {
+    const list = pane.querySelector('.rv-list'), track = list?.querySelector('.rv-track'); if (!list) return;
+    const on = aligned && !pane.hidden && !!track.querySelector('.rv-card'); list.classList.toggle('is-aligned', on);
+    if (!on) { track.style.transform = ''; track.querySelectorAll('.rv-card').forEach((c) => (c.style.top = '')); return; }
+    list.addEventListener('scroll', () => { list.scrollTop = 0; }, { once: true });
+    const base = list.getBoundingClientRect().top, st = scroll.scrollTop;
+    const cards = [...track.querySelectorAll('.rv-card')].map((c) => { let top = 0; try { top = editor.view.coordsAtPos(anchorPos(items[+c.dataset.i])).top - base + st; } catch { /* keep 0 */ } return { c, top }; }).sort((a, b) => a.top - b.top);
+    let bottom = 0;
+    for (const k of cards) { const t = Math.max(k.top, bottom, 0); k.c.style.top = `${t}px`; bottom = t + k.c.offsetHeight + 8; }
+    track.style.height = `${bottom}px`; track.style.transform = `translateY(${-st}px)`;
+  }
+  let placeRaf = 0; const placeSoon = () => { cancelAnimationFrame(placeRaf); placeRaf = requestAnimationFrame(() => { if (aligned && !pane.hidden) { const t = pane.querySelector('.rv-track'); if (t) t.style.transform = `translateY(${-scroll.scrollTop}px)`; } }); };
+  scroll.addEventListener('scroll', placeSoon, { passive: true });
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (aligned && !pane.hidden && !typing()) place(); }).observe(scroll);
   function card(x, i, active) {
     if (x.kind === 'thread') {
       const comments = x.comments.map((c, k) => {
@@ -89,6 +110,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     const ms = e.target.closest('[data-mode-set]'); if (ms) { api.mode(ms.dataset.modeSet); return; }
     const f = e.target.closest('[data-filter]'); if (f) { filter = f.dataset.filter; render(); return; }
     const rv = e.target.closest('[data-rv]')?.dataset.rv;
+    if (rv === 'align') { aligned = !aligned; try { localStorage.setItem(ALIGN, aligned ? 'on' : 'off'); } catch { /* no storage */ } render(); return; }
     if (rv === 'close') { show(false); editor.commands.focus(); return; }
     if (rv === 'acceptAll' || rv === 'rejectAll') { api.all(rv === 'acceptAll'); return; }
     const b = e.target.closest('[data-act]');
@@ -124,6 +146,36 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   });
   // a click on a comment bubble in the text opens its card
   editor.view.dom.addEventListener('click', (e) => { if (e.target.closest('.critic-comment, .critic-hl')) { if (!visible()) show(true); setTimeout(() => pane.querySelector('.rv-card.is-active')?.focus({ preventScroll: true }), 30); } });
+
+  /* resting on a suggestion in the text offers Accept and Reject right there (Word, Docs) */
+  const bar = document.createElement('div'); bar.className = 'rv-hover'; bar.hidden = true; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Suggestion');
+  bar.innerHTML = `<button type="button" data-hv="accept" aria-label="Accept this suggestion">${ic('check')}<span>Accept</span></button><button type="button" data-hv="reject" aria-label="Reject this suggestion">${ic('close')}<span>Reject</span></button>`;
+  host.append(bar);
+  let hoverEl = null, hoverTimer = 0;
+  const hideBar = () => { clearTimeout(hoverTimer); bar.hidden = true; hoverEl = null; };
+  const changeAt = (el) => {
+    let pos; try { pos = editor.view.posAtDOM(el, 0); } catch { return null; }
+    return docReview(editor.state.doc).find((c) => ['ins', 'del', 'sub'].includes(c.kind) && pos >= c.from && pos <= c.to) || null;
+  };
+  editor.view.dom.addEventListener('mouseover', (e) => {
+    const el = e.target.closest?.('.critic-ins, .critic-del, .critic-sub'); if (!el || !editor.isEditable) return;
+    const root = el.closest('.critic-sub') || el; clearTimeout(hoverTimer);
+    if (hoverEl === root && !bar.hidden) return;
+    if (!changeAt(root)) return;
+    hoverEl = root; const r = root.getBoundingClientRect(); bar.hidden = false;
+    const w = bar.offsetWidth || 160; bar.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`; bar.style.top = `${r.top > 44 ? r.top - 34 : r.bottom + 4}px`;
+  });
+  editor.view.dom.addEventListener('mouseout', (e) => { if (hoverEl && !bar.contains(e.relatedTarget)) { clearTimeout(hoverTimer); hoverTimer = setTimeout(hideBar, 260); } });
+  bar.addEventListener('mouseenter', () => clearTimeout(hoverTimer));
+  bar.addEventListener('mouseleave', () => { hoverTimer = setTimeout(hideBar, 260); });
+  bar.addEventListener('mousedown', (e) => e.preventDefault());
+  bar.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-hv]'); if (!b || !hoverEl) return;
+    const x = changeAt(hoverEl); hideBar(); if (!x) return;
+    editor.view.dispatch(settle(editor.state, x, b.dataset.hv === 'accept')); editor.commands.focus();
+  });
+  scroll.addEventListener('scroll', hideBar, { passive: true });
+  editor.on('transaction', ({ transaction }) => { if (transaction.docChanged) hideBar(); });
 
   const api = {
     get open() { return visible(); },

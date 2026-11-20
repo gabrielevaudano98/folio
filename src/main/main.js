@@ -161,6 +161,7 @@ h('workspace:close', async () => { await setWorkspace(null); return true; });
 h('workspace:reveal', (rel) => shell.showItemInFolder(rel ? notes.resolve(rel) : notes.root()));
 h('fs:tree', () => notes.tree());
 h('fs:read', (rel) => notes.read(rel));
+h('fs:info', async (rel) => { const st = await fs.stat(notes.resolve(rel)).catch(() => null); return st ? { size: st.size, mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs } : null; });
 h('fs:write', async (rel, content) => {
   const abs = notes.resolve(rel, { mustBeNote: true });
   ownWrites.set(abs, content);
