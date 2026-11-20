@@ -14,8 +14,9 @@ if (process.argv.includes('--mcp-stdio') || legacy) {
   app.disableHardwareAcceleration();
   app.on('window-all-closed', () => {});
   const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mcp-stdio.mjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
-  process.stdin.on('end', () => app.exit(0));
-  process.stdin.on('close', () => app.exit(0));
+  const why = (w) => () => { if (process.env.FOLIO_DEBUG_STDIO) console.error(`[folio stdio] stdin ${w}`); app.exit(0); };
+  process.stdin.on('end', why('end'));
+  process.stdin.on('close', why('close'));
   await import(pathToFileURL(script).href);
 } else {
   await import('./main.js');

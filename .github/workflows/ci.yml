@@ -68,7 +68,7 @@ jobs:
           grep -E "RunAsNode is Disabled" fuses.txt
           LEGACY=$(find release -path '*app.asar.unpacked/dist/mcp-stdio.mjs' | head -n 1)
           test -f "$LEGACY" || { echo "unpacked bridge not found"; exit 1; }
-          FOLIO_BINARY="$BIN" FOLIO_LEGACY_SCRIPT="$LEGACY" node test/stdio-binary.test.mjs
+          FOLIO_DEBUG_STDIO=1 FOLIO_BINARY="$BIN" FOLIO_LEGACY_SCRIPT="$LEGACY" node test/stdio-binary.test.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: folio-${{ runner.os }}-${{ github.sha }}

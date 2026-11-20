@@ -20,7 +20,7 @@ const sandbox = !process.env.FOLIO_BINARY && process.platform === 'linux' ? ['--
 async function probe(label, args) {
   const c = new Client({ name: 'stdio-binary-test', version: '1' });
   try {
-    await c.connect(new StdioClientTransport({ command: electron, args: [...sandbox, ...args, '--bridge', '/nonexistent.json', '--root', root], env }));
+    await c.connect(new StdioClientTransport({ command: electron, args: [...sandbox, ...args, '--bridge', '/nonexistent.json', '--root', root], env, stderr: 'inherit' }));
     const tools = (await c.listTools()).tools;
     tools.length > 5 ? ok(`${label}: initialize + ${tools.length} tools`) : bad(`${label}: too few tools`);
     const r = await c.callTool({ name: 'list_notes', arguments: {} });
