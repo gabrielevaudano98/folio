@@ -11,6 +11,7 @@ import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createNotes, NOTE_EXT } from './notes.js';
 import { createHistory } from './history.js';
+import { createAssets, isAssetPath } from './assets.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,8 @@ function writeBridge() {
 
 const notes = createNotes(() => settings.workspace);
 const history = createHistory(() => settings.workspace);
+const assets = createAssets(notes);
+const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset folder belongs to Folio. Remove files from a page, or use Clean up unused files.'); };
 /* history must never get in the way of saving */
 const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); } return null; };
 let win = null;
@@ -106,6 +109,7 @@ async function setWorkspace(dir) {
   await watcher?.close();
   watcher = null;
   if (!dir) return;
+  assets.purgeTrash().catch(() => {}); // removed files older than 30 days leave the asset trash
   watcher = chokidar.watch(dir, {
     ignoreInitial: true, depth: 12,
     ignored: (p) => /(^|[/\\])(\.|node_modules)/.test(path.relative(dir, p)),
@@ -175,16 +179,24 @@ h('fs:create', async (rel, content = '') => {
   keep(notes.relOf(abs), content, { reason: 'created', force: true });
   return notes.relOf(abs);
 });
-h('fs:mkdir', async (rel) => { await fs.mkdir(notes.resolve(rel), { recursive: true }); return rel; });
+h('fs:mkdir', async (rel) => { guardAsset(rel); await fs.mkdir(notes.resolve(rel), { recursive: true }); return rel; });
 h('fs:rename', async (from, to) => {
+  guardAsset(from); guardAsset(to);
   const isDir = (await fs.stat(notes.resolve(from)).catch(() => null))?.isDirectory();
   const r = await notes.move(from, to);
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
   for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b).catch(() => [])) changed.add(c); }
+  /* a page moved to another folder takes the files it uses along (copied into the new .asset) so its pictures keep working */
+  if (!isDir && path.dirname(r.from) !== path.dirname(r.to)) {
+    try {
+      const text = await notes.read(r.to); const moved = await assets.relocate(r.from, r.to, text);
+      if (moved.text !== text) { await keep(r.to, text, { reason: 'move', force: true }); ownWrites.set(notes.resolve(r.to), moved.text); await fs.writeFile(notes.resolve(r.to), moved.text, 'utf8'); changed.add(r.to); }
+    } catch (e) { console.error('assets relocate', e.message); }
+  }
   return { to: r.to, changed: [...changed] };
 });
-h('fs:trash', async (rel) => { await shell.trashItem(notes.resolve(rel)); return true; });
+h('fs:trash', async (rel) => { guardAsset(rel); await shell.trashItem(notes.resolve(rel)); return true; });
 h('fs:search', (q, opts) => notes.search(q, opts));
 /* version history */
 h('history:list', (rel) => history.list(rel));
@@ -198,25 +210,13 @@ h('app:user-name', () => { try { const n = os.userInfo().username || ''; return 
 h('fs:backlinks', (rel) => notes.backlinks(rel));
 h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));
-h('fs:save-image', async (noteRel, name, bytes) => {
-  const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
-  await fs.mkdir(dir, { recursive: true });
-  const safe = (name || 'image.png').replace(/[^\w.-]+/g, '-');
-  const file = path.join(dir, `${Date.now().toString(36)}-${safe}`);
-  await fs.writeFile(file, Buffer.from(bytes));
-  return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
-});
+h('fs:save-image', (noteRel, name, bytes) => assets.save(noteRel, name, bytes));
 h('fs:pick-image', async (noteRel) => {
   const r = await dialog.showOpenDialog(win, { title: 'Insert image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
-  const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, font ? path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-') : `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
-  await fs.copyFile(r.filePaths[0], file);
-  return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
+  return assets.importFile(noteRel, r.filePaths[0]);
 });
 h('fs:pick-media', async (noteRel, kind) => {
-  const font = kind === 'font';
   const FILTERS = {
     font: [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }],
     video: [{ name: 'Video', extensions: ['mp4', 'webm', 'mov', 'm4v'] }],
@@ -227,12 +227,16 @@ h('fs:pick-media', async (noteRel, kind) => {
   const TITLES = { font: 'Add a font file', video: 'Insert a video', audio: 'Insert audio', pdf: 'Insert a PDF', file: 'Attach a file' };
   const r = await dialog.showOpenDialog(win, { title: TITLES[kind] || 'Insert video or audio', properties: ['openFile'], filters: FILTERS[kind] ?? [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
-  const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
-  await fs.copyFile(r.filePaths[0], file);
-  return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
+  return assets.importFile(noteRel, r.filePaths[0]);
 });
+/* assets: files a page lost, files a page needs, unused and missing files, migration from assets/ */
+h('assets:sync', async (noteRel, before, after) => ({ ...(await assets.heal(noteRel, after)), orphans: await assets.orphans(noteRel, before, after), refs: [...assets.refsOf(noteRel, after)] }));
+h('assets:restore', async (paths) => { let n = 0; for (const p of paths.slice(0, 500)) if (await assets.restore(p).catch(() => false)) n++; return n; });
+h('assets:heal', (noteRel, text) => assets.heal(noteRel, text));
+h('assets:remove', async (paths, permanent) => { let n = 0; for (const p of paths.slice(0, 500)) if (await assets.remove(p, { permanent: !!permanent }).catch(() => false)) n++; return n; });
+h('assets:usage', () => assets.usage());
+h('assets:migrate', () => assets.migrateLegacy({ onBefore: (f, t) => keep(f, t, { reason: 'assets', force: true }) }));
+h('assets:reveal', (assetRel) => { const abs = notes.resolve(assetRel); shell.showItemInFolder(abs); });
 h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel).split(path.sep).join('/'));
 h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal(url); });
 /* open a file of the workspace (an attached PDF, a document) with the system's app */

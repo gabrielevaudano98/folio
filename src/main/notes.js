@@ -48,7 +48,10 @@ export function createNotes(getRoot) {
       if (e.name.startsWith('.') || IGNORE.has(e.name)) continue;
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (depth < 10) nodes.push({ type: 'dir', name: e.name, path: relOf(abs), children: await tree(abs, depth + 1) });
+        if (depth >= 10) continue;
+        const children = await tree(abs, depth + 1);
+        if (e.name === 'assets' && !children.length) continue; // a legacy picture folder holds no pages: not shown
+        nodes.push({ type: 'dir', name: e.name, path: relOf(abs), children });
       } else if (NOTE_EXT.includes(path.extname(e.name).toLowerCase())) {
         nodes.push({ type: 'file', name: e.name, path: relOf(abs) });
       }

@@ -339,6 +339,7 @@ async function openFile(p, { line, background = false } = {}) {
     const text = await folio.read(p);
     t = { path: p, text, saved: text, scroll: 0 };
     S.tabs.push(t);
+    if (ASSET_HINT.test(text)) await checkAssets(t).catch(() => {});
   }
   if (!background) activate(p, { line });
   persistTabs();
@@ -420,8 +421,8 @@ function renderTabsDirty() {
 }
 async function saveTab(t) {
   if (t.text === t.saved) return;
-  const text = t.text;
-  try { await folio.write(t.path, text); t.saved = text; if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
+  const text = t.text, before = t.saved;
+  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
   catch (e) { toast(`Could not save ${base(t.path)}. ${e.message}`, { kind: 'error', action: ['Retry', () => saveTab(t)] }); setSaveState('Not saved'); }
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
@@ -1395,6 +1396,8 @@ const COMMANDS = [
   { id: 'toggle-outline', title: 'Toggle outline', key: 'Mod+Shift+O', run: toggleOutline },
   { id: 'focus', title: 'Focus mode', key: 'Mod+.', run: toggleFocus },
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
+  { id: 'assets-clean', title: 'Files: clean up unused files…', run: () => openAssets() },
+  { id: 'assets-ask', title: 'Files: ask before removing a file from the folder', run: () => { saveSetting({ assetRemoval: 'ask' }); toast('Folio will ask when a file is removed from a page.'); } },
   { id: 'history', title: 'Version history', key: 'Mod+Alt+Shift+H', run: () => openHistory() },
   { id: 'name-version', title: 'Name the current version…', key: 'Mod+Alt+Shift+S', run: () => nameCurrentVersion() },
   { id: 'export', title: 'Export…', key: 'Mod+Shift+E', run: () => openExport() },
@@ -1645,6 +1648,99 @@ async function nameCurrentVersion() {
 }
 
 /* ============ small UI kit: toast, prompt, confirm, menu, tooltip ============ */
+
+/* ---- assets: files a page uses live in a hidden .asset folder ---- */
+const ASSET_HINT = /(?:\.asset|assets)\//;
+const fmtSize = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1048576).toFixed(1)} MB`);
+const assetName = (p) => p.split('/').pop().replace(/^[0-9a-f]{8}-(?=.)/, '');
+const pendingAssets = new Map(); // note path -> Map(asset path -> bytes): removed from a page, file still on disk
+let assetTimer, assetCard;
+const missingWarned = new Set();
+/** on open and when the window is focused again: bring back files a page needs from the asset trash, and say which are really gone */
+async function checkAssets(t, { rerender = false } = {}) {
+  const r = await folio.assetsHeal(t.path, t.text);
+  if (r.restored?.length) { toast(`Restored ${r.restored.length} ${r.restored.length === 1 ? 'file' : 'files'} this page uses from the asset trash.`); if (rerender && t.path === S.active && t.text === t.saved) activate(t.path); }
+  const fresh = (r.missing || []).filter((m) => !missingWarned.has(m));
+  if (fresh.length) {
+    fresh.forEach((m) => missingWarned.add(m));
+    toast(`${fresh.length === 1 ? `“${assetName(fresh[0])}” is` : `${fresh.length} files are`} missing from the .asset folder. It may have been deleted outside Folio.`, { kind: 'error', action: ['Details', openAssets] });
+  }
+}
+function assetsAfterSave(t, before, after) {
+  if (!ASSET_HINT.test(before) && !ASSET_HINT.test(after)) return;
+  folio.assetsSync(t.path, before, after).then((r) => {
+    if (r.restored?.length) toast(`Restored ${r.restored.length} ${r.restored.length === 1 ? 'file' : 'files'} from the asset trash.`);
+    const keepRefs = new Set(r.refs || []); const pend = pendingAssets.get(t.path) || new Map();
+    for (const p of [...pend.keys()]) if (keepRefs.has(p)) pend.delete(p); // the picture is back (undo)
+    for (const o of r.orphans || []) pend.set(o.path, o.bytes);
+    pend.size ? pendingAssets.set(t.path, pend) : pendingAssets.delete(t.path);
+    clearTimeout(assetTimer); if (pendingAssets.size) assetTimer = setTimeout(askAssetRemoval, 2500);
+    else assetCard?.remove();
+  }).catch(() => {});
+}
+async function askAssetRemoval() {
+  const files = [...pendingAssets.values()].flatMap((m) => [...m]); if (!files.length) return;
+  const paths = files.map(([p]) => p), bytes = files.reduce((s, [, b]) => s + b, 0), mode = S.settings.assetRemoval || 'ask';
+  const clear = () => pendingAssets.clear();
+  const run = async (permanent) => {
+    const n = await folio.assetsRemove(paths, permanent); clear();
+    toast(permanent ? `Deleted ${n} ${n === 1 ? 'file' : 'files'}.` : `Moved ${n} ${n === 1 ? 'file' : 'files'} to the asset trash.`, permanent ? {} : { action: ['Undo', () => folio.assetsRestore(paths).then(() => { const t = activeTab(); if (t) checkAssets(t, { rerender: true }); })] });
+  };
+  if (mode === 'keep') return clear();
+  if (mode === 'trash' || mode === 'delete') return run(mode === 'delete');
+  assetCard?.remove();
+  const el = assetCard = document.createElement('div');
+  el.className = 'toast asset-toast'; el.setAttribute('role', 'status');
+  const what = files.length === 1 ? `“${assetName(paths[0])}”` : `${files.length} files`;
+  el.innerHTML = `<div class="asset-toast-body"><p>You removed ${esc(what)} (${fmtSize(bytes)}) from the page. Remove the ${files.length === 1 ? 'file' : 'files'} from the folder too?</p>
+    <label class="sf-check"><input type="checkbox" data-perm> Delete permanently, skip the asset trash</label>
+    <label class="sf-check"><input type="checkbox" data-always> Always do this, don’t ask again</label>
+    <div class="asset-toast-actions"><button class="btn btn-quiet" type="button" data-keep>Keep</button><button class="btn" type="button" data-remove>Remove</button></div></div>
+    <button class="icon-btn" type="button" aria-label="Dismiss">${icons.close}</button>`;
+  $('#toasts').appendChild(el);
+  const close = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), 280); assetCard = null; };
+  el.querySelector('.icon-btn').onclick = () => { clear(); close(); };
+  el.querySelector('[data-keep]').onclick = () => { if (el.querySelector('[data-always]').checked) saveSetting({ assetRemoval: 'keep' }); clear(); close(); };
+  el.querySelector('[data-remove]').onclick = async () => {
+    const perm = el.querySelector('[data-perm]').checked;
+    if (el.querySelector('[data-always]').checked) saveSetting({ assetRemoval: perm ? 'delete' : 'trash' });
+    close(); await run(perm);
+  };
+  el.querySelector('[data-remove]').focus({ preventScroll: true });
+}
+/** the asset manager: unused files, missing files, files still in an old assets/ folder */
+async function openAssets() {
+  const d = $('#sheet-assets'); let u;
+  try { u = await folio.assetsUsage(); } catch (e) { return toast(e.message, { kind: 'error' }); }
+  const sel = new Set(u.unused.map((f) => f.path));
+  const render = () => {
+    d.innerHTML = `<div class="sheet-head"><div><h2 id="assets-title">Files in your pages</h2>
+      <p>${u.used.length} in use (${fmtSize(u.usedBytes)}), ${u.unused.length} unused (${fmtSize(u.unusedBytes)}). They live in hidden <code>.asset</code> folders next to your pages.</p></div></div>
+      <div class="sheet-body">
+      ${u.missing.length ? `<section class="asset-section"><h3>Missing (${u.missing.length})</h3><ul class="asset-list">${u.missing.map((m, i) => `<li><span class="asset-name">${esc(assetName(m.path))} <span class="asset-size">in ${esc(m.note)}:${m.line}</span></span><button class="btn btn-quiet" type="button" data-open="${i}">Open page</button></li>`).join('')}</ul></section>` : ''}
+      ${u.unused.length ? `<section class="asset-section"><h3>Unused (${u.unused.length})</h3><ul class="asset-list">${u.unused.map((f, i) => `<li><label class="sf-check asset-name"><input type="checkbox" data-sel="${i}" ${sel.has(f.path) ? 'checked' : ''}> ${esc(assetName(f.path))}</label><span class="asset-size">${fmtSize(f.bytes)}</span></li>`).join('')}</ul></section>` : '<p>No unused files.</p>'}
+      ${u.legacy ? `<section class="asset-section"><h3>Old folders</h3><p>${u.legacy} ${u.legacy === 1 ? 'file is' : 'files are'} still in visible <code>assets</code> folders.</p><button class="btn" type="button" data-migrate>Move to .asset</button></section>` : ''}
+      </div>
+      <div class="sheet-foot"><button class="btn" type="button" data-close>Close</button>
+        ${u.unused.length ? `<button class="btn" type="button" data-delete ${sel.size ? '' : 'disabled'}>Delete permanently</button><button class="btn btn-primary" type="button" data-trash ${sel.size ? '' : 'disabled'}>Move ${sel.size} to the trash</button>` : ''}</div>`;
+    d.querySelector('[data-close]').onclick = () => d.close();
+    d.querySelectorAll('[data-sel]').forEach((c) => (c.onchange = () => { const p = u.unused[Number(c.dataset.sel)].path; c.checked ? sel.add(p) : sel.delete(p); render(); d.querySelector(`[data-sel="${c.dataset.sel}"]`)?.focus(); }));
+    d.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => { const m = u.missing[Number(b.dataset.open)]; d.close(); openFile(m.note, { line: m.line }).catch((e) => toast(e.message, { kind: 'error' })); }));
+    const drop = async (permanent) => {
+      if (permanent && !(await confirmSheet({ title: 'Delete these files permanently?', body: `${sel.size} ${sel.size === 1 ? 'file' : 'files'} will be deleted and cannot be restored.`, action: 'Delete', danger: true }))) return;
+      const n = await folio.assetsRemove([...sel], permanent);
+      toast(permanent ? `Deleted ${n} files.` : `Moved ${n} files to the asset trash. They are purged after 30 days.`); d.close(); openAssets();
+    };
+    d.querySelector('[data-trash]')?.addEventListener('click', () => drop(false));
+    d.querySelector('[data-delete]')?.addEventListener('click', () => drop(true));
+    d.querySelector('[data-migrate]')?.addEventListener('click', async () => {
+      if (!(await confirmSheet({ title: 'Move files to .asset?', body: 'Pages that point to assets/… are updated (a version is kept first). The old files stay in the asset trash for 30 days.', action: 'Move' }))) return;
+      try { const r = await folio.assetsMigrate(); toast(`Moved ${r.files} ${r.files === 1 ? 'file' : 'files'}, updated ${r.notes} ${r.notes === 1 ? 'page' : 'pages'}.`); d.close(); refreshTree?.(); } catch (e) { toast(e.message, { kind: 'error' }); }
+    });
+  };
+  render(); d.showModal();
+}
+window.addEventListener('focus', () => { const t = activeTab(); if (t && ASSET_HINT.test(t.text)) checkAssets(t, { rerender: true }).catch(() => {}); });
 function toast(text, { kind = 'info', action } = {}) {
   const el = document.createElement('div');
   el.className = 'toast'; el.dataset.kind = kind; el.setAttribute('role', kind === 'error' ? 'alert' : 'status');

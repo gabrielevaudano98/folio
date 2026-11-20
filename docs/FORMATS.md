@@ -50,11 +50,11 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Table of contents | `[TOC]` on its own line | Live list of the page's headings. |
 | Breadcrumb | `[BREADCRUMB]` on its own line | Where the page sits in the workspace. Folio only. |
 | Page break | `<div class="page-break"></div>` | A new page in print and PDF export. |
-| Image with width and caption | `![Alt|400](assets/photo.png "Caption")` | Width in pixels after `|` (Obsidian); the title is the caption. |
-| Video, audio | `![Demo](assets/clip.mp4)`, `![](assets/talk.mp3)` | Image syntax with a media file: mp4, webm, mov, m4v; mp3, m4a, wav, ogg, aac, flac. |
-| PDF | `![Annual report](assets/report.pdf)` | A card that opens the file. |
+| Image with width and caption | `![Alt|400](.asset/3fa9c1d2-photo.png "Caption")` | Width in pixels after `|` (Obsidian); the title is the caption. |
+| Video, audio | `![Demo](.asset/9be41c07-clip.mp4)`, `![](.asset/1c0d5e22-talk.mp3)` | Image syntax with a media file: mp4, webm, mov, m4v; mp3, m4a, wav, ogg, aac, flac. |
+| PDF | `![Annual report](.asset/77ab0e91-report.pdf)` | A card that opens the file. |
 | Web embed | `![](https://www.youtube.com/watch?v=…)` | YouTube, Vimeo, Loom, Figma, Google Maps and Drive, Miro, X, CodePen, Gist, Spotify, SoundCloud, Excalidraw, Canva: a card that opens in the browser (Folio does not load other sites inside the page). |
-| Web bookmark, file | a paragraph that is only a link: `[https://site.com](https://site.com)`, `[budget.xlsx](assets/budget.xlsx)` | Drawn as a card. |
+| Web bookmark, file | a paragraph that is only a link: `[https://site.com](https://site.com)`, `[budget.xlsx](.asset/d20f6a3b-budget.xlsx)` | Drawn as a card. |
 | Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen from the block's menu. |
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
 | Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
@@ -73,9 +73,20 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 
 The Write view has pickers for these: `[[` (pages, people, `Note#` headings, `Note#^` blocks, "Create"), `@` (people, pages, dates in English and Italian, status), `#` (tags in the workspace) and `:` (emoji). They only insert the plain text above.
 
+### Assets (`.asset`)
+
+Pictures, video, audio, PDFs, fonts and attachments live in a hidden `.asset` folder next to the page that first used them. A reference is an ordinary relative path in the Markdown (`![](.asset/3fa9c1d2-photo.png)`, `../.asset/…` from a sub-folder), so the file stays portable and any editor can read it.
+
+- **Names.** `<8 hex of the content hash>-<name>`: the same bytes are stored once (pasting a picture twice, or the same file into two pages, reuses the file). Writes are atomic (temp file, then rename). One file is at most 250 MB.
+- **Hidden and protected.** The folder starts with a dot, so the tree, search, tags and backlinks never list it, and Folio also sets the hidden attribute on Windows and macOS. Folio refuses to rename, move, create or trash a path inside `.asset`. The operating system can still delete it: Folio then reports which files a page is missing (on open and when the window regains focus).
+- **Removing a picture from a page** asks once whether to remove the file too, only if no other page uses it. The choice can be remembered (move to the asset trash, delete permanently, or keep). Nothing is removed while you can still press Undo: the question appears about two seconds after the save, and a reference that comes back cancels it.
+- **Asset trash.** `.asset/.trash/<time>~<name>`, purged after 30 days. A reference to a file that is gone (Undo after removing it, restoring an old version) brings it back from there automatically.
+- **Moving a page** to another folder copies the files it uses into the new folder's `.asset` and rewrites its references.
+- **Old workspaces.** `assets/` references keep working. *Files: clean up unused files…* lists unused and missing files and moves `assets/` into `.asset` (a version of every changed page is kept first; the old files go to the asset trash).
+
 ### Paste, import and export
 
-Nothing here adds syntax: pasting and importing write the Markdown above. HTML from Word, Google Docs, Notion and web pages becomes headings, lists, `- [ ]` tasks, GFM tables (column alignment kept), links, `**bold**`, `*italic*`, `~~strike~~`, `==highlight==`, `<sub>`, `<sup>`, `<u>` and `![alt|width](assets/…)` images (pasted pictures are saved next to the page). Export to Word writes headings, real lists and tables, footnotes, a contents field for `[TOC]`, and turns CriticMarkup into tracked changes (`{++ ++}`, `{-- --}`, `{~~ ~>  ~~}`) and comments (`{== ==}{>> <<}`, replies threaded); "Final text only" accepts every suggestion and drops comments. Hidden `%%comments%%`, front matter and `[BREADCRUMB]` are not exported.
+Nothing here adds syntax: pasting and importing write the Markdown above. HTML from Word, Google Docs, Notion and web pages becomes headings, lists, `- [ ]` tasks, GFM tables (column alignment kept), links, `**bold**`, `*italic*`, `~~strike~~`, `==highlight==`, `<sub>`, `<sup>`, `<u>` and `![alt|width](.asset/…)` images (pasted pictures are saved in the page's `.asset` folder). Export to Word writes headings, real lists and tables, footnotes, a contents field for `[TOC]`, and turns CriticMarkup into tracked changes (`{++ ++}`, `{-- --}`, `{~~ ~>  ~~}`) and comments (`{== ==}{>> <<}`, replies threaded); "Final text only" accepts every suggestion and drops comments. Hidden `%%comments%%`, front matter and `[BREADCRUMB]` are not exported.
 
 Colour and alignment use Pandoc attribute syntax. Other editors show them as plain text; **Export as portable Markdown** removes them.
 
