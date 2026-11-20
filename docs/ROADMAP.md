@@ -14,7 +14,7 @@ Make what exists trustworthy: fidelity, tests, signed builds, updates.
 - **Accessibility audit of the canvas and the grid** — Keyboard-only creation and connection of shapes, screen-reader names for shapes and cells, focus order in the inspector. WCAG 2.2 AA.
 - **Virtualize the sheet grid** — Render only visible rows and columns so a 10,000 row sheet scrolls at 60 fps; recalculate only dependants of an edited cell.
 
-## v1.2 Slides Studio
+## v1.2 Slides Studio (shipped in 1.2.0)
 
 PowerPoint and Google Slides capabilities with full user control, in plain slides-md, with links between Folio documents. Full plan and feature coverage: [SLIDES-PLAN.md](SLIDES-PLAN.md).
 
@@ -23,6 +23,7 @@ PowerPoint and Google Slides capabilities with full user control, in plain slide
 - **P5** Insert · **P6** Format and picture tools · **P7** Themes and masters · **P8** Slide management
 - **P9** SmartArt and Designer · **P10** Transitions, animations, Morph · **P11** Interactivity and Zoom
 - **P12** Present and record · **P13** PPTX interop · **P14** MCP and AI · **P15** Polish
+- All phases done. Still open: 3D models, screen recording, background removal, per-word colour and WordArt, rulers.
 
 ## v1.2 Editors
 

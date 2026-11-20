@@ -130,6 +130,8 @@ Order: P0 → P1 → P2 → P3 is "put things where I want". P4 comes next becau
 
 ## Execution plan for P10–P15 (v3, November 2026)
 
+**Status: all increments done on the `slides-p10-p15` branch and released as 1.2.0.**
+
 Each increment ships with a format change in FORMATS.md, an automated test (format round-trip or in-app test that checks the file on disk) and a screenshot check. Work happens on the `slides-p10-p15` branch, merged by pull request, then released as 1.2.0.
 
 | Inc. | Scope | Test |

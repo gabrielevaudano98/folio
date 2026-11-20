@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { workspace, runApp, open, pick, errors, log, step } from './harness.mjs';
 
 const w = workspace('motion', 47586);
-const vis = (id) => `getComputedStyle(document.querySelector('.presenter .pr-layer:last-child .sl-obj[data-id="${id}"]')).visibility`;
+const vis = (id) => `getComputedStyle(document.querySelector('.presenter .pr-layer:nth-last-child(1 of .pr-layer) .sl-obj[data-id="${id}"]')).visibility`;
 const r = await runApp(w, [
   { size: [1500, 950], wait: 1200 }, open('Motion.slides.md'),
   log("[...document.querySelectorAll('.sl-frame .sl-obj[data-anim]')].map(e=>e.dataset.id+':'+e.dataset.anim).join(',')"),
