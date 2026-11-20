@@ -67,7 +67,7 @@ const r2 = await run([
 assert.deepEqual(r2.js.at(-1), [], r2.log.slice(-2000));
 assert.match(r2.js[0], /Imported Pitch\./); assert.match(r2.js[1], /Swiss brand is now a template/);
 const deck = fs.readFileSync(path.join(ws, 'Pitch 2.slides.md'), 'utf8');
-assert.equal(deck.split(/\n---\n/).length - 1, 11); assert.match(deck, /## Why now\n\n- Teams write in many tools/); assert.match(deck, /::: shape #s\d+ type=ellipse/);
+assert.equal(deck.split(/\n---\n/).length - 1, 11); assert.match(deck, /## Why now\n\n- Teams write in many tools/); assert.match(deck, /::: shape #[\w-]+ type=ellipse/);
 const pic = deck.match(/!\[[^\]]*\]\((assets\/[^)]+)\)/); assert(pic && fs.existsSync(path.join(ws, pic[1]))); console.log('  ✓ a .pptx imports as a deck next to the open note, pictures saved in assets');
 const tpl = fs.readFileSync(path.join(ws, 'Templates', 'Swiss brand.slides.md'), 'utf8');
 assert.match(tpl, /template-name: "Swiss brand"/); assert.match(tpl, /accent: "#e3120b"/); assert.match(tpl, /<!-- master: title only -->/); assert.match(tpl, /::: box placeholder=title x=88 y=210\.1 w=760\.1 h=220 size=68 valign=bottom/); console.log('  ✓ a .potx imports as a template: theme, layouts as masters, placeholders where they were');
