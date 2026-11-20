@@ -84,6 +84,7 @@
     "appId": "com.folio.markdown",
     "productName": "Folio",
     "copyright": "Copyright (C) 2026 Gabriele Vaudano. AGPL-3.0. Based on Folio by Gabriele Vaudano.",
+    "afterPack": "build/afterPack.cjs",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -190,13 +191,7 @@
         "from": "NOTICE",
         "to": "NOTICE"
       }
-    ],
-    "electronFuses": {
-      "runAsNode": true,
-      "enableNodeOptionsEnvironmentVariable": false,
-      "enableNodeCliInspectArguments": false,
-      "onlyLoadAppFromAsar": true
-    }
+    ]
   },
   "homepage": "https://github.com/gabrielevaudano98/folio",
   "repository": {
