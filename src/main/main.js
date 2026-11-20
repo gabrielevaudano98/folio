@@ -289,7 +289,7 @@ h('qa:stop', () => stopQa());
 let importN = 0;
 h('fs:pick-office', async () => {
   const dev = !app.isPackaged && process.env.FOLIO_IMPORT_FILE;
-  const r = dev ? { filePaths: [process.env.FOLIO_IMPORT_FILE.split('|')[importN++ % process.env.FOLIO_IMPORT_FILE.split('|').length]] } : await dialog.showOpenDialog(win, { title: 'Import PowerPoint', properties: ['openFile'], filters: [{ name: 'PowerPoint', extensions: ['pptx', 'potx'] }] });
+  const r = dev ? { filePaths: [process.env.FOLIO_IMPORT_FILE.split('|')[importN++ % process.env.FOLIO_IMPORT_FILE.split('|').length]] } : await dialog.showOpenDialog(win, { title: tl('dlg', 'Import PowerPoint'), properties: ['openFile'], filters: [{ name: 'PowerPoint', extensions: ['pptx', 'potx'] }] });
   if (r.canceled || !r.filePaths?.[0]) return null;
   const file = r.filePaths[0];
   if (!/\.(pptx|potx)$/i.test(file)) throw new Error('Choose a .pptx or .potx file.');
@@ -574,7 +574,7 @@ h('connections:list', async () => {
     // a pre-1.2.3 entry (no --mcp-stdio) still works but shows Connect, which rewrites it
     let installed = false, appPresent = fss.existsSync(path.dirname(t.file));
     try { const cur = (await readJson(t.file))?.[t.key]?.folio; installed = !!cur && Array.isArray(cur.args) && (cur.args.includes('--mcp-stdio') || (isWin && cur.args.some((a) => /[\\/]mcp-stdio\.mjs$/.test(a)) && cur.env?.ELECTRON_RUN_AS_NODE === '1')); } catch {}
-    list.push({ id, name: t.name, file: t.file, installed, appPresent, restart: t.restart, snippet: JSON.stringify({ [t.key]: { folio: t.shape(entry) } }, null, 2) });
+    list.push({ id, name: t.name, file: t.file, installed, appPresent, restart: tl('dlg', t.restart), snippet: JSON.stringify({ [t.key]: { folio: t.shape(entry) } }, null, 2) });
   }
   const cli = `claude mcp add folio --scope user${entry.env ? ' -e ELECTRON_RUN_AS_NODE=1' : ''} -- ${[entry.command, ...entry.args].map(quote).join(' ')}`;
   return { list, claudeCode: cli, httpUrl: mcpServerPort ? `http://127.0.0.1:${mcpServerPort}/mcp` : null };
@@ -586,7 +586,7 @@ h('connections:install', async (id) => {
   cfg[t.key] = { ...(cfg[t.key] || {}), folio: t.shape(stdioEntry()) };
   await fs.mkdir(path.dirname(t.file), { recursive: true });
   await fs.writeFile(t.file, JSON.stringify(cfg, null, 2));
-  return { file: t.file, restart: t.restart };
+  return { file: t.file, restart: tl('dlg', t.restart) };
 });
 h('connections:remove', async (id) => {
   const t = TARGETS[id]; const cfg = await readJson(t.file);

@@ -9,7 +9,7 @@ import { parseTgz, parseZip, selectFiles, safeRel } from '../src/main/features/u
 import { createInstaller } from '../src/main/features/installer.js';
 import { dropEcho, lines, renderMeeting, fileName, clock, overlap, dedupeSentences } from '../src/main/meeting/transcript.js';
 import { verify, chunk, merge, quoteOnLine, readsLikeDecision, readsLikeQuestion } from '../src/main/meeting/notes-core.js';
-import { componentsRoot } from '../src/main/meeting/service.js';
+import { componentsRoot, createFeatures } from '../src/main/meeting/service.js';
 
 let n = 0; const t = async (name, fn) => { await fn(); n++; console.log('  ok', name); };
 console.log('\nfeatures');
@@ -224,6 +224,19 @@ await t('long transcripts are split and merged in order', () => {
   assert.ok(parts[1].startsWith('[')); assert.equal(parts.join('\n').split('\n').length, 300);
   const m = merge([{ summary: 'A', decisions: [{ line: 9 }], actions: [], questions: [] }, { summary: 'B', decisions: [{ line: 2 }], actions: [], questions: [] }]);
   assert.equal(m.summary, 'A B'); assert.deepEqual(m.decisions.map((d) => d.line), [2, 9]);
+});
+
+/* ---------- recordings kept after a crash: ids are checked before they become file names ---------- */
+await t('meeting:recover and meeting:discard refuse an id that is not one of ours', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-feat-')); const handlers = {};
+  createFeatures({ app: { getPath: () => tmp }, net: {}, utilityProcess: {}, MessageChannelMain: class {}, h: (name, fn) => { handlers[name] = fn; }, getWin: () => null,
+    settings: {}, saveSettings: () => {}, notes: { resolve: (r) => path.join(tmp, r), root: () => tmp }, workerPath: '', env: { LOCALAPPDATA: tmp, XDG_DATA_HOME: tmp } });
+  const keep = path.join(tmp, 'keep.txt'); fs.writeFileSync(keep, 'x');
+  for (const bad of ['../keep', '..\\keep', 'A_b', 'a b', '', '.', 'x/../y']) {
+    await assert.rejects(handlers['meeting:recover'](bad), /Unknown recording\./, `recover ${JSON.stringify(bad)}`);
+    await assert.rejects(handlers['meeting:discard'](bad), /Unknown recording\./, `discard ${JSON.stringify(bad)}`);
+  }
+  assert.ok(fs.existsSync(keep)); assert.equal(await handlers['meeting:discard']('0a1b-2c'), true);
 });
 
 console.log(`  ${n} passed`);

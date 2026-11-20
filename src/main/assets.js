@@ -75,6 +75,9 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
   async function ensureDir(dir) {
     const fresh = !(await exists(dir));
     await fs.mkdir(dir, { recursive: true });
+    // a .asset that is a link (say, from a cloned repository) must not lead out of the workspace
+    const [real, realRoot] = await Promise.all([fs.realpath(dir), fs.realpath(root())]);
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) throw new NotesError('That asset folder points outside the workspace.');
     if (fresh) await hideFolder(dir);
   }
   /** write into the asset folder atomically: a temp file, then a rename, so a crash never leaves half a picture */
@@ -131,7 +134,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     const abs = notes.resolve(assetRel, { allowAsset: true }); assertAssetFile(abs);
     if (!(await exists(abs))) return false;
     if (permanent) { await fs.unlink(abs); return true; }
-    const dir = trashDirFor(abs); await ensureDir(path.dirname(dir)); await fs.mkdir(dir, { recursive: true });
+    const dir = trashDirFor(abs); await ensureDir(path.dirname(dir)); await ensureDir(dir);
     await fs.rename(abs, path.join(dir, `${now().toString(36)}~${path.basename(abs)}`));
     return true;
   }

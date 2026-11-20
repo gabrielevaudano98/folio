@@ -9,6 +9,7 @@ import { COMPONENTS, FEATURES, featureSupported, downloadBytes } from '../featur
 import { createInstaller } from '../features/installer.js';
 import { renderMeeting, fileName, lines as numberLines } from './transcript.js';
 import { draftNotes } from './notes-engine.js';
+import { t } from '../../renderer/i18n.js';
 
 const FEATURE = 'meeting-recorder';
 const RATE = 16000;
@@ -87,7 +88,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   });
   h('features:install', async (id, which) => {
     check(id);
-    if (!featureSupported(FEATURE, process.platform, platformKey, env)) throw new Error('This feature is not available on this computer yet.');
+    if (!featureSupported(FEATURE, process.platform, platformKey, env)) throw new Error(t('mtg.err-unsupported'));
     try { await installer.install(part(which)); } catch (e) { if (!e.cancelled) throw e; }
     send('features:progress', {});
     return describe();
@@ -95,7 +96,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   h('features:cancel', () => { installer.cancel(); return true; });
   h('features:uninstall', async (id, which) => {
     check(id);
-    if (session) throw new Error('Stop the recording first.');
+    if (session) throw new Error(t('mtg.err-stop-first'));
     for (const c of part(which)) await installer.uninstall(c);
     return describe();
   });
@@ -124,8 +125,8 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
 
   function memoryGuard() {
     const budget = FEATURES[FEATURE].budget;
-    const t = setInterval(() => {
-      if (!session) return clearInterval(t);
+    const guard = setInterval(() => {
+      if (!session) return clearInterval(guard);
       let total = 0, worker = 0;
       for (const m of app.getAppMetrics()) {
         const kb = m.memory.privateBytes ?? m.memory.workingSetSize; total += kb;
@@ -134,19 +135,19 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
       const mb = (kb) => Math.round(kb / 1024);
       session.peak.worker = Math.max(session.peak.worker, mb(worker)); session.peak.app = Math.max(session.peak.app, mb(total));
       if (session.phase === 'recording' && (mb(worker) > budget.workerMB || mb(total) > budget.appMB)) {
-        send('meeting:stop-request', { reason: `Folio stopped the recording because it used ${mb(total)} MB, above its ${budget.appMB} MB limit. The transcript so far is saved.` });
+        send('meeting:stop-request', { reason: t('mtg.err-over-budget', { used: mb(total), limit: budget.appMB }) });
       }
     }, 5000);
-    t.unref();
+    guard.unref();
   }
 
   async function start({ title } = {}) {
-    if (session) throw new Error('A recording is already running.');
-    if (!state().enabled) throw new Error('Turn on the meeting recorder in Settings first.');
+    if (session) throw new Error(t('mtg.err-running'));
+    if (!state().enabled) throw new Error(t('mtg.err-enable'));
     notes.root(); // throws when no folder is open
     const d = await describe();
-    if (!d[0].supported) throw new Error('The meeting recorder is not available on this computer yet.');
-    if (!d[0].required.ready) throw new Error('Download the meeting recorder in Settings first.');
+    if (!d[0].supported) throw new Error(t('mtg.err-unavailable'));
+    if (!d[0].required.ready) throw new Error(t('mtg.err-download'));
     const id = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
     const started = new Date();
     const asrId = FEATURES[FEATURE].required.find((c) => COMPONENTS[c].kind === 'asr');
@@ -161,7 +162,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
     session.worker = worker;
     let stderr = ''; worker.stderr?.on('data', (b) => { stderr = (stderr + b).slice(-2000); });
     const ready = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('The speech engine did not start in time.')), 90000);
+      const timer = setTimeout(() => reject(new Error(t('mtg.err-engine-late'))), 90000);
       worker.on('message', (m) => {
         if (m.type === 'ready') { clearTimeout(timer); session.loadMs = m.loadMs; resolve(); }
         else if (m.type === 'segment' && session) {
@@ -177,8 +178,8 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
         if (!session || session.worker !== worker) return;
         session.workerExited = code;
         if (session.phase === 'recording' || session.phase === 'starting') {
-          reject(new Error(`The speech engine stopped unexpectedly (${code}). ${stderr.trim().split('\n').pop() || ''}`.trim()));
-          send('meeting:stop-request', { reason: 'The speech engine stopped unexpectedly. The transcript so far is saved.' });
+          reject(new Error(t('mtg.err-engine-died', { code, detail: stderr.trim().split('\n').pop() || '' }).trim()));
+          send('meeting:stop-request', { reason: t('mtg.err-engine-died-saved') });
         }
         session.done?.(null);
       });
@@ -210,7 +211,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
 
   /** stops the recording, writes the transcript at once, then the notes when their model is installed */
   async function stop() {
-    if (!session) throw new Error('Nothing is recording.');
+    if (!session) throw new Error(t('mtg.err-nothing'));
     if (session.phase !== 'recording' && session.phase !== 'starting') return publicSession();
     const s = session;
     phase('transcribing');
@@ -230,12 +231,12 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
       s.path = await writeNote(fileName(s.started, s.title), renderMeeting(base));
       await fs.rm(s.workFile, { force: true });
       phase('saved', { path: s.path, audioSec: result?.audioSec });
-    } catch (e) { phase('failed', { error: `The transcript could not be saved: ${e.message}. It is kept and can be saved from Settings.` }); session = null; throw e; }
+    } catch (e) { phase('failed', { error: t('mtg.err-save', { err: e.message }) }); session = null; throw e; }
     const out = publicSession();
     const d = (await describe())[0];
     const finish = () => { if (session === s) { session = null; send('meeting:state', { ...out, phase: 'idle' }); } };
     if (d.notes.ready && d.autoNotes && s.segments.length) { // the notes come later: the transcript is already saved
-      writeNotesFor(s, base).catch((e) => phase('saved', { error: `Notes were not written: ${e.message}` })).finally(() => setTimeout(finish, 1500));
+      writeNotesFor(s, base).catch((e) => phase('saved', { error: t('mtg.err-notes', { err: e.message }) })).finally(() => setTimeout(finish, 1500));
     } else finish();
     return out;
   }
@@ -268,7 +269,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
 
   /** a recording whose app closed before it was saved: write its transcript now */
   async function recover(workId) {
-    if (!/^[a-z0-9-]+$/.test(String(workId))) throw new Error('Unknown recording.');
+    if (!/^[a-z0-9-]+$/.test(String(workId))) throw new Error(t('mtg.err-unknown-recording'));
     const file = path.join(workDir, `${workId}.jsonl`);
     const { meta, segments } = await readWork(file);
     const last = segments.reduce((m, x) => Math.max(m, x.t1 || 0), 0);
@@ -281,7 +282,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   h('meeting:stop', () => stop());
   h('meeting:status', () => (session ? publicSession() : null));
   h('meeting:recover', (id) => recover(id));
-  h('meeting:discard', async (workId) => { if (!/^[a-z0-9-]+$/.test(String(workId))) throw new Error('Unknown recording.'); await fs.rm(path.join(workDir, `${workId}.jsonl`), { force: true }); return true; });
+  h('meeting:discard', async (workId) => { if (!/^[a-z0-9-]+$/.test(String(workId))) throw new Error(t('mtg.err-unknown-recording')); await fs.rm(path.join(workDir, `${workId}.jsonl`), { force: true }); return true; });
 
   /** waits for notes still being written, so quitting does not cut them off (at most 3 minutes) */
   async function settle() { for (let i = 0; session && i < 360; i++) await new Promise((r) => setTimeout(r, 500)); }
