@@ -2,6 +2,9 @@
 // and Word. Everything is CriticMarkup in the file (page-critic.js); this pane only lists it and acts on it.
 import { TextSelection } from '@tiptap/pm/state';
 import { t } from './i18n.js';
+import { splitThread, myReaction, commentParts, mentionAt, QUICK } from './page-reactions.js';
+import { atEntries, isPerson } from './page-mentions.js';
+import { resolveTarget } from './refs-syntax.js';
 import { docReview, settle, resolveThread, commentBody } from './page-critic.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,13 +20,13 @@ const when = (d) => {
 const initials = (n) => (n || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 const short = (t, n = 80) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
 
-export function mountReview(host, editor, { icons, author = () => '', keyLabel = (k) => k, onToggle, dock = null, onCount = null }) {
+export function mountReview(host, editor, { icons, author = () => '', keyLabel = (k) => k, onToggle, dock = null, onCount = null, mentions = () => null }) {
   const scroll = host.querySelector('.rich-scroll');
   const main = document.createElement('div'); main.className = 'rich-main';
   scroll.replaceWith(main); main.append(scroll);
   const pane = document.createElement('aside'); pane.className = 'review-pane'; pane.setAttribute('aria-label', 'Comments and suggestions'); pane.hidden = true;
   (dock || main).append(pane);
-  let autoShown = false, filter = 'all', items = [], timer = 0, focusDraft = false;
+  let autoShown = false, filter = 'all', items = [], timer = 0, focusDraft = false, pickerFor = -1;
   /* Google Docs: each card sits beside the line it is about (Beside text), or all of them stack in a list */
   const ALIGN = 'folio.page.review.align';
   let aligned = (() => { try { return localStorage.getItem(ALIGN) !== 'off'; } catch { return true; } })();
@@ -74,17 +77,22 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   let placeRaf = 0; const placeSoon = () => { cancelAnimationFrame(placeRaf); placeRaf = requestAnimationFrame(() => { if (aligned && !pane.hidden) { const t = pane.querySelector('.rv-track'); if (t) t.style.transform = `translateY(${-scroll.scrollTop}px)`; } }); };
   scroll.addEventListener('scroll', placeSoon, { passive: true });
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (aligned && !pane.hidden && !typing()) place(); }).observe(scroll);
+  const personLink = (p) => { if (p.person) return true; const c = mentions(); const f = c?.files && resolveTarget(p.link, c.files, c.from || ''); return !!f && isPerson(f); };
+  const commentHtml = (text) => commentParts(text).map((p) => p.link == null ? esc(p.text) : personLink(p) ? `<span class="rv-mention">@${esc(p.label)}</span>` : `<span class="rv-ref">${esc(p.label)}</span>`).join('');
   function card(x, i, active) {
     if (x.kind === 'thread') {
-      const comments = x.comments.map((c, k) => {
+      const { messages, reactions } = splitThread(x.comments), me = author();
+      const comments = messages.map(({ c, k }) => {
         if (!c.text && k === x.comments.length - 1) return `<div class="rv-draft"><textarea rows="2" placeholder="Add a comment" aria-label="Comment" data-edit="${i}"></textarea><div class="rv-row"><button type="button" class="btn btn-primary" data-act="save" data-i="${i}">Comment</button><button type="button" class="btn" data-act="cancel" data-i="${i}">Cancel</button></div></div>`;
-        return `<div class="rv-comment"><span class="rv-avatar" aria-hidden="true">${esc(initials(c.author))}</span><div class="rv-body"><div class="rv-meta"><b>${esc(c.author || 'Comment')}</b><span>${esc(when(c.date))}</span><button type="button" class="rv-del" data-act="delComment" data-i="${i}" data-k="${k}" aria-label="Delete this comment">${ic('trash')}</button></div><p>${esc(c.text)}</p></div></div>`;
+        return `<div class="rv-comment"><span class="rv-avatar" aria-hidden="true">${esc(initials(c.author))}</span><div class="rv-body"><div class="rv-meta"><b>${esc(c.author || 'Comment')}</b><span>${esc(when(c.date))}</span><button type="button" class="rv-del" data-act="delComment" data-i="${i}" data-k="${k}" aria-label="Delete this comment">${ic('trash')}</button></div><p>${commentHtml(c.text)}</p></div></div>`;
       }).join('');
+      const chips = reactions.length || pickerFor === i ? `<div class="rv-reactions" role="group" aria-label="${esc(t('review.reactions'))}">${reactions.map((r) => { const mine = myReaction(r, me) >= 0; return `<button type="button" class="rv-react${mine ? ' is-mine' : ''}" data-act="react" data-i="${i}" data-emoji="${esc(r.emoji)}" aria-pressed="${mine}" aria-label="${esc(t('review.reactedBy', { emoji: r.emoji, who: r.authors.filter(Boolean).join(', ') || '?' }))}" data-tip="${esc(r.authors.filter(Boolean).join(', '))}"><span aria-hidden="true">${esc(r.emoji)}</span><span class="rv-count">${r.authors.length}</span></button>`; }).join('')}${pickerFor === i ? QUICK.map((e) => `<button type="button" class="rv-react rv-pick" data-act="react" data-i="${i}" data-emoji="${esc(e)}" aria-label="${esc(t('review.react', { emoji: e }))}">${esc(e)}</button>`).join('') : ''}</div>` : '';
       const drafting = x.comments.some((c) => !c.text);
       return `<article class="rv-card rv-thread${active ? ' is-active' : ''}" data-i="${i}" tabindex="0">
         ${x.quote ? `<blockquote class="rv-quote">${esc(short(x.quote))}</blockquote>` : ''}
         ${comments}
-        ${drafting ? '' : `<div class="rv-row rv-reply"><input type="text" placeholder="Reply" aria-label="Reply" data-reply="${i}"><button type="button" class="rb" data-act="resolve" data-i="${i}" aria-label="Resolve" data-tip="Resolve: the comments go, the text stays">${ic('check')}</button></div>`}
+        ${drafting ? '' : chips}
+        ${drafting ? '' : `<div class="rv-row rv-reply"><input type="text" placeholder="Reply" aria-label="Reply" data-reply="${i}" autocomplete="off"><button type="button" class="rb" data-act="pick" data-i="${i}" aria-label="${esc(t('review.addReaction'))}" aria-expanded="${pickerFor === i}" data-tip="${esc(t('review.addReaction'))}">☺</button><button type="button" class="rb" data-act="resolve" data-i="${i}" aria-label="Resolve" data-tip="Resolve: the comments go, the text stays">${ic('check')}</button></div>`}
       </article>`;
     }
     const what = x.kind === 'ins' ? `Add <ins class="critic-ins">${esc(short(x.text))}</ins>` : x.kind === 'del' ? `Delete <del class="critic-del">${esc(short(x.text))}</del>` : `Replace <del class="critic-del">${esc(short(x.old))}</del> with <ins class="critic-ins">${esc(short(x.new))}</ins>`;
@@ -100,6 +108,12 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
 
   const go = (x) => { const pos = x.kind === 'thread' ? (x.hl ? x.from : x.start) : x.from; editor.chain().focus().setTextSelection(x.kind === 'thread' && x.hl ? { from: x.from, to: x.to } : pos).scrollIntoView().run(); };
   const setBody = (pos, body) => { const n = editor.state.doc.nodeAt(pos); if (n) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...n.attrs, body })); };
+  /* a reaction is a reply of one emoji: click adds yours, click again takes it back */
+  const toggleReaction = (x, emoji) => {
+    const r = splitThread(x.comments).reactions.find((q) => q.emoji === emoji), k = r ? myReaction(r, author()) : -1;
+    if (k >= 0) return dropComment(x, k);
+    editor.view.dispatch(editor.state.tr.insert(x.end, editor.schema.nodes.criticComment.create({ body: commentBody(author(), emoji) }))); render();
+  };
   const dropComment = (x, k) => {
     const tr = editor.state.tr;
     if (x.comments.length === 1) resolveThread(editor.state, x, tr); else tr.delete(x.comments[k].pos, x.comments[k].pos + 1);
@@ -121,6 +135,8 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
       if (act === 'accept' || act === 'reject') { editor.view.dispatch(settle(editor.state, x, act === 'accept')); editor.commands.focus(); }
       else if (act === 'resolve') { editor.view.dispatch(resolveThread(editor.state, x)); editor.commands.focus(); }
       else if (act === 'delComment') dropComment(x, +b.dataset.k);
+      else if (act === 'pick') { pickerFor = pickerFor === +b.dataset.i ? -1 : +b.dataset.i; render(); }
+      else if (act === 'react') { toggleReaction(x, b.dataset.emoji); pickerFor = -1; }
       else if (act === 'save') saveDraft(x, b.closest('.rv-card').querySelector('textarea').value);
       else if (act === 'cancel') dropComment(x, x.comments.length - 1);
       return;
@@ -133,12 +149,44 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     if (!text) { dropComment(x, x.comments.length - 1); return; }
     setBody(c.pos, commentBody(c.author || author(), text, c.date || undefined)); editor.commands.focus();
   };
+  /* @ in a reply or a new comment lists the people of the workspace; Enter, Tab or a click writes the same [[People/Name]] the @ menu writes */
+  const mp = document.createElement('div'); mp.className = 'rv-mentions'; mp.id = 'rv-mentions'; mp.setAttribute('role', 'listbox'); mp.setAttribute('aria-label', t('review.people')); mp.hidden = true; document.body.append(mp);
+  let mState = null;
+  const closeMention = () => { mp.hidden = true; if (mState) { mState.field.removeAttribute('aria-activedescendant'); mState.field.removeAttribute('aria-controls'); } mState = null; };
+  const drawMention = () => {
+    const { field, list, sel } = mState, r = field.getBoundingClientRect();
+    mp.innerHTML = list.map((e, n) => `<div role="option" id="rv-m-${n}" class="rv-mention-opt" aria-selected="${n === sel}" data-m="${n}"><span aria-hidden="true">@</span>${esc(e.item.label)}${e.item.desc ? `<small>${esc(e.item.desc)}</small>` : ''}</div>`).join('');
+    Object.assign(mp.style, { left: `${r.left}px`, top: `${r.bottom + 2}px`, width: `${Math.max(r.width, 200)}px` }); mp.hidden = false;
+    field.setAttribute('aria-controls', 'rv-mentions'); field.setAttribute('aria-activedescendant', `rv-m-${sel}`);
+  };
+  const showMention = async (field) => {
+    const at = mentionAt(field.value, field.selectionStart ?? field.value.length), ctx = mentions();
+    if (!at || !ctx) return closeMention();
+    const value = field.value, list = (await atEntries(at.query, ctx)).filter((e) => e.group === 'People').slice(0, 6);
+    if (!list.length || document.activeElement !== field || field.value !== value) return closeMention();
+    mState = { field, from: at.from, to: field.selectionStart ?? value.length, list, sel: 0 }; drawMention();
+  };
+  const pickMention = (n) => {
+    const { field, from, to, list } = mState, e = list[n]; if (!e) return;
+    const v = field.value, ins = `${e.insert} `; field.value = v.slice(0, from) + ins + v.slice(to); field.setSelectionRange(from + ins.length, from + ins.length); closeMention(); field.focus();
+  };
+  mp.addEventListener('mousedown', (e) => e.preventDefault());
+  mp.addEventListener('click', (e) => { const o = e.target.closest('[data-m]'); if (o && mState) pickMention(+o.dataset.m); });
+  pane.addEventListener('input', (e) => { const f = e.target.closest('input[data-reply], textarea[data-edit]'); if (f) showMention(f); });
+  pane.addEventListener('focusout', (e) => { if (e.target.closest?.('input[data-reply], textarea[data-edit]')) setTimeout(() => { if (mState && document.activeElement !== mState.field) closeMention(); }, 100); });
+  pane.addEventListener('keydown', (e) => {
+    if (mState && e.target === mState.field) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopImmediatePropagation(); mState.sel = (mState.sel + (e.key === 'ArrowDown' ? 1 : mState.list.length - 1)) % mState.list.length; drawMention(); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); pickMention(mState.sel); return; }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeMention(); return; }
+    }
+  });
   pane.addEventListener('keydown', (e) => {
     const ta = e.target.closest('textarea[data-edit]');
     if (ta && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveDraft(items[+ta.dataset.edit], ta.value); }
     if (ta && e.key === 'Escape') { e.preventDefault(); const x = items[+ta.dataset.edit]; dropComment(x, x.comments.length - 1); editor.commands.focus(); }
     const r = e.target.closest('input[data-reply]');
-    if (r && e.key === 'Enter' && r.value.trim()) { e.preventDefault(); const x = items[+r.dataset.reply]; editor.view.dispatch(editor.state.tr.insert(x.end, editor.schema.nodes.criticComment.create({ body: commentBody(author(), r.value.trim()) }))); }
+    if (r && e.key === 'Enter' && r.value.trim()) { e.preventDefault(); const x = items[+r.dataset.reply]; editor.view.dispatch(editor.state.tr.insert(x.end, editor.schema.nodes.criticComment.create({ body: commentBody(author(), r.value.trim()) }))); r.value = ''; render(); }
     if (r && e.key === 'Escape') { r.value = ''; editor.commands.focus(); }
   });
   pane.addEventListener('focusout', (e) => {

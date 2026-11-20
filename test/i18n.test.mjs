@@ -22,6 +22,15 @@ for (const [code, { dict }] of Object.entries(LOCALES)) {
 }
 console.log('  ✓ every translation maps to a real key and keeps its {placeholders}');
 
+// palette commands: the catalogue is the translation of the titles written in app.js, so a retitled command cannot drift
+const appSrc = fs.readFileSync('src/renderer/app.js', 'utf8');
+const cmdBlock = appSrc.slice(appSrc.indexOf('const COMMANDS = ['), appSrc.indexOf('\n];', appSrc.indexOf('const COMMANDS = [')));
+const cmds = [...cmdBlock.matchAll(/\{ id: '([\w-]+)', title: '((?:[^'\\]|\\.)*)'/g)].map((m) => [m[1], m[2].replace(/\\'/g, "'")]);
+assert.ok(cmds.length > 70, `found ${cmds.length} commands`);
+for (const [id, title] of cmds) { assert.equal(en[`cmd.${id}`], title, `en cmd.${id} matches the title in app.js`); assert.ok(it[`cmd.${id}`], `it has cmd.${id}`); }
+assert.equal(Object.keys(en).filter((k) => k.startsWith('cmd.')).length, cmds.length, 'no catalogue entry without a command');
+console.log(`  ✓ the ${cmds.length} palette commands are translated and match app.js`);
+
 setLocale('it'); assert.equal(t('review.accept'), 'Accetta'); assert.equal(t('info.minAgo', { n: 3 }), '3 min fa');
 assert.equal(t('settings.language'), 'Lingua');
 delete LOCALES.it.dict['review.reject'];

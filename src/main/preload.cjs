@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('folio', {
   historyGet: (p, id) => call('history:get', p, id),
   historySnapshot: (p, text, reason, force) => call('history:snapshot', p, text, reason, force),
   historyName: (p, id, label, note) => call('history:name', p, id, label, note),
+  historyGit: (p) => call('history:git', p),
+  historyGitGet: (p, hash) => call('history:git-get', p, hash),
   historyDeleted: () => call('history:deleted'),
   historyClear: (p) => call('history:clear', p),
   readClipboard: () => call('clipboard:read'),

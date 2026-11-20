@@ -978,7 +978,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   host.insertBefore(host.querySelector('.find-bar'), host.querySelector('.rich-scroll'));
 
   /* comments and suggestions (CriticMarkup) in a pane beside the page */
-  const review = mountReview(host, editor, { icons, author, keyLabel, onToggle: () => syncToolbar(), dock: reviewDock, onCount: onReviewCount });
+  const review = mountReview(host, editor, { icons, author, keyLabel, mentions: () => (mentions ? mentions() : null), onToggle: () => syncToolbar(), dock: reviewDock, onCount: onReviewCount });
   editor.view.dom.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.code === 'KeyM') { e.preventDefault(); review.comment(); }
   });

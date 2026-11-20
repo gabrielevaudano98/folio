@@ -115,7 +115,7 @@ const isRich = () => app.dataset.modeView === 'edit';
 
 async function boot() {
   const init = await folio.init();
-  setLocale(init.settings.language);
+  setLocale(init.settings.language); localizeCommands();
   S.platform = init.platform; S.settings = init.settings; S.mcp = init.mcp; S.version = init.version;
   folio.userName().then((n) => { S.userName = n || ''; }).catch(() => {});
   document.documentElement.dataset.platform = init.platform;
@@ -1468,6 +1468,9 @@ function openHelp(query = '') {
   draw(query); $('#help-search', d).focus();
 }
 
+/* command titles come from the catalogue (cmd.<id>); English stays in `en`, which the dedupe below compares against */
+function localizeCommands() { for (const c of COMMANDS) { c.en ??= c.title; const k = `cmd.${c.id}`; const v = tr(k); c.title = v === k ? c.en : v; } }
+
 /* ============ palette ============ */
 const COMMANDS = [
   { id: 'new-note', title: 'New note', key: 'Mod+N', run: () => newNote() },
@@ -1599,7 +1602,7 @@ function updatePalette() {
   const isCmd = raw.startsWith('>');
   const q = isCmd ? raw.slice(1).trim() : raw.trim();
   if (isCmd) {
-    pal.items = COMMANDS.map((c) => ({ c, f: fuzzy(q, c.title) })).filter((x) => x.f).sort((a, b) => b.f.score - a.f.score)
+    pal.items = COMMANDS.map((c) => ({ c, f: fuzzy(q, c.title) || (c.en && c.en !== c.title ? fuzzy(q, c.en) : null) })).filter((x) => x.f).sort((a, b) => b.f.score - a.f.score)
       .map(({ c, f }) => ({ html: `<span class="palette-title">${highlight(c.title, f.marks)}</span>${c.key ? `<kbd>${esc(keyLabel(c.key))}</kbd>` : ''}`, run: c.run }));
   } else {
     pal.items = S.files.map((p) => ({ p, f: fuzzy(q, stem(p)) || (q.includes('/') ? fuzzy(q, p) : null) })).filter((x) => x.f)
@@ -2124,7 +2127,7 @@ function bindChrome() {
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
-    if (k === 'language') { setLocale(v); renderInfo(false); if ($('#sheet-settings').open) openSettings(); }
+    if (k === 'language') { setLocale(v); localizeCommands(); renderInfo(false); if ($('#sheet-settings').open) openSettings(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });
   document.addEventListener('input', (e) => {

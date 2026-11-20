@@ -1755,3 +1755,18 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .link-open:hover .bl-ref { text-decoration: underline; }
 .link-open:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .unlinked-all { list-style: none; padding: var(--space-2xs) 0; }
+
+/* ---------- reactions and mentions in comments (D16) ---------- */
+.rv-reactions { display: flex; flex-wrap: wrap; gap: var(--space-2xs); padding: var(--space-2xs) 0 0 32px; }
+.rv-react { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 var(--space-xs); border: 0.5px solid var(--color-rule); border-radius: 12px; background: var(--color-paper-2); color: var(--color-ink); font-size: var(--text-sm); cursor: pointer; }
+.rv-react:hover { background: var(--color-hover); }
+.rv-react.is-mine { background: var(--color-select); border-color: var(--color-rule-strong); }
+.rv-react:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.rv-count { font-size: var(--text-2xs); color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.rv-pick { border-style: dashed; }
+.rv-mention { padding: 0 3px; border-radius: var(--radius-xs); background: var(--color-accent-soft); color: var(--color-accent-text); }
+.rv-ref { text-decoration: underline; text-decoration-color: var(--color-rule-strong); }
+.rv-mentions { position: fixed; z-index: 60; max-height: 220px; overflow: auto; padding: var(--space-2xs); border: 0.5px solid var(--color-rule-strong); border-radius: var(--radius-md); background: var(--color-paper); box-shadow: 0 6px 24px var(--color-scrim); }
+.rv-mention-opt { display: flex; gap: var(--space-xs); align-items: baseline; padding: var(--space-2xs) var(--space-xs); border-radius: var(--radius-sm); font-size: var(--text-ui); cursor: pointer; }
+.rv-mention-opt small { color: var(--color-muted); margin-left: auto; }
+.rv-mention-opt[aria-selected="true"], .rv-mention-opt:hover { background: var(--color-select); }

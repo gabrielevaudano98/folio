@@ -11,6 +11,7 @@ import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createNotes, NOTE_EXT } from './notes.js';
 import { createHistory } from './history.js';
+import { createGitLog } from './git-log.js';
 import { createAssets, isAssetPath } from './assets.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 
@@ -51,6 +52,7 @@ function writeBridge() {
 
 const notes = createNotes(() => settings.workspace);
 const history = createHistory(() => settings.workspace);
+const gitLog = createGitLog(() => settings.workspace);
 const assets = createAssets(notes);
 const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset folder belongs to Folio. Remove files from a page, or use Clean up unused files.'); };
 /* history must never get in the way of saving */
@@ -206,6 +208,8 @@ h('history:list', (rel) => history.list(rel));
 h('history:get', (rel, id) => history.get(rel, id));
 h('history:snapshot', (rel, text, reason, force) => keep(rel, text, { reason: reason || 'edit', force: !!force }));
 h('history:name', (rel, id, label, note) => history.name(rel, id, label, note));
+h('history:git', (rel) => gitLog.list(notes.relOf(notes.resolve(rel))));
+h('history:git-get', (rel, hash) => gitLog.show(notes.relOf(notes.resolve(rel)), hash));
 h('history:deleted', () => history.deleted());
 h('history:clear', (rel) => history.clear(rel));
 h('history:usage', () => history.usage());

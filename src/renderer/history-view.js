@@ -11,7 +11,7 @@ export function dayLabel(t, now = Date.now()) {
   if (days === 0) return 'Today'; if (days === 1) return 'Yesterday';
   return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() !== n.getFullYear() ? { year: 'numeric' } : {}) });
 }
-const REASON = { open: 'Saved before editing', created: 'Created', 'before-ai': 'Before an AI edit', ai: 'AI edit', 'before-restore': 'Before a restore', 'before-rename': 'Before links were updated', restore: 'Restored', named: 'Named version', close: 'Closed', edit: '' };
+const REASON = { git: 'Git commit', open: 'Saved before editing', created: 'Created', 'before-ai': 'Before an AI edit', ai: 'AI edit', 'before-restore': 'Before a restore', 'before-rename': 'Before links were updated', restore: 'Restored', named: 'Named version', close: 'Closed', edit: '' };
 const who = (v) => (v.by === 'you' ? 'You' : v.by);
 const initial = (v) => (who(v)[0] || '?').toUpperCase();
 const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
@@ -27,7 +27,13 @@ export function mountHistory(host, api) {
   const st = { open: false, path: '', versions: [], deleted: [], sel: null, compare: 'current', view: 'changes', onlyNamed: false, side: 'versions', texts: new Map(), hunk: 0, parts: [], hunks: 0, live: '' };
   host.className = 'history'; host.hidden = true; host.setAttribute('role', 'region'); host.setAttribute('aria-label', 'Version history');
 
-  const textOf = async (v) => { if (v === 'current') return st.live; if (!st.texts.has(v.id)) st.texts.set(v.id, await folio.historyGet(st.path, v.id)); return st.texts.get(v.id); };
+  /* Folio's own versions, with the Git commits that touched the page (read-only) mixed in by time */
+  async function loadVersions() {
+    const [own, git] = await Promise.all([folio.historyList(st.path), folio.historyGit ? folio.historyGit(st.path).catch(() => []) : []]);
+    const commits = (git || []).map((c) => ({ id: `git:${c.hash}`, hash: c.hash, git: true, t: c.t, by: c.author, reason: 'git', note: c.subject, name: '' }));
+    return [...own, ...commits].sort((a, b) => b.t - a.t);
+  }
+  const textOf = async (v) => { if (v === 'current') return st.live; if (!st.texts.has(v.id)) st.texts.set(v.id, (v.git ? await folio.historyGitGet(st.path, v.hash) : await folio.historyGet(st.path, v.id)) ?? ''); return st.texts.get(v.id); };
   const selVersion = () => st.versions.find((v) => v.id === st.sel) || null;
   const label = (v) => v.name || REASON[v.reason] || '';
 
@@ -35,7 +41,7 @@ export function mountHistory(host, api) {
     st.path = api.getPath(); if (!st.path) return;
     st.live = api.getText();
     await folio.historySnapshot(st.path, st.live, 'edit', false).catch(() => {}); // the text on screen is always in the list
-    st.versions = await folio.historyList(st.path); st.deleted = []; st.texts.clear();
+    st.versions = await loadVersions(); st.deleted = []; st.texts.clear();
     st.sel = st.versions[0]?.id ?? null; st.compare = 'current'; st.view = 'changes'; st.side = 'versions'; st.onlyNamed = false; st.open = true;
     host.hidden = false; render(); await showVersion(); host.querySelector('.hv-versions button[aria-current]')?.focus();
   }
@@ -139,7 +145,7 @@ export function mountHistory(host, api) {
     doc.querySelectorAll(`[data-h="${st.hunk}"]`).forEach((x) => x.classList.add('hv-cur-chg')); marks[st.hunk].scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
 
-  async function select(id) { st.sel = id; st.hunk = 0; if (id === 'current') st.view = 'changes'; renderList(); host.querySelectorAll('[data-act=name],[data-act=copy],[data-act=restore]').forEach((b) => (b.disabled = id === 'current')); await showVersion(); }
+  async function select(id) { st.sel = id; st.hunk = 0; if (id === 'current') st.view = 'changes'; renderList(); host.querySelectorAll('[data-act=name],[data-act=copy],[data-act=restore]').forEach((b) => (b.disabled = id === 'current')); host.querySelectorAll('[data-act=name]').forEach((b) => { if (st.versions.find((x) => x.id === id)?.git) b.disabled = true; }); await showVersion(); }
 
   async function restoreWhole() {
     const v = selVersion(); if (!v) return; const text = await textOf(v);
@@ -153,13 +159,13 @@ export function mountHistory(host, api) {
     const next = revertHunk(st.parts, i);
     await folio.historySnapshot(st.path, st.live, 'before-restore', true);
     await api.setText(next); st.live = next; await folio.historySnapshot(st.path, next, 'restore', true);
-    st.versions = await folio.historyList(st.path); renderList(); await showVersion();
-    api.toast('Put that change back.', { action: ['Undo', async () => { await api.setText(st.live = st.parts.filter((p) => p.kind !== 'del').map((p) => p.text).join('')); st.versions = await folio.historyList(st.path); renderList(); await showVersion(); }] });
+    st.versions = await loadVersions(); renderList(); await showVersion();
+    api.toast('Put that change back.', { action: ['Undo', async () => { await api.setText(st.live = st.parts.filter((p) => p.kind !== 'del').map((p) => p.text).join('')); st.versions = await loadVersions(); renderList(); await showVersion(); }] });
   }
   async function nameIt() {
-    const v = selVersion(); if (!v) return;
+    const v = selVersion(); if (!v || v.git) return;
     const r = await api.ask({ title: v.name ? 'Rename this version' : 'Name this version', label: 'Name', value: v.name || '', hint: 'Named versions are kept for good. Leave empty to remove the name.', action: 'Save', allowEmpty: true, validate: false }); if (r == null) return;
-    await folio.historyName(st.path, v.id, r.trim()); st.versions = await folio.historyList(st.path); render(); await showVersion();
+    await folio.historyName(st.path, v.id, r.trim()); st.versions = await loadVersions(); render(); await showVersion();
   }
   async function copyIt() { const v = selVersion(); if (!v) return; const text = await textOf(v); await api.copyAs(st.path, text, v); }
   async function loadDeleted() { st.deleted = await folio.historyDeleted().catch(() => []); renderList(); }
@@ -181,7 +187,7 @@ export function mountHistory(host, api) {
       const act = t.closest('[data-act]')?.dataset.act;
       if (act === 'back') close(); else if (act === 'restore') restoreWhole(); else if (act === 'name') nameIt(); else if (act === 'copy') copyIt();
       else if (act === 'more') api.menu(t.closest('[data-act]'), [
-        { label: 'Clear history of this page…', danger: true, run: async () => { if (await api.confirm({ title: 'Clear history?', body: `Every earlier version of “${st.path.split('/').pop()}” is removed from this computer. The page itself is not changed.`, action: 'Clear history', danger: true })) { await folio.historyClear(st.path); await folio.historySnapshot(st.path, st.live, 'open', true); st.versions = await folio.historyList(st.path); st.sel = st.versions[0]?.id ?? null; render(); showVersion(); } } },
+        { label: 'Clear history of this page…', danger: true, run: async () => { if (await api.confirm({ title: 'Clear history?', body: `Every earlier version of “${st.path.split('/').pop()}” is removed from this computer. The page itself is not changed.`, action: 'Clear history', danger: true })) { await folio.historyClear(st.path); await folio.historySnapshot(st.path, st.live, 'open', true); st.versions = await loadVersions(); st.sel = st.versions[0]?.id ?? null; render(); showVersion(); } } },
       ]);
     };
     host.onchange = (e) => {
@@ -195,5 +201,5 @@ export function mountHistory(host, api) {
       } else if (e.key === 'F3' || (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.target.closest?.('.hv-versions'))) go(e.key === 'ArrowUp' || e.shiftKey ? -1 : 1);
     };
   }
-  return { open, close, isOpen: () => st.open, refresh: async () => { if (!st.open) return; st.live = api.getText(); st.versions = await folio.historyList(st.path); renderList(); } };
+  return { open, close, isOpen: () => st.open, refresh: async () => { if (!st.open) return; st.live = api.getText(); st.versions = await loadVersions(); renderList(); } };
 }
