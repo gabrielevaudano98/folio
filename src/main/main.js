@@ -266,22 +266,25 @@ h('app:user-name', () => { try { const n = os.userInfo().username || ''; return 
 h('fs:backlinks', (rel) => notes.backlinks(rel));
 h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));
+/** a new file in the note's assets/ folder, checked by the workspace boundary after the folder exists, so an assets
+ * link that leads outside the folder is refused; returns its absolute path and the reference to put in the note */
+async function assetFile(noteRel, name) {
+  const noteDir = path.dirname(notes.resolve(noteRel));
+  await fs.mkdir(path.join(noteDir, 'assets'), { recursive: true });
+  const file = notes.contain(path.join(noteDir, 'assets', `${Date.now().toString(36)}-${String(name).replace(/[^\w.-]+/g, '-')}`));
+  return { file, ref: path.relative(noteDir, path.join(noteDir, 'assets', path.basename(file))).split(path.sep).join('/') };
+}
 h('fs:save-image', async (noteRel, name, bytes) => {
-  const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
-  await fs.mkdir(dir, { recursive: true });
-  const safe = (name || 'image.png').replace(/[^\w.-]+/g, '-');
-  const file = path.join(dir, `${Date.now().toString(36)}-${safe}`);
-  await fs.writeFile(file, Buffer.from(bytes));
-  return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
+  const { file, ref } = await assetFile(noteRel, name || 'image.png');
+  await fs.writeFile(file, Buffer.from(bytes), { flag: 'wx' });
+  return ref;
 });
 h('fs:pick-image', async (noteRel) => {
   const r = await dialog.showOpenDialog(win, { title: 'Insert image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
-  const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
-  await fs.copyFile(r.filePaths[0], file);
-  return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
+  const { file, ref } = await assetFile(noteRel, path.basename(r.filePaths[0]));
+  await fs.copyFile(r.filePaths[0], file, fss.constants.COPYFILE_EXCL);
+  return ref;
 });
 /** a PowerPoint file or template to import: its name and bytes (FOLIO_IMPORT_FILE stands in for the dialog in tests) */
 h('qa:start', (title) => startQa(String(title || '').slice(0, 80)));
@@ -301,11 +304,9 @@ h('fs:pick-media', async (noteRel, kind) => {
   const font = kind === 'font';
   const r = await dialog.showOpenDialog(win, { title: font ? 'Add a font file' : 'Insert video or audio', properties: ['openFile'], filters: font ? [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] : [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
-  const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
-  await fs.copyFile(r.filePaths[0], file);
-  return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
+  const { file, ref } = await assetFile(noteRel, path.basename(r.filePaths[0]));
+  await fs.copyFile(r.filePaths[0], file, fss.constants.COPYFILE_EXCL);
+  return ref;
 });
 h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel).split(path.sep).join('/'));
 h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal(url); });
