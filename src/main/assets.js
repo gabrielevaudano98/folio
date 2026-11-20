@@ -222,6 +222,12 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     }
     return out;
   }
+  /** which of these files some page still references (a stale question must never remove a file in use) */
+  async function stillUsed(paths) {
+    const { files, texts } = await readAll(); const used = new Set();
+    files.forEach((f, i) => { for (const p of refsOf(f, texts[i])) used.add(p); });
+    return new Set(paths.filter((p) => used.has(p)));
+  }
   /** called when a page opens or saves: files a reference expects but that are gone come back from the trash (undo, restored versions) */
   async function heal(noteRel, text) {
     const restored = [], missing = [];
@@ -278,5 +284,5 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     return { notes: edits.size, files: plan.size, changed: [...edits.keys()] };
   }
 
-  return { save, importFile, refsOf, remove, restore, purgeTrash, usage, orphans, heal, relocate, migrateLegacy, assetDir, isAssetPath };
+  return { save, importFile, refsOf, stillUsed, remove, restore, purgeTrash, usage, orphans, heal, relocate, migrateLegacy, assetDir, isAssetPath };
 }

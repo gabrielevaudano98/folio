@@ -81,4 +81,8 @@ const used = (await a.save('Docs/page.md', 'Used.png', png(3))), gone = (await a
   assert.equal((await a.heal('L/old.md', '![a](assets/b.png)')).restored.length, 1); // an old version still finds its file in the trash
   ok('migration moves assets/ to .asset, rewrites every page (snapshot first), keeps originals in the trash so old versions still resolve'); }
 
+{ w('S/p.md', '![a](.asset/11111111-in-use.png)'); w('S/.asset/11111111-in-use.png', 'x');
+  assert.deepEqual([...(await a.stillUsed(['S/.asset/11111111-in-use.png', 'S/.asset/22222222-free.png']))], ['S/.asset/11111111-in-use.png']);
+  ok('a stale question cannot remove a file some page still uses'); }
+
 console.log(`\n${n} assets checks passed`);

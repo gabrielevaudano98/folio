@@ -234,7 +234,7 @@ h('fs:pick-media', async (noteRel, kind) => {
 h('assets:sync', async (noteRel, before, after) => ({ ...(await assets.heal(noteRel, after)), orphans: await assets.orphans(noteRel, before, after), refs: [...assets.refsOf(noteRel, after)] }));
 h('assets:restore', async (paths) => { let n = 0; for (const p of paths.slice(0, 500)) if (await assets.restore(p).catch(() => false)) n++; return n; });
 h('assets:heal', (noteRel, text) => assets.heal(noteRel, text));
-h('assets:remove', async (paths, permanent) => { let n = 0; for (const p of paths.slice(0, 500)) if (await assets.remove(p, { permanent: !!permanent }).catch(() => false)) n++; return n; });
+h('assets:remove', async (paths, permanent, { onlyUnused = true } = {}) => { const list = paths.slice(0, 500); const busy = onlyUnused ? await assets.stillUsed(list) : new Set(); let n = 0; for (const p of list) if (!busy.has(p) && await assets.remove(p, { permanent: !!permanent }).catch(() => false)) n++; return n; });
 h('assets:usage', () => assets.usage());
 h('assets:migrate', () => assets.migrateLegacy({ onBefore: (f, t) => keep(f, t, { reason: 'assets', force: true }) }));
 h('assets:reveal', (assetRel) => { const abs = notes.resolve(assetRel); shell.showItemInFolder(abs); });
@@ -361,7 +361,8 @@ const appBackend = {
         if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
         await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true });
         ownWrites.set(notes.resolve(r.path), r.after);
-        win?.webContents.send('ai:edit', { ...r, client: ctx.client });
+        const orphans = r.before != null ? await assets.orphans(r.path, r.before, r.after).catch(() => []) : [];
+        win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
       openNote: () => askRenderer('open-note'),

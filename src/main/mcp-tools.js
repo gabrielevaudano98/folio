@@ -4,6 +4,7 @@ import { z } from 'zod';
 import FORMATS from '../../docs/FORMATS.md';
 import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
 import { resolveRef, loadExternals } from '../renderer/refs.js';
+import { createAssets } from './assets.js';
 
 export const SERVER_INFO = { name: 'folio', version: '1.1.0' };
 
@@ -58,6 +59,12 @@ export const TOOLS = [
   { name: 'find_broken_links', title: 'Find broken links', write: false, annotations: ro,
     description: 'List references whose target document does not exist, in one document or the whole workspace.',
     input: { path: z.string().optional() } },
+  { name: 'find_unused_assets', title: 'Find unused files', write: false, annotations: ro,
+    description: 'List pictures, media and attachments in the hidden .asset folders that no page references (candidates for clean-up; Folio asks the user before removing anything), with their size.',
+    input: {} },
+  { name: 'find_missing_assets', title: 'Find missing files', write: false, annotations: ro,
+    description: 'List asset references (images, media, attachments) whose file does not exist, with the page and line.',
+    input: {} },
   { name: 'move_note', title: 'Move or rename note', write: true, annotations: rw,
     description: 'Move or rename a note inside the workspace. References to it in other documents are updated.',
     input: { from: z.string(), to: z.string() } },
@@ -126,6 +133,8 @@ export async function runTool(notes, name, a, hooks = {}) {
     }
     case 'get_backlinks': return notes.backlinks(a.path);
     case 'find_broken_links': return notes.brokenLinks(a.path);
+    case 'find_unused_assets': { const u = await createAssets(notes).usage(); return { count: u.unused.length, bytes: u.unusedBytes, files: u.unused.map((f) => ({ path: f.path, bytes: f.bytes })) }; }
+    case 'find_missing_assets': return (await createAssets(notes).usage()).missing;
     case 'get_open_note': if (!hooks.openNote) throw new Error('Folio is not running.'); return hooks.openNote();
     case 'open_note': if (!hooks.showNote) throw new Error('Folio is not running.'); await hooks.showNote(a); return `Opened ${a.path}`;
     default: throw new Error(`Unknown tool ${name}`);

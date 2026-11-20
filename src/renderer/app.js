@@ -1210,7 +1210,8 @@ function lineChanges(before, after) {
   }
   return { changed: [...new Set(changed)], added, removed, parts };
 }
-function onAiEdit({ path: p, before, after, client, created }) {
+function onAiEdit({ path: p, before, after, client, created, orphans }) {
+  if (orphans?.length) { const pend = pendingAssets.get(p) || new Map(); for (const o of orphans) pend.set(o.path, o.bytes); pendingAssets.set(p, pend); clearTimeout(assetTimer); assetTimer = setTimeout(askAssetRemoval, 4000); }
   const prior = S.aiEdits.get(p);
   const rec = { before: prior && Date.now() - prior.at < 10 * 60e3 ? prior.before : before, after, client, at: Date.now(), created };
   rec.stats = lineChanges(rec.before, after);

@@ -37,6 +37,8 @@ async function suite(client, root, label) {
   assert.equal(rv.value, 'Over budget'); assert.equal(rv.path, 'Budget.sheet.md'); ok('resolve_ref computes a sheet cell');
   const bl = JSON.parse(text(await client.callTool({ name: 'get_backlinks', arguments: { path: 'Budget.sheet.md' } })));
   assert(bl.some((b) => b.path === 'Roadmap.md' && b.kind === 'embed') && bl.some((b) => b.path === 'Projects/Meeting notes.md')); ok(`get_backlinks finds ${bl.length} references`);
+  const unused = JSON.parse(text(await client.callTool({ name: 'find_unused_assets', arguments: {} }))); const missing = JSON.parse(text(await client.callTool({ name: 'find_missing_assets', arguments: {} })));
+  assert(typeof unused.count === 'number' && Array.isArray(unused.files) && Array.isArray(missing)); ok('find_unused_assets and find_missing_assets answer');
   await client.callTool({ name: 'create_note', arguments: { path: `Broken${label.length}.md`, content: 'See {{Nowhere#A1}}\n' } });
   const br = JSON.parse(text(await client.callTool({ name: 'find_broken_links', arguments: { path: `Broken${label.length}.md` } })));
   assert.equal(br.length, 1); assert.equal(br[0].ref, '{{Nowhere#A1}}'); ok('find_broken_links reports a missing target');
