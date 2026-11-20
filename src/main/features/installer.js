@@ -170,6 +170,7 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
     /** removes a component and any partial download of it; the caller makes sure nothing is using it */
     async uninstall(id) {
       if (busy?.ids.includes(id)) throw new Error('Cancel the download first.');
+      await cleaning; // the start-up clean-up could otherwise put back what this removes
       await fs.rm(dirOf(id), { recursive: true, force: true });
       await fs.rm(dirOf(id) + '.old', { recursive: true, force: true }); // or the next start would put it back
       await fs.rm(path.join(dl, id), { recursive: true, force: true });

@@ -9,7 +9,7 @@ import { COMPONENTS, FEATURES, featureSupported, downloadBytes } from '../featur
 import { createInstaller } from '../features/installer.js';
 import { renderMeeting, fileName, lines as numberLines } from './transcript.js';
 import { draftNotes } from './notes-engine.js';
-import { writeAtomic } from '../atomic.js';
+import { writeAtomic, writeNew } from '../atomic.js';
 
 const FEATURE = 'meeting-recorder';
 const RATE = 16000;
@@ -115,23 +115,9 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   /** writes the note into the workspace with a name that does not overwrite anything */
   async function writeNote(rel, text) {
     await fs.mkdir(path.dirname(notes.resolve(rel, { mustBeNote: true })), { recursive: true });
-    for (let i = 1; ; i++) {
+    for (let i = 1; ; i++) { // writeNew never replaces a file, so a name taken at the same moment just moves to the next
       const abs = notes.resolve(i === 1 ? rel : rel.replace(/\.md$/, ` ${i}.md`), { mustBeNote: true });
-      // a hidden lock next to the name, taken with an exclusive create, so two saves at once never pick the same name and
-      // a crash never leaves an empty note behind; a lock older than a minute was left by a crash and is taken over
-      const lock = path.join(path.dirname(abs), `.${path.basename(abs)}.lock`);
-      try { await (await fs.open(lock, 'wx')).close(); }
-      catch (e) {
-        if (e.code !== 'EEXIST') throw e;
-        const st = await fs.stat(lock).catch(() => null);
-        if (st && Date.now() - st.mtimeMs > 60000) { await fs.rm(lock, { force: true }); i--; }
-        continue;
-      }
-      try {
-        if (await fs.stat(abs).then(() => true, () => false)) continue; // taken: try the next name
-        await writeAtomic(abs, text); // on failure the work file still holds the transcript
-        return notes.relOf(abs);
-      } finally { await fs.rm(lock, { force: true }).catch(() => {}); }
+      try { await writeNew(abs, text); return notes.relOf(abs); } catch (e) { if (e.code !== 'EEXIST') throw e; } // on failure the work file still holds the transcript
     }
   }
 

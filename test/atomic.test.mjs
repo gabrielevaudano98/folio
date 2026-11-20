@@ -1,7 +1,7 @@
 // Folio — atomic writes: the old or the new text, never a half; links keep their target; no temporary files left.
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { writeAtomic, writeAtomicSync } from '../src/main/atomic.js';
+import { writeAtomic, writeAtomicSync, writeNew } from '../src/main/atomic.js';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-atomic-'));
 let n = 0; const t = async (name, fn) => { await fn(); n++; console.log('  ok', name); };
@@ -41,6 +41,22 @@ if (process.platform !== 'win32') await t('a link whose target does not exist ye
   await writeAtomic(link, 'created'); assert.ok(fs.lstatSync(link).isSymbolicLink()); assert.equal(fs.readFileSync(real, 'utf8'), 'created');
   const real2 = path.join(dir, 'later2.md'), link2 = path.join(dir, 'dangling2.md'); fs.symlinkSync(real2, link2);
   writeAtomicSync(link2, 'sync'); assert.ok(fs.lstatSync(link2).isSymbolicLink()); assert.equal(fs.readFileSync(real2, 'utf8'), 'sync');
+});
+await t('a busy rename is retried, then refused without touching the old file', () => {
+  const f = path.join(dir, 'busy.json'); fs.writeFileSync(f, 'old'); const real = fs.renameSync; let n = 0;
+  const busy = () => Object.assign(new Error('busy'), { code: 'EBUSY' });
+  try {
+    fs.renameSync = (...a) => { if (++n <= 2) throw busy(); return real(...a); };
+    writeAtomicSync(f, 'new'); assert.equal(fs.readFileSync(f, 'utf8'), 'new'); assert.equal(n, 3);
+    fs.renameSync = () => { throw busy(); };
+    assert.throws(() => writeAtomicSync(f, 'newer'), /another program is using it/);
+  } finally { fs.renameSync = real; }
+  assert.equal(fs.readFileSync(f, 'utf8'), 'new'); assert.deepEqual(leftovers(), []);
+});
+await t('writeNew creates a file and never replaces one', async () => {
+  const f = path.join(dir, 'new.md'); await writeNew(f, 'first');
+  await assert.rejects(writeNew(f, 'second'), (e) => e.code === 'EEXIST');
+  assert.equal(fs.readFileSync(f, 'utf8'), 'first'); assert.deepEqual(leftovers(), []);
 });
 await t('sync version, with a file mode', () => {
   const f = path.join(dir, 'settings.json'); writeAtomicSync(f, '{"a":1}', { mode: 0o600 }); writeAtomicSync(f, '{"a":2}', { mode: 0o600 });

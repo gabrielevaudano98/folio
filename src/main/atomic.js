@@ -63,3 +63,19 @@ export function writeAtomicSync(file, data, { mode } = {}) {
     }
   }
 }
+
+/** creates file with data, never replacing anything: the text is flushed to a hidden temporary file, then linked to the
+ * name, which fails with EEXIST if the name is taken (by Folio, an AI or another program) at that very moment. Where
+ * the disk has no hard links (FAT, some network drives) the file is created exclusively and written in place. */
+export async function writeNew(file, data) {
+  const tmp = tmpName(file);
+  const fh = await fs.open(tmp, 'wx');
+  try { await fh.writeFile(data, typeof data === 'string' ? 'utf8' : undefined); await fh.sync(); }
+  finally { await fh.close().catch(() => {}); }
+  try { await fs.link(tmp, file); }
+  catch (e) {
+    if (e.code === 'EEXIST') throw e;
+    const nf = await fs.open(file, 'wx'); // no hard links here: exclusive create still never replaces a file
+    try { await nf.writeFile(data, typeof data === 'string' ? 'utf8' : undefined); await nf.sync(); } finally { await nf.close().catch(() => {}); }
+  } finally { await fs.rm(tmp, { force: true }).catch(() => {}); }
+}
