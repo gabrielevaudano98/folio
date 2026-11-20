@@ -64,7 +64,7 @@ Bigger bets after 1.3.
 
 ## Next (1.2.3, unreleased)
 
-- The MCP bridge now runs inside the app binary (`--mcp-stdio`), so the `RunAsNode` fuse is off. Existing client configs keep working; Connect rewrites them to the new form. CI starts the packaged Windows and macOS builds and talks MCP to them.
+- The MCP bridge now runs inside the app binary (`--mcp-stdio`), so the `RunAsNode` fuse is off on macOS and Linux (Windows keeps it, its exe gets no stdin). Existing client configs keep working; Connect rewrites them to the new form. CI starts the packaged builds and talks MCP to them. Fuses are set per platform in `build/afterPack.cjs`.
 
 ## Done in 1.2.2
 

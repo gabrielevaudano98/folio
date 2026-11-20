@@ -449,7 +449,12 @@ h('mcp:token', () => settings.token);
 h('mcp:rotate-token', () => { settings.token = crypto.randomBytes(24).toString('hex'); saveSettings(); return settings.token; });
 
 /* ---------------- connections to AI clients ---------------- */
+function stdioScript() {
+  return path.join(__dirname, 'mcp-stdio.mjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+}
 function stdioEntry() {
+  // Windows: a GUI exe gets no stdin from its parent, so the bridge runs as Node there (the RunAsNode fuse stays on, see build/afterPack.cjs)
+  if (isWin && app.isPackaged) return { command: process.execPath, args: [stdioScript(), '--bridge', BRIDGE_FILE()], env: { ELECTRON_RUN_AS_NODE: '1' } };
   return { command: process.execPath, args: [...(app.isPackaged ? [] : [app.getAppPath()]), '--mcp-stdio', '--bridge', BRIDGE_FILE()] };
 }
 const home = os.homedir();
@@ -472,10 +477,10 @@ h('connections:list', async () => {
   for (const [id, t] of Object.entries(TARGETS)) {
     // a pre-1.2.3 entry (no --mcp-stdio) still works but shows Connect, which rewrites it
     let installed = false, appPresent = fss.existsSync(path.dirname(t.file));
-    try { const cur = (await readJson(t.file))?.[t.key]?.folio; installed = !!cur && Array.isArray(cur.args) && cur.args.includes('--mcp-stdio'); } catch {}
+    try { const cur = (await readJson(t.file))?.[t.key]?.folio; installed = !!cur && Array.isArray(cur.args) && (isWin || cur.args.includes('--mcp-stdio')); } catch {}
     list.push({ id, name: t.name, file: t.file, installed, appPresent, restart: t.restart, snippet: JSON.stringify({ [t.key]: { folio: t.shape(entry) } }, null, 2) });
   }
-  const cli = `claude mcp add folio --scope user -- ${[entry.command, ...entry.args].map(quote).join(' ')}`;
+  const cli = `claude mcp add folio --scope user${entry.env ? ' -e ELECTRON_RUN_AS_NODE=1' : ''} -- ${[entry.command, ...entry.args].map(quote).join(' ')}`;
   return { list, claudeCode: cli, httpUrl: mcpServerPort ? `http://127.0.0.1:${mcpServerPort}/mcp` : null };
 });
 h('connections:install', async (id) => {

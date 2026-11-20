@@ -15,6 +15,6 @@ Reports about escaping that folder, bypassing the token, or running code from a 
 
 ## Known limits
 
-- The `RunAsNode` fuse is off: the MCP bridge for desktop AI clients runs inside the app binary (`--mcp-stdio`), so `ELECTRON_RUN_AS_NODE` cannot turn the binary into a Node runtime. Clients configured before 1.2.3 keep working through a legacy path; they show Connect again in the connections sheet, which rewrites them. Builds are not yet code-signed.
+- The `RunAsNode` fuse is off on macOS and Linux: the MCP bridge for desktop AI clients runs inside the app binary (`--mcp-stdio`), so `ELECTRON_RUN_AS_NODE` cannot turn it into a Node runtime. On Windows it stays on, because a GUI Electron exe receives no stdin from the program that starts it, so the bridge still runs as Node there. On macOS, clients configured before 1.2.3 keep working through a legacy path; disconnecting and then connecting again rewrites them. Builds are not yet code-signed.
 - Remote images in a note load in the preview straight from the browser engine, so a note you did not write can see that you opened it, and an image address can make a request to a service on your own network (the answer is never readable by the note).
 - A change to the folder between the check and the write (a link swapped in at that instant) is not guarded against.
