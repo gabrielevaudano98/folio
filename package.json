@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "A Markdown editor your AI assistants can read and edit through MCP.",
   "main": "dist/main.mjs",
   "scripts": {
@@ -19,7 +19,7 @@
   },
   "license": "AGPL-3.0-only",
   "devDependencies": {
-    "electron": "^45.3.4",
+    "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "pixelmatch": "^5.3.0",
@@ -127,7 +127,10 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Folio uses the microphone only when you record narration for a slide show."
+      }
     },
     "dmg": {
       "title": "Folio",
@@ -187,7 +190,13 @@
         "from": "NOTICE",
         "to": "NOTICE"
       }
-    ]
+    ],
+    "electronFuses": {
+      "runAsNode": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true
+    }
   },
   "homepage": "https://github.com/gabrielevaudano98/folio",
   "repository": {
