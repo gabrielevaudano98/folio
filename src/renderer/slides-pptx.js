@@ -252,7 +252,12 @@ function sinkFor(target) {
   }
   return {
     master: false,
-    text: (t, o) => target.addText(t, o),
+    // pptxgenjs links runs, not text boxes: a clear shape on top carries the object's link
+    text: (t, o) => {
+      if (!o.hyperlink || o.placeholder) return target.addText(t, o);
+      const { hyperlink, ...rest } = o; target.addText(t, rest);
+      target.addShape('rect', { x: o.x, y: o.y, w: o.w, h: o.h, ...(o.rotate ? { rotate: o.rotate } : {}), fill: { color: 'FFFFFF', transparency: 100 }, line: { type: 'none' }, hyperlink, objectName: `${o.objectName || 'Text'} link` });
+    },
     shape: (type, o) => target.addShape(type, o),
     image: (o) => target.addImage(o),
     table: (rows, o) => target.addTable(rows, o),
@@ -305,7 +310,7 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote, prepare 
     for (const [k, s] of list.entries()) {
       const sec = sections[k]; if (!sec) continue;
       const origin = sec.getBoundingClientRect();
-      const ctx = { pptx, origin, dataUrl, readNote, deck, s, anchors };
+      const ctx = { pptx, origin, dataUrl, readNote, deck, s, anchors, k, list };
       // the slide's layout: its masters (an all-slides master plus a layout master) as one PowerPoint layout
       const masters = mastersFor(deck, s);
       let masterName = null;
@@ -328,7 +333,8 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote, prepare 
     }
   } finally { host.remove(); }
   const bytes = await pptx.write({ outputType: 'uint8array' });
-  return finishPackage(bytes, { palette, fonts: pptx.theme, anchors });
+  const motion = list.map((s, k) => ({ n: k + 1, transition: s.transition ?? deck.global.transition ?? null, advance: s.advance ?? deck.global.advance ?? null, animations: s.animations }));
+  return finishPackage(bytes, { palette, fonts: pptx.theme, anchors, motion, W: deck.width, H: deck.height, loop: String(deck.global.loop) === 'true', kiosk: String(deck.global.kiosk) === 'true' });
 }
 
 /** the deck's tokens as a PowerPoint colour scheme, so theme colours in PowerPoint are the deck's */
@@ -340,9 +346,16 @@ function themePalette(sec) {
   return { dk1: ink, lt1: paper, dk2: v('--sl-muted') || '6B6B6B', lt2: v('--sl-card') || 'F0F0F0', accent1: accent, accent2: ch[0] || accent, accent3: ch[1] || accent, accent4: ch[2] || accent, accent5: ch[3] || accent, accent6: ch[4] || accent, hlink: accent, folHlink: v('--sl-muted') || accent };
 }
 /** what pptxgenjs cannot write: the deck's colour scheme and how layout placeholders anchor their text */
-export async function finishPackage(bytes, { palette, fonts = {}, anchors = [] } = {}) {
-  if (!palette && !anchors.length) return bytes;
+export async function finishPackage(bytes, { palette, fonts = {}, anchors = [], motion = [], W = 1280, H = 720, loop = false, kiosk = false } = {}) {
+  const moving = motion.filter((m) => m.transition || m.advance || m.animations?.length);
+  if (!palette && !anchors.length && !moving.length && !loop && !kiosk) return bytes;
   const zip = await JSZip.loadAsync(bytes);
+  if (loop || kiosk) {
+    // how the show runs: looping, or browsed at a kiosk
+    const f = zip.file('ppt/presProps.xml');
+    if (f) { const x = (await f.async('string')).replace(/<p:showPr[\s\S]*?<\/p:showPr>|<p:showPr[^>]*\/>/, '').replace(/(<p:presentationPr\b[^>]*>)/, `$1<p:showPr loop="1" showNarration="1">${kiosk ? '<p:kiosk/>' : '<p:present/>'}<p:sldAll/></p:showPr>`); zip.file('ppt/presProps.xml', x); }
+  }
+  if (moving.length) { const { writeMotion } = await import('./slides-pptx-motion.js'); await writeMotion(zip, moving, { W, H }); }
   if (palette) await withTheme(zip, palette, fonts);
   if (anchors.length) {
     for (const name of Object.keys(zip.files).filter((n) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(n))) {
@@ -423,12 +436,12 @@ async function emitLayer(ctx, el, out, { slide }) {
     return;
   }
   if (el.matches('.sl-bg, .sl-side')) { for (const img of el.querySelectorAll('img')) await picture(ctx, img, out); return; }
-  if (el.matches('.sl-placed')) { for (const c of el.children) await placed(ctx, c, out); return; }
+  if (el.matches('.sl-placed')) { for (const c of el.children) { await placed(ctx, c, out); ctx.objName = null; } return; }
   if (el.matches('.sl-phs')) {
     for (const c of el.children) {
       const role = ['title', 'subtitle', 'body'].find((r) => c.classList.contains('sl-ph-' + r));
       const paras = paragraphsOf(c);
-      if (slide && role && paras.length) out.text(textRuns(paras, paras[0].top), { placeholder: role, valign: 'top' });
+      if (slide && role && paras.length) out.text(textRuns(paras, paras[0].top), { placeholder: role, valign: 'top', ...(role === 'body' ? { objectName: 'folio-body' } : {}) });
       else await flow(ctx, c, out);
     }
     return;
@@ -436,7 +449,7 @@ async function emitLayer(ctx, el, out, { slide }) {
   if (el.matches('.sl-num')) { if (slide) slide.slideNumber = numberOpts(ctx, el); return; }
   if (el.matches('.sl-master-tag')) return;
   if (el.matches('header, footer')) { textFrame(ctx, [el], out); return; }
-  if (el.matches('.sl-body')) { await flow(ctx, el, out); return; }
+  if (el.matches('.sl-body')) { ctx.objName = 'folio-body'; await flow(ctx, el, out); ctx.objName = null; return; }
 }
 
 /* ---------- the flow body: text frames grouped by column, plus cards, pictures, tables and charts ---------- */
@@ -498,13 +511,13 @@ function textFrame(ctx, els, out, { frame = null, opts = {} } = {}) {
     const rr = roundOf(d.rad, r.width, r.height);
     const x = inch(r.left - o.left), y = inch(r.top - o.top), w = inch(r.width), h = inch(r.height);
     if (d.grad) { const png = gradientPng(d.grad, r.width, r.height, d.rad); if (png) out.image({ data: png, x, y, w, h }); }
-    out.text(paras.length ? textRuns(paras, paras[0].top) : '', { x, y, w, h, margin, valign, wrap: true, ...d.o, ...rr, ...opts });
+    out.text(paras.length ? textRuns(paras, paras[0].top) : '', { ...(ctx.objName ? { objectName: ctx.objName } : {}), x, y, w, h, margin, valign, wrap: true, ...d.o, ...rr, ...opts });
     return;
   }
   const top = Math.min(...paras.map((p) => p.top)), bottom = Math.max(...paras.map((p) => p.bottom));
   const slack = 6; // PowerPoint's text measures a touch wider than Chromium's
   const single = paras.every((p) => p.lines <= 1); // one-line text never wraps, whatever font PowerPoint finds
-  out.text(textRuns(paras, top), { x: inch(left - o.left - slack / 2), y: inch(top - o.top), w: inch(right - left + slack), h: inch(bottom - top + 2), margin: 0, valign: 'top', wrap: !single, ...opts });
+  out.text(textRuns(paras, top), { ...(ctx.objName ? { objectName: ctx.objName } : {}), x: inch(left - o.left - slack / 2), y: inch(top - o.top), w: inch(right - left + slack), h: inch(bottom - top + 2), margin: 0, valign: 'top', wrap: !single, ...opts });
 }
 
 function table(ctx, el, out) {
@@ -549,7 +562,7 @@ async function picture(ctx, img, out, { rotate = 0, transparency = 0, flipH = fa
   let data; try { data = await canvasData(img); } catch { return; }
   const o = ctx.origin; const nw = img.naturalWidth || ir.width, nh = img.naturalHeight || ir.height;
   const cs = getComputedStyle(img); const fit = cs.objectFit;
-  const extra = { ...(rotate ? { rotate } : {}), ...(transparency ? { transparency } : {}), ...(flipH ? { flipH } : {}), ...(flipV ? { flipV } : {}), ...(shadow ? { shadow } : {}) };
+  const extra = { ...(ctx.objName ? { objectName: ctx.objName } : {}), ...(rotate ? { rotate } : {}), ...(transparency ? { transparency } : {}), ...(flipH ? { flipH } : {}), ...(flipV ? { flipV } : {}), ...(shadow ? { shadow } : {}) };
   // the visible window: the frame when the image overflows it (crop), else the image box
   const vis = { left: Math.max(fr.left, ir.left), top: Math.max(fr.top, ir.top), right: Math.min(fr.right, ir.right), bottom: Math.min(fr.bottom, ir.bottom) };
   if (fit === 'cover' || fit === 'contain' || fit === 'none' || fit === 'scale-down') {
@@ -572,6 +585,16 @@ function svgPicture(ctx, svg, out, extra = {}) {
 }
 
 /* ---------- placed objects: native PowerPoint objects at their model geometry ---------- */
+const a0 = (o) => o?.attrs || {};
+/** a Folio link as a PowerPoint hyperlink: web addresses and slide jumps (next, previous, first, last, slide:N, zooms) */
+function linkFor(ctx, L) {
+  if (!L) return null; L = String(L);
+  if (/^(https?|mailto):/i.test(L)) return { url: L };
+  const n = ctx.list.length; let to = null;
+  if (L === 'next') to = ctx.k + 2; else if (L === 'prev') to = ctx.k; else if (L === 'first') to = 1; else if (L === 'last') to = n;
+  else { const m = L.match(/^(?:slide:|#)(\d+)$/); if (m) { const t = ctx.list.findIndex((x) => x.number === +m[1]); if (t >= 0) to = t + 1; } }
+  return to >= 1 && to <= n ? { slide: to } : null;
+}
 function objectOf(ctx, el) {
   // the model object behind a rendered element: slide objects carry their index, master objects were paired by order
   if (el._model) return { o: el._model, scope: el._scope };
@@ -588,9 +611,19 @@ async function placed(ctx, el, out) {
   else { const st = el.style; g = { x: parseFloat(st.left) || r.left - origin.left, y: parseFloat(st.top) || r.top - origin.top, w: parseFloat(st.width) || r.width, h: parseFloat(st.height) || r.height, rotate: parseFloat((st.transform.match(/rotate\((-?[\d.]+)deg/) || [])[1]) || 0 }; }
   const a = o?.attrs || {};
   const flip = String(a.flip || (/scaleX\(-1\)|scale\(-1/.test(el.style.transform + (el.querySelector('svg')?.style.transform || '')) ? 'h' : ''));
-  const base = { x: inch(g.x), y: inch(g.y), w: inch(g.w), h: inch(g.h), ...(g.rotate ? { rotate: g.rotate } : {}), ...(flip.includes('h') ? { flipH: true } : {}), ...(flip.includes('v') ? { flipV: true } : {}) };
+  ctx.objName = o?.id ? `!!${o.id}` : null; // PowerPoint's Morph and our animations find objects by this name
+  const hyperlink = linkFor(ctx, a0(o).link || el.dataset.link);
+  const base = { ...(ctx.objName ? { objectName: ctx.objName } : {}), ...(hyperlink ? { hyperlink } : {}), x: inch(g.x), y: inch(g.y), w: inch(g.w), h: inch(g.h), ...(g.rotate ? { rotate: g.rotate } : {}), ...(flip.includes('h') ? { flipH: true } : {}), ...(flip.includes('v') ? { flipV: true } : {}) };
   const shadow = shadowOf(a);
-  const kind = ['line', 'image', 'icon', 'media', 'smartart', 'path', 'shape', 'box'].find((k) => el.classList.contains('sl-' + k)) || 'box';
+  const kind = ['line', 'image', 'icon', 'media', 'smartart', 'path', 'shape', 'zoom', 'box'].find((k) => el.classList.contains('sl-' + k)) || 'box';
+  if (kind === 'zoom') {
+    // PowerPoint's own zoom objects need a thumbnail it renders itself: a framed card that jumps to the slide stands in
+    const t = ctx.list.find((x) => x.number === +el.dataset.zoom); const to = t ? ctx.list.indexOf(t) + 1 : null;
+    const ink = cssColor(getComputedStyle(el).color)?.hex || '1F1F1F';
+    out.text([{ text: t?.title || (a.section ? `Section ${a.section}` : `Slide ${t?.number ?? ''}`), options: { bold: true, fontSize: 18, color: ink } }, { text: a.section ? `\nSection · ${t ? 'slide ' + t.number : ''}` : `\nSlide ${t?.number ?? ''}`, options: { fontSize: 12, color: ink } }],
+      { ...base, ...(to && !hyperlink ? { hyperlink: { slide: to } } : {}), shape: 'roundRect', rectRadius: 0.06, fill: { color: cssColor(getComputedStyle(el).backgroundColor)?.hex || 'F4F4F4' }, line: { color: ink, width: 0.75, transparency: 70 }, align: 'center', valign: 'middle' });
+    return;
+  }
 
   if (kind === 'line') return line(ctx, el, o, scope, out);
   if (kind === 'image') { const img = el.querySelector('img'); if (img) await picture(ctx, img, out, { rotate: g.rotate, transparency: op < 1 ? Math.round((1 - op) * 100) : 0, flipH: base.flipH, flipV: base.flipV, shadow }); return; }
@@ -681,7 +714,7 @@ function line(ctx, el, o, scope, out) {
   const x = Math.min(x1, x2), y = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
   if (a.route === 'elbow' || a.route === 'curve') {
     const local = pathPoints(linePath(pts, a.route), IN, IN);
-    if (local) { const shifted = local.map((p) => (p.close ? p : { ...p, x: r2(p.x - x * IN), y: r2(p.y - y * IN), ...(p.curve ? { curve: Object.fromEntries(Object.entries(p.curve).map(([k, v]) => [k, typeof v === 'number' ? r2(v - (k.startsWith('x') ? x : y) * IN) : v])) } : {}) })); out.shape('custGeom', { x: inch(x), y: inch(y), w: inch(Math.max(w, 1)), h: inch(Math.max(h, 1)), points: shifted, fill: { type: 'none' }, line: ln }); return; }
+    if (local) { const shifted = local.map((p) => (p.close ? p : { ...p, x: r2(p.x - x * IN), y: r2(p.y - y * IN), ...(p.curve ? { curve: Object.fromEntries(Object.entries(p.curve).map(([k, v]) => [k, typeof v === 'number' ? r2(v - (k.startsWith('x') ? x : y) * IN) : v])) } : {}) })); out.shape('custGeom', { ...(ctx.objName ? { objectName: ctx.objName } : {}), x: inch(x), y: inch(y), w: inch(Math.max(w, 1)), h: inch(Math.max(h, 1)), points: shifted, fill: { type: 'none' }, line: ln }); return; }
   }
-  out.shape('line', { x: inch(x), y: inch(y), w: inch(w), h: inch(h), ...(x1 > x2 ? { flipH: true } : {}), ...(y1 > y2 ? { flipV: true } : {}), line: ln });
+  out.shape('line', { ...(ctx.objName ? { objectName: ctx.objName } : {}), x: inch(x), y: inch(y), w: inch(w), h: inch(h), ...(x1 > x2 ? { flipH: true } : {}), ...(y1 > y2 ? { flipV: true } : {}), line: ln });
 }

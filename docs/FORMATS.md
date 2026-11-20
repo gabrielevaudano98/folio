@@ -112,6 +112,70 @@ template: Brand.slides  # take theme, tokens, fonts and masters from another dec
 - `<!-- hidden -->` keeps a slide in the deck but leaves it out of presenting and exports. It keeps its number.
 - `<!-- comment (Ana, 2026-11-19): Check these numbers -->` is a review comment on the slide. Author and date are optional. Comments are not speaker notes; Resolve deletes the line.
 
+### Transitions and animations
+
+```markdown
+<!-- transition: push-left 0.6s -->
+
+::: box #claim x=80 y=160 w=520 h=300
+...
+:::
+
+<!--
+animate: #claim fade-in
+animate: #chart fly-in-up after 0.4s delay=200ms
+animate: body appear by=paragraph
+-->
+```
+
+- `transition:` applies to the slide it is on (front matter `transition:` sets the deck default). Names: `none`, `fade`, `fade-black`, `dissolve`, `push-left|right|up|down`, `wipe-left|right|up|down`, `cover-left|right`, `uncover-left|right`, `split`, `reveal`, `zoom`, `zoom-out`, `iris`, `clock`, `blinds`, `flip`, `cube`, `fall`, `morph`. An optional duration follows (`0.6s`, `800ms`; default 0.5s).
+- **Morph:** objects with the same `#id` on the previous slide glide to their new place and size; everything else cross-fades.
+- `animate:` lines live in one comment at the end of the slide, in build order. Each line: target (`#id` or `body` for the slide text), effect, then in any order: trigger `click` (default), `with` (with the previous) or `after` (after the previous ends); a duration; `delay=`; `repeat=2` or `repeat=loop`; `by=paragraph` (one click per paragraph or list item); `path=dx,dy` for `path-custom`.
+- Effects. Entrance: `appear`, `fade-in`, `zoom-in`, `grow-in`, `fly-in-left|right|up|down`, `float-in`, `wipe-in`, `spin-in`, `bounce-in`. Emphasis: `pulse`, `spin`, `grow`, `teeter`, `flash`, `shake`. Exit: `disappear`, `fade-out`, `zoom-out`, `fly-out-left|right|up|down`, `wipe-out`. Motion paths: `path-left|right|up|down|arc|custom`.
+- Objects whose first animation is an entrance start hidden. An unchanged line is written back exactly as typed. Marp ignores both (they are comments).
+
+### Links, zooms and how a show runs
+
+```markdown
+---
+show-short: 1, 3, 5-7      # a custom show: slide numbers, ranges allowed
+loop: true                 # start again after the last slide
+kiosk: true                # loop, and only links and Esc work (for a stand or a screen)
+advance: 8s                # deck default for auto-advance
+---
+
+<!-- advance: 5s -->       # this slide moves on by itself after its builds
+
+::: box #cta x=80 y=520 w=320 h=80 link=next
+Continue
+:::
+
+::: zoom #z1 x=80 y=180 w=384 h=216 section=Results :::
+::: zoom #z2 x=520 y=180 w=384 h=216 slide=7 return=false :::
+```
+
+- `link=` on any placed object: `next`, `prev`, `first`, `last`, `back` (last slide viewed), `end`, `slide:7`, a web address (`https://…`, `mailto:…`) or a Folio document (`"[[Budget#Totals]]"`). Links work when presenting; web addresses and slide jumps export as PowerPoint hyperlinks.
+- `::: zoom` shows a live copy of a slide (`slide=` number) or of a section's first slide (`section=`). When presenting, a click zooms into it; a section zoom plays the section, then comes back (`return=false` stays). Insert → Summary zoom makes a slide with one zoom per section. In PowerPoint a zoom becomes a card that jumps to its slide.
+- Custom shows appear in the Present menu. `advance:` (per slide or for the deck) and `loop`/`kiosk` also apply in PowerPoint (`advTm`).
+
+### Presenting
+
+- **Present** starts full screen from the current slide; the ▾ menu adds From the beginning, **Presenter view**, **Rehearse timings** and custom shows.
+- Keys: → Space Enter next, ← previous, Home/End, a number then Enter jumps to that slide, B black screen, W white screen, + and − magnifier, Ctrl+P pen, Ctrl+I highlighter, Ctrl+E eraser, Ctrl+L laser, Ctrl+A arrow, E erases the ink on the slide, Esc ends (or leaves a tool first).
+- **Presenter view:** the live slide, the next slide (or the next build), speaker notes with A− / A+, elapsed time with pause and reset, the clock and the tools. **Audience window** opens the show full screen on a second display and keeps it in step.
+- **Rehearse timings** records the time spent on each slide; keep them and each slide gets `<!-- advance: Ns -->`.
+- **Q&A** opens a page on the local network (address and QR code in the presenter view); questions appear beside the notes. It listens only while Q&A is open and keeps questions in memory.
+- **Record narration** records one audio clip per slide from the microphone and adds it to the slide as `::: media #narration … autoplay=true :::`.
+
+### Slides and AI assistants (MCP)
+
+Connected assistants can work on a deck object by object instead of rewriting the file:
+
+- Read: `list_slides`, `list_slide_objects` (ids, kinds, geometry in px, attributes, text, links), `get_design_ideas`.
+- Change: `add_object`, `move_object`, `restyle_object`, `remove_object`, `set_animations`, `set_transition` (one slide or all), `rewrite_links`, `set_alt_text`, `set_speaker_notes`, `apply_design_idea`.
+- **Translate a deck:** `read_note` the deck, then `write_note` it back with every heading, paragraph, list item, table cell and object text translated, keeping front matter, `:::` lines, `#ids`, attributes, comments (`animate:`, `transition:`, notes) and links unchanged; translate the notes with `set_speaker_notes`. Save as a copy (`Deck (Italiano).slides.md`) unless asked to replace it.
+- **Describe pictures:** `list_slide_objects` on each slide, then `set_alt_text` for every image, icon, chart and diagram without a description; the Review pane's accessibility check lists what is still missing.
+
 ### PowerPoint in and out
 
 - **Export to PowerPoint** (File menu) renders each slide at its real size and measures it, so the .pptx matches Folio: text frames keep position, fonts, sizes, colours and spacing; placed objects become native shapes, lines and arrows, freeforms, pictures (crop kept), tables, charts, video and audio; masters become slide layouts with title, subtitle and body placeholders; the deck's tokens become the theme colours and fonts. Hidden slides stay hidden, sections and speaker notes are kept. Gradients are drawn as pictures. Fonts are named, not embedded: the portable family of a font stack is used (`Segoe UI` for the system stack, `Georgia` for serif, `Consolas` for mono).

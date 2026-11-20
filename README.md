@@ -36,6 +36,10 @@ La sintassi completa dei formati è in [`docs/FORMATS.md`](docs/FORMATS.md).
 - Editor visuale stile PowerPoint: oggetti posizionati liberamente (testo, forme, linee e connettori, icone, immagini, video, tabelle, grafici, equazioni, diagrammi SmartArt, forme libere), allinea/distribuisci/raggruppa, pannello Formato, unione di forme
 - **Template**: galleria con 8 template (colori, font, sfondi, master con segnaposto per titolo e testo, varianti di colore), template tuoi nella cartella `Templates/`, "Salva come template". Guida: [docs/TEMPLATES.md](docs/TEMPLATES.md)
 - Master, sezioni, slide nascoste, ordinamento, struttura, commenti, trova e sostituisci, controllo accessibilità, Design ideas, riferimenti vivi ad altri documenti
+- Transizioni (24 effetti e Morph), animazioni di entrata, enfasi, uscita e percorsi, con pannello Animazioni
+- Link su qualsiasi oggetto, Zoom di slide e sezioni, presentazioni personalizzate, loop, kiosk e avanzamento automatico
+- Vista relatore con finestra per il pubblico, penna, evidenziatore, laser, schermo nero, lente, prove dei tempi, registrazione della narrazione e domande del pubblico in rete locale
+- Strumenti MCP per lavorare sulle slide oggetto per oggetto (posizione, stile, animazioni, link, alt text, note, idee di design)
 - Presentazione, esportazione PDF, stampati (handout) e pagine note
 - PowerPoint in entrata e in uscita: export .pptx fedele 1:1 con master, layout con segnaposto e colori del tema; import di .pptx come deck e di .potx come template
 

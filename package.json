@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A Markdown editor your AI assistants can read and edit through MCP.",
   "main": "dist/main.mjs",
   "scripts": {
@@ -21,7 +21,9 @@
   "devDependencies": {
     "electron": "^45.3.4",
     "electron-builder": "^26.18.0",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -72,6 +74,7 @@
     "polygon-clipping": "^0.15.7",
     "pptxgenjs": "^4.0.1",
     "pptxtojson": "^3.0.0",
+    "qrcode-generator": "^1.5.2",
     "selecto": "^1.26.3",
     "zod": "^4.6.7"
   },

@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('folio', {
   pickImage: (note) => call('fs:pick-image', note),
   pickMedia: (note, kind) => call('fs:pick-media', note, kind),
   pickOffice: () => call('fs:pick-office'),
+  qa: { start: (title) => call('qa:start', title), poll: () => call('qa:poll'), stop: () => call('qa:stop') },
   openExternal: (u) => call('shell:open', u),
   copy: (t) => call('clipboard:write', t),
   exportHtml: (p, html) => call('export:html', p, html),

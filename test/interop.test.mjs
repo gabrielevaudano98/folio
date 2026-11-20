@@ -31,6 +31,7 @@ const r1 = await run([
   open('Pitch.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 7000 },
   { js: 'window.__folioSurface.exportHandouts({perPage:3});1', wait: 4000 }, { js: 'window.__folioSurface.exportHandouts({notes:true});1', wait: 4000 },
   open('Swiss.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 6000 },
+  open('Motion.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 5000 },
   { js: 'window.__folioErrors||[]', log: true, wait: 100 },
 ]);
 assert.deepEqual(r1.js.at(-1), [], r1.log.slice(-2000));
@@ -45,6 +46,10 @@ const sz = await JSZip.loadAsync(fs.readFileSync(path.join(out, 'Swiss.pptx')));
 const layouts = await Promise.all(Object.keys(sz.files).filter((f) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(f)).map((f) => sz.file(f).async('string')));
 const titleLayout = layouts.find((x) => /name="Folio · title"/.test(x)); assert(titleLayout, 'title layout');
 assert.match(titleLayout, /type="title"/); assert.match(titleLayout, /anchor="b"/); console.log('  ✓ masters become slide layouts with title and body placeholders, anchored as in Folio');
+const mz = await JSZip.loadAsync(fs.readFileSync(path.join(out, 'Motion.pptx')));
+const m1 = await mz.file('ppt/slides/slide1.xml').async('string'), m2 = await mz.file('ppt/slides/slide2.xml').async('string');
+assert.match(m1, /<p:transition spd="med"><p:fade\/><\/p:transition><p:timing>/); assert.match(m1, /presetID="2" presetClass="entr" presetSubtype="4"[^>]*nodeType="withEffect"/); assert.match(m1, /<p:bldP spid="\d+" grpId="0" build="p"/); assert.match(m2, /p159:morph/);
+console.log('  ✓ transitions, Morph and animations are native PowerPoint timing (objects named for Morph)');
 const pages = (f) => (fs.readFileSync(path.join(out, f)).toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
 assert.equal(pages('Pitch handouts.pdf'), 4); assert.equal(pages('Pitch notes.pdf'), 11); console.log('  ✓ handouts put three slides on a page; notes pages hold one slide each');
 
@@ -62,7 +67,7 @@ const r2 = await run([
 assert.deepEqual(r2.js.at(-1), [], r2.log.slice(-2000));
 assert.match(r2.js[0], /Imported Pitch\./); assert.match(r2.js[1], /Swiss brand is now a template/);
 const deck = fs.readFileSync(path.join(ws, 'Pitch 2.slides.md'), 'utf8');
-assert.equal(deck.split(/\n---\n/).length - 1, 11); assert.match(deck, /## Why now\n\n- Teams write in many tools/); assert.match(deck, /::: shape #s\d+ type=ellipse/);
+assert.equal(deck.split(/\n---\n/).length - 1, 11); assert.match(deck, /## Why now\n\n- Teams write in many tools/); assert.match(deck, /::: shape #[\w-]+ type=ellipse/);
 const pic = deck.match(/!\[[^\]]*\]\((assets\/[^)]+)\)/); assert(pic && fs.existsSync(path.join(ws, pic[1]))); console.log('  ✓ a .pptx imports as a deck next to the open note, pictures saved in assets');
 const tpl = fs.readFileSync(path.join(ws, 'Templates', 'Swiss brand.slides.md'), 'utf8');
 assert.match(tpl, /template-name: "Swiss brand"/); assert.match(tpl, /accent: "#e3120b"/); assert.match(tpl, /<!-- master: title only -->/); assert.match(tpl, /::: box placeholder=title x=88 y=210\.1 w=760\.1 h=220 size=68 valign=bottom/); console.log('  ✓ a .potx imports as a template: theme, layouts as masters, placeholders where they were');

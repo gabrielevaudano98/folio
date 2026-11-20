@@ -5,7 +5,7 @@ import { parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, applyEdgeStyle
 import { parseWorkbook, serializeWorkbook, evaluator, shiftFormula } from '../src/renderer/sheet-core.js';
 import { findRefs, resolveTarget, rewriteRefs } from '../src/renderer/refs-syntax.js';
 import { resolveRef } from '../src/renderer/refs.js';
-import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter } from '../src/renderer/slides-core.js';
+import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter, zoomTarget } from '../src/renderer/slides-core.js';
 import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle, linePoints, linePath, parseFill, fillCss, fillSvg, adjustCss, frameCss, safeColor, replaceImageSrc, pathBlock, polygonsBlock, simplify, pointsPath, parsePoints } from '../src/renderer/slides-objects.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
@@ -214,6 +214,36 @@ const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');
 assert.deepEqual(s.categories, ['Q1', 'Q2', 'Q3', 'Q4']); assert.equal(s.series.length, 4); ok('chart series in rows skip text rows');
 assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG');
 
+// motion: transitions and animations
+{
+  const M = await import('../src/renderer/slides-motion.js');
+  const mt = fx('Motion.slides.md'); const md = parseDeck(mt);
+  const s1 = md.slides[0], s2 = md.slides[1];
+  assert.deepEqual(s1.animations.map((a) => [a.target, a.effect, a.kind, a.trigger, a.duration, a.delay, a.repeat, a.by]), [['a', 'fade-in', 'entrance', 'click', 0.5, 0, 1, null], ['b', 'fly-in-up', 'entrance', 'with', 0.4, 0.2, 1, null], ['b', 'pulse', 'emphasis', 'after', 0.6, 0, 2, 'paragraph']]); ok('animation lines parse: target, effect, trigger, duration, delay, repeat, by paragraph');
+  assert.equal(s2.transition, 'morph 0.8s'); assert.deepEqual(M.parseTransition(s2.transition), { name: 'morph', duration: 0.8 }); assert.equal(md.global.transition, 'fade'); ok('transitions per slide and for the whole deck');
+  assert.equal(s1.notes, ''); assert.equal(s2.animations[0].target, 'body'); ok('animation blocks are not speaker notes');
+  for (const a of s1.animations) assert.equal(M.parseAnim(M.animText(a)).effect, a.effect);
+  assert.deepEqual(s1.animations.map(M.animText), ['#a fade-in', '#b fly-in-up with 0.4s delay=200ms', '#b pulse after repeat=2 by=paragraph']); const ch2 = { ...s1.animations[1], duration: 0.8 }; assert.equal(M.animText(ch2), '#b fly-in-up with 800ms delay=200ms'); ok('animation lines write back as they were typed; changed ones are rewritten');
+  const fm2 = parseFrontmatter(mt); const ch = splitSlides(fm2.body);
+  assert.equal(joinDeck(fm2.raw, ch.map((c, i) => M.setAnimations(c, parseDeck(mt).slides[i].animations))), mt); ok('rewriting the animations of every slide leaves the file byte-identical');
+  const ch0 = M.setAnimations(ch[0], [...s1.animations.slice(1), s1.animations[0]]); assert.match(ch0, /animate: #b fly-in-up with 0.4s delay=200ms\nanimate: #b pulse after repeat=2 by=paragraph\nanimate: #a fade-in\n-->/); assert.equal(scanObjects(ch0).length, 2); ok('reordering animations rewrites only the animation block');
+  assert.equal(M.setAnimations(ch[0], []).includes('animate'), false); ok('removing every animation removes the block');
+  const steps = M.buildSteps(s1.animations, (a) => (a.target === 'b' ? 3 : 1));
+  assert.deepEqual(steps.map((st) => st.map((x) => [x.anim.effect, x.anim.part ?? null, +x.start.toFixed(2)])), [[['fade-in', null, 0], ['fly-in-up', null, 0.2], ['pulse', 0, 0.6]], [['pulse', 1, 0]], [['pulse', 2, 0]]]); ok('build steps: with joins the click, after waits for the previous end, by paragraph adds a click per paragraph');
+  assert.deepEqual(M.hiddenAtStart(s1.animations).map((a) => a.target), ['a', 'b']); ok('objects that enter start hidden');
+  assert.equal(Object.keys(M.TRANSITIONS).length >= 24, true); for (const t of Object.keys(M.TRANSITIONS)) assert.equal(M.transitionFrames(t).length, 2); for (const e of Object.keys(M.EFFECTS)) assert(M.keyframes(M.parseAnim(`#x ${e}`)).length >= 2); ok('24+ transitions and every effect have keyframes');
+}
+
+// interactivity: links, zooms, custom shows, auto-advance
+{
+  const lt = fx('Links.slides.md'); const ld = parseDeck(lt);
+  const z = ld.slides[0].objects.find((o) => o.kind === 'zoom');
+  assert.equal(z.attrs.section, 'Detail'); assert.equal(zoomTarget(ld, z.attrs).title, 'Detail one'); assert.equal(zoomTarget(ld, { slide: '4' }).title, 'The end'); assert.equal(zoomTarget(ld, { slide: '9' }), null); ok('zoom objects point at a slide or the first slide of a section');
+  const P = await import('../src/renderer/slides-present.js');
+  assert.deepEqual(Object.fromEntries(Object.entries(P.customShows(ld)).map(([k, v]) => [k, v.map((x) => x.number)])), { short: [1, 3] }); ok('custom shows list slides by number, ranges allowed');
+  assert.equal(ld.slides[3].advance, '1s'); assert.equal(ld.slides[2].advance, null); ok('auto-advance is a one-slide directive');
+}
+
 // PowerPoint interop: package reading, text conversion, and a .pptx made by pptxgenjs back to slides-md
 {
   const I = await import('../src/renderer/slides-import.js');
@@ -253,8 +283,25 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.equal(shown[1].hidden, true); assert.equal(shown[0].section, 'Intro'); assert.match(md, /- Revenue up\n- Costs flat/); assert.match(shown[1].notes || md, /Say the number first\./); ok('body text, hidden slides, sections and speaker notes come across');
   assert.match(md, /::: shape #s\d+ type=ellipse x=960 y=480 w=192 h=192 fill=#0a5c36/); assert.match(md, /::: line #l\d+ x=96 y=624 w=384 h=0 head=arrow stroke=#333333/); assert.match(md, /\| A \| B \|\n\| --- \| --- \|\n\| 1 \| 2 \|/); ok('shapes, arrows and tables land at the same geometry on the 1280×720 canvas');
   const ifm = parseFrontmatter(md); assert.equal(joinDeck(ifm.raw, splitSlides(ifm.body)), md); ok('an imported deck round-trips byte for byte');
+  const PM = await import('../src/renderer/slides-pptx-motion.js');
+  assert.equal(PM.transitionXml('push-left 1s', 5), '<p:transition spd="slow" advTm="5000"><p:push dir="l"/></p:transition>'); assert.deepEqual(PM.readTransition('<p:transition spd="slow" advTm="5000"><p:push dir="l"/></p:transition>'), { transition: 'push-left 1s', advance: '5s' });
+  const tx = PM.timingXml(parseDeck(fx('Motion.slides.md')).slides[0].animations, { a: [{ spid: '3', paras: 1 }], b: [{ spid: '4', paras: 3 }] });
+  assert.deepEqual(PM.readAnimations(tx, (id) => ({ 3: 'a', 4: 'b' })[id]), ['#a fade-in', '#b fly-in-up with 400ms delay=200ms', '#b pulse after by=paragraph']); ok('transitions and animations round-trip through PowerPoint timing XML');
   const tpl = await I.importPowerPoint(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), { parse, name: 'Review', template: true });
   const td = parseDeck(tpl); assert.match(tpl, /template-name: Review/); assert.equal(td.masters.length, 2); assert.equal(td.slides.filter((x) => !x.master).length, 2); ok('a template import keeps the layouts as masters with one sample slide each');
+}
+
+// audience Q&A: the local page takes questions and the presenter reads them
+{
+  const QA = await import('../src/main/qa.js');
+  const { url, qr } = await QA.startQa('Pitch');
+  assert.match(url, /^http:\/\/[\d.]+:\d+\/$/); assert.match(qr, /^<svg/);
+  const port = new URL(url).port; const base = `http://127.0.0.1:${port}`;
+  const page = await (await fetch(base + '/')).text(); assert.match(page, /Questions · Pitch/); assert.match(page, /<form method="post" action="\/ask">/);
+  const res = await fetch(base + '/ask', { method: 'POST', body: new URLSearchParams({ q: 'What about <b>pricing</b>?', n: 'Ada' }), redirect: 'manual' });
+  assert.equal(res.status, 303); assert.equal((await fetch(base + '/../etc/passwd')).status, 404);
+  assert.deepEqual(QA.pollQa().map((q) => [q.text, q.name]), [['What about <b>pricing</b>?', 'Ada']]);
+  QA.stopQa(); ok('Q&A: a question page on the local network, questions reach the presenter, nothing else is served');
 }
 
 console.log(`\n${n} format checks passed`);
