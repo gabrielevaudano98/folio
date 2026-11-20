@@ -18,7 +18,7 @@ const convert = (v, t) => {
   return one === true ? 'true' : one === false ? 'false' : String(one ?? '');
 };
 
-export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded }) {
+export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType }) {
   const box = document.createElement('section'); box.className = 'props'; box.setAttribute('aria-label', 'Properties');
   page.prepend(box);
   let open = true, adding = null;
@@ -119,7 +119,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   function openMenu(btn) {
     const key = btn.closest('.prop-row').dataset.key; const p = propOf(key); if (!p) return;
-    const items = [{ head: 'Type' }, ...(p.readOnly ? [{ label: TYPE_LABEL.object, icon: ic('source'), checked: true, disabled: true, run() {} }] : TYPES.map((t) => ({ label: TYPE_LABEL[t], icon: ic(TYPE_ICON[t]), checked: p.type === t, run: () => commit((x) => setProp(x, key, convert(p.value, t), t)) }))), '-',
+    const items = [{ head: 'Type' }, ...(p.readOnly ? [{ label: TYPE_LABEL.object, icon: ic('source'), checked: true, disabled: true, run() {} }] : TYPES.map((t) => ({ label: TYPE_LABEL[t], icon: ic(TYPE_ICON[t]), checked: p.type === t, run: () => { commit((x) => setProp(x, key, convert(p.value, t), t)); onType?.(key, t); } }))), '-',
       { label: 'Rename', icon: ic('rename'), run: () => renameInline(key) },
       { label: 'Remove property', icon: ic('trash'), danger: true, run: () => commit((x) => removeProp(x, key)) }];
     popupMenu(btn, items, { label: `Property ${key}` });

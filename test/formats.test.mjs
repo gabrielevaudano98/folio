@@ -15,14 +15,14 @@ import { headings } from '../src/renderer/markdown.js';
 import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
 import { createPageCodec, splitBlocks } from '../src/renderer/page-core.js';
-import { mentionEntries, extractTags, blockIds, linkKind, ymd, statusClass } from '../src/renderer/page-mentions.js';
+import { mentionEntries, extractTags, blockIds, linkKind, ymd, statusClass, statusOptions, STATUSES } from '../src/renderer/page-mentions.js';
 import { parseTSV, gfmTable, sheetFromTable, compareCells } from '../src/renderer/page-table.js';
 import { findMatches, replaceAll } from '../src/renderer/page-find.js';
 import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
 import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread } from '../src/renderer/page-critic.js';
-import { parseProps, setProp, removeProp, renameProp, newKey, renameTag } from '../src/renderer/page-props.js';
+import { parseProps, setProp, removeProp, renameProp, newKey, renameTag, setTypeOverrides, inferType } from '../src/renderer/page-props.js';
 import { findMentions, linkMention } from '../src/renderer/refs-syntax.js';
 import { formatDate, fillTemplate, askVars, splitTemplate, mergeProps, parseButton, buttonSource, listTemplates, STARTERS, CURSOR, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from '../src/renderer/page-templates.js';
 import { htmlToMarkdown, looksLikeMarkdown, isCodeHtml } from '../src/renderer/page-paste.js';
@@ -429,6 +429,13 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.deepEqual(blockIds('Para one ^abc\n- [ ] task ^t-1\nplain\n## Head ^h'), [{ id: 'abc', text: 'Para one' }, { id: 't-1', text: 'task' }, { id: 'h', text: 'Head' }]); ok('block ids are read from the end of lines');
   assert.equal(linkKind('2026-11-21', files, 'a.md'), 'date'); assert.equal(linkKind('Ada Lovelace', files, 'a.md'), 'person'); assert.equal(linkKind('Roadmap#Goals', files, 'a.md'), 'doc'); assert.equal(linkKind('Nope', files, 'a.md'), 'missing');
   assert.equal(statusClass('In progress'), 'blue'); assert.equal(statusClass('Done'), 'green'); assert.equal(statusClass('Whatever'), 'gray'); assert.equal(ymd(new Date(2026, 0, 5)), '2026-01-05'); ok('a link knows whether it is a day, a person, a page or missing; status words get their colour');
+  assert.deepEqual(statusOptions('# no front matter'), STATUSES); assert.deepEqual(statusOptions('---\ntitle: A\n---\n'), STATUSES);
+  assert.deepEqual(statusOptions('---\nfolio:\n  status: [Idea, "In design", Shipped]\n---\nx'), ['Idea', 'In design', 'Shipped']);
+  assert.deepEqual(statusOptions('---\nfolio:\n  status:\n    - Draft\n    - Review\ntags: [a]\n---\nx'), ['Draft', 'Review']);
+  ok('status options come from front matter folio.status (inline or list), else the defaults');
+  setTypeOverrides({ owner: 'link', due: 'text', count: 'number' });
+  assert.equal(inferType('Owner', '[[People/Ada]]'), 'link'); assert.equal(inferType('due', '2026-11-20'), 'text'); assert.equal(inferType('count', 'many'), 'text'); assert.equal(inferType('count', 3), 'number'); // a type that does not fit the value is ignored
+  setTypeOverrides({}); assert.equal(inferType('due', '2026-11-20'), 'date'); ok('property types chosen per workspace override inference only when the value fits');
   assert(INSERTS.some((i) => i.id === 'today' && /^\[\[\d{4}-\d{2}-\d{2}\]\]$/.test(i.md)) && filterInserts('status', { recent: [] })[0].item.id === 'status'); ok('/today, /tomorrow and /status are in the / menu');
 }
 

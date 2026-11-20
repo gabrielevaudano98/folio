@@ -187,11 +187,12 @@ h('fs:rename', async (from, to) => {
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
   for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b, (f, text) => keep(f, text, { reason: 'before-rename', force: true })).catch(() => [])) changed.add(c); }
-  /* a page moved to another folder takes the files it uses along (copied into the new .asset) so its pictures keep working */
-  if (!isDir && path.dirname(r.from) !== path.dirname(r.to)) {
+  /* a page (or a folder of pages) moved: files a page uses that did not move with it are copied into its new .asset, references follow */
+  for (const [a, b] of pairs) {
+    if (path.dirname(a) === path.dirname(b)) continue;
     try {
-      const text = await notes.read(r.to); const moved = await assets.relocate(r.from, r.to, text);
-      if (moved.text !== text) { await keep(r.to, text, { reason: 'move', force: true }); ownWrites.set(notes.resolve(r.to), moved.text); await fs.writeFile(notes.resolve(r.to), moved.text, 'utf8'); changed.add(r.to); }
+      const text = await notes.read(b); const moved = await assets.relocate(a, b, text);
+      if (moved.text !== text) { await keep(b, text, { reason: 'move', force: true }); ownWrites.set(notes.resolve(b), moved.text); await fs.writeFile(notes.resolve(b), moved.text, 'utf8'); changed.add(b); }
     } catch (e) { console.error('assets relocate', e.message); }
   }
   return { to: r.to, changed: [...changed] };
@@ -231,6 +232,14 @@ h('fs:pick-media', async (noteRel, kind) => {
   return assets.importFile(noteRel, r.filePaths[0]);
 });
 /* assets: files a page lost, files a page needs, unused and missing files, migration from assets/ */
+/* property types chosen per name, kept beside the history: <workspace>/.folio/property-types.json */
+const typesFile = () => path.join(notes.root(), '.folio', 'property-types.json');
+h('props:types', async () => { try { return JSON.parse(await fs.readFile(typesFile(), 'utf8')); } catch { return {}; } });
+h('props:set-type', async (key, type) => {
+  if (typeof key !== 'string' || !/^[A-Za-z_][\w .-]{0,40}$/.test(key) || !['text', 'number', 'checkbox', 'date', 'datetime', 'list', 'tags', 'link'].includes(type)) throw new Error('Not a property type.');
+  let cur = {}; try { cur = JSON.parse(await fs.readFile(typesFile(), 'utf8')); } catch {}
+  cur[key.toLowerCase()] = type; await fs.mkdir(path.dirname(typesFile()), { recursive: true }); await fs.writeFile(typesFile(), JSON.stringify(cur, null, 1), 'utf8'); return cur;
+});
 h('assets:sync', async (noteRel, before, after) => ({ ...(await assets.heal(noteRel, after)), orphans: await assets.orphans(noteRel, before, after), refs: [...assets.refsOf(noteRel, after)] }));
 h('assets:restore', async (paths) => { let n = 0; for (const p of paths.slice(0, 500)) if (await assets.restore(p).catch(() => false)) n++; return n; });
 h('assets:heal', (noteRel, text) => assets.heal(noteRel, text));

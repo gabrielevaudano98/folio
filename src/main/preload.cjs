@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('folio', {
   pickImage: (note) => call('fs:pick-image', note),
   pickMedia: (note, kind) => call('fs:pick-media', note, kind),
   assetsSync: (note, before, after) => call('assets:sync', note, before, after),
+  propTypes: () => call('props:types'),
+  setPropType: (key, type) => call('props:set-type', key, type),
   assetsRestore: (paths) => call('assets:restore', paths),
   assetsHeal: (note, text) => call('assets:heal', note, text),
   assetsRemove: (paths, permanent) => call('assets:remove', paths, permanent),

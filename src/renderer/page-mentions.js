@@ -9,6 +9,20 @@ import { fuzzy, fuzzyItem } from './fuzzy.js';
 import { resolveTarget, docKind, parseRef } from './refs-syntax.js';
 
 export const STATUSES = ['Not started', 'In progress', 'Blocked', 'Done'];
+/** the status words a page offers: front matter `folio: status: [A, B]` (or a `- A` list), else the defaults */
+export function statusOptions(text) {
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text || '')); if (!fm) return STATUSES;
+  const lines = fm[1].split(/\r?\n/); const at = lines.findIndex((l) => /^folio:\s*$/.test(l)); if (at < 0) return STATUSES;
+  const clean = (v) => v.trim().replace(/^["']|["']$/g, '').trim();
+  for (let i = at + 1; i < lines.length && /^\s+\S/.test(lines[i]); i++) {
+    const m = /^\s+status:\s*(.*)$/.exec(lines[i]); if (!m) continue;
+    const base = lines[i].match(/^\s*/)[0].length; let out = [];
+    if (m[1].trim().startsWith('[')) out = m[1].trim().replace(/^\[|\]$/g, '').split(',').map(clean);
+    else for (let j = i + 1; j < lines.length; j++) { const li = /^(\s*)-\s+(.*)$/.exec(lines[j]); if (!li || li[1].length < base) break; out.push(clean(li[2])); }
+    out = out.filter(Boolean); return out.length ? out : STATUSES;
+  }
+  return STATUSES;
+}
 export const JOURNAL = 'Journal';
 export const DAY = /^\d{4}-\d{2}-\d{2}$/;
 /* #tag: starts after a space or "(", has a letter, digits and - _ / allowed (Obsidian rules) */

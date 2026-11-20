@@ -33,8 +33,17 @@ const splitInline = (s) => {
 };
 
 /** what kind of field a value looks like; tags and aliases are lists of tags by name, as in Obsidian */
+/* types the user chose per property name in this workspace (Obsidian's types.json); applied when the value fits the type */
+let OVERRIDES = {};
+export const setTypeOverrides = (map) => { OVERRIDES = map && typeof map === 'object' ? { ...map } : {}; };
+const FITS = {
+  text: () => true, number: (v) => typeof v === 'number', checkbox: (v) => typeof v === 'boolean',
+  date: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v), datetime: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(v),
+  link: (v) => typeof v === 'string' && /^\[\[[^\]]+\]\]$/.test(v), list: Array.isArray, tags: Array.isArray,
+};
 export function inferType(key, value) {
   const k = key.toLowerCase();
+  const chosen = OVERRIDES[k]; if (chosen && FITS[chosen]?.(value)) return chosen;
   if (Array.isArray(value)) return k === 'tags' || k === 'tag' ? 'tags' : 'list';
   if (k === 'tags' || k === 'tag') return 'tags';
   if (typeof value === 'boolean') return 'checkbox';

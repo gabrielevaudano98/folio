@@ -85,4 +85,11 @@ const used = (await a.save('Docs/page.md', 'Used.png', png(3))), gone = (await a
   assert.deepEqual([...(await a.stillUsed(['S/.asset/11111111-in-use.png', 'S/.asset/22222222-free.png']))], ['S/.asset/11111111-in-use.png']);
   ok('a stale question cannot remove a file some page still uses'); }
 
+{ w('F/p.md', '![in](.asset/aaaaaaaa-in.png) ![out](../.asset/bbbbbbbb-out.png)'); w('F/.asset/aaaaaaaa-in.png', 'IN'); w('.asset/bbbbbbbb-out.png', 'OUT');
+  fs.mkdirSync(path.join(ws, 'G'), { recursive: true }); fs.renameSync(path.join(ws, 'F'), path.join(ws, 'G', 'F')); // the folder moved, its own .asset with it
+  const r = await a.relocate('F/p.md', 'G/F/p.md', fs.readFileSync(path.join(ws, 'G/F/p.md'), 'utf8'));
+  assert.equal(r.copied, 1); assert(r.text.includes('(.asset/aaaaaaaa-in.png)') && /\(\.asset\/[0-9a-f]{8}-out\.png\)/.test(r.text), r.text);
+  assert(fs.readdirSync(path.join(ws, 'G/F/.asset')).some((f) => f.endsWith('-out.png')));
+  ok('moving a folder: files that moved with it keep their references, files outside it are copied in'); }
+
 console.log(`\n${n} assets checks passed`);

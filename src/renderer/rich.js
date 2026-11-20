@@ -130,7 +130,7 @@ const FolioCodeBlock = CodeBlock.extend({
 /* callouts and [[wiki links]] are drawn, the Markdown text stays as written */
 const Decorate = Extension.create({
   name: 'folioDecorate',
-  addOptions() { return { onWikiLink: null, resolveValue: null, linkKind: null, preview: null, onTag: null }; },
+  addOptions() { return { onWikiLink: null, resolveValue: null, linkKind: null, preview: null, onTag: null, onStatus: null }; },
   addProseMirrorPlugins() {
     const opts = this.options;
     const hover = { el: null, card: null, timer: 0, seq: 0, hide() { clearTimeout(this.timer); this.seq++; this.card?.remove(); this.card = null; this.el = null; } };
@@ -197,6 +197,12 @@ const Decorate = Extension.create({
         handleClick(view, pos, event) {
           const tag = event.target.closest?.('.rich-tag');
           if (tag && (event.metaKey || event.ctrlKey)) { opts.onTag?.(tag.textContent.replace(/^#/, '')); return true; }
+          const st = event.target.closest?.('.rich-status');
+          if (st && opts.onStatus && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+            const from = view.posAtDOM(st, 0); const end = view.state.doc.resolve(from).end();
+            const m = /^\[status::[ \t]*([^\]\n]*?)[ \t]*\]/.exec(view.state.doc.textBetween(from, Math.min(end, from + 100), '\n', '\0'));
+            if (m) { opts.onStatus(st, m[1], (v) => { const tr = view.state.tr.insertText(`[status:: ${v}]`, from, from + m[0].length); view.dispatch(tr); view.focus(); }); return true; }
+          }
           const el = event.target.closest?.('.rich-wikilink, .rich-ref');
           if (el && (event.metaKey || event.ctrlKey)) { opts.onWikiLink?.(el.dataset.target); return true; }
           return false;
@@ -640,7 +646,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -692,7 +698,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       HeadingFold.configure({ icons }),
       BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
       MarkdownLinkInput,
-      Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t) }),
+      Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply) }),
       Markdown.configure({ markedOptions: { gfm: true } }),
       Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : 'Write, or select text to format it') }),
       BubbleMenu.configure({ element: bubble, shouldShow: ({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && !(state.selection instanceof NodeSelection) }),
@@ -955,7 +961,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
 
   /* properties: the front matter as fields above the title; only the lines of a changed property are rewritten */
   const props = mountProps(page, {
-    icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n),
+    icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n), onType: (k, t) => onPropType?.(k, t),
     tags: () => (mentions ? mentions()?.tags?.() : []) || [],
     get: () => model?.fm || '',
     set: (fm) => { if (!model) model = codec.load(''); const old = model.fm; model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },

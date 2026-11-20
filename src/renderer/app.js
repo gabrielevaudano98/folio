@@ -9,9 +9,9 @@ import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention } from './refs-syntax.js';
-import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
+import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
-import { renameTag } from './page-props.js';
+import { renameTag, setTypeOverrides } from './page-props.js';
 import { listTemplates, fillTemplate, askVars, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
 import { openGallery } from './template-gallery.js';
 import { popupMenu } from './page-table.js';
@@ -155,6 +155,8 @@ async function boot() {
     author: () => S.settings.authorName || S.userName || '',
     onStats: (st) => { S.richStats = st; if (isRich()) renderStatus(); },
     mentions: mentionCtx,
+    onPropType: (k, t) => folio.setPropType(k, t).then(setTypeOverrides).catch(() => {}),
+    onStatus: (el, cur, apply) => showMenu(el, statusOptions(activeTab()?.text).map((v) => ({ label: (v.toLowerCase() === cur.toLowerCase() ? '✓ ' : '') + v, run: () => apply(v) }))),
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
     preview: previewHtml,
     saveImage: async (src) => {
@@ -289,6 +291,7 @@ function setView(v, { persist = true } = {}) {
 /* ============ workspace ============ */
 async function loadWorkspace(dir, { restore = false } = {}) {
   S.workspace = dir;
+  folio.propTypes().then(setTypeOverrides).catch(() => setTypeOverrides({}));
   $('#workspace-name').textContent = dir.split(/[\\/]/).filter(Boolean).pop();
   $('#tree').innerHTML = Array.from({ length: 7 }, (_, i) => `<div class="skeleton-row" style="--w:${[62, 48, 70, 40, 56, 66, 44][i]}%;--d:${i % 3 === 2 ? 1 : 0}"></div>`).join('');
   await refreshTree();
@@ -659,6 +662,7 @@ function mentionCtx() {
     headingsOf: async (p) => headings(await textOf(p)).map((h) => ({ text: h.text.replace(/[*_`]/g, ''), level: h.level })),
     blocksOf: async (p) => blockIds(await textOf(p)),
     tags: tagIndex,
+    statuses: statusOptions(activeTab()?.text),
     createDoc: createDocHere,
   };
 }
