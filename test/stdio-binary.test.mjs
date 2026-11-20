@@ -16,7 +16,7 @@ let failed = 0;
 const ok = (m) => console.log('  ✓ ' + m);
 const bad = (m) => { failed++; console.log('  ✗ ' + m); };
 
-const sandbox = !process.env.FOLIO_BINARY && process.getuid?.() === 0 ? ['--no-sandbox'] : [];
+const sandbox = !process.env.FOLIO_BINARY && process.platform === 'linux' ? ['--no-sandbox'] : [];
 async function probe(label, args) {
   const c = new Client({ name: 'stdio-binary-test', version: '1' });
   try {
