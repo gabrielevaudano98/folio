@@ -42,9 +42,12 @@ export function createNotes(getRoot) {
     const abs = path.resolve(base, rel.replace(/^[/\\]+/, ''));
     if (!inside(base, abs)) throw new NotesError(`Path escapes the workspace: ${rel}`);
     if (abs === base) { if (notRoot) throw new NotesError('The workspace folder itself cannot be changed this way.'); return abs; }
-    if (path.relative(base, abs).split(path.sep).some((seg) => seg.startsWith('.'))) throw new NotesError(`Hidden files and folders are not available: ${rel}`);
     let realBase; try { realBase = fss.realpathSync(base); } catch { realBase = base; }
-    if (!inside(realBase, real(abs))) throw new NotesError(`Path leaves the workspace through a link: ${rel}`);
+    const realAbs = real(abs);
+    if (!inside(realBase, realAbs)) throw new NotesError(`Path leaves the workspace through a link: ${rel}`);
+    // hidden means hidden by name or by where a link really leads (public -> .git)
+    const hidden = (from, to) => path.relative(from, to).split(path.sep).some((seg) => seg.startsWith('.'));
+    if (hidden(base, abs) || hidden(realBase, realAbs)) throw new NotesError(`Hidden files and folders are not available: ${rel}`);
     if (mustBeNote && !NOTE_EXT.includes(path.extname(abs).toLowerCase())) {
       throw new NotesError(`Only Markdown or text files can be written (${NOTE_EXT.join(', ')}).`);
     }
@@ -58,6 +61,8 @@ export function createNotes(getRoot) {
   }
   const relOf = (abs) => path.relative(root(), abs).split(path.sep).join('/');
 
+  const linkOk = (abs) => { try { contain(abs); return true; } catch { return false; } };
+
   async function walk(dir, out, depth = 0) {
     if (out.length >= MAX_FILES || depth > 12) return;
     let entries;
@@ -65,6 +70,7 @@ export function createNotes(getRoot) {
     for (const e of entries) {
       if (e.name.startsWith('.') || IGNORE.has(e.name)) continue;
       const abs = path.join(dir, e.name);
+      if (e.isSymbolicLink() && !linkOk(abs)) continue; // a link that leaves the workspace is not part of it
       if (e.isDirectory()) await walk(abs, out, depth + 1);
       else if (NOTE_EXT.includes(path.extname(e.name).toLowerCase())) out.push(abs);
     }
@@ -77,6 +83,7 @@ export function createNotes(getRoot) {
     for (const e of entries) {
       if (e.name.startsWith('.') || IGNORE.has(e.name)) continue;
       const abs = path.join(dir, e.name);
+      if (e.isSymbolicLink() && !linkOk(abs)) continue;
       if (e.isDirectory()) {
         if (depth < 10) nodes.push({ type: 'dir', name: e.name, path: relOf(abs), children: await tree(abs, depth + 1) });
       } else if (NOTE_EXT.includes(path.extname(e.name).toLowerCase())) {

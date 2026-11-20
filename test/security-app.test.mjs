@@ -1,6 +1,6 @@
 // Folio security test, in the running app: what the renderer can and cannot ask of the main process.
 import assert from 'node:assert/strict';
-import fs from 'node:fs'; import path from 'node:path';
+import fs from 'node:fs'; import path from 'node:path'; import { pathToFileURL } from 'node:url';
 import { workspace, runApp, step, log, errors } from './harness.mjs';
 
 const w = workspace('security', 47601);
@@ -9,14 +9,15 @@ fs.writeFileSync(path.join(outside, 'secret.png'), 'not really a picture'); fs.w
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 fs.writeFileSync(path.join(w.ws, 'pic.png'), PNG);
 let links = true; try { fs.symlinkSync(outside, path.join(w.ws, 'out-dir')); } catch { links = false; }
+const J = JSON.stringify, fileUrl = (p) => J(pathToFileURL(p).href); // safe for Windows paths too
 const reject = (expr) => log(`(${expr}).then(()=>'ALLOWED',(e)=>String(e.message))`, 300);
 const r = await runApp(w, [
   { size: [1300, 800], wait: 1200 },
   // a note names a file outside the open folder, a non-media file inside it, a picture inside it
-  reject(`folio.dataUrl('file://${path.join(outside, 'secret.png')}', 'Roadmap.md')`),
-  reject(`folio.dataUrl('file://${path.join(w.ws, 'Roadmap.md')}', 'Roadmap.md')`),
+  reject(`folio.dataUrl(${fileUrl(path.join(outside, 'secret.png'))}, 'Roadmap.md')`),
+  reject(`folio.dataUrl(${fileUrl(path.join(w.ws, 'Roadmap.md'))}, 'Roadmap.md')`),
   log("folio.dataUrl('pic.png', 'Roadmap.md').then((d)=>d.slice(0,22))", 300),
-  log(`folio.dataUrl('file://${path.join(w.ws, 'pic.png')}', 'Roadmap.md').then((d)=>d.slice(0,22))`, 300),
+  log(`folio.dataUrl(${fileUrl(path.join(w.ws, 'pic.png'))}, 'Roadmap.md').then((d)=>d.slice(0,22))`, 300),
   reject("folio.dataUrl('http://127.0.0.1:1/x.png', 'Roadmap.md')"),
   // destructive calls on the workspace folder, opening a folder the person never picked, a link out of the folder
   reject("folio.trash('.')"), reject("folio.mkdir('.')"), reject("folio.rename('Journal', '.')"),

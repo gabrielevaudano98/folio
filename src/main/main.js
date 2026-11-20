@@ -13,6 +13,7 @@ import { createNotes, NOTE_EXT } from './notes.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
+import { assertPublicHost } from './netguard.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 
@@ -47,7 +48,7 @@ function saveSettings() {
 }
 function writeBridge() {
   const b = { port: mcpServerPort, token: settings.token, workspace: settings.workspace, allowWrite: settings.allowWrite, pid: process.pid };
-  try { fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {}
+  try { fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); fss.chmodSync(BRIDGE_FILE(), 0o600); } catch {} // the mode only applies to a new file, so older installs are repaired here
 }
 
 const notes = createNotes(() => settings.workspace);
@@ -289,18 +290,24 @@ h('export:binary', async (rel, ext, bytes) => {
   if (r.canceled) return null;
   await fs.writeFile(r.filePath, Buffer.from(bytes)); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.aac': 'audio/aac', '.flac': 'audio/flac', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
 const MAX_REMOTE = 30 * 1024 * 1024;
-const PRIVATE_HOST = /^(localhost|.*\.local|.*\.internal|\[?::1\]?|0\.0\.0\.0|127\.[\d.]+|10\.[\d.]+|192\.168\.[\d.]+|172\.(1[6-9]|2\d|3[01])\.[\d.]+|169\.254\.[\d.]+)$/i;
 h('fs:data-url', async (src, noteRel) => {
   if (/^data:/.test(src)) return src;
   if (/^https?:\/\//.test(src)) {
-    // a note can name any address: no private network, only images, audio, video and fonts, bounded in size and time
-    if (PRIVATE_HOST.test(new URL(src).hostname)) throw new Error('That address is on a private network.');
+    // a note can name any address: no private network (checked by name and by what it resolves to), only images, audio, video and fonts, bounded in size and time
     const { net } = await import('electron');
-    const res = await net.fetch(src, { signal: AbortSignal.timeout(20000) });
+    // follow redirects by hand so every hop is checked before it is requested
+    let url = src, res;
+    for (let hop = 0; ; hop++) {
+      if (hop > 5) throw new Error('Too many redirects.');
+      await assertPublicHost(new URL(url).hostname);
+      res = await net.fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
+      const next = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+      if (!next) break;
+      url = new URL(next, url).href; if (!/^https?:\/\//.test(url)) throw new Error('That address is not a web address.');
+    }
     if (!res.ok) throw new Error(`Image download failed (${res.status})`);
-    if (PRIVATE_HOST.test(new URL(res.url || src).hostname)) throw new Error('That address is on a private network.');
     const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (!/^(image|audio|video|font)\//.test(type)) throw new Error('That address is not an image or media file.');
     if (Number(res.headers.get('content-length')) > MAX_REMOTE) throw new Error('That file is too large to embed.');
@@ -325,9 +332,11 @@ h('export:pdf', async (rel, html, opts = {}) => {
   const tmp = path.join(tmpDir, 'export.html');
   await fs.writeFile(tmp, html, 'utf8');
   const pw = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
-  await pw.loadFile(tmp);
-  const pdf = await pw.webContents.printToPDF(opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
-  pw.destroy(); if (!process.env.FOLIO_KEEP_HTML) fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  let pdf;
+  try {
+    await pw.loadFile(tmp);
+    pdf = await pw.webContents.printToPDF(opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
+  } finally { pw.destroy(); if (!process.env.FOLIO_KEEP_HTML) fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {}); }
   await fs.writeFile(r.filePath, pdf); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
 
@@ -578,6 +587,7 @@ function lockDownSession() {
 }
 app.whenReady().then(async () => {
   lockDownSession();
+  try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {} // settings from before 1.2.2 were readable by other users
   fss.rmSync(undoRoot(), { recursive: true, force: true }); // leftovers from a crashed session
   nativeTheme.themeSource = settings.theme;
   buildMenu();
