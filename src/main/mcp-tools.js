@@ -7,7 +7,7 @@ import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
 import { resolveRef, loadExternals } from '../renderer/refs.js';
 import { SLIDE_TOOLS, runSlideTool } from './mcp-slides.js';
 
-export const SERVER_INFO = { name: 'folio', version: '1.2.1' };
+export const SERVER_INFO = { name: 'folio', version: '1.2.2' };
 
 export const INSTRUCTIONS = `Folio is the user's Markdown workspace. Paths are relative to the open folder and use forward slashes.
 Read a note before editing it. Prefer edit_note (exact find-and-replace) over write_note for small changes so the user's formatting survives.

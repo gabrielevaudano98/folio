@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, screen, session } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -12,6 +12,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createNotes, NOTE_EXT } from './notes.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
+import { mayUse } from './permissions.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 
@@ -40,7 +41,8 @@ let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
 function saveSettings() {
   fss.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true });
-  fss.writeFileSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2));
+  fss.writeFileSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); // it holds the MCP token
+  try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {}
   writeBridge();
 }
 function writeBridge() {
@@ -87,14 +89,18 @@ function createWindow() {
     }
     if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); } });
+  // the window never leaves the app page: any other address (a file: page would inherit the preload bridge) opens in the browser or not at all
+  const here = (u) => String(u).split(/[?#]/)[0];
+  const lock = (e, url) => { if (here(url) === here(win.webContents.getURL())) return; e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); };
+  win.webContents.on('will-navigate', lock);
+  win.webContents.on('will-redirect', lock);
   win.on('close', (e) => {
     if (win.__forceClose) return;
     e.preventDefault();
     win.webContents.send('app:before-close');
   });
 }
-ipcMain.on('app:close-ok', () => { if (win) { win.__forceClose = true; win.close(); } });
+ipcMain.on('app:close-ok', (e) => { if (fromApp(e) && win) { win.__forceClose = true; win.close(); } });
 
 nativeTheme.on('updated', () => {
   if (win && !isMac) win.setTitleBarOverlay?.(themeColors());
@@ -137,7 +143,10 @@ async function setWorkspace(dir) {
 }
 
 /* ---------------- IPC ---------------- */
-const h = (ch, fn) => ipcMain.handle(ch, async (_e, ...a) => {
+// only the app's own page may call into the main process: not a subframe, not another window
+const fromApp = (e) => !!win && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame;
+const h = (ch, fn) => ipcMain.handle(ch, async (e, ...a) => {
+  if (!fromApp(e)) return { ok: false, error: 'Not allowed from here.' };
   try { return { ok: true, value: await fn(...a) }; } catch (e) { return { ok: false, error: e.message }; }
 });
 h('app:init', () => ({
@@ -160,6 +169,7 @@ h('workspace:choose', async () => {
   return r.filePaths[0];
 });
 h('workspace:open', async (dir) => {
+  if (typeof dir !== 'string' || ![settings.workspace, ...settings.recent].includes(dir)) throw new Error('Choose that folder with Open Folder first.'); // only folders the person picked
   if (!fss.existsSync(dir)) throw new Error('That folder no longer exists.');
   await setWorkspace(dir); return dir;
 });
@@ -182,9 +192,9 @@ h('fs:create', async (rel, content = '') => {
   await fs.writeFile(abs, content, 'utf8');
   return notes.relOf(abs);
 });
-h('fs:mkdir', async (rel) => { await fs.mkdir(notes.resolve(rel), { recursive: true }); return rel; });
+h('fs:mkdir', async (rel) => { await fs.mkdir(notes.resolve(rel, { notRoot: true }), { recursive: true }); return rel; });
 h('fs:rename', async (from, to) => {
-  const isDir = (await fs.stat(notes.resolve(from)).catch(() => null))?.isDirectory();
+  const isDir = (await fs.stat(notes.resolve(from, { notRoot: true })).catch(() => null))?.isDirectory();
   const r = await notes.move(from, to);
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
@@ -198,7 +208,7 @@ let undoDir = null;
 const undoRoot = () => path.join(app.getPath('userData'), 'undo');
 async function clearTrashed() { trashed.clear(); undoDir = null; await fs.rm(undoRoot(), { recursive: true, force: true }).catch(() => {}); }
 h('fs:trash', async (rel) => {
-  const abs = notes.resolve(rel);
+  const abs = notes.resolve(rel, { notRoot: true });
   if (!undoDir) { await fs.mkdir(undoRoot(), { recursive: true, mode: 0o700 }); undoDir = await fs.mkdtemp(path.join(undoRoot(), 's-')); } // mkdtemp makes it owner-only
   const token = crypto.randomUUID(); const keep = path.join(undoDir, token);
   await fs.mkdir(keep);
@@ -235,7 +245,7 @@ h('fs:pick-image', async (noteRel) => {
   if (r.canceled || !r.filePaths[0]) return null;
   const dir = path.join(path.dirname(notes.resolve(noteRel)), 'assets');
   await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, font ? path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-') : `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
+  const file = path.join(dir, `${Date.now().toString(36)}-${path.basename(r.filePaths[0]).replace(/[^\w.-]+/g, '-')}`);
   await fs.copyFile(r.filePaths[0], file);
   return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
 });
@@ -273,37 +283,51 @@ h('export:html', async (rel, html) => {
   await fs.writeFile(r.filePath, html, 'utf8'); shell.showItemInFolder(r.filePath); return r.filePath;
 });
 h('export:binary', async (rel, ext, bytes) => {
+  if (!/^[a-z0-9]{1,8}$/i.test(ext || '')) throw new Error('Unsupported file type.');
   const base = rel.split('/').pop().replace(/(\.(slides|board|sheet))?\.\w+$/, '');
   const r = !app.isPackaged && process.env.FOLIO_EXPORT_DIR ? { filePath: path.join(process.env.FOLIO_EXPORT_DIR, `${base}.${ext}`) } : await dialog.showSaveDialog(win, { defaultPath: `${base}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
   if (r.canceled) return null;
   await fs.writeFile(r.filePath, Buffer.from(bytes)); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
+const MAX_REMOTE = 30 * 1024 * 1024;
+const PRIVATE_HOST = /^(localhost|.*\.local|.*\.internal|\[?::1\]?|0\.0\.0\.0|127\.[\d.]+|10\.[\d.]+|192\.168\.[\d.]+|172\.(1[6-9]|2\d|3[01])\.[\d.]+|169\.254\.[\d.]+)$/i;
 h('fs:data-url', async (src, noteRel) => {
   if (/^data:/.test(src)) return src;
   if (/^https?:\/\//.test(src)) {
+    // a note can name any address: no private network, only images, audio, video and fonts, bounded in size and time
+    if (PRIVATE_HOST.test(new URL(src).hostname)) throw new Error('That address is on a private network.');
     const { net } = await import('electron');
-    const res = await net.fetch(src);
+    const res = await net.fetch(src, { signal: AbortSignal.timeout(20000) });
     if (!res.ok) throw new Error(`Image download failed (${res.status})`);
-    const type = res.headers.get('content-type') || 'image/png';
-    return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString('base64')}`;
+    if (PRIVATE_HOST.test(new URL(res.url || src).hostname)) throw new Error('That address is on a private network.');
+    const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!/^(image|audio|video|font)\//.test(type)) throw new Error('That address is not an image or media file.');
+    if (Number(res.headers.get('content-length')) > MAX_REMOTE) throw new Error('That file is too large to embed.');
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > MAX_REMOTE) throw new Error('That file is too large to embed.');
+    return `data:${type};base64,${buf.toString('base64')}`;
   }
+  // local files: only inside the open folder, and only media types, so a note cannot pull in files like ~/.ssh/id_rsa
   const rel = decodeURI(src).replace(/^\.\//, '');
-  const abs = src.startsWith('file://') ? fileURLToPath(src) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel));
+  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src)) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel));
+  const mime = MIME[path.extname(abs).toLowerCase()];
+  if (!mime) throw new Error('Only images, audio, video and fonts can be embedded.');
   const buf = await fs.readFile(abs);
-  return `data:${MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream'};base64,${buf.toString('base64')}`;
+  return `data:${mime};base64,${buf.toString('base64')}`;
 });
 h('export:pdf', async (rel, html, opts = {}) => {
   const suffix = /^[a-z-]{1,20}$/.test(opts.suffix || '') ? ` ${opts.suffix}` : '';
   const pdfName = rel.replace(/(\.(slides|board|sheet))?\.\w+$/, `${suffix}.pdf`).split('/').pop();
   const r = !app.isPackaged && process.env.FOLIO_EXPORT_DIR ? { filePath: path.join(process.env.FOLIO_EXPORT_DIR, pdfName) } : await dialog.showSaveDialog(win, { defaultPath: pdfName, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
   if (r.canceled) return null;
-  const tmp = path.join(os.tmpdir(), `folio-export-${Date.now()}.html`);
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'folio-export-')); // owner-only, so nobody can plant a link where the file goes
+  const tmp = path.join(tmpDir, 'export.html');
   await fs.writeFile(tmp, html, 'utf8');
   const pw = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
   await pw.loadFile(tmp);
   const pdf = await pw.webContents.printToPDF(opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
-  pw.destroy(); if (!process.env.FOLIO_KEEP_HTML) fs.unlink(tmp).catch(() => {});
+  pw.destroy(); if (!process.env.FOLIO_KEEP_HTML) fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   await fs.writeFile(r.filePath, pdf); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
 
@@ -318,7 +342,7 @@ function askRenderer(kind, payload, timeout = 4000) {
     win.webContents.send('ai:ask', { id, kind, payload });
   });
 }
-ipcMain.on('ai:answer', (_e, { id, value }) => pending.get(id)?.(value));
+ipcMain.on('ai:answer', (e, { id, value }) => { if (fromApp(e)) pending.get(id)?.(value); });
 
 /* ---------------- MCP ---------------- */
 let httpServer = null, mcpServerPort = null, mcpError = null;
@@ -353,6 +377,10 @@ const appBackend = {
   },
 };
 
+function tokenOk(header) {
+  const a = Buffer.from(String(header || '')), b = Buffer.from(`Bearer ${settings.token}`);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 function allowedHost(req) {
   const host = (req.headers.host || '').split(':')[0];
   if (!['127.0.0.1', 'localhost'].includes(host)) return false;
@@ -374,7 +402,7 @@ function startMcp() {
         if (!allowedHost(req)) return send(403, { error: 'Forbidden host or origin' });
         const url = new URL(req.url, 'http://127.0.0.1');
         if (url.pathname === '/health') return send(200, { ok: true, app: 'folio' });
-        if ((req.headers.authorization || '') !== `Bearer ${settings.token}`) return send(401, { error: 'Missing or wrong token. Copy it from Folio → AI.' });
+        if (!tokenOk(req.headers.authorization)) return send(401, { error: 'Missing or wrong token. Copy it from Folio → AI.' });
         if (url.pathname === '/api/tool' && req.method === 'POST') {
           const { name, args, client } = await readBody(req);
           try { return send(200, { ok: true, value: await appBackend.call(name, args || {}, { client: client || 'AI assistant' }) }); }
@@ -541,7 +569,15 @@ app.on('second-instance', (_e, argv) => {
   if (f) openPath(f);
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
+/** the app page may use the microphone (narration) and nothing else; no page may attach a webview */
+function lockDownSession() {
+  const ok = (wc, permission, mediaTypes) => mayUse(permission, wc === win?.webContents, mediaTypes);
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => cb(ok(wc, permission, details?.mediaTypes)));
+  session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => ok(wc, permission, details?.mediaType ? [details.mediaType] : []));
+  app.on('web-contents-created', (_e, contents) => contents.on('will-attach-webview', (e) => e.preventDefault()));
+}
 app.whenReady().then(async () => {
+  lockDownSession();
   fss.rmSync(undoRoot(), { recursive: true, force: true }); // leftovers from a crashed session
   nativeTheme.themeSource = settings.theme;
   buildMenu();

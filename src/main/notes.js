@@ -1,5 +1,6 @@
 // Folio — notes core. Pure Node, shared by the app (IPC + HTTP MCP) and the stdio MCP bridge.
 import fs from 'node:fs/promises';
+import fss from 'node:fs';
 import path from 'node:path';
 import { findRefs, resolveTarget, rewriteRefs } from '../renderer/refs-syntax.js';
 
@@ -16,15 +17,44 @@ export function createNotes(getRoot) {
     return path.resolve(r);
   };
 
-  function resolve(rel, { mustBeNote = false } = {}) {
+  /** the real location of a path, following links; a path that does not exist yet is judged by its nearest existing parent */
+  function real(p) {
+    let cur = p; const rest = [];
+    for (;;) {
+      try { const r = fss.realpathSync(cur); return rest.length ? path.join(r, ...rest.reverse()) : r; }
+      catch (e) {
+        if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e;
+        if (fss.lstatSync(cur, { throwIfNoEntry: false })?.isSymbolicLink()) throw new NotesError('That path is a broken link, so it is not available.');
+        const up = path.dirname(cur); if (up === cur) return p;
+        rest.push(path.basename(cur)); cur = up;
+      }
+    }
+  }
+  const inside = (base, p) => p === base || p.startsWith(base + path.sep);
+
+  /**
+   * Turn a path inside the workspace into an absolute one, or throw. It refuses paths that leave the workspace
+   * (also through a link), hidden files and folders (.git, .env, .ssh), and, when asked, the workspace folder itself.
+   */
+  function resolve(rel, { mustBeNote = false, notRoot = false } = {}) {
     if (typeof rel !== 'string' || !rel.trim()) throw new NotesError('A relative path is required.');
     const base = root();
     const abs = path.resolve(base, rel.replace(/^[/\\]+/, ''));
-    if (abs !== base && !abs.startsWith(base + path.sep)) throw new NotesError(`Path escapes the workspace: ${rel}`);
+    if (!inside(base, abs)) throw new NotesError(`Path escapes the workspace: ${rel}`);
+    if (abs === base) { if (notRoot) throw new NotesError('The workspace folder itself cannot be changed this way.'); return abs; }
+    if (path.relative(base, abs).split(path.sep).some((seg) => seg.startsWith('.'))) throw new NotesError(`Hidden files and folders are not available: ${rel}`);
+    let realBase; try { realBase = fss.realpathSync(base); } catch { realBase = base; }
+    if (!inside(realBase, real(abs))) throw new NotesError(`Path leaves the workspace through a link: ${rel}`);
     if (mustBeNote && !NOTE_EXT.includes(path.extname(abs).toLowerCase())) {
       throw new NotesError(`Only Markdown or text files can be written (${NOTE_EXT.join(', ')}).`);
     }
     return abs;
+  }
+  /** an absolute path that must lie inside the workspace (same checks as resolve) */
+  function contain(absPath) {
+    const rel = path.relative(root(), path.resolve(absPath));
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new NotesError(`Path escapes the workspace: ${absPath}`);
+    return resolve(rel);
   }
   const relOf = (abs) => path.relative(root(), abs).split(path.sep).join('/');
 
@@ -164,9 +194,9 @@ export function createNotes(getRoot) {
   }
 
   async function move(from, to) {
-    const a = resolve(from);
+    const a = resolve(from, { notRoot: true });
     const isDir = (await fs.stat(a).catch(() => null))?.isDirectory();
-    const b = resolve(to, { mustBeNote: !isDir });
+    const b = resolve(to, { mustBeNote: !isDir, notRoot: true });
     if (await fs.stat(b).then(() => true, () => false)) throw new NotesError(`Destination exists: ${to}`);
     await fs.mkdir(path.dirname(b), { recursive: true });
     await fs.rename(a, b);
@@ -211,5 +241,5 @@ export function createNotes(getRoot) {
     return out;
   }
 
-  return { root, resolve, relOf, tree, list, read, write, edit, append, search, outline, move, rewriteAfterMove, backlinks, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
+  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, outline, move, rewriteAfterMove, backlinks, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
 }
