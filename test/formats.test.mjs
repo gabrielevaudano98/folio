@@ -291,4 +291,17 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   const td = parseDeck(tpl); assert.match(tpl, /template-name: Review/); assert.equal(td.masters.length, 2); assert.equal(td.slides.filter((x) => !x.master).length, 2); ok('a template import keeps the layouts as masters with one sample slide each');
 }
 
+// audience Q&A: the local page takes questions and the presenter reads them
+{
+  const QA = await import('../src/main/qa.js');
+  const { url, qr } = await QA.startQa('Pitch');
+  assert.match(url, /^http:\/\/[\d.]+:\d+\/$/); assert.match(qr, /^<svg/);
+  const port = new URL(url).port; const base = `http://127.0.0.1:${port}`;
+  const page = await (await fetch(base + '/')).text(); assert.match(page, /Questions · Pitch/); assert.match(page, /<form method="post" action="\/ask">/);
+  const res = await fetch(base + '/ask', { method: 'POST', body: new URLSearchParams({ q: 'What about <b>pricing</b>?', n: 'Ada' }), redirect: 'manual' });
+  assert.equal(res.status, 303); assert.equal((await fetch(base + '/../etc/passwd')).status, 404);
+  assert.deepEqual(QA.pollQa().map((q) => [q.text, q.name]), [['What about <b>pricing</b>?', 'Ada']]);
+  QA.stopQa(); ok('Q&A: a question page on the local network, questions reach the presenter, nothing else is served');
+}
+
 console.log(`\n${n} format checks passed`);

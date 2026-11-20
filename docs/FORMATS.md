@@ -158,6 +158,15 @@ Continue
 - `::: zoom` shows a live copy of a slide (`slide=` number) or of a section's first slide (`section=`). When presenting, a click zooms into it; a section zoom plays the section, then comes back (`return=false` stays). Insert → Summary zoom makes a slide with one zoom per section. In PowerPoint a zoom becomes a card that jumps to its slide.
 - Custom shows appear in the Present menu. `advance:` (per slide or for the deck) and `loop`/`kiosk` also apply in PowerPoint (`advTm`).
 
+### Presenting
+
+- **Present** starts full screen from the current slide; the ▾ menu adds From the beginning, **Presenter view**, **Rehearse timings** and custom shows.
+- Keys: → Space Enter next, ← previous, Home/End, a number then Enter jumps to that slide, B black screen, W white screen, + and − magnifier, Ctrl+P pen, Ctrl+I highlighter, Ctrl+E eraser, Ctrl+L laser, Ctrl+A arrow, E erases the ink on the slide, Esc ends (or leaves a tool first).
+- **Presenter view:** the live slide, the next slide (or the next build), speaker notes with A− / A+, elapsed time with pause and reset, the clock and the tools. **Audience window** opens the show full screen on a second display and keeps it in step.
+- **Rehearse timings** records the time spent on each slide; keep them and each slide gets `<!-- advance: Ns -->`.
+- **Q&A** opens a page on the local network (address and QR code in the presenter view); questions appear beside the notes. It listens only while Q&A is open and keeps questions in memory.
+- **Record narration** records one audio clip per slide from the microphone and adds it to the slide as `::: media #narration … autoplay=true :::`.
+
 ### PowerPoint in and out
 
 - **Export to PowerPoint** (File menu) renders each slide at its real size and measures it, so the .pptx matches Folio: text frames keep position, fonts, sizes, colours and spacing; placed objects become native shapes, lines and arrows, freeforms, pictures (crop kept), tables, charts, video and audio; masters become slide layouts with title, subtitle and body placeholders; the deck's tokens become the theme colours and fonts. Hidden slides stay hidden, sections and speaker notes are kept. Gradients are drawn as pictures. Fonts are named, not embedded: the portable family of a font stack is used (`Segoe UI` for the system stack, `Georgia` for serif, `Consolas` for mono).

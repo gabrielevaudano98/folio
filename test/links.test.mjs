@@ -11,7 +11,7 @@ const click = (sel) => step(`document.querySelector('.presenter .pr-layer:last-c
 const r = await runApp(w, [
   { size: [1500, 950], wait: 1200 }, open('Links.slides.md'),
   log("[document.querySelectorAll('.sl-frame .sl-zoom .sl-zoom-view .slide').length, !!document.querySelector('.sl-frame [data-link=last].has-link')]"),
-  step("document.querySelector('[data-sl=present]').click()", 600), step("document.querySelector('.menu [role=menuitem]:nth-child(2), .menu button:nth-child(2)')?.click()", 1500),
+  step("document.querySelector('[data-sl=present]').click()", 1500),
   log(`[${S}.i, ${S}.order.length]`),
   click('[data-zoom]'), log(`[${S}.i, ${S}.order[${S}.i].title]`),
   step(`${S}.next()`, 900), step(`${S}.next()`, 900), log(`[${S}.i, ${S}.order[${S}.i].title]`),
@@ -20,7 +20,7 @@ const r = await runApp(w, [
   click('[data-link="slide:1"]'), log(`[${S}.i]`),
   step(`${S}.close()`, 600),
   // custom show from the Present menu
-  step("document.querySelector('[data-sl=present]').click()", 600), step("[...document.querySelectorAll('.menu button, .menu [role=menuitem]')].find(b=>/Custom show: short/.test(b.textContent)).click()", 1500),
+  step("document.querySelector('[data-sl=present-menu]').click()", 600), step("[...document.querySelectorAll('.menu button, .menu [role=menuitem]')].find(b=>/Custom show: short/.test(b.textContent)).click()", 1500),
   log(`${S}.order.map(s=>s.number)`), step(`${S}.close()`, 600),
   // Format pane: link and zoom fields
   step("document.querySelector('.sl-thumb[data-i=\"0\"]').click()", 800), step("document.querySelector('[data-sl-format]').click()", 600), pick('site'),

@@ -64,6 +64,8 @@ function surfaceCtx(type) {
     copy: (t) => folio.copy(t),
     revealLine: (n) => { if (app.dataset.modeView === 'split') editor.scrollToLine(n); },
     exportPdf: (html, o = {}) => folio.exportPdf(S.active, html, { cssPage: true, ...o }),
+    saveAsset: (name, bytes) => folio.saveImage(S.active, name, bytes),
+    qa: folio.qa,
     saveBinary: (ext, bytes) => folio.exportBinary(S.active, ext, bytes),
     isDark: () => S.dark,
     refEnv,

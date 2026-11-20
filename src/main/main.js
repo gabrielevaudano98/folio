@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, screen } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -11,6 +11,9 @@ import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createNotes, NOTE_EXT } from './notes.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
+import { startQa, pollQa, stopQa } from './qa.js';
+// tests: a fake microphone and camera, granted without a prompt
+if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isMac = process.platform === 'darwin';
@@ -72,7 +75,15 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
   if (!app.isPackaged && process.env.FOLIO_SHOT) devShot(win);
-  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // the presenter's audience window: full screen on another display when there is one
+    if (frameName === 'folio-audience' && (url === 'about:blank' || url === '')) {
+      const here = screen.getDisplayMatching(win.getBounds()); const other = screen.getAllDisplays().find((d) => d.id !== here.id);
+      const b = (other || here).bounds;
+      return { action: 'allow', overrideBrowserWindowOptions: { x: b.x, y: b.y, width: other ? b.width : 1280, height: other ? b.height : 720, fullscreen: !!other, autoHideMenuBar: true, backgroundColor: '#000000', title: 'Folio — audience', webPreferences: { sandbox: true, contextIsolation: true } } };
+    }
+    if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); } });
   win.on('close', (e) => {
     if (win.__forceClose) return;
@@ -200,6 +211,9 @@ h('fs:pick-image', async (noteRel) => {
   return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
 });
 /** a PowerPoint file or template to import: its name and bytes (FOLIO_IMPORT_FILE stands in for the dialog in tests) */
+h('qa:start', (title) => startQa(String(title || '').slice(0, 80)));
+h('qa:poll', () => pollQa());
+h('qa:stop', () => stopQa());
 let importN = 0;
 h('fs:pick-office', async () => {
   const dev = !app.isPackaged && process.env.FOLIO_IMPORT_FILE;

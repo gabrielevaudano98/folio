@@ -61,17 +61,18 @@ export function customShows(deck) {
 }
 const secsOf = (v) => { const m = String(v ?? '').trim().match(/^(\d*\.?\d+)\s*(ms|s)?$/); return m ? (m[2] === 'ms' ? +m[1] / 1000 : +m[1]) : null; };
 
-export function startShow({ deck, order, start = 0, renderSlide, hydrate, onExit, onChange, decorate, navigate, openLink }) {
-  const ov = document.createElement('div');
+export function startShow({ deck, order, start = 0, renderSlide, hydrate, onExit, onChange, decorate, navigate, openLink, root = null, win = window, fullscreen = true, keys = true }) {
+  const doc = win.document;
+  const ov = doc.createElement('div');
   ov.className = 'presenter'; ov.tabIndex = 0; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Presentation');
   ov.innerHTML = '<div class="pr-stage"></div><div class="pr-bar"></div>';
-  document.body.appendChild(ov);
+  if (root) ov.classList.add('is-embedded'); (root || doc.body).appendChild(ov);
   const stage = ov.querySelector('.pr-stage'), bar = ov.querySelector('.pr-bar');
   let i = Math.max(0, Math.min(order.length - 1, start)), step = 0, layer = null, prep = null, busy = null, k = 1;
   const history = [];
-  const size = () => { k = Math.min(innerWidth / deck.width, innerHeight / deck.height); stage.style.width = deck.width * k + 'px'; stage.style.height = deck.height * k + 'px'; for (const l of stage.children) l.style.transform = `scale(${k})`; };
+  const size = () => { const bw = root ? root.clientWidth : win.innerWidth, bh = root ? root.clientHeight : win.innerHeight; k = Math.min(bw / deck.width, bh / deck.height); stage.style.width = deck.width * k + 'px'; stage.style.height = deck.height * k + 'px'; for (const l of stage.children) l.style.transform = `scale(${k})`; };
   const make = (n) => {
-    const l = document.createElement('div'); l.className = 'sl-scale pr-layer'; l.style.transform = `scale(${k})`;
+    const l = doc.createElement('div'); l.className = 'sl-scale pr-layer'; l.style.transform = `scale(${k})`;
     l.innerHTML = renderSlide(deck, order[n]); hydrate?.(l); stage.appendChild(l);
     const sec = l.querySelector('section.slide');
     return { l, sec, n, prep: prepareSlide(sec, order[n], { W: deck.width, H: deck.height }) };
@@ -84,13 +85,15 @@ export function startShow({ deck, order, start = 0, renderSlide, hydrate, onExit
     const built = Math.min(at, next.prep.steps.length);
     for (let s = 0; s < built; s++) next.prep.play(s, { instant: true });
     const t = parseTransition(order[n].transition ?? deck.global.transition ?? 'none');
-    if (from && animate && t.name !== 'none' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (from && animate && t.name !== 'none' && !win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const ms = t.duration * 1000;
       if (t.name === 'morph') busy = morph(from, next, ms);
       else { const [outF, inF] = transitionFrames(t.name, deck.width, deck.height); busy = [from.l.firstElementChild.animate(outF, { duration: ms, easing: EASE, fill: 'forwards' }), next.l.firstElementChild.animate(inF, { duration: ms, easing: EASE, fill: 'backwards' })]; }
       Promise.all(busy.map((a) => a.finished.catch(() => {}))).then(() => { from.l.remove(); busy = null; });
     } else from?.l.remove();
     layer = next; prep = next.prep; i = n; step = built; status();
+    for (const m of next.sec.querySelectorAll('[data-autoplay]')) { try { m.currentTime = 0; m.play()?.catch?.(() => {}); } catch {} }
+    stage.appendChild(canvas); stage.appendChild(laser); redraw?.();
     schedule();
   };
   // auto-advance: `advance: 5s` on a slide (or in the front matter) moves on after that time, builds first
@@ -156,12 +159,52 @@ export function startShow({ deck, order, start = 0, renderSlide, hydrate, onExit
   };
   const go = (n, { remember = true } = {}) => { if (n < 0 || n >= order.length) return; if (remember) history.push(i); show(n); };
   const back = () => { if (history.length) show(history.pop(), Infinity, { animate: false }); };
-  const close = () => { clearTimeout(timer); removeEventListener('resize', size); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); ov.remove(); onExit?.(order[i]); };
+  const close = () => { clearTimeout(timer); win.removeEventListener('resize', size); ro?.disconnect(); if (fullscreen && doc.fullscreenElement) doc.exitFullscreen().catch(() => {}); ov.remove(); onExit?.(order[i]); };
   const pause = (on = !paused) => { paused = on; if (paused) { clearTimeout(timer); timer = null; } else schedule(); return paused; };
-  const api = { next, prev, go, back, close, follow, pause, get paused() { return paused; }, get i() { return i; }, get step() { return step; }, get layer() { return layer; }, get order() { return order; }, overlay: ov, stage, deck, get scale() { return k; }, get prep() { return prep; } };
+  /* ink: pen, highlighter, eraser and laser, kept per slide for the whole show */
+  const ink = new Map(); let tool = null; let drawing = null;
+  const canvas = doc.createElement('canvas'); canvas.className = 'pr-ink'; canvas.width = deck.width; canvas.height = deck.height; stage.appendChild(canvas);
+  const laser = doc.createElement('div'); laser.className = 'pr-laser'; laser.hidden = true; stage.appendChild(laser);
+  const cx = canvas.getContext('2d');
+  const TOOLS = { pen: { color: '#e5332a', width: 4, alpha: 1 }, highlighter: { color: '#ffd500', width: 26, alpha: 0.38 } };
+  const redraw = () => {
+    cx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const st of ink.get(i) || []) { cx.globalAlpha = st.alpha; cx.strokeStyle = st.color; cx.lineWidth = st.width; cx.lineCap = cx.lineJoin = 'round'; cx.beginPath(); st.pts.forEach(([x, y], n) => (n ? cx.lineTo(x, y) : cx.moveTo(x, y))); cx.stroke(); }
+    cx.globalAlpha = 1;
+  };
+  const at = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * deck.width, ((e.clientY - r.top) / r.height) * deck.height]; };
+  const setTool = (t) => { tool = TOOLS[t] || t === 'eraser' || t === 'laser' ? t : null; ov.dataset.tool = tool || ''; canvas.style.pointerEvents = tool && tool !== 'laser' ? 'auto' : 'none'; laser.hidden = tool !== 'laser'; onChange?.({ i, step, slide: order[i], steps: prep?.steps.length || 0, tool }); return tool; };
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!tool) return; e.preventDefault(); try { canvas.setPointerCapture(e.pointerId); } catch {}
+    if (tool === 'eraser') { drawing = { erase: true }; erase(at(e)); return; }
+    const t = TOOLS[tool]; drawing = { ...t, pts: [at(e)] }; (ink.get(i) || ink.set(i, []).get(i)).push(drawing);
+  });
+  const erase = ([x, y]) => { const list = ink.get(i) || []; const keep = list.filter((st) => !st.pts.some(([a, b]) => Math.hypot(a - x, b - y) < 18 + st.width / 2)); if (keep.length !== list.length) { ink.set(i, keep); redraw(); } };
+  canvas.addEventListener('pointermove', (e) => { if (!drawing) return; if (drawing.erase) erase(at(e)); else { drawing.pts.push(at(e)); redraw(); } });
+  canvas.addEventListener('pointerup', () => { drawing = null; });
+  stage.addEventListener('pointermove', (e) => { if (tool === 'laser') { const [x, y] = at(e); laser.style.left = (x * k) + 'px'; laser.style.top = (y * k) + 'px'; } if (zoomed) { const r = stage.getBoundingClientRect(); stage.style.transformOrigin = `${e.clientX - r.left}px ${e.clientY - r.top}px`; } });
+  /* black and white screens, and a magnifier */
+  const veil = doc.createElement('div'); veil.className = 'pr-veil'; veil.hidden = true; ov.appendChild(veil);
+  const screen = (c) => { if (!c || veil.dataset.c === c) { veil.hidden = true; veil.dataset.c = ''; return null; } veil.hidden = false; veil.dataset.c = c; veil.style.background = c === 'white' ? '#fff' : '#000'; return c; };
+  let zoomed = false;
+  const magnify = (on = !zoomed) => { zoomed = on; stage.style.transform = on ? 'scale(2)' : ''; stage.style.transition = 'transform .25s'; return on; };
+  let typed = '';
+  const api = { next, prev, go, back, close, follow, pause, seek: (n, st) => show(n, st, { animate: false }), tool: setTool, screen, magnify, clearInk: () => { ink.delete(i); redraw(); }, get ink() { return ink; }, get paused() { return paused; }, get i() { return i; }, get step() { return step; }, get layer() { return layer; }, get order() { return order; }, overlay: ov, stage, deck, get scale() { return k; }, get prep() { return prep; } };
   ov.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (kiosk && e.key !== 'Escape') return;
+    const ctrl = e.ctrlKey || e.metaKey; const key = e.key.toLowerCase();
+    if (ctrl && 'piel'.includes(key) && key.length === 1) { setTool({ p: 'pen', i: 'highlighter', e: 'eraser', l: 'laser' }[key] === tool ? null : { p: 'pen', i: 'highlighter', e: 'eraser', l: 'laser' }[key]); e.preventDefault(); return; }
+    if (ctrl && key === 'a') { setTool(null); e.preventDefault(); return; }
+    if (!ctrl && /^[0-9]$/.test(e.key)) { typed += e.key; e.preventDefault(); return; }
+    if (e.key === 'Enter' && typed) { const n = order.findIndex((x) => x.number === +typed); typed = ''; if (n >= 0) go(n); e.preventDefault(); return; }
+    typed = '';
+    if (!ctrl && (key === 'b' || e.key === '.')) { screen('black'); e.preventDefault(); return; }
+    if (!ctrl && (key === 'w' || e.key === ',')) { screen('white'); e.preventDefault(); return; }
+    if (!ctrl && key === 'e' && !e.shiftKey) { ink.delete(i); redraw(); e.preventDefault(); return; }
+    if (e.key === '+' || e.key === '=') { magnify(true); e.preventDefault(); return; }
+    if (e.key === '-') { magnify(false); e.preventDefault(); return; }
+    if (e.key === 'Escape' && (tool || zoomed || !veil.hidden)) { setTool(null); magnify(false); screen(null); e.preventDefault(); return; }
     if (['ArrowRight', 'ArrowDown', ' ', 'PageDown', 'Enter', 'n'].includes(e.key)) next();
     else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p'].includes(e.key)) prev();
     else if (e.key === 'Home') show(0); else if (e.key === 'End') show(order.length - 1, Infinity, { animate: false });
@@ -173,12 +216,12 @@ export function startShow({ deck, order, start = 0, renderSlide, hydrate, onExit
     const l = e.target.closest('[data-link]'); const z = e.target.closest('[data-zoom]');
     if (l) { e.preventDefault(); follow(l.dataset.link); } else if (z && z.dataset.zoom) { e.preventDefault(); zoomTo(z); }
   });
-  stage.addEventListener('click', (e) => { if (kiosk) return; if (e.defaultPrevented || e.target.closest('a,[data-link],button,input,video,audio')) return; if (e.clientX > innerWidth / 3) next(); else prev(); });
-  document.addEventListener('fullscreenchange', function f() { if (!document.fullscreenElement && ov.isConnected && !ov.dataset.windowed) { document.removeEventListener('fullscreenchange', f); close(); } });
-  addEventListener('resize', size);
-  size(); show(i, 0, { animate: false }); ov.focus();
+  stage.addEventListener('click', (e) => { if (kiosk || (tool && tool !== 'laser')) return; if (e.defaultPrevented || e.target.closest('a,[data-link],button,input,video,audio')) return; if (e.clientX > innerWidth / 3) next(); else prev(); });
+  if (fullscreen) doc.addEventListener('fullscreenchange', function f() { if (!doc.fullscreenElement && ov.isConnected && !ov.dataset.windowed) { doc.removeEventListener('fullscreenchange', f); close(); } });
+  win.addEventListener('resize', size); const ro = root && 'ResizeObserver' in win ? new win.ResizeObserver(size) : null; ro?.observe(root);
+  size(); show(i, 0, { animate: false }); if (keys) ov.focus();
   decorate?.(api);
-  ov.requestFullscreen?.().catch(() => {});
+  if (fullscreen) ov.requestFullscreen?.().catch(() => {});
   return api;
 }
 

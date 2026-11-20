@@ -36,7 +36,7 @@ export function mountSlides(host, ctx) {
       <label class="sf-check"><input type="checkbox" data-sl-paginate> Slide numbers</label>
       <div class="sf-spacer"></div>
       <button class="btn" type="button" data-sl="export" aria-haspopup="menu">${icons.export} Export</button>
-      <button class="btn btn-primary" type="button" data-sl="present">${icons.play} Present</button>
+      <span class="sl-present-split"><button class="btn btn-primary" type="button" data-sl="present">${icons.play} Present</button><button class="btn btn-primary sl-present-more" type="button" data-sl="present-menu" aria-haspopup="menu" aria-label="More ways to present">▾</button></span>
     </div>
     <div class="sf-toolbar sl-fmtbar" role="toolbar" aria-label="Format selected object">
       <select class="rb-select sf-narrow" data-tx="style" aria-label="Paragraph style"><option value="p">Text</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option></select>
@@ -1128,11 +1128,52 @@ export function mountSlides(host, ctx) {
   notesEl.addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(() => editChunk((c) => setNotes(c, notesEl.value)), 350); });
   host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: 'Synced copy of a slide…', run: reuseSlide }, '-', ...BLOCKS.map(([id, l, body]) => ({ label: `Building block: ${l}`, run: () => addBlock(body) }))]));
   function addBlock(body) { const { fm, list } = chunks(); list.splice(cur + 1, 0, `\n${body}\n`); cur += 1; selected = []; commit(joinDeck(fm, list)); }
-  host.querySelector('[data-sl="present"]').addEventListener('click', async (e) => {
+  host.querySelector('[data-sl="present"]').addEventListener('click', () => present(cur));
+  host.querySelector('[data-sl="present-menu"]').addEventListener('click', async (e) => {
     const anchor = e.currentTarget; const { customShows } = await import('./slides-present.js'); const shows = Object.keys(customShows(deck));
-    if (!shows.length) return present(cur);
-    ctx.showMenu(anchor, [{ label: 'From this slide', run: () => present(cur) }, { label: 'From the beginning', run: () => present(0) }, '-', ...shows.map((n) => ({ label: `Custom show: ${n}`, run: () => present(0, n) }))]);
+    ctx.showMenu(anchor, [{ label: 'From this slide', run: () => present(cur) }, { label: 'From the beginning', run: () => present(0) }, '-',
+      { label: 'Presenter view', run: () => presenterView({}) }, { label: 'Rehearse timings', run: () => presenterView({ rehearse: true }) },
+      ...(shows.length ? ['-', ...shows.map((n) => ({ label: `Custom show: ${n}`, run: () => present(0, n) }))] : [])]);
   });
+  /** presenter view: notes, next slide, timer, tools; with rehearse, the time per slide is offered as auto-advance */
+  async function presenterView({ rehearse = false } = {}) {
+    const order = deck.shown; if (!order.length) return ctx.toast('There are no slides to present, only masters.');
+    const { startPresenterView } = await import('./slides-presenter.js');
+    const from = rehearse ? 0 : Math.max(0, order.indexOf(deck.slides[cur]));
+    const openLink = (L) => { if (/^https?:/.test(L)) window.open(L, '_blank'); };
+    show = startPresenterView({ deck, order, start: from, renderSlide, hydrate, openLink, rehearse, toast: ctx.toast,
+      qa: ctx.qa ? { start: () => ctx.qa.start(deck.global.title || deck.shown[0]?.title || ''), poll: () => ctx.qa.poll(), stop: () => ctx.qa.stop() } : null,
+      record: navigator.mediaDevices?.getUserMedia && ctx.saveAsset ? { start: recordNarration } : null,
+      onExit: async (s, { times }) => {
+        show = null; select(s?.index ?? cur);
+        if (times?.size && await ctx.confirm?.({ title: 'Keep these timings?', body: `Each slide will move on by itself after the time you spent on it (${times.size} slides). You can change or remove them per slide.`, action: 'Keep timings' })) {
+          const { fm, list } = chunks();
+          for (const [idx, ms] of times) list[idx] = setDirective(list[idx], 'advance', `${Math.max(1, Math.round(ms / 1000))}s`);
+          commit(joinDeck(fm, list)); ctx.toast('Timings saved as auto-advance.');
+        }
+      } });
+    window.__folioShow = show.show; window.__folioPresenter = show;
+  }
+  /** record narration while presenting: one clip per slide, added to the slide as an audio object that plays on its own */
+  async function recordNarration(slideNow) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const clips = []; let rec = null, slide = null, chunksA = [];
+    const begin = () => { slide = slideNow(); chunksA = []; rec = new MediaRecorder(stream); rec.ondataavailable = (e) => chunksA.push(e.data); rec.start(); };
+    const finish = () => new Promise((res) => { if (!rec) return res(); const s = slide; rec.onstop = () => { clips.push({ slide: s, blob: new Blob(chunksA, { type: rec.mimeType || 'audio/webm' }) }); res(); }; rec.stop(); });
+    begin();
+    const watch = setInterval(async () => { if (slideNow() !== slide) { await finish(); begin(); } }, 300);
+    return { stop: async () => {
+      clearInterval(watch); await finish(); stream.getTracks().forEach((t) => t.stop());
+      const { fm, list } = chunks();
+      for (const { slide: s, blob } of clips) {
+        if (!s || blob.size < 2000) continue;
+        const rel = await ctx.saveAsset(`narration-${s.number}.webm`, new Uint8Array(await blob.arrayBuffer()));
+        const W = deck.width, H = deck.height;
+        list[s.index] = list[s.index].replace(/\n*::: media #narration[^\n]*:::\n?/g, '\n').replace(/\n+$/, '') + `\n\n::: media #narration x=${W - 88} y=${H - 88} w=56 h=56 src=${/\s/.test(rel) ? `"${rel}"` : rel} autoplay=true :::\n`;
+      }
+      commit(joinDeck(fm, list)); ctx.toast(`Narration recorded for ${clips.filter((c) => c.blob.size >= 2000).length} slides.`);
+    } };
+  }
   host.querySelector('[data-sl="export"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [
     { label: 'PowerPoint (.pptx)…', run: () => exportPptx() },
     { label: 'PDF…', run: () => exportPdf() },

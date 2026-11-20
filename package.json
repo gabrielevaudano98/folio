@@ -72,6 +72,7 @@
     "polygon-clipping": "^0.15.7",
     "pptxgenjs": "^4.0.1",
     "pptxtojson": "^3.0.0",
+    "qrcode-generator": "^1.5.2",
     "selecto": "^1.26.3",
     "zod": "^4.6.7"
   },
