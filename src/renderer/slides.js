@@ -187,15 +187,43 @@ export function mountSlides(host, ctx) {
   }
   new ResizeObserver(fit).observe(stage);
 
+  /* thumbnails: rendered when they scroll into view, and cached until their slide (or the deck's look) changes */
+  const thumbCache = new Map(); let thumbObs = null; let thumbSig = ''; let thumbList = [];
+  function thumbKey(s) {
+    const raw = thumbList[s.index] ?? '';
+    return /:::\s*zoom\b/.test(raw) ? null : `${thumbSig}\u0000${s.number}\u0000${raw}`;
+  }
+  function thumbHtml(s, i) {
+    const key = thumbKey(s); const hit = key && thumbCache.get(key);
+    if (hit) return hit;
+    // the current slide and its neighbours render now; the rest when they scroll into view
+    if (Math.abs(i - cur) > 6) return '';
+    const html = renderSlide(deck, s); if (key) thumbCache.set(key, html); return html;
+  }
+  function watchThumbs() {
+    thumbObs?.disconnect();
+    thumbObs = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const li = e.target; const i = +li.dataset.i; const s = deck.slides[i]; const box = li.querySelector('.sl-scale');
+        if (box && !box.firstElementChild && s) { const key = thumbKey(s); let html = key && thumbCache.get(key); if (!html) { html = renderSlide(deck, s); if (key) thumbCache.set(key, html); } box.innerHTML = html; }
+        if (box && !li.dataset.hydrated) { hydrate(li); li.dataset.hydrated = '1'; }
+        thumbObs.unobserve(li);
+      }
+    }, { root: thumbs, rootMargin: '600px 0px' });
+    thumbs.querySelectorAll('.sl-thumb').forEach((li) => thumbObs.observe(li));
+    if (thumbCache.size > 2000) thumbCache.clear();
+  }
   function render({ keepEditor = false, keepFrame = false } = {}) {
+    { const { fm, list } = chunks(); thumbList = list; thumbSig = `${fm}\u0000${deck.masters.filter((m) => !m.fromTemplate).map((m) => list[m.index]).join('\u0001')}\u0000${deck.template ? 'tpl' : ''}\u0000${deck.width}x${deck.height}`; }
     if (!deck) return;
     const tk = 176 / deck.width;
     thumbs.innerHTML = deck.slides.map((s, i) => `${s.section ? `<li class="sl-section" data-sec="${i}" role="presentation"><span>${esc(s.section)}</span><button type="button" class="sl-sec-btn" data-sec-menu="${i}" aria-label="Section ${esc(s.section)} options">…</button></li>` : ''}
       <li class="sl-thumb${s.master ? ' is-master' : ''}${s.hidden ? ' is-hidden' : ''}" data-i="${i}" draggable="true" aria-current="${i === cur}" tabindex="0" aria-label="${s.master ? `Master slide${s.master !== 'all' ? ' for ' + esc(s.master) + ' slides' : ''}` : `Slide ${s.number}`}${s.title ? ': ' + esc(s.title) : ''}">
         <span class="sl-thumb-n">${s.master ? 'M' : s.number}${s.hidden ? '<span class="sl-badge" title="Hidden in the presentation">hidden</span>' : ''}${s.comments.length ? `<span class="sl-badge" title="${s.comments.length} ${s.comments.length === 1 ? 'comment' : 'comments'}">${s.comments.length} ${s.comments.length === 1 ? "comment" : "comments"}</span>` : ''}</span>
-        <div class="sl-thumb-box" style="width:176px;height:${deck.height * tk}px"><div class="sl-scale" style="transform:scale(${tk})">${renderSlide(deck, s)}</div></div>
+        <div class="sl-thumb-box" style="width:176px;height:${deck.height * tk}px"><div class="sl-scale" style="transform:scale(${tk})">${thumbHtml(s, i)}</div></div>
       </li>`).join('');
-    hydrate(thumbs);
+    watchThumbs();
     loadFonts();
     const s = deck.slides[cur];
     if (!keepFrame) {
