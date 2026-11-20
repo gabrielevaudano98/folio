@@ -287,6 +287,8 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
     setMarkdown(md, { keepHistory = false } = {}) {
       const m = md.match(FM);
+      // the front matter lives outside the editor's history, so an outside change to it starts a fresh history
+      if ((m ? m[0] : '') !== frontmatter) keepHistory = false;
       frontmatter = m ? m[0] : '';
       silent = true;
       try { editor.commands.setContent(md.slice(frontmatter.length), { contentType: 'markdown', emitUpdate: false }); }
