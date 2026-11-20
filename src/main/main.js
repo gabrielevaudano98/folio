@@ -298,11 +298,11 @@ h('fs:data-url', async (src, noteRel) => {
     // a note can name any address: no private network (checked by name and by what it resolves to), only images, audio, video and fonts, bounded in size and time
     const { net } = await import('electron');
     // follow redirects by hand so every hop is checked before it is requested
-    let url = src, res;
+    let url = src, res; const signal = AbortSignal.timeout(20000); // one deadline for the whole download, redirects included
     for (let hop = 0; ; hop++) {
       if (hop > 5) throw new Error('Too many redirects.');
       await assertPublicHost(new URL(url).hostname);
-      res = await net.fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
+      res = await net.fetch(url, { redirect: 'manual', signal });
       const next = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
       if (!next) break;
       url = new URL(next, url).href; if (!/^https?:\/\//.test(url)) throw new Error('That address is not a web address.');
