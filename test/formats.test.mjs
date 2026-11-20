@@ -273,6 +273,10 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.equal(shown[1].hidden, true); assert.equal(shown[0].section, 'Intro'); assert.match(md, /- Revenue up\n- Costs flat/); assert.match(shown[1].notes || md, /Say the number first\./); ok('body text, hidden slides, sections and speaker notes come across');
   assert.match(md, /::: shape #s\d+ type=ellipse x=960 y=480 w=192 h=192 fill=#0a5c36/); assert.match(md, /::: line #l\d+ x=96 y=624 w=384 h=0 head=arrow stroke=#333333/); assert.match(md, /\| A \| B \|\n\| --- \| --- \|\n\| 1 \| 2 \|/); ok('shapes, arrows and tables land at the same geometry on the 1280×720 canvas');
   const ifm = parseFrontmatter(md); assert.equal(joinDeck(ifm.raw, splitSlides(ifm.body)), md); ok('an imported deck round-trips byte for byte');
+  const PM = await import('../src/renderer/slides-pptx-motion.js');
+  assert.equal(PM.transitionXml('push-left 1s', 5), '<p:transition spd="slow" advTm="5000"><p:push dir="l"/></p:transition>'); assert.deepEqual(PM.readTransition('<p:transition spd="slow" advTm="5000"><p:push dir="l"/></p:transition>'), { transition: 'push-left 1s', advance: '5s' });
+  const tx = PM.timingXml(parseDeck(fx('Motion.slides.md')).slides[0].animations, { a: [{ spid: '3', paras: 1 }], b: [{ spid: '4', paras: 3 }] });
+  assert.deepEqual(PM.readAnimations(tx, (id) => ({ 3: 'a', 4: 'b' })[id]), ['#a fade-in', '#b fly-in-up with 400ms delay=200ms', '#b pulse after by=paragraph']); ok('transitions and animations round-trip through PowerPoint timing XML');
   const tpl = await I.importPowerPoint(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), { parse, name: 'Review', template: true });
   const td = parseDeck(tpl); assert.match(tpl, /template-name: Review/); assert.equal(td.masters.length, 2); assert.equal(td.slides.filter((x) => !x.master).length, 2); ok('a template import keeps the layouts as masters with one sample slide each');
 }

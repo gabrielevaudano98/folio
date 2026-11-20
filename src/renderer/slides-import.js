@@ -235,8 +235,9 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
     return saveAsset(`${label || 'pic'}-${++assetN}.${ext || 'bin'}`, bytes);
   };
 
-  // one object per pptxtojson element
-  let idN = 0;
+  // one object per pptxtojson element; a name like `!!claim` (Folio's export, PowerPoint's Morph) keeps its id
+  let idN = 0; let spidMap = {};
+  const own = (el, prefix) => { const nm = String(el.name || ''); const id = /^!!([\w-]+)$/.test(nm) ? nm.slice(2) : `${prefix}${++idN}`; spidMap[String(el.id)] = id; return `#${id}`; };
   const convert = async (el, dx = 0, dy = 0, skipIds = new Set()) => {
     if ((el.type === 'text' || el.type === 'shape') && skipIds.has(String(el.id))) return [];
     const x = P(el.left + dx), y = P(el.top + dy), w = P(el.width), h = P(el.height);
@@ -261,14 +262,14 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       const rows = el.data || []; if (!rows.length) return [];
       const cell = (c) => plain(c.text).replace(/\|/g, '\\|') || ' ';
       const head = `| ${rows[0].map(cell).join(' | ')} |`, sep = `|${rows[0].map(() => ' --- ').join('|')}|`;
-      return [`::: box ${attrs({ [`#t${++idN}`]: 1, ...geo })}\n${[head, sep, ...rows.slice(1).map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n')}\n:::`];
+      return [`::: box ${attrs({ [own(el, 't')]: 1, ...geo })}\n${[head, sep, ...rows.slice(1).map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n')}\n:::`];
     }
     if (el.type === 'chart') {
       const T = { barChart: el.barDir === 'bar' ? 'bar' : 'column', bar3DChart: 'column', lineChart: 'line', line3DChart: 'line', areaChart: 'area', area3DChart: 'area', pieChart: 'pie', pie3DChart: 'pie', doughnutChart: 'pie', scatterChart: 'scatter' };
       const items = el.data || []; const cats = items[0]?.values?.map((v) => items[0].xlabels?.[v.x] ?? v.x) || [];
       if (!items.length) return [];
       const table = [`| | ${items.map((s) => s.key).join(' | ')} |`, `|---|${items.map(() => '---').join('|')}|`, ...cats.map((c, i) => `| ${c} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)];
-      return [`::: box ${attrs({ [`#c${++idN}`]: 1, ...geo })}\n\`\`\`chart\ntype: ${T[el.chartType] || 'column'}\n${(el.grouping || el.barGrouping) === 'stacked' ? 'stacked: true\n' : ''}data:\n${table.join('\n')}\n\`\`\`\n:::`];
+      return [`::: box ${attrs({ [own(el, 'c')]: 1, ...geo })}\n\`\`\`chart\ntype: ${T[el.chartType] || 'column'}\n${(el.grouping || el.barGrouping) === 'stacked' ? 'stacked: true\n' : ''}data:\n${table.join('\n')}\n\`\`\`\n:::`];
     }
     // shapes and text boxes
     const shapType = el.shapType || 'rect';
@@ -277,7 +278,7 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       let lx = x, ly = y, lw = w, lh = h;
       if (el.isFlipH) { lx = round(x + w); lw = -w; } if (el.isFlipV) { ly = round(y + h); lh = -h; }
       const end = (e) => (e && e.type && e.type !== 'none' ? 'arrow' : undefined);
-      return [`::: line ${attrs({ [`#l${++idN}`]: 1, x: lx, y: ly, w: lw, h: lh, rotate: geo.rotate, head: end(el.tailEnd), tail: end(el.headEnd), stroke: color(el.borderColor), width: el.borderWidth ? P(el.borderWidth) : undefined, dash: el.borderType && el.borderType !== 'solid' ? 'true' : undefined, route: /^bent/.test(shapType) ? 'elbow' : undefined })} :::`];
+      return [`::: line ${attrs({ [own(el, 'l')]: 1, x: lx, y: ly, w: lw, h: lh, rotate: geo.rotate, head: end(el.tailEnd), tail: end(el.headEnd), stroke: color(el.borderColor), width: el.borderWidth ? P(el.borderWidth) : undefined, dash: el.borderType && el.borderType !== 'solid' ? 'true' : undefined, route: /^bent/.test(shapType) ? 'elbow' : undefined })} :::`];
     }
     const { md, look } = htmlToMd(el.content);
     const fill = fillAttr(el.fill);
@@ -291,14 +292,14 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       const radius = shapType === 'roundRect' ? round(Math.min(w, h) * (el.keypoints?.adj ?? 0.1667)) : undefined;
       // PowerPoint lets text overflow its frame; a Folio box clips, so an unfilled text box gets room to grow
       const roomy = !fill && !stroke && md ? { h: round(h * 1.12 + 8) } : {};
-      return [`::: box ${attrs({ [`#b${++idN}`]: 1, ...geo, ...roomy, fill, stroke, border: stroke ? P(el.borderWidth) : undefined, radius, valign: valign && valign !== 'top' ? valign : undefined, ...textLook })}\n${md}\n:::`];
+      return [`::: box ${attrs({ [own(el, 'b')]: 1, ...geo, ...roomy, fill, stroke, border: stroke ? P(el.borderWidth) : undefined, radius, valign: valign && valign !== 'top' ? valign : undefined, ...textLook })}\n${md}\n:::`];
     }
-    if (preset) return [`::: shape ${attrs({ [`#s${++idN}`]: 1, type: preset, ...geo, fill: fill || 'none', stroke, border: stroke ? P(el.borderWidth) : undefined, dash: el.borderType && el.borderType !== 'solid' ? 'true' : undefined, ...textLook })}${md ? `\n${md}\n:::` : ' :::'}`];
+    if (preset) return [`::: shape ${attrs({ [own(el, 's')]: 1, type: preset, ...geo, fill: fill || 'none', stroke, border: stroke ? P(el.borderWidth) : undefined, dash: el.borderType && el.borderType !== 'solid' ? 'true' : undefined, ...textLook })}${md ? `\n${md}\n:::` : ' :::'}`];
     // any other geometry: a free shape with its outline
     const d = el.path && el.pathViewBox ? unitPath(el.path, el.pathViewBox.width, el.pathViewBox.height) : null;
     const lines = [];
-    if (d) lines.push(`::: path ${attrs({ [`#p${++idN}`]: 1, ...geo, d, fill: fill || 'none', stroke, border: stroke ? P(el.borderWidth) : undefined })} :::`);
-    if (md) lines.push(`::: box ${attrs({ [`#b${++idN}`]: 1, ...geo, valign: valign || 'middle', align: 'center', ...textLook })}\n${md}\n:::`);
+    if (d) lines.push(`::: path ${attrs({ [own(el, 'p')]: 1, ...geo, d, fill: fill || 'none', stroke, border: stroke ? P(el.borderWidth) : undefined })} :::`);
+    if (md) lines.push(`::: box ${attrs({ [own(el, 'b')]: 1, ...geo, valign: valign || 'middle', align: 'center', ...textLook })}\n${md}\n:::`);
     return lines;
   };
 
@@ -315,7 +316,7 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       if (ROLE_SKIP.test(ph.type)) { if (ph.type === 'sldNum') paginate = true; skip.add(String(el.id)); continue; }
       if (!asMaster && ph.role && info.layout?.ph.some((p) => p.role === ph.role) && !flow[ph.role]) {
         const { md } = htmlToMd(el.content);
-        flow[ph.role] = ph.role === 'title' ? plain(el.content) : md; skip.add(String(el.id));
+        flow[ph.role] = ph.role === 'title' ? plain(el.content) : md; skip.add(String(el.id)); if (ph.role !== 'title') spidMap[String(el.id)] = 'body';
       }
     }
     if (flow.title) lines.push(`# ${flow.title.replace(/^#+\s*/, '')}`);
@@ -366,9 +367,18 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       if (L?.ph.some((p) => p.role === 'subtitle')) lines.push('Replace with your subtitle');
       if (L?.ph.some((p) => p.role === 'body')) lines.push('- A first point\n- A second point\n  - A detail');
     } else {
+      spidMap = {};
       const { flow, objects } = await slideText(s, si);
       if (flow) lines.push(flow);
       lines.push(...objects);
+      // transitions, auto-advance and animations, read from the slide part
+      const sx = (await zip.file(si.part)?.async('string')) || '';
+      const motion = await import('./slides-pptx-motion.js');
+      const { transition, advance } = motion.readTransition(sx);
+      if (transition) lines.unshift(`<!-- transition: ${transition} -->`);
+      if (advance) lines.unshift(`<!-- advance: ${advance} -->`);
+      const anims = motion.readAnimations(sx, (spid) => spidMap[spid]);
+      if (anims.length) lines.push(`<!--\n${anims.map((a) => 'animate: ' + a).join('\n')}\n-->`);
     }
     const note = plain(s.note); if (note && !synthetic) lines.push(`<!-- ${note.replace(/-->/g, '—>')} -->`);
     blocks.push(lines.join('\n\n'));

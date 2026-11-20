@@ -31,6 +31,7 @@ const r1 = await run([
   open('Pitch.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 7000 },
   { js: 'window.__folioSurface.exportHandouts({perPage:3});1', wait: 4000 }, { js: 'window.__folioSurface.exportHandouts({notes:true});1', wait: 4000 },
   open('Swiss.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 6000 },
+  open('Motion.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 5000 },
   { js: 'window.__folioErrors||[]', log: true, wait: 100 },
 ]);
 assert.deepEqual(r1.js.at(-1), [], r1.log.slice(-2000));
@@ -45,6 +46,10 @@ const sz = await JSZip.loadAsync(fs.readFileSync(path.join(out, 'Swiss.pptx')));
 const layouts = await Promise.all(Object.keys(sz.files).filter((f) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(f)).map((f) => sz.file(f).async('string')));
 const titleLayout = layouts.find((x) => /name="Folio · title"/.test(x)); assert(titleLayout, 'title layout');
 assert.match(titleLayout, /type="title"/); assert.match(titleLayout, /anchor="b"/); console.log('  ✓ masters become slide layouts with title and body placeholders, anchored as in Folio');
+const mz = await JSZip.loadAsync(fs.readFileSync(path.join(out, 'Motion.pptx')));
+const m1 = await mz.file('ppt/slides/slide1.xml').async('string'), m2 = await mz.file('ppt/slides/slide2.xml').async('string');
+assert.match(m1, /<p:transition spd="med"><p:fade\/><\/p:transition><p:timing>/); assert.match(m1, /presetID="2" presetClass="entr" presetSubtype="4"[^>]*nodeType="withEffect"/); assert.match(m1, /<p:bldP spid="\d+" grpId="0" build="p"/); assert.match(m2, /p159:morph/);
+console.log('  ✓ transitions, Morph and animations are native PowerPoint timing (objects named for Morph)');
 const pages = (f) => (fs.readFileSync(path.join(out, f)).toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
 assert.equal(pages('Pitch handouts.pdf'), 4); assert.equal(pages('Pitch notes.pdf'), 11); console.log('  ✓ handouts put three slides on a page; notes pages hold one slide each');
 
