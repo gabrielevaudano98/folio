@@ -43,6 +43,7 @@ export const TABS = [
     { label: 'Blocks', rank: 2, items: [big('ins:callout', 'Callout', 'callout'), [[txt('ins:toggle', 'Toggle', 'chevron')], [txt('ins:code', 'Code', 'codeBlock')], [txt('ins:divider', 'Divider', 'divider')]], [[txt('ins:mermaid', 'Diagram', 'board')], [txt('ins:chart', 'Chart', 'chart')], [txt('ins:synced', 'Synced block', 'copy')]]] },
     { label: 'Links', rank: 5, items: [big('ins:link', 'Link to page', 'link', 'Mod+Shift+K'), [[txt('link', 'Web link', 'link', 'Mod+K')], [txt('ins:embed', 'Embed page', 'doc')], [txt('ins:value', 'Live value', 'sheet')]], [[txt('ins:today', 'Date', 'calendar')], [txt('ins:status', 'Status', 'status')], [txt('emoji', 'Emoji', 'emoji')]]] },
     { label: 'Symbols', rank: 1, items: [big('blockMath', 'Equation', 'sigma'), [[txt('inlineMath', 'Inline maths', 'sigma', 'Mod+Shift+M')], [txt('footnote', 'Footnote', 'footnote', 'Mod+Alt+F')], [txt('hiddenComment', 'Hidden note', 'commentHidden')]]] },
+    { label: 'Templates', rank: 6, items: [big('app:template', 'Template', 'doc', 'Mod+Alt+T', { tip: 'Insert a page from Templates/' }), [[txt('app:template-button', 'Button', 'plus', null, { tip: 'A button that inserts a template, as in Notion' })], [txt('app:daily-note', 'Today', 'calendar', 'Mod+Alt+D')]]] },
     { label: 'More', rank: 99, items: [big('slash', 'All blocks', 'plus', '/', { tip: 'Everything you can insert, as the / menu' })] },
   ] },
   { id: 'layout', label: 'Layout', groups: [

@@ -22,6 +22,7 @@ import { sections, moveSection, shiftSection } from '../src/renderer/page-outlin
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag } from '../src/renderer/page-props.js';
+import { formatDate, fillTemplate, splitTemplate, mergeProps, parseButton, buttonSource, listTemplates, STARTERS, CURSOR } from '../src/renderer/page-templates.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -325,6 +326,29 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     st = EditorState.create({ doc: f.doc }); replaceAll(st, (tr) => { st = st.apply(tr); }, '(al)pha', '$1to', { regex: true });
     assert.equal(codec.save(f.m, st.doc), '# Find\n\nalto **beta** Alto\n\nnot altobet\n');
     ok('find: case, whole words, patterns, across bold text; replace all is one step and keeps formatting'); }
+  { // D9: templates
+  const now = new Date(2026, 10, 20, 9, 5);
+  assert.equal(formatDate(now, 'dddd D MMMM YYYY, HH:mm [at] h a'), 'Friday 20 November 2026, 09:05 at 9 am'); assert.equal(formatDate(now), '2026-11-20');
+  const f = fillTemplate('# {{title}}\n{{date}} {{ time }} {{date:DD/MM}} {{yesterday}} {{tomorrow}} {{weekday}} {{Budget.sheet#A1}} {{cursor}}', { title: 'Plan', now });
+  assert.equal(f, `# Plan\n2026-11-20 09:05 20/11 2026-11-19 2026-11-21 Friday {{Budget.sheet#A1}} ${CURSOR}`);
+  ok('template variables: title, dates and times with formats, yesterday and tomorrow; Folio live values {{…}} are left alone');
+  assert.deepEqual(splitTemplate('---\ntags: [a]\n---\n\n# T\n'), { fm: '---\ntags: [a]\n---\n', body: '# T\n' });
+  assert.equal(mergeProps('---\ntags: [x, A]\nowner: Ada\n---\n', '---\ntags: [a, meeting]\nowner: Bob\ndate: 2026-11-20\n---\n'), '---\ntags: [x, A, meeting]\nowner: Ada\ndate: 2026-11-20\n---\n');
+  assert.equal(mergeProps('', '---\ntags: [daily]\n---\n'), '---\ntags:\n  - daily\n---\n'); ok("a template's properties join the page's: new keys added, tags joined, existing values kept");
+  const b = { label: 'New meeting', template: 'Meeting notes', where: 'above' };
+  assert.deepEqual(parseButton(buttonSource(b).replace(/^```template-button\n|```$/g, '')), b); assert.deepEqual(parseButton('template: Decision log'), { label: 'New Decision log', template: 'Decision log', where: 'below' });
+  const btn = open(buttonSource(b) + '\n'); assert(!btn.m.blocks.some((x) => x.raw)); assert.equal(codec.save(btn.m, btn.doc), buttonSource(b) + '\n');
+  ok('a template button is a ```template-button``` fence (readable anywhere) and round-trips');
+  const list = listTemplates(['Templates/Meeting notes.md', 'Templates/Mine.md', 'Templates/Deck.slides.md', 'Other/x.md']);
+  assert.deepEqual(list.map((t) => t.name + (t.starter ? '*' : '')), ['Meeting notes', 'Mine', 'Daily note*', 'Decision log*', 'Project brief*', 'Status report*', 'Review tracker*']);
+  ok('your Templates/ pages come first and replace starters of the same name');
+  for (const s of STARTERS) {
+    const text = fillTemplate(s.text, { title: s.name, now }).split(CURSOR).join('');
+    const o = open(text); assert(!o.m.blocks.some((x) => x.raw), s.name + ': ' + o.m.blocks.filter((x) => x.raw).map((x) => x.src).join('|')); assert.equal(codec.save(o.m, o.doc), text, s.name);
+    assert(parseProps(text).props.length >= 1, s.name);
+  }
+  ok('every starter template is fully editable (no raw blocks) and opens without changes'); }
+
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];

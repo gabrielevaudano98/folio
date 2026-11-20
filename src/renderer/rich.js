@@ -12,6 +12,8 @@ import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
 import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
 import { FindReplace, mountFindBar } from './page-find.js';
 import { mountProps } from './page-props-ui.js';
+import { parseButton, splitTemplate, mergeProps, intoPage, CURSOR } from './page-templates.js';
+const escHtml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 import { Markdown } from '@tiptap/markdown';
 import { Placeholder } from '@tiptap/extensions';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
@@ -26,7 +28,7 @@ import { InlineMath, BlockMath, FootnoteRef, FootnoteInline, FootnoteDef, COLORS
 import { createPageCodec } from './page-core.js';
 
 /* code blocks: mermaid and chart blocks show the drawing, the source opens on demand */
-const VISUAL = ['mermaid', 'chart'];
+const VISUAL = ['mermaid', 'chart', 'template-button'];
 /* languages offered in a code block's menu (any other name typed in the file is kept) */
 const LANGS = [['', 'Plain text'], ['js', 'JavaScript'], ['ts', 'TypeScript'], ['json', 'JSON'], ['python', 'Python'], ['bash', 'Shell'], ['html', 'HTML'], ['css', 'CSS'], ['sql', 'SQL'], ['yaml', 'YAML'], ['markdown', 'Markdown'], ['java', 'Java'], ['kotlin', 'Kotlin'], ['swift', 'Swift'], ['go', 'Go'], ['rust', 'Rust'], ['c', 'C'], ['cpp', 'C++'], ['csharp', 'C#'], ['php', 'PHP'], ['ruby', 'Ruby'], ['xml', 'XML'], ['diff', 'Diff'], ['ini', 'INI / TOML'], ['mermaid', 'Diagram (Mermaid)'], ['chart', 'Chart']];
 
@@ -73,7 +75,7 @@ const CodeHighlight = Extension.create({
   },
 });
 const FolioCodeBlock = CodeBlock.extend({
-  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false }; },
+  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null }; },
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('div'); dom.className = 'rich-code';
@@ -87,6 +89,11 @@ const FolioCodeBlock = CodeBlock.extend({
         clearTimeout(timer);
         timer = setTimeout(async () => {
           if (lang === 'mermaid') { preview.innerHTML = '<div class="mermaid"><pre class="mermaid-src" hidden></pre></div>'; preview.querySelector('.mermaid-src').textContent = text; await renderMermaid(preview, opts.isDark()); }
+          if (lang === 'template-button') {
+            const b = parseButton(text);
+            preview.innerHTML = `<button type="button" class="btn template-btn" data-tip="Inserts the template “${escHtml(b.template || '?')}” ${b.where === 'above' ? 'above' : 'below'} this button">${opts.plusIcon || ''}<span>${escHtml(b.label)}</span></button>`;
+            return;
+          }
           if (lang === 'chart') { preview.innerHTML = `<div class="chart-block" data-spec="${encodeURIComponent(text)}"></div>`; await hydrateCharts(preview, opts.readNote); }
         }, 250);
       };
@@ -96,7 +103,7 @@ const FolioCodeBlock = CodeBlock.extend({
         dom.classList.toggle('is-visual', visual); dom.classList.toggle('is-editing', !visual || editing);
         const known = LANGS.some(([v]) => v === lang);
         const select = `<select class="rich-code-lang" aria-label="Code language">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
-        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select;
+        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select;
         if (visual) draw(n.textContent); else preview.innerHTML = '';
       };
       bar.addEventListener('change', (e) => {
@@ -109,7 +116,8 @@ const FolioCodeBlock = CodeBlock.extend({
         e.preventDefault(); editing = !editing; sync(node);
         if (editing && typeof getPos === 'function') editor.chain().focus().setTextSelection(getPos() + 1).run();
       });
-      preview.addEventListener('dblclick', () => { editing = true; sync(node); });
+      preview.addEventListener('dblclick', (e) => { if (e.target.closest('.template-btn')) return; editing = true; sync(node); });
+      preview.addEventListener('click', (e) => { if (!e.target.closest('.template-btn') || typeof getPos !== 'function') return; const b = parseButton(node.textContent); opts.onTemplateButton?.(b, b.where === 'above' ? getPos() : getPos() + node.nodeSize); });
       sync(node);
       return { dom, contentDOM: code, update(n) { if (n.type !== node.type) return false; node = n; sync(n); return true; }, stopEvent: (e) => bar.contains(e.target) || preview.contains(e.target), ignoreMutation: (m) => !code.contains(m.target) };
     };
@@ -629,7 +637,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -659,12 +667,12 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
 
-  const insertCtx = () => ({ addProperty: () => props.add(), pickImage: onPickImage, pickRef, createDoc, pickMedia, askUrl, footnote: (e) => pageCmd.footnote(e) });
+  const insertCtx = () => ({ appCommand: (id) => onCommand?.(id), addProperty: () => props.add(), pickImage: onPickImage, pickRef, createDoc, pickMedia, askUrl, footnote: (e) => pageCmd.footnote(e) });
   const editor = new Editor({
     element: page,
     extensions: [
       ...pageExtensions({
-        codeBlock: FolioCodeBlock.configure({ readNote, isDark, HTMLAttributes: { spellcheck: 'false' } }),
+        codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
         image: FolioImage.configure({ resolve: resolveImage, inline: false, allowBase64: true, openFile: (src) => openMedia?.(src), openUrl: (u) => openMedia?.(u) }),
         raw: RawBlock,
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
@@ -1083,6 +1091,31 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     },
     find(replace = false) { return findBar.open(replace); },
     addProperty() { props.add(); },
+    /* put a filled template in this page: its properties join the page's, its body goes at the cursor (or at pos) */
+    insertTemplate(text, pos = null) {
+      const { fm, body: raw } = splitTemplate(text); const body = text.startsWith('```template-button') ? raw : intoPage(raw);
+      if (fm) { const merged = mergeProps(model?.fm || '', fm); if (merged !== (model?.fm || '')) { const old = model.fm; model.fm = merged; model.text = merged + model.text.slice(old.length); props.render(); } }
+      const nodes = body.trim() ? codec.load(body).json.content : [];
+      if (nodes.length) {
+        const c = editor.chain().focus();
+        if (pos != null) c.insertContentAt(pos, nodes);
+        else {
+          const { $from } = editor.state.selection;
+          if ($from.parent.type.name === 'paragraph' && !$from.parent.content.size && $from.depth >= 1) c.insertContentAt({ from: $from.before(), to: $from.after() }, nodes);
+          else c.insertContentAt($from.depth >= 1 ? $from.after(1) : $from.pos, nodes);
+        }
+        c.run();
+      }
+      // the caret goes where the template said {{cursor}}; the marker never reaches the file
+      let at = null;
+      editor.state.doc.descendants((n, p) => { if (at == null && n.isText && n.text.includes(CURSOR)) at = p + n.text.indexOf(CURSOR); return at == null; });
+      if (at != null) editor.chain().focus().deleteRange({ from: at, to: at + CURSOR.length }).setTextSelection(at).run();
+      else {
+        const tr = editor.state.tr; editor.state.doc.descendants((n, p) => { if (n.type.name === 'folioRaw' && n.attrs.source.includes(CURSOR)) tr.setNodeMarkup(p, undefined, { ...n.attrs, source: n.attrs.source.split(CURSOR).join('') }); });
+        if (tr.docChanged) editor.view.dispatch(tr);
+      }
+      emit(); return true;
+    },
     setRibbonMode(m) { ribbon.setMode(m); },
     zoom(step) { return step === 0 ? setZoom(1) : setZoom(pv.zoom + step * 0.1); },
     sync() { syncToolbar(); },

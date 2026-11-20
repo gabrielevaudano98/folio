@@ -12,6 +12,7 @@ import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { renameTag } from './page-props.js';
+import { listTemplates, fillTemplate, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS } from './page-templates.js';
 import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
@@ -137,9 +138,10 @@ async function boot() {
     askUrl: (title) => prompt({ title, label: 'Address', placeholder: 'https://', action: 'Insert' }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
     openMedia: (src) => openMedia(src),
     createDoc: createDocHere,
-    onCommand: (id) => { if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
+    onCommand: (id) => { if (id === 'template') return insertTemplateCmd(); if (id === 'daily-note') return openDailyNote(todayKey()); if (id === 'template-button') return insertTemplateButton(); if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
     isOn: (id) => (id === 'focus' ? app.classList.contains('focus') : id === 'outline' ? app.dataset.outline === 'open' : id === 'spellcheck' ? !!S.settings.spellcheck : false),
     onTag: (t) => showTag(t),
+    onTemplate: (b, pos) => runTemplateButton(b, pos),
     onStats: (st) => { S.richStats = st; if (isRich()) renderStatus(); },
     mentions: mentionCtx,
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
@@ -627,8 +629,60 @@ async function openDailyNote(day) {
   const existing = resolveTarget(day, S.files, S.active || '');
   if (existing) return openRef(existing);
   const d = new Date(`${day}T12:00:00`);
-  const p = await folio.create(`${JOURNAL}/${day}.md`, `# ${longDay(d)}\n\n`);
+  const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === DAILY.toLowerCase());
+  const text = t ? fillTemplate(await templateText(t), { title: day, now: d }).split(CURSOR).join('') : `# ${longDay(d)}\n\n`;
+  const p = await folio.create(`${JOURNAL}/${day}.md`, text);
   await refreshTree(); openFile(p);
+}
+const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+/* templates (D9): pages in Templates/ and the starters; filled with {{title}}, {{date}}… when used */
+const templateText = async (t) => (t.path ? await textOf(t.path) : t.text);
+function pickTemplate({ title = 'Insert template', note = 'Its properties join this page’s and its text goes at the cursor.', action = 'Insert' } = {}) {
+  return new Promise((resolve) => {
+    const d = $('#sheet-prompt'); const list = listTemplates(S.files);
+    d.innerHTML = `<form method="dialog" class="prompt-form tpl-form">
+      <div class="sheet-head"><div><h2 id="prompt-title">${esc(title)}</h2><p>${esc(note)} Your own templates are the pages in <b>${TEMPLATE_DIR}/</b>.</p></div></div>
+      <div class="sheet-body"><fieldset class="tpl-list"><legend class="visually-hidden">Template</legend>
+        ${list.map((t, i) => `<label class="tpl-card"><input type="radio" name="tpl" value="${i}"${i === 0 ? ' checked' : ''}><span class="tpl-name">${esc(t.name)}</span><span class="tpl-desc">${esc(t.starter ? t.desc : t.path)}</span>${t.starter ? '<span class="tpl-badge">Starter</span>' : ''}</label>`).join('')}
+      </fieldset></div>
+      <div class="sheet-foot"><button class="btn" type="button" data-edit>Edit templates…</button><span class="rb-spacer"></span><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`;
+    const done = (v) => { d.close(); resolve(v); };
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); done(list[+d.querySelector('[name=tpl]:checked').value]); };
+    d.querySelector('[data-cancel]').onclick = () => done(null);
+    d.querySelector('[data-edit]').onclick = () => { done(null); editTemplates(); };
+    d.addEventListener('dblclick', (e) => { const c = e.target.closest('.tpl-card'); if (c) { c.querySelector('input').checked = true; d.querySelector('form').requestSubmit(); } }, { once: true });
+    d.oncancel = () => resolve(null);
+    d.showModal(); d.querySelector('[name=tpl]:checked')?.focus();
+  });
+}
+/* copy the starters into Templates/ (only the missing ones) and show the folder */
+async function editTemplates() {
+  if (!S.workspace) return chooseFolder();
+  let made = 0;
+  for (const st of STARTERS) { const p = `${TEMPLATE_DIR}/${st.name}.md`; if (S.files.includes(p)) continue; try { await folio.create(p, st.text); made++; } catch { /* exists */ } }
+  S.expanded.add(TEMPLATE_DIR); await refreshTree();
+  const first = S.files.find((f) => f.startsWith(TEMPLATE_DIR + '/')); if (first) openFile(first);
+  toast(made ? `Added ${made} starter templates to ${TEMPLATE_DIR}/. Edit them, or add your own pages there.` : `Your templates are the pages in ${TEMPLATE_DIR}/.`);
+}
+async function applyTemplate(t, pos = null) {
+  if (!t || curType() !== 'md') return;
+  const text = fillTemplate(await templateText(t), { title: stem(S.active || 'Untitled') });
+  if (isRich()) { rich.insertTemplate(text, pos); return; }
+  const tab = activeTab(); const { fm, body } = splitTemplate(text);
+  if (fm) { const cur = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(tab.text)?.[0] || ''; const merged = mergeProps(cur, fm); if (merged !== cur) editor.setDoc(merged + tab.text.slice(cur.length), { keepHistory: true }); }
+  editor.insert(intoPage(body).split(CURSOR).join(''));
+}
+async function insertTemplateCmd() { if (curType() !== 'md' || !S.active) return toast('Open a page to insert a template.'); const t = await pickTemplate(); if (t) applyTemplate(t); }
+async function insertTemplateButton() {
+  const t = await pickTemplate({ title: 'Template button', note: 'A button in the page that inserts this template below it, as in Notion.', action: 'Add button' }); if (!t) return;
+  const src = buttonSource({ label: `New ${t.name.toLowerCase()}`, template: t.name });
+  if (isRich()) rich.insertTemplate(src); else editor.insert(`\n${src}\n`);
+}
+async function runTemplateButton(b, pos) {
+  const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === (b.template || '').toLowerCase());
+  if (!t) { toast(`No template called “${b.template}”. Templates are the pages in ${TEMPLATE_DIR}/.`, { kind: 'error' }); return; }
+  applyTemplate(t, pos);
 }
 /* the card shown when you rest the pointer on a link: the start of the target, or the section it points at */
 async function previewHtml(name) {
@@ -828,22 +882,24 @@ function showNoNote() {
 }
 
 /* ============ new / rename / move / trash ============ */
-async function newNote(folder = dirOf(S.active || ''), type) {
+async function newNote(folder = dirOf(S.active || ''), type, fromTemplate = false) {
   if (!S.workspace) return chooseFolder();
-  const res = await newDocSheet({ folder, type });
+  const res = await newDocSheet({ folder, type, fromTemplate });
   if (!res) return;
   const { name } = res; type = res.type;
   const ext = type === 'md' ? '.md' : `.${type}.md`;
   const file = (folder ? folder + '/' : '') + (/\.(md|markdown|mdx|txt)$/i.test(name) ? name : name + ext);
   try {
     const title = stem(file);
-    const p = await folio.create(file, (NEW_CONTENT[type] || NEW_CONTENT.md)(title));
+    const tpl = type === 'md' && res.template ? res.template : null;
+    const content = tpl ? fillTemplate(await templateText(tpl), { title }).split(CURSOR).join('') : (NEW_CONTENT[type] || NEW_CONTENT.md)(title);
+    const p = await folio.create(file, content);
     if (folder) S.expanded.add(folder);
     await refreshTree(); await openFile(p);
     if (type === 'md' && !isRich()) editor.view.dispatch({ selection: { anchor: editor.view.state.doc.length } });
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
-function newDocSheet({ folder, type = 'md' }) {
+function newDocSheet({ folder, type = 'md', fromTemplate = false }) {
   return new Promise((resolve) => {
     const d = $('#sheet-prompt');
     const types = Object.keys(TYPE_INFO).filter((t) => t === 'md' || SURFACES[t]);
@@ -855,6 +911,8 @@ function newDocSheet({ folder, type = 'md' }) {
         </fieldset>
         <div class="field" style="margin-top:var(--space-md)"><label for="prompt-input">Name</label>
           <input class="input" id="prompt-input" type="text" autocomplete="off" spellcheck="false" value="Untitled" required aria-describedby="prompt-help"><span class="field-help" id="prompt-help"></span></div>
+        <div class="field new-tpl" style="margin-top:var(--space-sm)"><label for="new-template">Template</label>
+          <select class="rb-select" id="new-template"><option value="">Blank page</option>${listTemplates(S.files).map((t, i) => `<option value="${i}">${esc(t.name)}${t.starter ? ' (starter)' : ''}</option>`).join('')}</select></div>
       </div>
       <div class="sheet-foot"><button class="btn" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Create</button></div></form>`;
     const input = $('#prompt-input', d);
@@ -863,10 +921,14 @@ function newDocSheet({ folder, type = 'md' }) {
       e.preventDefault();
       const v = input.value.trim();
       if (!v || /[\\:*?"<>|]/.test(v)) { $('#prompt-help', d).textContent = 'Use a name without \\ : * ? " < > |'; $('#prompt-help', d).dataset.error = 'true'; input.focus(); return; }
-      done({ name: v, type: d.querySelector('input[name=type]:checked').value });
+      const tv = $('#new-template', d).value;
+      done({ name: v, type: d.querySelector('input[name=type]:checked').value, template: tv === '' ? null : listTemplates(S.files)[+tv] });
     };
     d.querySelector('[data-cancel]').onclick = () => done(null);
     d.oncancel = () => resolve(null);
+    const tplField = $('.new-tpl', d), syncTpl = () => { tplField.hidden = d.querySelector('input[name=type]:checked').value !== 'md'; };
+    d.querySelectorAll('input[name=type]').forEach((r) => r.addEventListener('change', syncTpl)); syncTpl();
+    if (fromTemplate) { const sel = $('#new-template', d); sel.selectedIndex = Math.min(1, sel.options.length - 1); }
     d.showModal(); input.select();
   });
 }
@@ -1149,6 +1211,11 @@ function openSettings() {
 /* ============ palette ============ */
 const COMMANDS = [
   { id: 'new-note', title: 'New note', key: 'Mod+N', run: () => newNote() },
+  { id: 'new-from-template', title: 'New note from template…', run: () => newNote(undefined, 'md', true) },
+  { id: 'insert-template', title: 'Insert template…', key: 'Mod+Alt+T', run: () => insertTemplateCmd() },
+  { id: 'template-button', title: 'Insert template button', run: () => insertTemplateButton() },
+  { id: 'daily-note', title: 'Open today’s daily note', key: 'Mod+Alt+D', run: () => (S.workspace ? openDailyNote(todayKey()) : chooseFolder()) },
+  { id: 'edit-templates', title: 'Templates: edit (adds the starters to Templates/)', run: () => editTemplates() },
   { id: 'new-folder', title: 'New folder', run: () => newFolder(dirOf(S.active || '')) },
   { id: 'open-folder', title: 'Open folder…', key: 'Mod+O', run: chooseFolder },
   { id: 'quick-open', title: 'Go to note…', key: 'Mod+P', run: () => openPalette('files') },
@@ -1493,6 +1560,19 @@ function bindChrome() {
   // preview interactions
   $('#preview').addEventListener('click', async (e) => {
     const tg = e.target.closest('.md-tag'); if (tg) { showTag(tg.textContent.replace(/^#/, '')); return; }
+    const tb = e.target.closest('.template-button button');
+    if (tb) {
+      const box = tb.closest('[data-line]'); const b = JSON.parse(decodeURIComponent(box.dataset.spec));
+      const t = listTemplates(S.files).find((x) => x.name.toLowerCase() === (b.template || '').toLowerCase());
+      if (!t) { toast(`No template called “${b.template}”.`, { kind: 'error' }); return; }
+      const filled = fillTemplate(await templateText(t), { title: stem(S.active) }).split(CURSOR).join('');
+      const { fm, body } = splitTemplate(filled); const tab = activeTab(); let text = tab.text;
+      const lines = text.split('\n'); const at = b.where === 'above' ? Number(box.dataset.line) : Number(box.dataset.lineEnd);
+      lines.splice(at, 0, ...(b.where === 'above' ? [intoPage(body).trimEnd(), ''] : ['', intoPage(body).trimEnd()]));
+      text = lines.join('\n');
+      if (fm) { const cur = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)?.[0] || ''; text = mergeProps(cur, fm) + text.slice(cur.length); }
+      editor.applyRemote(text); tab.text = text; if (isRich()) rich.setMarkdown(text); renderPreview(); autosave(); return;
+    }
     const copy = e.target.closest('.copy-code');
     if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = 'Copied'; setTimeout(() => (copy.textContent = 'Copy'), 1400); return; }
     const box = e.target.closest('.task-list-item input');

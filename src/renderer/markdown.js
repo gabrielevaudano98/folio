@@ -1,6 +1,7 @@
 // Folio — Markdown to safe HTML, with source-line anchors for scroll sync and AI-edit marks.
 import MarkdownIt from 'markdown-it';
 import { FIELD, statusClass, DAY } from './page-mentions.js';
+import { parseButton } from './page-templates.js';
 import { refsPlugin } from './refs-syntax.js';
 import taskLists from 'markdown-it-task-lists';
 import footnote from 'markdown-it-footnote';
@@ -50,6 +51,7 @@ md.renderer.rules.fence = (tokens, idx, opts, env, self) => {
   const lang = (t.info || '').trim().split(/\s+/)[0];
   const attrs = t.map ? ` data-line="${t.map[0]}" data-line-end="${t.map[1]}"` : '';
   if (lang === 'mermaid') return `<div class="mermaid"${attrs}>${html}</div>`;
+  if (lang === 'template-button') { const b = parseButton(t.content); return `<div class="template-button"${attrs} data-spec="${escape(encodeURIComponent(JSON.stringify(b)))}"><button type="button" class="btn">${escape(b.label)}</button></div>`; }
   if (lang === 'chart') return `<div class="chart-block"${attrs} data-spec="${escape(encodeURIComponent(t.content))}"><p class="chart-wait">Drawing chart…</p></div>`;
   return html.replace('<pre>', `<pre${attrs}>`);
 };

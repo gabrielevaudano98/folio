@@ -1473,3 +1473,22 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .tag-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-count { font-size: var(--text-xs); color: var(--color-faint); font-variant-numeric: tabular-nums; }
 .rich-tag, .md-tag { cursor: pointer; }
+
+/* ---------- templates (D9) ---------- */
+.sheet-small:has(.tpl-form) { width: min(620px, 92vw); max-width: min(620px, 92vw); }
+.tpl-form { width: 100%; }
+.tpl-list { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2xs); margin: 0; padding: 0; border: 0; max-height: 52vh; overflow: auto; }
+.tpl-card { position: relative; display: grid; gap: 2px; padding: var(--space-sm); border-radius: var(--radius-md); background: var(--color-paper-2); box-shadow: inset 0 0 0 0.5px var(--color-rule); cursor: pointer; }
+.tpl-card:hover { box-shadow: inset 0 0 0 0.5px var(--color-rule-strong); }
+.tpl-card:has(input:checked) { box-shadow: inset 0 0 0 2px var(--color-ink); background: var(--color-paper); }
+.tpl-card:has(input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.tpl-card input { position: absolute; opacity: 0; pointer-events: none; }
+.tpl-name { font-weight: var(--weight-medium); color: var(--color-ink); }
+.tpl-desc { font-size: var(--text-xs); color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-badge { position: absolute; top: 8px; right: 10px; font-size: var(--text-2xs); color: var(--color-faint); }
+.sheet-foot .rb-spacer { flex: 1; }
+.template-btn, .template-button .btn { display: inline-flex; align-items: center; gap: 6px; }
+.template-btn .icon { width: 14px; height: 14px; }
+.template-button { margin: var(--space-xs) 0; }
+.rich-code.is-visual:not(.is-editing) .rich-code-preview:has(.template-btn) { padding: var(--space-2xs) 0; background: transparent; }
+.new-tpl[hidden] { display: none; }

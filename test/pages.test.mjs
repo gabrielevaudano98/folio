@@ -23,6 +23,7 @@ fs.mkdirSync(path.join(ws, 'People'), { recursive: true }); fs.writeFileSync(pat
 fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| --- | --- |\n| Pear | 3 |\n| Apple | 10 |\n| Fig | 2 |\n\nEnd.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd8.md'), '---\ntitle: Weekly\ntags: [alpha]\ndone: false\n---\n# Weekly\n\nText #beta here.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd9.md'), '# Plan\n\nIntro.\n');
 const html = read('html.md'), obs = read('obsidian.md');
 const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
 
@@ -180,6 +181,16 @@ const steps = [
   { js: "(() => { const el = document.querySelector('.rich-tag'); const r = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, ctrlKey: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new MouseEvent('mousedown', o)); el.dispatchEvent(new MouseEvent('mouseup', o)); return el.textContent; })()", log: true, wait: 1200 },
   { js: "[document.getElementById('sidebar-search').value, document.getElementById('results-head').textContent, [...document.querySelectorAll('#results .result-name')].map((x) => x.textContent).join('|')]", log: true, wait: 1500 },
   { js: "[...document.querySelectorAll('#tags-list .tag-item')].map((b) => b.dataset.tag + (b.getAttribute('aria-current') ? '*' : '')).join(',')", log: true, wait: 100 },
+  // D9: insert a template (properties merge, caret at {{cursor}}), a template button, today's daily note
+  { js: "document.querySelector('[data-file=\"pages/d9.md\"]').click()", wait: 1500 },
+  { js: typeAtEnd('Intro.', ''), wait: 200 },
+  { js: "document.querySelector('.ribbon [data-cmd=\"app:template\"]').click(); true", wait: 400 },
+  { js: "(() => { const c = [...document.querySelectorAll('#sheet-prompt .tpl-card')]; const m = c.find((x) => x.textContent.includes('Meeting notes')); m.querySelector('input').checked = true; document.querySelector('#sheet-prompt form').requestSubmit(); return c.length; })()", log: true, wait: 800 },
+  { js: "document.execCommand('insertText', false, 'Budget '); true", wait: 300 },
+  { js: "document.querySelector('.ribbon [data-cmd=\"app:template-button\"]').click(); true", wait: 400 },
+  { js: "(() => { const m = [...document.querySelectorAll('#sheet-prompt .tpl-card')].find((x) => x.textContent.includes('Decision log')); m.querySelector('input').checked = true; document.querySelector('#sheet-prompt form').requestSubmit(); return true; })()", wait: 800 },
+  { js: "(() => { const b = document.querySelector('.rich-prose .template-btn'); if (!b) return false; b.click(); return b.textContent; })()", log: true, wait: 2500 },
+  { js: "document.querySelector('.ribbon [data-cmd=\"app:daily-note\"]').click(); true", wait: 2000 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -190,8 +201,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 54, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, errors] = logs;
+  assert.equal(logs.length, 56, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -230,7 +241,7 @@ child.on('exit', () => {
   console.log('  ✓ “Create” in the [[ menu makes the page next to this one and links it');
   const [people, days, tags, statuses] = chips.split(':').map(Number);
   assert(people >= 1 && days >= 1 && tags >= 1 && statuses >= 1, chips); assert(hovered); console.log('  ✓ people, days, tags and status are drawn as chips, and resting on a link shows a preview');
-  assert(fs.existsSync(path.join(ws, 'Journal', `${tomorrow}.md`)), 'daily note'); assert.match(fs.readFileSync(path.join(ws, 'Journal', `${tomorrow}.md`), 'utf8'), /^# \w+,? \d+ \w+ \d{4}\n\n$/);
+  assert(fs.existsSync(path.join(ws, 'Journal', `${tomorrow}.md`)), 'daily note'); assert.match(fs.readFileSync(path.join(ws, 'Journal', `${tomorrow}.md`), 'utf8'), /^---\ntags: \[daily\]\n---\n# \w+ \d+ \w+ \d{4}\n[\s\S]*## Focus/);
   console.log('  ✓ opening a day link makes the daily note in Journal/ on first use');
   assert(tableTab && pasted, JSON.stringify([tableTab, pasted]));
   const norm = (t) => t.replace(/ +/g, ' ').replace(/-{3,}/g, '---');
@@ -250,4 +261,15 @@ child.on('exit', () => {
   assert.equal(tagClicked, '#beta'); assert.equal(tagSearch[0], '#beta'); assert.match(tagSearch[1], /^1 page tagged #beta/); assert.equal(tagSearch[2], 'd8');
   assert(tagPane.includes('beta*') && tagPane.includes('gamma') && tagPane.includes('alpha'), tagPane);
   console.log('  ✓ Ctrl/⌘ click on a tag lists its pages; the Tags section lists every tag, with the current one marked');
+  assert(tplCount >= 6, tplCount); assert.equal(tplButton, 'New decision log');
+  const d9 = read('d9.md');
+  assert.match(d9, /^---\ntags:\n  - meeting\n  - decision\ndate: \d{4}-\d{2}-\d{2}\nattendees: \[\]\nstatus: Proposed\ndeciders: \[\]\n---\n# Plan\n\nIntro\.\n\n> \[!info\] /, d9);
+  assert(d9.includes('## Agenda\n\n1. Budget First topic\n'), d9);
+  assert(d9.includes('```template-button\nlabel: New decision log\ntemplate: Decision log\n```\n\n[status:: Proposed]\n\n## Context') && !d9.includes('# d9'), d9);
+  assert(d9.includes('| Option | Pros | Cons |') && !d9.includes('⁣') && !d9.includes('{{'), d9);
+  console.log('  ✓ templates: a starter goes in with its properties merged and the caret at {{cursor}}; a template button inserts its template below it');
+  const today = (() => { const d = new Date(); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
+  const daily = fs.readFileSync(path.join(ws, 'Journal', `${today}.md`), 'utf8');
+  assert(daily.startsWith('---\ntags: [daily]\n---\n# ') && daily.includes('## Focus\n\n- [ ] Top priority'), daily);
+  console.log('  ✓ Today opens the daily note, made from the Daily note template');
 });
