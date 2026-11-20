@@ -4,6 +4,7 @@
 // Pure: functions receive the TipTap editor and a context from the host ({ pickImage, pickRef }).
 import { fuzzyItem } from './fuzzy.js';
 import { softBreaks } from './page-syntax.js';
+import { ymd } from './page-mentions.js';
 
 const CHART = 'type: column\ntitle: Chart\ndata:\n| Month | Value |\n| --- | --- |\n| Jan | 10 |\n| Feb | 14 |\n| Mar | 9 |';
 const MERMAID = 'flowchart LR\n  A[Idea] --> B[Draft] --> C[Shipped]';
@@ -26,6 +27,9 @@ export function placeBlock(editor, content) {
   }
   return ok;
 }
+/* a link to a daily note (Journal/), n days from today */
+const dayLink = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `[[${ymd(d)}]]`; };
+const putText = (e, text) => e.chain().focus().insertContent({ type: 'text', text }).run();
 const fromMd = (editor, md) => softBreaks(editor.markdown.parse(md)).content || [];
 /* select the n characters before the cursor, so typing replaces a placeholder */
 const selectBack = (editor, n) => { const to = editor.state.selection.from; editor.commands.setTextSelection({ from: Math.max(0, to - n), to }); return true; };
@@ -134,6 +138,9 @@ export const INSERTS = [
     run: async (e, c) => { const t = await c.pickRef?.({ kind: 'link' }); if (t) e.chain().focus().insertContent({ type: 'text', text: t }).run(); } },
   { id: 'value', label: 'Live value', cat: 'Links and embeds', icon: 'sheet', desc: '{{Budget.sheet#Costs!H6}}', aliases: ['{{', 'cell', 'number', 'formula result'],
     run: async (e, c) => { const t = await c.pickRef?.({ kind: 'value' }); if (t) e.chain().focus().insertContent({ type: 'text', text: t }).run(); } },
+  { id: 'today', label: 'Today', cat: 'Links and embeds', icon: 'calendar', desc: 'A link to today’s daily note', aliases: ['date', 'now', 'daily note', 'journal', 'day'], get md() { return dayLink(0); }, run: (e) => putText(e, dayLink(0)) },
+  { id: 'tomorrow', label: 'Tomorrow', cat: 'Links and embeds', icon: 'calendar', desc: 'A link to tomorrow’s daily note', aliases: ['date', 'next day', 'daily note', 'journal'], get md() { return dayLink(1); }, run: (e) => putText(e, dayLink(1)) },
+  { id: 'status', label: 'Status chip', cat: 'Links and embeds', icon: 'status', desc: '[status:: In progress], or type @status', aliases: ['status', 'chip', 'badge', 'label', 'progress', 'done', 'inline field'], md: '[status:: In progress]', run: (e) => putText(e, '[status:: In progress]') },
   { id: 'embed', label: 'Embed', cat: 'Links and embeds', icon: 'doc', desc: 'Show part of another document', aliases: ['![[', 'transclude', 'synced block', 'include'],
     run: async (e, c) => { const t = await c.pickRef?.({ kind: 'embed' }); if (t) placeBlock(e, { type: 'paragraph', content: [{ type: 'text', text: t }] }); } },
 ];

@@ -9,6 +9,7 @@ import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
+import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
 import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
@@ -125,7 +126,7 @@ async function boot() {
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
     readNote: (src) => readRelative(src),
     isDark: () => S.dark,
-    onWikiLink: async (name) => { const f = resolveWiki(name); if (f) return openRef(f, parseRef(name).part); if (await confirmSheet({ title: `Create “${name}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
+    onWikiLink: async (name) => { if (DAY.test(parseRef(name).target) && !resolveWiki(name)) return openDailyNote(parseRef(name).target); const f = resolveWiki(name); if (f) return openRef(f, parseRef(name).part); if (await confirmSheet({ title: `Create “${name}”?`, body: 'This note does not exist yet.', action: 'Create note' })) { const p = await folio.create(name + '.md', `# ${name}\n\n`); await refreshTree(); openFile(p); } },
     resolveValue: (raw) => resolveRef(raw, refEnv()).then((r) => r.value),
     smartTypography: () => S.settings.smartTypography !== false,
     pickRef: (o) => pickRef(o),
@@ -133,17 +134,10 @@ async function boot() {
     pickMedia: (kind) => folio.pickMedia(S.active, kind).catch((e) => { toast(e.message, { kind: 'error' }); return null; }),
     askUrl: (title) => prompt({ title, label: 'Address', placeholder: 'https://', action: 'Insert' }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
     openMedia: (src) => openMedia(src),
-    createDoc: async ({ type, name, content }) => {
-      if (!S.workspace || !S.active) return null;
-      const folder = dirOf(S.active), ext = type === 'md' ? '.md' : `.${type}.md`;
-      let title = name, n = 1; const pathOf = (t) => (folder ? folder + '/' : '') + t + ext;
-      while (S.files.includes(pathOf(title))) title = `${name} ${++n}`;
-      try {
-        const p = await folio.create(pathOf(title), content ? content(title) : (NEW_CONTENT[type] || NEW_CONTENT.md)(title));
-        await refreshTree(); toast(`Created ${base(p)}. Ctrl or ⌘ click the link to open it.`);
-        return { path: p, ref: refName(p) };
-      } catch (e) { toast(e.message, { kind: 'error' }); return null; }
-    },
+    createDoc: createDocHere,
+    mentions: mentionCtx,
+    linkKind: (target) => linkKind(target, S.files, S.active || ''),
+    preview: previewHtml,
     onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(`Copied ${t}. Paste it anywhere to link to this block.`); },
     onLink: (prev) => prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
   });
@@ -548,6 +542,68 @@ function normalize(p) {
   return out.join('/');
 }
 function resolveWiki(name) { return resolveTarget(parseRef(name).target, S.files, S.active || ''); }
+
+async function createDocHere({ type, name, content }) {
+  if (!S.workspace || !S.active) return null;
+  const folder = dirOf(S.active), ext = type === 'md' ? '.md' : `.${type}.md`;
+  let title = name, n = 1; const pathOf = (t) => (folder ? folder + '/' : '') + t + ext;
+  while (S.files.includes(pathOf(title))) title = `${name} ${++n}`;
+  try {
+    const p = await folio.create(pathOf(title), content ? content(title) : (NEW_CONTENT[type] || NEW_CONTENT.md)(title));
+    await refreshTree(); toast(`Created ${base(p)}. Ctrl or ⌘ click the link to open it.`);
+    return { path: p, ref: refName(p) };
+  } catch (e) { toast(e.message, { kind: 'error' }); return null; }
+}
+
+/* inline pickers in pages: [[ @ # : (page-mentions.js) */
+const textOf = async (p) => tabOf(p)?.text ?? await folio.read(p).catch(() => '');
+let tagCache = { at: 0, tags: [] };
+async function tagIndex() {
+  if (Date.now() - tagCache.at < 30000) return tagCache.tags;
+  const counts = new Map();
+  for (const f of S.files.filter((x) => /\.(md|markdown)$/i.test(x) && docKind(x) === 'page').slice(0, 600)) {
+    for (const t of extractTags(await textOf(f))) { const k = t.toLowerCase(); const c = counts.get(k); counts.set(k, { tag: c?.tag || t, count: (c?.count || 0) + 1 }); }
+  }
+  tagCache = { at: Date.now(), tags: [...counts.values()].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)) };
+  return tagCache.tags;
+}
+function mentionCtx() {
+  if (!S.workspace || !S.active) return null;
+  return {
+    files: S.files, from: S.active, refName,
+    headingsOf: async (p) => headings(await textOf(p)).map((h) => ({ text: h.text.replace(/[*_`]/g, ''), level: h.level })),
+    blocksOf: async (p) => blockIds(await textOf(p)),
+    tags: tagIndex,
+    createDoc: createDocHere,
+  };
+}
+/* a day link ([[2026-11-21]]) opens that daily note in Journal/, made on first use */
+async function openDailyNote(day) {
+  const existing = resolveTarget(day, S.files, S.active || '');
+  if (existing) return openRef(existing);
+  const d = new Date(`${day}T12:00:00`);
+  const p = await folio.create(`${JOURNAL}/${day}.md`, `# ${longDay(d)}\n\n`);
+  await refreshTree(); openFile(p);
+}
+/* the card shown when you rest the pointer on a link: the start of the target, or the section it points at */
+async function previewHtml(name) {
+  const { target, part } = parseRef(name);
+  const path = resolveTarget(target, S.files, S.active || '');
+  if (!path) return null;
+  const kind = docKind(path);
+  const title = `<p class="rich-hover-title">${esc(stem(path))}${kind === 'page' ? '' : ` <span>${esc(kind)}</span>`}</p>`;
+  if (kind !== 'page') return title;
+  let text = (await textOf(path)).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  const lines = text.split('\n');
+  let from = 0, to = lines.length;
+  if (part.startsWith('^')) { const i = lines.findIndex((l) => l.trimEnd().endsWith(' ' + part)); if (i >= 0) { from = i; to = i + 1; } }
+  else if (part) {
+    const i = lines.findIndex((l) => /^#{1,6}\s/.test(l) && l.replace(/^#{1,6}\s+/, '').replace(/[*_`]/g, '').trim().toLowerCase() === part.toLowerCase());
+    if (i >= 0) { const lvl = lines[i].match(/^#+/)[0].length; from = i; to = lines.findIndex((l, k) => k > i && /^#{1,6}\s/.test(l) && l.match(/^#+/)[0].length <= lvl); if (to < 0) to = lines.length; }
+  }
+  const snippet = lines.slice(from, Math.min(to, from + 14)).join('\n').slice(0, 700).trim();
+  return snippet ? title + render(snippet) : title;
+}
 
 /* ============ outline ============ */
 let currentHeads = [];

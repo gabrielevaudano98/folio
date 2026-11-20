@@ -4,6 +4,7 @@ import katex from 'katex';
 import Typography from '@tiptap/extension-typography';
 import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
 import { filterInserts, runInsert, INSERTS } from './inserts.js';
+import { mentionEntries, TAG, FIELD, statusClass } from './page-mentions.js';
 import { highlight } from './fuzzy.js';
 import { BlockHandles } from './page-blocks.js';
 import { CalloutUI, HeadingFold, TocView, BreadcrumbView, PageBreakView } from './page-ui.js';
@@ -114,9 +115,10 @@ const FolioCodeBlock = CodeBlock.extend({
 /* callouts and [[wiki links]] are drawn, the Markdown text stays as written */
 const Decorate = Extension.create({
   name: 'folioDecorate',
-  addOptions() { return { onWikiLink: null, resolveValue: null }; },
+  addOptions() { return { onWikiLink: null, resolveValue: null, linkKind: null, preview: null }; },
   addProseMirrorPlugins() {
     const opts = this.options;
+    const hover = { el: null, card: null, timer: 0, seq: 0, hide() { clearTimeout(this.timer); this.seq++; this.card?.remove(); this.card = null; this.el = null; } };
     const build = (doc) => {
       const deco = [];
       doc.descendants((n, pos) => {
@@ -133,7 +135,14 @@ const Decorate = Extension.create({
           const re = /\[\[([^\]\n]+)\]\]/g; let m;
           while ((m = re.exec(n.text))) {
             const embed = n.text[m.index - 1] === '!';
-            deco.push(Decoration.inline(pos + m.index - (embed ? 1 : 0), pos + m.index + m[0].length, { class: embed ? 'rich-ref' : 'rich-wikilink', 'data-target': m[1], title: embed ? 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open' : 'Ctrl or ⌘ click to open' }));
+            const target = m[1].replace(/\|.*$/, ''); const kind = embed ? null : opts.linkKind?.(target);
+            deco.push(Decoration.inline(pos + m.index - (embed ? 1 : 0), pos + m.index + m[0].length, { class: embed ? 'rich-ref' : `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}`, 'data-target': target, title: embed ? 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open' : kind === 'missing' ? 'No page with this name yet. Ctrl or ⌘ click to create it' : 'Ctrl or ⌘ click to open' }));
+          }
+          if (!n.marks.some((mk) => mk.type.name === 'code')) {
+            TAG.lastIndex = 0; let t;
+            while ((t = TAG.exec(n.text))) { const from = pos + t.index + t[1].length; deco.push(Decoration.inline(from, from + t[2].length + 1, { class: 'rich-tag', title: 'Tag' })); }
+            FIELD.lastIndex = 0; let f;
+            while ((f = FIELD.exec(n.text))) { const key = f[1].trim().toLowerCase(); deco.push(Decoration.inline(pos + f.index, pos + f.index + f[0].length, { class: key === 'status' ? `rich-field rich-status is-${statusClass(f[2])}` : 'rich-field', 'data-key': key, title: key === 'status' ? 'Status' : f[1] })); }
           }
           const rv = /\{\{([^}\n]+?)\}\}/g;
           while ((m = rv.exec(n.text))) {
@@ -150,6 +159,26 @@ const Decorate = Extension.create({
       state: { init: (_, s) => build(s.doc), apply: (tr, old) => (tr.docChanged ? build(tr.doc) : old) },
       props: {
         decorations(state) { return this.getState(state); },
+        handleDOMEvents: {
+          mouseover(view, e) {
+            const el = e.target.closest?.('.rich-wikilink:not(.is-missing)');
+            if (!el || !opts.preview || el === hover.el) return false;
+            hover.hide(); hover.el = el;
+            hover.timer = setTimeout(async () => {
+              const n = ++hover.seq; const html = await Promise.resolve(opts.preview(el.dataset.target)).catch(() => null);
+              if (!html || n !== hover.seq || hover.el !== el || !el.isConnected) return;
+              const card = document.createElement('div'); card.className = 'rich-hover prose'; card.setAttribute('role', 'tooltip'); card.innerHTML = html;
+              document.body.append(card); hover.card = card;
+              const r = el.getBoundingClientRect(), h = card.offsetHeight;
+              card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px';
+              card.style.top = (innerHeight - r.bottom - 8 >= h ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+            }, 450);
+            return false;
+          },
+          mouseout(view, e) { const el = e.target.closest?.('.rich-wikilink'); if (el && el === hover.el && !el.contains(e.relatedTarget)) hover.hide(); return false; },
+          keydown() { hover.hide(); return false; },
+          scroll() { hover.hide(); return false; },
+        },
         handleClick(view, pos, event) {
           const el = event.target.closest?.('.rich-wikilink, .rich-ref');
           if (el && (event.metaKey || event.ctrlKey)) { opts.onWikiLink?.(el.dataset.target); return true; }
@@ -459,7 +488,7 @@ const SlashMenu = Extension.create({
     })];
   },
 });
-function slashRenderer(opts) {
+function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   let el, list, items = [], sel = 0, props = null, view = null;
   const iconOf = (it) => (it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
   const paint = () => {
@@ -480,12 +509,12 @@ function slashRenderer(opts) {
     el.style.left = Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8)) + 'px';
     el.style.top = (below >= h || below >= r.top ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
   };
-  const choose = (i) => { const x = items[i]; if (x) props.command(x); };
+  const choose = (i) => { const x = items[i]; if (x && !x.disabled) props.command(x); };
   return {
     onStart(p) {
       props = p; view = p.editor.view; items = p.items; sel = 0;
       el = document.createElement('div'); el.className = 'slash-menu';
-      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="Insert or turn into"></div><div class="slash-foot" aria-hidden="true">↑↓ to move · Enter to choose · Esc to close</div>';
+      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">↑↓ to move · Enter to choose · Esc to close</div>';
       list = el.firstChild; document.body.append(el);
       view.dom.setAttribute('aria-controls', 'slash-list'); view.dom.setAttribute('aria-expanded', 'true');
       list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
@@ -494,7 +523,7 @@ function slashRenderer(opts) {
     },
     onUpdate(p) { props = p; items = p.items; sel = Math.min(sel, Math.max(0, items.length - 1)); if (!p.query) sel = Math.min(sel, items.length - 1); paint(); place(); },
     onKeyDown({ event }) {
-      if (event.key === 'Escape') { exitSuggestion(view, SLASH); return true; }
+      if (event.key === 'Escape') { exitSuggestion(view, key); return true; }
       if (!items.length) return false;
       const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
       if (step) { sel = (sel + step + items.length) % items.length; paint(); return true; }
@@ -508,6 +537,44 @@ function slashRenderer(opts) {
     },
   };
 }
+
+/* [[ @ # : — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
+const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji') };
+const MENTION_LABEL = { link: 'Link to a page', at: 'Mention a person, page or date', tag: 'Tags', emoji: 'Emoji' };
+const Mentions = Extension.create({
+  name: 'folioMentions',
+  addOptions() { return { ctx: () => null, keyLabel: (k) => k }; },
+  addProseMirrorPlugins() {
+    const opts = this.options;
+    const make = (kind, char, { spaces = false, min = 0, anywhere = false }) => Suggestion({
+      editor: this.editor, char, pluginKey: MENTION_KEYS[kind], allowSpaces: spaces, startOfLine: false,
+      ...(anywhere ? { allowedPrefixes: null } : {}),
+      allow: ({ state, range }) => {
+        if (!opts.ctx()) return false;
+        const $f = state.doc.resolve(range.from);
+        if ($f.parent.type.spec.code || state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code)) return false;
+        const q = state.doc.textBetween(range.from + char.length, range.to, ' ', ' ');
+        return q.length >= min && q.length <= 48 && !/[\]\n]/.test(q) && !(spaces && /^\s/.test(q)) && (kind !== 'emoji' || /^[\w+\-]*$/.test(q));
+      },
+      items: async ({ query }) => { const c = opts.ctx(); return c ? mentionEntries(kind, query, c) : []; },
+      command: async ({ editor, range, props: entry }) => {
+        if (entry.disabled) return;
+        if (entry.create) {
+          editor.chain().focus().deleteRange(range).run();
+          const made = await opts.ctx()?.createDoc?.({ type: 'md', name: entry.create });
+          if (made) editor.chain().focus().insertContent({ type: 'text', text: `[[${made.ref}]]` }).run();
+          return;
+        }
+        // a trailing space after a tag is for typing on; at the end of a block it would only leave a stray space in the file
+        const $to = editor.state.doc.resolve(range.to);
+        const text = $to.parentOffset >= $to.parent.content.size ? entry.insert.replace(/ +$/, '') : entry.insert;
+        editor.chain().focus().insertContentAt(range, { type: 'text', text }).run();
+      },
+      render: () => slashRenderer(opts, MENTION_KEYS[kind], MENTION_LABEL[kind]),
+    });
+    return [make('link', '[[', { spaces: true, anywhere: true }), make('at', '@', { spaces: true }), make('tag', '#', { min: 1 }), make('emoji', ':', { min: 2 })];
+  },
+});
 
 const NoAlignKeys = Align.extend({ addKeyboardShortcuts() { return {}; } });
 
@@ -556,7 +623,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null }) {
   host.innerHTML = `
     <div class="ribbon" role="toolbar" aria-label="Formatting">
       <div class="rb-group">${btn('undo', 'Undo', icons.undo, keyLabel('Mod+Z'))}${btn('redo', 'Redo', icons.redo, keyLabel('Mod+Shift+Z'))}</div>
@@ -629,12 +696,13 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       }),
       SmartTypography.configure({ enabled: smartTypography }),
       SlashMenu.configure({ keyLabel, ctx: insertCtx }),
+      Mentions.configure({ ctx: () => (mentions ? mentions() : null), keyLabel }),
       CodeHighlight,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
       BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
       MarkdownLinkInput,
-      Decorate.configure({ onWikiLink, resolveValue }),
+      Decorate.configure({ onWikiLink, resolveValue, linkKind, preview }),
       Markdown.configure({ markedOptions: { gfm: true } }),
       Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : 'Write, or select text to format it') }),
       BubbleMenu.configure({ element: bubble, shouldShow: ({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && !(state.selection instanceof NodeSelection) }),

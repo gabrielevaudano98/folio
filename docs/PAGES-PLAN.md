@@ -137,7 +137,7 @@ Today `getMarkdown()` re-serializes the whole document on every keystroke, so on
 - Toggle `<details>`, collapsible headings (view state), maths block, table of contents `[[toc]]` (live), columns, page break, footnote definitions section, code highlighting with language picker.
 - Image: resize handles (`|400`), caption (title), alignment; video, audio, PDF, file embeds from `assets/`; bookmark card for a lone URL.
 
-### D5 — Links, mentions and chips (`[[`, `![[`, `@`, `#`, `:`)
+### D5 — Links, mentions and chips (`[[`, `![[`, `@`, `#`, `:`) — done, see Progress
 - Link picker over the workspace: every Folio document, `#` headings, `^` blocks, "Create note …". Links are chips; Ctrl/⌘-click opens; hover previews.
 - Embeds `![[…]]` render the target (page section or block live, read-only with "Open"); slide, board and sheet embeds use the **shared resolver** of SLIDES-PLAN P4 — build it here if pages land first.
 - `@`: documents, people (`People/` folder), dates with natural language (`@tomorrow`, `@next friday`) linking to `Journal/` daily notes, status chips (`[status:: …]` with options from front matter `folio.status`), building blocks.
@@ -201,6 +201,13 @@ Today `getMarkdown()` re-serializes the whole document on every keystroke, so on
   - **D4b — done: media.** Image syntax for everything, as in Obsidian: width `![Alt|400](…)`, caption from the title, video and audio players, PDF and file cards (open with the system app through a new `shell:open-file` that stays inside the workspace), web embeds for 14 providers as cards (YouTube thumbnails); a paragraph that is one link is a bookmark or file card. Write view: drag handle to resize, caption edited in place. / menu: Video, Audio, PDF, File, Web bookmark, Embed from the web. The window's CSP does not allow other sites in frames, so web embeds open in the browser instead of playing inline.
   - **D4c — done: code.** Syntax colours in the Write view from highlight.js (already used by the Read view) as decorations, cached per block; language menu on each block (26 languages, plus any name the file already uses).
 - **D4 — done.**
+- **D5 — done, except embeds in place.**
+  - **Everything the pickers write is plain Markdown text** (`[[Note#Heading]]`, `[[2026-11-21]]`, `[status:: Done]`, `#tag`, the emoji character), so pages stay portable and lossless; chips are only drawn over that text (decorations in the Write view, markdown-it rules in the Read view). No new node types.
+  - `page-mentions.js` (pure, tested in Node): `[[` documents and people by fuzzy name, `Note#` headings, `Note#^` blocks that already have an id, "Create …" (makes the page next to the current one); `@` people (`People/`), dates in English and Italian (`chrono-node`: `tomorrow`, `next friday`, `domani`, `tra 3 giorni`) written as `[[YYYY-MM-DD]]`, pages and status chips; `#` tags collected from the workspace (front matter `tags:` and `#tag` in text, cached 30 s); `:` emoji (`gemoji`, loaded on first use). Reuses `@tiptap/suggestion`, the `/` menu renderer and `fuzzy.js`.
+  - Day links open `Journal/YYYY-MM-DD.md`, created on first use. The folder name is a constant for now (D14: a setting).
+  - Chips: people, days, tags, inline fields, status colours (Not started grey, In progress blue, Blocked red, Done green, Review purple); links to missing pages get a wavy red underline. Hover card on `[[…]]`: the start of the page, the section or the block.
+  - `/today`, `/tomorrow`, `/status` in the `/` menu. Round-trip test `pages/chips.md`; the serializer's escaping of `[key:: value]` is undone in `tidy`.
+  - **Not done, moved to D12/D14:** `![[Note#Heading]]` drawn live inside the Write view (the Read view and slides already draw it; in the Write view it is text with a chip); changing a status by clicking the chip; status options from front matter `folio.status` (the picker takes a list, the host does not pass one yet); a click on a tag does nothing until the Tags pane (D8).
 - **Branch.** Rebased on `main` after slides P4–P8 landed; work continues on `pages` (the remote `pages-studio` holds the pre-rebase D0–D1 and can be deleted).
 - **Reuse from slides P4 for D5/D12:** references (`[[…]]`, `{{…}}`, `![[…]]`), the reference picker, backlinks panel ("Linked from"), rename rewriting links, `resolve_ref`/`get_backlinks`/`find_broken_links` MCP tools. D5 becomes the inline `@`/`[[` pickers on top of these; D12 shrinks to unlinked mentions.
 

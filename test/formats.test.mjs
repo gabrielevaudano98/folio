@@ -15,6 +15,7 @@ import { headings } from '../src/renderer/markdown.js';
 import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
 import { createPageCodec, splitBlocks } from '../src/renderer/page-core.js';
+import { mentionEntries, extractTags, blockIds, linkKind, ymd, statusClass } from '../src/renderer/page-mentions.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -292,10 +293,55 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     assert.match(h, /class="md-card md-file" href="assets\/report-2026.pdf"/); assert.match(h, /class="md-card md-embed"[\s\S]*img.youtube.com/);
     assert.match(h, /<p class="md-bookmark" data-host="folio.app"/); assert.match(h, /<p class="md-filecard" data-host="budget.xlsx"/);
     ok('the Read view draws figures with captions, players, PDF and embed cards, bookmarks and file cards'); }
+  { const ch = open(fx('pages/chips.md'));
+    assert(!ch.m.blocks.some((b) => b.raw), ch.m.blocks.filter((b) => b.raw).map((b) => b.src).join('|')); assert.equal(codec.save(ch.m, ch.doc), fx('pages/chips.md'));
+    ok('links, days, people, tags, inline fields and emoji are plain text: the page opens and saves byte-identical, with no raw blocks');
+    const { markdownIt } = await import('../src/renderer/markdown.js'); const h = markdownIt.render(fx('pages/chips.md'));
+    assert(h.includes('<span class="md-tag">#project/alpha</span>') && h.includes('<span class="md-tag">#design-system</span>') && h.includes('<span class="md-tag">#todo</span>'));
+    assert(!h.includes('md-tag">#code') && !h.includes('md-tag">#</span>') && h.includes('C#'));
+    assert(h.includes('md-status is-blue" data-key="status">In progress</span>') && h.includes('md-status is-green" data-key="status">Done</span>') && h.includes('<span class="md-field" data-key="owner"><b>owner</b> Ada</span>'));
+    assert(h.includes('wikilink wikilink-date') && h.includes('data-wikilink="2026-11-21"'));
+    assert.equal(headings(fx('pages/chips.md'))[0].text, 'Weekly note #q4');
+    ok('the Read view draws tags and status chips, and a heading keeps its #tag in the outline'); }
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
   await win.happyDOM.close();
+}
+
+// inline pickers: [[ @ # :
+{
+  const files = ['Notes/Plan.md', 'Notes/Roadmap.md', 'People/Ada Lovelace.md', 'Budget.sheet.md', 'Journal/2026-11-19.md'];
+  const stemOf = (p) => p.split('/').pop().replace(/(\.(slides|board|sheet))?\.md$/i, '');
+  const ctx = { files, from: 'Notes/Plan.md', refName: stemOf, now: () => new Date('2026-11-20T10:00:00'),
+    headingsOf: async () => [{ text: 'Goals', level: 2 }, { text: 'Risks', level: 2 }],
+    blocksOf: async (p) => (p === 'Notes/Plan.md' ? [{ id: 'abc123', text: 'Ship the editor' }] : []),
+    tags: async () => [{ tag: 'q4', count: 3 }, { tag: 'project/alpha', count: 1 }] };
+  const ins = async (k, q) => (await mentionEntries(k, q, ctx)).map((e) => e.insert || (e.create ? 'create:' + e.create : null));
+  assert.deepEqual((await ins('link', 'road'))[0], '[[Roadmap]]'); assert((await ins('link', 'road')).includes('create:road')); assert(!(await ins('link', 'Roadmap')).some((x) => String(x).startsWith('create:')));
+  assert((await ins('link', 'ada')).includes('[[Ada Lovelace]]')); assert(!(await ins('link', '')).includes('[[Plan]]'));
+  ok('[[ lists documents and people by fuzzy name, offers to create a page, and leaves out the page you are on');
+  assert.deepEqual(await ins('link', 'Roadmap#'), ['[[Roadmap#Goals]]', '[[Roadmap#Risks]]']); assert.deepEqual(await ins('link', '#ri'), ['[[#Risks]]']);
+  assert.deepEqual(await ins('link', 'Plan#^'), ['[[Plan#^abc123]]']); assert.equal((await mentionEntries('link', 'Roadmap#^', ctx))[0].disabled, true);
+  ok('[[Note# lists headings and [[Note#^ lists blocks that already have an id; a block-less page says how to make one');
+  assert.deepEqual((await ins('at', '')).slice(0, 3), ['[[2026-11-20]]', '[[2026-11-21]]', '[[2026-11-19]]']);
+  assert.deepEqual((await ins('at', 'next friday'))[0], '[[2026-11-27]]'); assert.equal((await ins('at', 'tomorrow'))[0], '[[2026-11-21]]');
+  assert.equal((await ins('at', 'domani'))[0], '[[2026-11-21]]'); assert.equal((await ins('at', 'tra 3 giorni'))[0], '[[2026-11-23]]'); assert.equal((await ins('at', '25 dec'))[0], '[[2026-12-25]]');
+  ok('@ understands dates in English and Italian (tomorrow, next friday, domani, tra 3 giorni, 25 dec) and links the daily note');
+  const at = await mentionEntries('at', 'ada', ctx); assert.equal(at[0].group, 'People');
+  assert(!at.some((e) => e.insert === '[[2026-11-19]]')); ok('@ puts people first and does not list daily notes as pages');
+  assert.deepEqual((await ins('at', 'done')).filter((x) => x.startsWith('[status')), ['[status:: Done]']); assert.equal((await ins('at', 'status')).filter((x) => x.startsWith('[status')).length, 4);
+  ok('@status offers the status chips');
+  assert.deepEqual(await ins('tag', 'q'), ['#q4 ', '#q ']); assert.deepEqual(await ins('tag', 'alp'), ['#project/alpha ', '#alp ']); assert.deepEqual(await ins('tag', ''), []);
+  assert.deepEqual(await ins('tag', '123'), []); ok('# lists known tags by use, offers a new one, and ignores bare numbers');
+  assert.equal((await ins('emoji', 'smile'))[0], '😄'); assert.equal((await ins('emoji', 'rocket'))[0], '🚀'); assert.deepEqual(await ins('emoji', 's'), []); assert.deepEqual(await ins('emoji', 'zzzzqq'), []);
+  ok(': finds emoji by name and keyword and inserts the character itself');
+  assert.deepEqual(extractTags('---\ntags: [a, B]\n---\n# T\nHi #q4 and #q4, C# no, #123 no, `#code`\n```\n#fence\n```\n(#paren) #Q4'), ['a', 'B', 'q4', 'paren']);
+  assert.deepEqual(extractTags('---\ntags:\n  - x\n  - y z\n---\nbody #w'), ['x', 'y z', 'w']); ok('tags come from front matter and the text, outside code, once each');
+  assert.deepEqual(blockIds('Para one ^abc\n- [ ] task ^t-1\nplain\n## Head ^h'), [{ id: 'abc', text: 'Para one' }, { id: 't-1', text: 'task' }, { id: 'h', text: 'Head' }]); ok('block ids are read from the end of lines');
+  assert.equal(linkKind('2026-11-21', files, 'a.md'), 'date'); assert.equal(linkKind('Ada Lovelace', files, 'a.md'), 'person'); assert.equal(linkKind('Roadmap#Goals', files, 'a.md'), 'doc'); assert.equal(linkKind('Nope', files, 'a.md'), 'missing');
+  assert.equal(statusClass('In progress'), 'blue'); assert.equal(statusClass('Done'), 'green'); assert.equal(statusClass('Whatever'), 'gray'); assert.equal(ymd(new Date(2026, 0, 5)), '2026-01-05'); ok('a link knows whether it is a day, a person, a page or missing; status words get their colour');
+  assert(INSERTS.some((i) => i.id === 'today' && /^\[\[\d{4}-\d{2}-\d{2}\]\]$/.test(i.md)) && filterInserts('status', { recent: [] })[0].item.id === 'status'); ok('/today, /tomorrow and /status are in the / menu');
 }
 
 // the / menu registry

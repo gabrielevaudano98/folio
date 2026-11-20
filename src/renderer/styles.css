@@ -1069,6 +1069,25 @@ audio.rich-media-el { height: 40px; }
 @media (prefers-reduced-motion: reduce) { .rich-callout-fold svg, .rich-hfold svg, .rich-details > button::before, .prose details.callout > summary::after { transition: none; } }
 .rich-wikilink { text-decoration: underline dotted; text-underline-offset: 0.2em; text-decoration-color: var(--color-muted); cursor: pointer; }
 .rich-wikilink:hover { text-decoration-style: solid; }
+/* chips: people, days, tags, inline fields and status (page-mentions.js) */
+.rich-wikilink.is-person, .rich-wikilink.is-date, .wikilink-date { text-decoration: none; padding: 0 0.35em; border-radius: var(--radius-sm); background: var(--content-gray-bg); color: var(--content-gray); }
+.rich-wikilink.is-person { background: var(--content-purple-bg); color: var(--content-purple); }
+.rich-wikilink.is-date, .wikilink-date { background: var(--content-blue-bg); color: var(--content-blue); font-variant-numeric: tabular-nums; }
+.rich-wikilink.is-missing { text-decoration-color: var(--content-red); text-decoration-style: wavy; }
+.rich-tag, .md-tag { padding: 0 0.35em; border-radius: var(--radius-sm); background: var(--content-gray-bg); color: var(--content-gray); }
+.rich-field, .md-field { padding: 0 0.4em; border-radius: var(--radius-sm); background: var(--content-gray-bg); color: var(--content-gray); font-size: 0.92em; }
+.md-field b { font-weight: var(--weight-medium); margin-right: 0.2em; opacity: 0.8; }
+.rich-status, .md-status { font-weight: var(--weight-medium); }
+.rich-status.is-blue, .md-status.is-blue { background: var(--content-blue-bg); color: var(--content-blue); }
+.rich-status.is-green, .md-status.is-green { background: var(--content-green-bg); color: var(--content-green); }
+.rich-status.is-red, .md-status.is-red { background: var(--content-red-bg); color: var(--content-red); }
+.rich-status.is-purple, .md-status.is-purple { background: var(--content-purple-bg); color: var(--content-purple); }
+/* the card that follows the pointer over a link */
+.rich-hover { position: fixed; z-index: 60; width: min(380px, calc(100vw - 16px)); max-height: 260px; overflow: hidden; padding: var(--space-xs) var(--space-s); border-radius: var(--radius-md); background: var(--color-paper); box-shadow: var(--shadow-pop); font-size: var(--text-sm); pointer-events: none; }
+.rich-hover > :first-child { margin-top: 0; }
+.rich-hover-title { margin: 0 0 var(--space-3xs); font-weight: var(--weight-bold); }
+.rich-hover-title span { font-weight: var(--weight-regular); color: var(--color-muted); }
+.rich-hover h1, .rich-hover h2, .rich-hover h3 { font-size: 1em; margin: var(--space-2xs) 0; }
 
 /* slide canvas: selection handles in ink and paper (Moveable) */
 .sl-stage:focus-visible { outline: 2px solid var(--color-ink); outline-offset: -2px; }

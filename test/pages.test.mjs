@@ -17,7 +17,11 @@ fs.writeFileSync(path.join(ws, 'pages', 'd4b.md'), '# Media\n\n![Team|400](asset
 fs.mkdirSync(path.join(ws, 'pages', 'assets'), { recursive: true });
 fs.copyFileSync(new URL('../build/icon.png', import.meta.url), path.join(ws, 'pages', 'assets', 'team.png'));
 fs.writeFileSync(path.join(ws, 'pages', 'd2.md'), '# Blocks\n\nFirst paragraph.\n\nSecond paragraph.\n\n- one\n- two\n- three\n\nLast paragraph.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd5.md'), '# Mentions\n\nStart here\n');
+fs.writeFileSync(path.join(ws, 'pages', 'Atlas Plan.md'), '# Atlas Plan\n\n## Goals\n\nShip the editor.\n\n## Risks\n\nNone yet.\n');
+fs.mkdirSync(path.join(ws, 'People'), { recursive: true }); fs.writeFileSync(path.join(ws, 'People', 'Ada Lovelace.md'), '# Ada Lovelace\n');
 const html = read('html.md'), obs = read('obsidian.md');
+const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
 
 const typeAtEnd = (text, add) => `(() => { const p = [...document.querySelectorAll('.rich-prose p, .rich-prose h1')].find((x) => x.textContent === ${JSON.stringify(text)}); if (!p) return false;
   document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.selectNodeContents(p); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
@@ -32,6 +36,11 @@ const key = (k) => `document.querySelector('.rich-prose').dispatchEvent(new Keyb
 const slash = (q, text) => [
   { js: `document.execCommand('insertParagraph'); document.execCommand('insertText', false, '/${q}'); true`, wait: 350 },
   { js: `(() => { const n = document.querySelectorAll('.slash-menu .slash-item').length; ${key('Enter')} ${text ? `document.execCommand('insertText', false, ${JSON.stringify(text)});` : ''} return n > 0; })()`, log: true, wait: 400 },
+];
+// type a trigger ([[ @ # :) on a new line, check the menu offers `needle`, then choose that item as a click would
+const pick = (typed, needle, wait = 500) => [
+  { js: `document.execCommand('insertParagraph'); document.execCommand('insertText', false, ${JSON.stringify(typed)}); true`, wait },
+  { js: `(() => { const it = [...document.querySelectorAll('.slash-menu .slash-item')].find((i) => i.textContent.includes(${JSON.stringify(needle)})); if (!it) return false; it.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return true; })()`, log: true, wait: 700 },
 ];
 const keyDown = (k, mods) => `document.querySelector('.rich-prose').dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true, cancelable: true, ...${JSON.stringify(mods)} })); true`;
 const findEl = (text) => `[...document.querySelectorAll('.rich-prose p, .rich-prose h1, .rich-prose h2, .rich-prose li')].find((x) => x.textContent.startsWith(${JSON.stringify(text)}))`;
@@ -119,6 +128,22 @@ const steps = [
   { js: "document.querySelector('[data-file=\"pages/d4c.md\"]').click()", wait: 1500 },
   { js: "[document.querySelectorAll('.rich-code .hljs-keyword').length, document.querySelectorAll('.rich-code .hljs-number').length, document.querySelectorAll('.rich-code .hljs-comment').length].join(':')", log: true, wait: 100 },
   { js: "(() => { const s = document.querySelector('.rich-code-lang'); s.value = 'python'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()", log: true, wait: 2500 },
+  // D5: [[ @ # : pickers, chips, hover card, daily note
+  { js: "document.querySelector('[data-file=\"pages/d5.md\"]').click()", wait: 1500 },
+  { js: typeAtEnd('Start here', ''), wait: 200 },
+  ...pick('[[atl', 'Atlas Plan'),
+  ...pick('@ada', 'Ada Lovelace'),
+  ...pick('@tomorrow', 'Tomorrow'),
+  ...pick('[[Atlas Plan#Go', 'Goals'),
+  ...pick('#design', '#design-system', 900),
+  ...pick(':rocket', ':rocket:'),
+  ...pick('@done', 'Done'),
+  ...pick('[[Brand New Idea', 'Create', 700),
+  { js: 'true', wait: 2500 },
+  { js: "['.rich-wikilink.is-person', '.rich-wikilink.is-date', '.rich-tag', '.rich-status.is-green'].map((q) => document.querySelectorAll(q).length).join(':')", log: true, wait: 100 },
+  { js: "(() => { const el = [...document.querySelectorAll('.rich-wikilink')].find((x) => x.dataset.target === 'Atlas Plan'); el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return true; })()", wait: 900 },
+  { js: "(() => { const c = document.querySelector('.rich-hover'); return !!c && c.textContent.includes('Atlas Plan'); })()", log: true, wait: 100 },
+  { js: "(() => { const el = document.querySelector('.rich-wikilink.is-date'); const r = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, ctrlKey: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new MouseEvent('mousedown', o)); el.dispatchEvent(new MouseEvent('mouseup', o)); return true; })()", wait: 2000 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -129,8 +154,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 27, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, errors] = logs;
+  assert.equal(logs.length, 37, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -161,4 +186,14 @@ child.on('exit', () => {
   console.log('  ✓ dragging the image handle writes its width (|250) and the caption is edited in place');
   assert.equal(colours, '1:1:1'); assert(langSet); assert.equal(read('d4c.md'), '# Code\n\n```python\nconst answer = 42; // the answer\n```\n');
   console.log('  ✓ code blocks are coloured as in the Read view and the language menu writes the fence language');
+  assert([m1, m2, m3, m4, m5, m6, m7, m8].every(Boolean), JSON.stringify([m1, m2, m3, m4, m5, m6, m7, m8]));
+  const d5 = read('d5.md');
+  assert.equal(d5, `# Mentions\n\nStart here\n\n[[Atlas Plan]]\n\n[[Ada Lovelace]]\n\n[[${tomorrow}]]\n\n[[Atlas Plan#Goals]]\n\n#design-system\n\n🚀\n\n[status:: Done]\n\n[[Brand New Idea]]\n`, d5);
+  console.log('  ✓ [[ and @ link a page, a person, tomorrow and a heading; # picks a tag, : an emoji, @done a status chip; the page is written as plain Markdown');
+  assert(fs.existsSync(path.join(ws, 'pages', 'Brand New Idea.md'))); assert.equal(fs.readFileSync(path.join(ws, 'pages', 'Brand New Idea.md'), 'utf8'), '# Brand New Idea\n\n');
+  console.log('  ✓ “Create” in the [[ menu makes the page next to this one and links it');
+  const [people, days, tags, statuses] = chips.split(':').map(Number);
+  assert(people >= 1 && days >= 1 && tags >= 1 && statuses >= 1, chips); assert(hovered); console.log('  ✓ people, days, tags and status are drawn as chips, and resting on a link shows a preview');
+  assert(fs.existsSync(path.join(ws, 'Journal', `${tomorrow}.md`)), 'daily note'); assert.match(fs.readFileSync(path.join(ws, 'Journal', `${tomorrow}.md`), 'utf8'), /^# \w+,? \d+ \w+ \d{4}\n\n$/);
+  console.log('  ✓ opening a day link makes the daily note in Journal/ on first use');
 });

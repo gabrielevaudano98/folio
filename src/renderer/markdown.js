@@ -1,5 +1,6 @@
 // Folio — Markdown to safe HTML, with source-line anchors for scroll sync and AI-edit marks.
 import MarkdownIt from 'markdown-it';
+import { FIELD, statusClass, DAY } from './page-mentions.js';
 import { refsPlugin } from './refs-syntax.js';
 import taskLists from 'markdown-it-task-lists';
 import footnote from 'markdown-it-footnote';
@@ -118,7 +119,7 @@ const soloLine = (tk, i, re) => tk[i].type === 'paragraph_open' && tk[i + 1]?.ty
 md.core.ruler.push('folio_toc', (state) => {
   const tk = state.tokens;
   const heads = [];
-  for (let i = 0; i < tk.length; i++) if (tk[i].type === 'heading_open') heads.push({ level: +tk[i].tag.slice(1), id: tk[i].attrGet('id'), text: tk[i + 1].children.filter((c) => c.type === 'text' || c.type === 'code_inline').map((c) => c.content).join('') });
+  for (let i = 0; i < tk.length; i++) if (tk[i].type === 'heading_open') heads.push({ level: +tk[i].tag.slice(1), id: tk[i].attrGet('id'), text: tk[i + 1].children.filter((c) => c.type === 'text' || c.type === 'code_inline' || c.type === 'folio_tag' || c.type === 'folio_field').map((c) => c.content).join('') });
   for (let i = 0; i < tk.length; i++) {
     let content = null;
     if (soloLine(tk, i, /^\[TOC\]$/i)) {
@@ -178,11 +179,38 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
   if (!silent) {
     const t = state.push('html_inline', '', 0);
     const target = m[1].trim();
-    t.content = `<a class="wikilink" href="#" data-wikilink="${escape(target)}">${escape((m[2] || target).trim())}</a>`;
+    t.content = `<a class="wikilink${DAY.test(target) ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}">${escape((m[2] || target).trim())}</a>`;
   }
   state.pos += m[0].length;
   return true;
 });
+
+// #tags and [status:: Done] chips: the same text the Write view decorates
+md.inline.ruler.before('link', 'folio_tag', (state, silent) => {
+  const { src, pos } = state;
+  if (src.charCodeAt(pos) !== 0x23 || (pos > 0 && !/[\s(]/.test(src[pos - 1]))) return false;
+  const m = /^#((?=[\p{L}\p{N}_\-/]*[\p{L}_])[\p{L}\p{N}_\-/]+)/u.exec(src.slice(pos));
+  if (!m) return false;
+  if (!silent) state.push('folio_tag', 'span', 0).content = m[0];
+  state.pos += m[0].length;
+  return true;
+});
+const FIELD_AT = new RegExp('^' + FIELD.source);
+md.inline.ruler.before('link', 'folio_field', (state, silent) => {
+  if (state.src.charCodeAt(state.pos) !== 0x5b) return false;
+  const m = FIELD_AT.exec(state.src.slice(state.pos));
+  if (!m || state.src[state.pos + m[0].length] === '(') return false;
+  if (!silent) { const t = state.push('folio_field', 'span', 0); t.content = m[0]; t.meta = [m[1].trim(), m[2]]; }
+  state.pos += m[0].length;
+  return true;
+});
+md.renderer.rules.folio_tag = (tk, i) => `<span class="md-tag">${escape(tk[i].content)}</span>`;
+md.renderer.rules.folio_field = (tk, i) => {
+  const [key, val] = tk[i].meta;
+  return key.toLowerCase() === 'status'
+    ? `<span class="md-field md-status is-${statusClass(val)}" data-key="status">${escape(val)}</span>`
+    : `<span class="md-field" data-key="${escape(key.toLowerCase())}"><b>${escape(key)}</b> ${escape(val)}</span>`;
+};
 
 md.use(refsPlugin, { escape });
 

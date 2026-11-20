@@ -24,6 +24,7 @@ const draw = (src, defs) => oracle.render(defs ? `${src}\n\n${defs}\n` : src).re
 export function tidy(md) {
   return md
     .replace(/\\\[\\\[([^\]\n]+)\\\]\\\]/g, '[[$1]]')
+    .replace(/\\\[([A-Za-z][\w ]{0,29}?::[ \t]*[^\]\n]{0,80}?)[ \t]*\\\]/g, '[$1]')
     .replace(/\\\[!([\w-]+(?:\|[^\]\n]*)?)\\\]/g, '[!$1]').replace(/\\\[!([\w-]+(?:\|[^\]\n]*)?)\]/g, '[!$1]')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/^\n+|\n+$/g, '');
