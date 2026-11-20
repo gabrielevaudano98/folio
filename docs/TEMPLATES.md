@@ -122,6 +122,7 @@ After the masters, add three or four normal slides: a title slide, a content sli
 - Publicly: share the `.slides.md` file and its `assets/` folder. Someone else drops them into their `Templates/` folder.
 - From the app: Design, Save as template turns the current deck (its effective design, masters and first slides) into a template file in `Templates/`.
 
-## What PowerPoint export does with templates
+## Templates and PowerPoint
 
-PowerPoint export writes each slide as it looks. The master, layout and theme structure inside the `.pptx` file comes with P13.
+- **From PowerPoint:** File, Import PowerPoint with a `.potx` (or a `.pptx` whose design you want) creates a template in `Templates/`. Each slide layout becomes a master for the matching Folio layout, with its background, shapes and title, subtitle and body placeholders; the theme colours and fonts become the tokens. Check the result against the checklist above: rename masters, adjust placeholder sizes, add colour variants.
+- **To PowerPoint:** Export to PowerPoint writes each master as a PowerPoint slide layout named `Folio · <layout>` with real placeholders, and the tokens as the theme colours and fonts. In PowerPoint, New Slide offers those layouts, and the slides you export use them, so a deck made from your template stays on brand after it leaves Folio.

@@ -214,4 +214,47 @@ const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');
 assert.deepEqual(s.categories, ['Q1', 'Q2', 'Q3', 'Q4']); assert.equal(s.series.length, 4); ok('chart series in rows skip text rows');
 assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG');
 
+// PowerPoint interop: package reading, text conversion, and a .pptx made by pptxgenjs back to slides-md
+{
+  const I = await import('../src/renderer/slides-import.js');
+  const X = await import('../src/renderer/slides-pptx.js');
+  const H = await import('../src/renderer/slides-handouts.js');
+  assert.deepEqual(I.themeTokens('<a:dk1><a:sysClr val="windowText" lastClr="111111"/></a:dk1><a:lt1><a:srgbClr val="FAFAF7"/></a:lt1><a:accent1><a:srgbClr val="0A5C36"/></a:accent1><a:majorFont><a:latin typeface="Georgia"/></a:majorFont><a:minorFont><a:latin typeface="+mn-lt"/></a:minorFont>'), { paper: '#fafaf7', ink: '#111111', accent: '#0a5c36', 'heading-font': 'Georgia' }); ok('a PowerPoint theme becomes deck tokens (system colours and theme-font references handled)');
+  assert.equal(I.folioLayout('title'), 'title'); assert.equal(I.folioLayout('secHead'), 'section'); assert.equal(I.folioLayout('', 'Folio · two-columns'), 'two-columns'); assert.equal(I.folioLayout('', 'Diapositiva titolo'), 'default'); assert.equal(I.folioLayout(undefined, 'Title Slide'), 'title'); ok('PowerPoint layouts map to Folio layouts, including the ones Folio wrote');
+  const ph = I.placeholders('<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title 1"/><p:nvPr><p:ph type="ctrTitle"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="952500" y="0"/><a:ext cx="9525000" cy="952500"/></a:xfrm></p:spPr><p:txBody><a:bodyPr anchor="b"/><a:lstStyle><a:lvl1pPr algn="ctr"><a:defRPr sz="4400"/></a:lvl1pPr></a:lstStyle></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Body"/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr></p:sp>');
+  assert.deepEqual(ph.map((p) => [p.id, p.role, p.valign, p.size, p.align]), [['2', 'title', 'bottom', 44, 'center'], ['3', 'body', null, null, null]]); assert.deepEqual(ph[0].geom, { x: 952500, y: 0, w: 9525000, h: 952500 }); ok('layout placeholders keep their role, box, anchor, size and alignment');
+  const hm = I.htmlToMd('<p style="text-align: center;"><span style="font-size: 36pt;color: #111111;font-weight: bold;">Big idea</span></p><p><span style="font-size: 18pt;">Plain <span style="font-weight:bold;">bold </span>and <span style="font-style: italic;">it</span> &amp; more</span></p><ul><li><span style="font-size:18pt">One</span></li><ul><li><span style="font-size:18pt">Deeper</span></li></ul><li><span style="font-size:18pt">Two</span></li></ul><p><span style="font-size:18pt"># not a heading</span></p>');
+  assert.equal(hm.md, '# Big idea\n\nPlain **bold** and *it* & more\n\n- One\n  - Deeper\n- Two\n\n\\# not a heading'); assert.equal(hm.look.size, 18); ok('PowerPoint text becomes Markdown: emphasis outside spaces, nested lists, bigger paragraphs as headings, literal markers escaped');
+  assert.equal(I.unitPath('M 0 0 L 200 0 L 100 50 Z', 200, 100), 'M 0 0 L 1 0 L 0.5 0.5 Z'); ok('free-form outlines scale into the unit box');
+  assert.deepEqual(X.pathPoints('M0,0 L1,0 C1,1 0,1 0,0 Z', 2, 4), [{ x: 0, y: 0, moveTo: true }, { x: 2, y: 0 }, { x: 0, y: 0, curve: { type: 'cubic', x1: 2, y1: 4, x2: 0, y2: 4 } }, { close: true }]); assert.equal(X.pathPoints('M0 0 A1 1 0 0 1 1 1', 1, 1), null); ok('outlines become PowerPoint freeform points (arcs fall back to a picture)');
+  assert.equal(X.pickFont('-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui'), 'Segoe UI'); assert.equal(X.pickFont("'Inter', system-ui"), 'Inter'); assert.equal(X.pickFont('"New York", "Iowan Old Style", serif'), 'Georgia'); assert.equal(X.pickFont('"SF Mono", ui-monospace, monospace'), 'Consolas'); ok('font stacks export as a font PowerPoint can find on any machine');
+  const cells = H.handoutCells(3, 1280, 720); assert.equal(cells.length, 3); assert(cells.every((c) => c.lines && c.w <= 794 / 2)); assert.equal(H.handoutCells(6, 1280, 720).length, 6); assert(H.handoutCells(9, 1280, 720).every((c) => c.x >= 56 && c.x + c.w <= 794 - 55)); ok('handout grids fit the page; three per page get note lines');
+
+  // a real package: masters with placeholders, a hidden slide in a section, shapes, a line, a table and notes
+  const PptxGenJS = (await import('pptxgenjs')).default;
+  const p = new PptxGenJS(); p.layout = 'LAYOUT_WIDE';
+  p.defineSlideMaster({ title: 'Title Slide', background: { color: '0A2540' }, objects: [{ rect: { x: 0, y: 7, w: 13.333, h: 0.5, fill: { color: 'FF6600' } } }, { placeholder: { options: { name: 'title', type: 'title', x: 1, y: 2, w: 11, h: 2, fontSize: 48 }, text: '' } }] });
+  p.defineSlideMaster({ title: 'Title and Content', background: { color: 'FFFFFF' }, objects: [{ placeholder: { options: { name: 'title', type: 'title', x: 0.5, y: 0.4, w: 12, h: 1 }, text: '' } }, { placeholder: { options: { name: 'body', type: 'body', x: 0.5, y: 1.6, w: 12, h: 5 }, text: '' } }] });
+  p.addSection({ title: 'Intro' });
+  const s1 = p.addSlide({ masterName: 'Title Slide', sectionTitle: 'Intro' }); s1.addText('Quarterly review', { placeholder: 'title' });
+  const s2 = p.addSlide({ masterName: 'Title and Content', sectionTitle: 'Intro' }); s2.addText('Results', { placeholder: 'title' });
+  s2.addText([{ text: 'Revenue up', options: { bullet: true, breakLine: true } }, { text: 'Costs flat', options: { bullet: true } }], { placeholder: 'body' });
+  s2.addShape('ellipse', { x: 10, y: 5, w: 2, h: 2, fill: { color: '0A5C36' } }); s2.addShape('line', { x: 1, y: 6.5, w: 4, h: 0, line: { color: '333333', width: 2, endArrowType: 'triangle' } });
+  s2.addNotes('Say the number first.'); s2.hidden = true;
+  s2.addTable([[{ text: 'A' }, { text: 'B' }], [{ text: '1' }, { text: '2' }]], { x: 6, y: 5, w: 3 });
+  const buf = await p.write({ outputType: 'nodebuffer' });
+  const { parse } = await import('../node_modules/pptxtojson/dist/index.js');
+  const md = await I.importPowerPoint(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), { parse, name: 'Review' });
+  const d = parseDeck(md);
+  assert.equal(d.masters.length, 2); assert.deepEqual(d.masters.map((m) => m.only), [true, true]); ok('each PowerPoint layout in use becomes a layout master');
+  const tm = d.masters.find((m) => /title/.test(m.master)); assert.equal(tm.directives._backgroundColor ?? tm.directives.backgroundColor, '#0a2540'); assert((tm.objects || []).some((o) => o.attrs.placeholder === 'title')); assert((tm.objects || []).some((o) => o.attrs.fill === '#ff6600')); ok('masters keep their background, decorations and title placeholder');
+  const shown = d.slides.filter((x) => !x.master);
+  assert.equal(shown[0].layout, 'title'); assert.match(shown[0].raw ?? md, /# Quarterly review/); ok('titles become flow headings that fill the master placeholder');
+  assert.equal(shown[1].hidden, true); assert.equal(shown[0].section, 'Intro'); assert.match(md, /- Revenue up\n- Costs flat/); assert.match(shown[1].notes || md, /Say the number first\./); ok('body text, hidden slides, sections and speaker notes come across');
+  assert.match(md, /::: shape #s\d+ type=ellipse x=960 y=480 w=192 h=192 fill=#0a5c36/); assert.match(md, /::: line #l\d+ x=96 y=624 w=384 h=0 head=arrow stroke=#333333/); assert.match(md, /\| A \| B \|\n\| --- \| --- \|\n\| 1 \| 2 \|/); ok('shapes, arrows and tables land at the same geometry on the 1280×720 canvas');
+  const ifm = parseFrontmatter(md); assert.equal(joinDeck(ifm.raw, splitSlides(ifm.body)), md); ok('an imported deck round-trips byte for byte');
+  const tpl = await I.importPowerPoint(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), { parse, name: 'Review', template: true });
+  const td = parseDeck(tpl); assert.match(tpl, /template-name: Review/); assert.equal(td.masters.length, 2); assert.equal(td.slides.filter((x) => !x.master).length, 2); ok('a template import keeps the layouts as masters with one sample slide each');
+}
+
 console.log(`\n${n} format checks passed`);

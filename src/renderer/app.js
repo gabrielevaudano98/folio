@@ -63,7 +63,7 @@ function surfaceCtx(type) {
     getPath: () => S.active,
     copy: (t) => folio.copy(t),
     revealLine: (n) => { if (app.dataset.modeView === 'split') editor.scrollToLine(n); },
-    exportPdf: (html) => folio.exportPdf(S.active, html, { cssPage: true }),
+    exportPdf: (html, o = {}) => folio.exportPdf(S.active, html, { cssPage: true, ...o }),
     saveBinary: (ext, bytes) => folio.exportBinary(S.active, ext, bytes),
     isDark: () => S.dark,
     refEnv,
@@ -680,6 +680,25 @@ async function ensureTemplate(t) {
   if (!S.files.includes(path)) { await folio.create(path, t.text); await refreshTree(); }
   return path;
 }
+/** a .pptx becomes a deck next to the open note; a .potx becomes a template in Templates/ */
+async function importPowerPointFile() {
+  let picked;
+  try { picked = await folio.pickOffice(); } catch (e) { return toast(e.message, { kind: 'error' }); }
+  if (!picked) return;
+  const asTemplate = picked.ext === 'potx';
+  const T = await import('./slides-templates.js');
+  const folder = asTemplate ? T.TEMPLATE_DIR : dirOf(S.active || '');
+  const safe = picked.name.replace(/[\\/:*?"<>|]/g, '-');
+  let path = `${folder ? folder + '/' : ''}${safe}.slides.md`; let n = 2;
+  while (S.files.includes(path)) path = `${folder ? folder + '/' : ''}${safe} ${n++}.slides.md`;
+  toast(`Importing ${picked.name}…`);
+  try {
+    const { importPowerPoint } = await import('./slides-import.js');
+    const text = await importPowerPoint(picked.bytes.buffer, { name: picked.name, template: asTemplate, saveAsset: (name, bytes) => folio.saveImage(path, name, bytes) });
+    await folio.create(path, text); await refreshTree(); await openFile(path);
+    toast(asTemplate ? `${picked.name} is now a template. Find it in New from template.` : `Imported ${picked.name}.`);
+  } catch (e) { toast(`Import failed. ${e.message}`, { kind: 'error' }); }
+}
 async function saveTemplate(name, text) {
   const T = await import('./slides-templates.js');
   let path = `${T.TEMPLATE_DIR}/${name.replace(/[\\/:*?"<>|]/g, '-')}.slides.md`; let n = 2;
@@ -998,6 +1017,15 @@ const COMMANDS = [
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
   { id: 'export-html', title: 'Export as HTML…', run: () => exportAs('html') },
   { id: 'export-pptx', title: 'Export slides as PowerPoint…', run: () => (curType() === 'slides' ? exportAs('pptx') : toast('Open a slides document first.')) },
+  { id: 'import-pptx', title: 'Import PowerPoint or template (.pptx, .potx)…', run: () => importPowerPointFile() },
+  { id: 'export-handouts', title: 'Export slide handouts as PDF…', run: async () => {
+    if (curType() !== 'slides') return toast('Open a slides document first.');
+    const n = await prompt({ title: 'Export handouts', label: 'Slides per page', value: '3', hint: '1, 2, 3, 4, 6 or 9. Three per page adds lines for notes.', action: 'Export' });
+    if (!n) return; const per = parseInt(n, 10);
+    if (![1, 2, 3, 4, 6, 9].includes(per)) return toast('Choose 1, 2, 3, 4, 6 or 9 slides per page.', { kind: 'error' });
+    curSurface()?.exportHandouts?.({ perPage: per });
+  } },
+  { id: 'export-notes', title: 'Export slide notes pages as PDF…', run: () => (curType() === 'slides' ? curSurface()?.exportHandouts?.({ notes: true }) : toast('Open a slides document first.')) },
   { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
   { id: 'export-pdf', title: 'Export as PDF…', key: 'Mod+Shift+E', run: () => exportAs('pdf') },
@@ -1098,6 +1126,7 @@ function focusSearch() { if (app.dataset.sidebar !== 'open') toggleSidebar(); $(
 /* ============ small UI kit: toast, prompt, confirm, menu, tooltip ============ */
 function toast(text, { kind = 'info', action } = {}) {
   const el = document.createElement('div');
+  (window.__folioToasts ||= []).push(text); // tests read what was said
   el.className = 'toast'; el.dataset.kind = kind; el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
   el.innerHTML = `<p>${esc(text)}</p>${action ? `<button class="btn btn-quiet" type="button">${esc(action[0])}</button>` : ''}<button class="icon-btn" type="button" aria-label="Dismiss">${icons.close}</button>`;
   $('#toasts').appendChild(el);
@@ -1418,6 +1447,9 @@ function bindIpc() {
 }
 
 window.__folioErrors = [];
+/** tests and automation: run a command by id, as the menu would */
+window.__folioRun = (id) => COMMANDS.find((x) => x.id === id)?.run();
+Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
 addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); console.error('[folio-error]', e.reason?.message || e.reason); });
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>Folio could not start. ${esc(e.message)}</p></div></div>`); console.error(e); });

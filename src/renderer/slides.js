@@ -1138,8 +1138,12 @@ export function mountSlides(host, ctx) {
 
   /* exports */
   async function resolvedHtml() {
+    return (await resolvedBox(deck.shown.map((s) => renderSlide(deck, s)).join(''))).innerHTML;
+  }
+  /** slides as a detached element with charts, icons, live values and pictures resolved */
+  async function resolvedBox(html) {
     const box = document.createElement('div');
-    box.innerHTML = deck.shown.map((s) => renderSlide(deck, s)).join('');
+    box.innerHTML = html;
     await hydrateCharts(box, ctx.readNote);
     if (box.querySelector('.sl-icon-svg')) { const { hydrateIcons } = await import('./slides-icons.js'); await hydrateIcons(box); }
     if (ctx.refEnv) { const { hydrateRefs } = await import('./refs.js'); await hydrateRefs(box, ctx.refEnv()); }
@@ -1147,7 +1151,7 @@ export function mountSlides(host, ctx) {
       const src = img.dataset.src || img.getAttribute('src') || '';
       try { img.src = await ctx.dataUrl(src); } catch { img.remove(); }
     }));
-    return box.innerHTML;
+    return box;
   }
   async function exportPdf() {
     try {
@@ -1157,10 +1161,31 @@ export function mountSlides(host, ctx) {
       if (out) ctx.toast('Slides exported to PDF.');
     } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
   }
+  /** handouts (1–9 slides per A4 page) or notes pages (a slide with its speaker notes), as PDF */
+  async function exportHandouts({ perPage = 3, notes = false } = {}) {
+    try {
+      const { handoutHtml } = await import('./slides-handouts.js');
+      const box = await resolvedBox(deck.shown.map((s) => renderSlide(deck, s)).join(''));
+      const slidesHtml = [...box.querySelectorAll(':scope > section.slide')].map((el) => el.outerHTML);
+      const html = handoutHtml({ deck, slides: deck.shown, slidesHtml, perPage, notes, css: slidesCss, fonts: await fontFaces({ inline: true }), title: deck.global.title || deck.shown[0]?.title || '' });
+      const out = await ctx.exportPdf(html, { suffix: notes ? 'notes' : 'handouts' });
+      if (out) ctx.toast(notes ? 'Notes pages exported to PDF.' : 'Handouts exported to PDF.');
+    } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+  }
   async function exportPptx() {
     try {
       const { buildPptx } = await import('./slides-pptx.js');
-      const bytes = await buildPptx(deck, { dataUrl: ctx.dataUrl, renderSlide, readNote: ctx.readNote });
+      const prepare = async (html) => {
+        // mounted off-screen at 1:1 so the exporter can measure what the browser laid out
+        const host = await resolvedBox(html);
+        host.style.cssText = 'position:fixed;left:-100000px;top:0;pointer-events:none;';
+        host.insertAdjacentHTML('afterbegin', `<style>${await fontFaces()}</style>`);
+        document.body.appendChild(host);
+        await Promise.all([...host.querySelectorAll('img')].map((i) => i.decode().catch(() => {})));
+        shrinkFit(host);
+        return host;
+      };
+      const bytes = await buildPptx(deck, { dataUrl: ctx.dataUrl, renderSlide, readNote: ctx.readNote, prepare });
       const out = await ctx.saveBinary('pptx', bytes);
       if (out) ctx.toast('Slides exported to PowerPoint.');
     } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
@@ -1184,7 +1209,7 @@ export function mountSlides(host, ctx) {
     insertText(t) { const { fm, list } = chunks(); list[cur] = addObject(list[cur], t); commit(joinDeck(fm, list)); },
     gotoSlide(i) { if (deck && i >= 0) select(i, { reveal: false }); },
     refresh() { if (deck) { render({ keepEditor: true }); checkSync(); } },
-    exportPdf, exportPptx,
+    exportPdf, exportPptx, exportHandouts,
     focus() { thumbs.querySelector('[aria-current="true"]')?.focus(); },
   };
 }

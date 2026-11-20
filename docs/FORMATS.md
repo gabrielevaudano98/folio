@@ -112,6 +112,13 @@ template: Brand.slides  # take theme, tokens, fonts and masters from another dec
 - `<!-- hidden -->` keeps a slide in the deck but leaves it out of presenting and exports. It keeps its number.
 - `<!-- comment (Ana, 2026-11-19): Check these numbers -->` is a review comment on the slide. Author and date are optional. Comments are not speaker notes; Resolve deletes the line.
 
+### PowerPoint in and out
+
+- **Export to PowerPoint** (File menu) renders each slide at its real size and measures it, so the .pptx matches Folio: text frames keep position, fonts, sizes, colours and spacing; placed objects become native shapes, lines and arrows, freeforms, pictures (crop kept), tables, charts, video and audio; masters become slide layouts with title, subtitle and body placeholders; the deck's tokens become the theme colours and fonts. Hidden slides stay hidden, sections and speaker notes are kept. Gradients are drawn as pictures. Fonts are named, not embedded: the portable family of a font stack is used (`Segoe UI` for the system stack, `Georgia` for serif, `Consolas` for mono).
+- **Handouts and notes pages** (File menu) are PDFs on A4: 1, 2, 3, 4, 6 or 9 slides a page (3 a page adds lines for notes), or one slide a page with its speaker notes.
+- **Import PowerPoint** reads a `.pptx` into a new deck next to the open note, with pictures and media saved in `assets/`: each PowerPoint layout in use becomes a `<!-- master: … only -->` with its shapes, background and placeholders; titles and body text become ordinary Markdown in the flow; everything else becomes placed objects at the same geometry (scaled to the nearest Folio size); hidden slides, sections and speaker notes come across. A `.potx` becomes a template in `Templates/` (its layouts as masters, one sample slide each), ready in New from template.
+- Layouts map by type or name: title → `title`, section header → `section`, two content or comparison → `two-columns`, blank → `blank`, title only → `title-only`, everything else → `default`.
+
 ### Placed objects (slides-md v2)
 
 Content is laid out by the slide's layout (flow). Objects with explicit geometry sit on top, in slide pixels on a 1280×720 canvas (960×720 for `size: 4:3`), origin top left.

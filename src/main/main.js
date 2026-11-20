@@ -199,6 +199,17 @@ h('fs:pick-image', async (noteRel) => {
   await fs.copyFile(r.filePaths[0], file);
   return path.relative(path.dirname(notes.resolve(noteRel)), file).split(path.sep).join('/');
 });
+/** a PowerPoint file or template to import: its name and bytes (FOLIO_IMPORT_FILE stands in for the dialog in tests) */
+let importN = 0;
+h('fs:pick-office', async () => {
+  const dev = !app.isPackaged && process.env.FOLIO_IMPORT_FILE;
+  const r = dev ? { filePaths: [process.env.FOLIO_IMPORT_FILE.split('|')[importN++ % process.env.FOLIO_IMPORT_FILE.split('|').length]] } : await dialog.showOpenDialog(win, { title: 'Import PowerPoint', properties: ['openFile'], filters: [{ name: 'PowerPoint', extensions: ['pptx', 'potx'] }] });
+  if (r.canceled || !r.filePaths?.[0]) return null;
+  const file = r.filePaths[0];
+  if (!/\.(pptx|potx)$/i.test(file)) throw new Error('Choose a .pptx or .potx file.');
+  const st = await fs.stat(file); if (st.size > 300 * 1024 * 1024) throw new Error('This file is too large to import (over 300 MB).');
+  return { name: path.basename(file).replace(/\.(pptx|potx)$/i, ''), ext: path.extname(file).slice(1).toLowerCase(), bytes: new Uint8Array(await fs.readFile(file)) };
+});
 h('fs:pick-media', async (noteRel, kind) => {
   const font = kind === 'font';
   const r = await dialog.showOpenDialog(win, { title: font ? 'Add a font file' : 'Insert video or audio', properties: ['openFile'], filters: font ? [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] : [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
@@ -224,7 +235,7 @@ h('export:binary', async (rel, ext, bytes) => {
   if (r.canceled) return null;
   await fs.writeFile(r.filePath, Buffer.from(bytes)); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif' };
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
 h('fs:data-url', async (src, noteRel) => {
   if (/^data:/.test(src)) return src;
   if (/^https?:\/\//.test(src)) {
@@ -240,7 +251,8 @@ h('fs:data-url', async (src, noteRel) => {
   return `data:${MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream'};base64,${buf.toString('base64')}`;
 });
 h('export:pdf', async (rel, html, opts = {}) => {
-  const pdfName = rel.replace(/(\.(slides|board|sheet))?\.\w+$/, '.pdf').split('/').pop();
+  const suffix = /^[a-z-]{1,20}$/.test(opts.suffix || '') ? ` ${opts.suffix}` : '';
+  const pdfName = rel.replace(/(\.(slides|board|sheet))?\.\w+$/, `${suffix}.pdf`).split('/').pop();
   const r = !app.isPackaged && process.env.FOLIO_EXPORT_DIR ? { filePath: path.join(process.env.FOLIO_EXPORT_DIR, pdfName) } : await dialog.showSaveDialog(win, { defaultPath: pdfName, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
   if (r.canceled) return null;
   const tmp = path.join(os.tmpdir(), `folio-export-${Date.now()}.html`);
@@ -248,7 +260,7 @@ h('export:pdf', async (rel, html, opts = {}) => {
   const pw = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
   await pw.loadFile(tmp);
   const pdf = await pw.webContents.printToPDF(opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
-  pw.destroy(); fs.unlink(tmp).catch(() => {});
+  pw.destroy(); if (!process.env.FOLIO_KEEP_HTML) fs.unlink(tmp).catch(() => {});
   await fs.writeFile(r.filePath, pdf); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
 
@@ -417,8 +429,13 @@ function buildMenu() {
       { label: 'Save', accelerator: 'CmdOrCtrl+S', click: cmd('save') },
       { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
       { type: 'separator' },
+      { label: 'Import PowerPoint…', click: cmd('import-pptx') },
+      { type: 'separator' },
       { label: 'Export as HTML…', click: cmd('export-html') },
       { label: 'Export as PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export-pdf') },
+      { label: 'Export Slides as PowerPoint…', click: cmd('export-pptx') },
+      { label: 'Export Handouts…', click: cmd('export-handouts') },
+      { label: 'Export Notes Pages…', click: cmd('export-notes') },
       ...(isMac ? [] : [{ type: 'separator' }, { label: 'Settings…', accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
     ] },
     { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
