@@ -36,3 +36,15 @@ ISC, BSD), among them Electron, CodeMirror, TipTap, markdown-it, Mermaid,
 KaTeX, highlight.js, pptxgenjs, JSZip, hot-formula-parser, dagre and the Model
 Context Protocol SDK. Their notices are kept in node_modules and in the built
 application's license files.
+
+OPTIONAL COMPONENTS (downloaded only when the person turns on a feature)
+
+The meeting recorder downloads, from pinned addresses checked by SHA-256, parts
+that are not included in Folio and keep their own licenses, listed in
+Settings → Optional features and in src/main/features/catalog.js:
+  - sherpa-onnx (Apache-2.0), Xiaomi Corporation and contributors
+  - Silero VAD (MIT), Silero Team
+  - Whisper large-v3-turbo (MIT), OpenAI; converted to ONNX int8 by sherpa-onnx
+  - Parakeet TDT 0.6B v3 (CC-BY-4.0), NVIDIA; converted to ONNX int8 by sherpa-onnx
+  - llama.cpp (MIT), the ggml authors
+  - Qwen3-1.7B (Apache-2.0), Qwen team, Alibaba Cloud; GGUF by Unsloth

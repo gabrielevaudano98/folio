@@ -10,12 +10,12 @@ export function workspace(name, port) {
   fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: port }));
   return { tmp, ws, ud, out, read: (f) => fs.readFileSync(path.join(ws, f), 'utf8') };
 }
-export function runApp(w, steps, env = {}) {
+export function runApp(w, steps, env = {}, timeoutMs = 180000) {
   const stepsFile = path.join(w.tmp, `steps-${Date.now()}.json`); fs.writeFileSync(stepsFile, JSON.stringify(steps));
   return new Promise((resolve) => {
     const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: w.ud, FOLIO_SHOT: stepsFile, FOLIO_EXPORT_DIR: w.out, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = ''; child.stdout.on('data', (d) => (log += d)); child.stderr.on('data', (d) => (log += d));
-    const timer = setTimeout(() => child.kill(), 180000);
+    const timer = setTimeout(() => child.kill(), timeoutMs);
     child.on('exit', () => { clearTimeout(timer); resolve({ log, js: log.split('\n').filter((l) => l.startsWith('js ')).map((l) => { try { return JSON.parse(l.slice(3)); } catch { return l.slice(3); } }) }); });
   });
 }

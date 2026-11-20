@@ -270,3 +270,39 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 - A cell that starts with `=` is a formula, Excel syntax: `SUM`, `AVERAGE`, `IF`, `IFS`, `IFERROR`, `COUNTIF`, `SUMIF`, `VLOOKUP`, `HLOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `ROUND`, `TEXTJOIN`, dates, finance and about 380 more. `$` locks a reference. Write a pipe inside a cell as `\|`.
 - The optional `<!-- sheet: {...} -->` comment right after a table holds formatting: `cols` and `cells` with `format` (`number`, `integer`, `currency`, `usd`, `percent`, `date`, `text`), `bold`, `italic`, `align`, `width`; `view: "kanban"` and `kanbanBy` (column index) for the Kanban view.
 - Values are not stored, only formulas. Through MCP, `get_sheet_values` returns the computed values.
+
+## Meeting notes
+
+The meeting recorder writes a normal page in `Meetings/`, named `YYYY-MM-DD hh-mm Title.md`. Nothing in it needs Folio to read.
+
+```markdown
+---
+type: meeting
+title: "Weekly sync"
+date: 2026-11-20T14:04:00.000Z
+duration: 00:42:10
+transcription: whisper-large-v3-turbo-int8
+notes: qwen3-1.7b-q4km          # only when notes were written
+worker_peak_mb: 2080            # measured on this computer during the recording
+app_peak_mb: 2710
+transcription_speed: 0.21       # seconds of work per second of audio
+---
+
+# Weekly sync
+
+## Notes
+### Summary
+### Decisions
+- Use Whisper for transcription (line 6)
+### Action items
+- [ ] Prepare the Windows build · owner: Marco · due: Friday 27 November (line 3)
+### Open questions
+
+## Transcript
+
+**1** · 00:00:00 · Others: Good morning, let's start.
+```
+
+- Every transcript line has a number; every note cites the line it comes from. Folio keeps a point only when its quote is on that line, and keeps an owner or a date only when it is written on that line.
+- `You` is the microphone, `Others` is the computer's sound. Microphone lines that repeat what Others said at the same moment (echo without headphones) are left out.
+- Writing notes later never rewrites the person's edits: if the page changed, the notes are inserted above `## Transcript`.
