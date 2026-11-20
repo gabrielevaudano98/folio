@@ -58,6 +58,10 @@ await t('writeNew creates a file and never replaces one', async () => {
   await assert.rejects(writeNew(f, 'second'), (e) => e.code === 'EEXIST');
   assert.equal(fs.readFileSync(f, 'utf8'), 'first'); assert.deepEqual(leftovers(), []);
 });
+if (process.platform !== 'win32') await t('an explicit mode replaces a wider one (the bridge file holds the token)', () => {
+  const f = path.join(dir, 'bridge.json'); fs.writeFileSync(f, '{}'); fs.chmodSync(f, 0o644);
+  writeAtomicSync(f, '{"a":1}', { mode: 0o600 }); assert.equal(fs.statSync(f).mode & 0o777, 0o600);
+});
 await t('sync version, with a file mode', () => {
   const f = path.join(dir, 'settings.json'); writeAtomicSync(f, '{"a":1}', { mode: 0o600 }); writeAtomicSync(f, '{"a":2}', { mode: 0o600 });
   assert.equal(fs.readFileSync(f, 'utf8'), '{"a":2}'); if (process.platform !== 'win32') assert.equal(fs.statSync(f).mode & 0o777, 0o600);
