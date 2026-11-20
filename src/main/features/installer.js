@@ -171,6 +171,7 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
     async uninstall(id) {
       if (busy?.ids.includes(id)) throw new Error('Cancel the download first.');
       await fs.rm(dirOf(id), { recursive: true, force: true });
+      await fs.rm(dirOf(id) + '.old', { recursive: true, force: true }); // or the next start would put it back
       await fs.rm(path.join(dl, id), { recursive: true, force: true });
       live.delete(id);
     },

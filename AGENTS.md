@@ -17,13 +17,15 @@ AI assistants edit through MCP. Everything the user creates is a `.md` file.
 ## Invariants (reviewers: flag violations)
 1. **Lossless round-trip.** Opening a file must not rewrite it. Editing one thing must not reformat unrelated text.
    Every format change ships with a test in `test/formats.test.mjs`.
-2. **Workspace boundary.** No file access outside the open folder; writes only to `.md .markdown .mdx .txt` (images go to `assets/`).
+2. **Workspace boundary.** No file access outside the open folder; writes only to `.md .markdown .mdx .txt` (images, fonts, video and audio are copied into `assets/`, checked with `notes.contain()`).
 3. **MCP safety.** HTTP server binds 127.0.0.1, checks the bearer token and Host/Origin. Write tools respect "Let AI edit notes".
 4. **Electron security.** `contextIsolation: true`, `sandbox: true`, no `nodeIntegration`, no remote content in the app window.
 5. **Design system.** Colours, fonts, radii and motion only through `src/renderer/tokens.css`. Grey palette only (chroma 0).
    No uppercase tracked labels, no emoji as icons, visible `:focus-visible`, `prefers-reduced-motion` respected.
-6. **Responsiveness and data safety.** No synchronous I/O in the main process after startup, except the small
-   `settings.json` and `mcp-bridge.json` writes; files are written with `atomic.js`; heavy work runs outside the main process and the window ([budget](docs/performance/budget.md)).
+6. **Responsiveness and data safety.** In the main process, reading and writing notes and all network work are
+   asynchronous; the few small synchronous calls are listed in [process-model](docs/explanation/process-model.md) and
+   must not grow. Every file Folio replaces (notes, settings, `mcp-bridge.json`) is written with `atomic.js`. Heavy work
+   runs outside the main process and the window ([budget](docs/performance/budget.md)).
 7. **Attribution.** Never remove "Based on Folio by Gabriele Vaudano" from NOTICE, README or the About window.
 
 ## Commands

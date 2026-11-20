@@ -44,30 +44,32 @@ let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
 // settings change often (every tab switch records the last file), so writes are batched and done off the main thread;
 // quitting writes any pending change at once. It holds the MCP token (0600) and is atomic, so a crash cannot leave it half written.
-let settingsTimer = null, settingsWrite = Promise.resolve(), settingsInFlight = 0;
+let settingsTimer = null, settingsWrite = Promise.resolve(), settingsInFlight = 0, settingsDirty = false;
 function saveSettings() {
+  settingsDirty = true;
   clearTimeout(settingsTimer);
   settingsTimer = setTimeout(() => {
     settingsTimer = null;
     const text = JSON.stringify(settings, null, 2);
-    settingsInFlight++;
+    settingsInFlight++; settingsDirty = false; // a failed write marks it dirty again, so quit retries it
     settingsWrite = settingsWrite.then(async () => {
       await fs.mkdir(path.dirname(SETTINGS_FILE()), { recursive: true });
       await writeAtomic(SETTINGS_FILE(), text, { mode: 0o600 });
       writeBridge();
-    }).catch((e) => console.error('[folio] settings not saved:', e.message)).finally(() => { settingsInFlight--; });
+    }).catch((e) => { settingsDirty = true; console.error('[folio] settings not saved:', e.message); }).finally(() => { settingsInFlight--; });
   }, 200);
 }
 /** at quit: once any write already started has finished (so it cannot land after this one), writes the latest settings */
 function flushSettingsSync() {
-  if (!settingsTimer) return;
   clearTimeout(settingsTimer); settingsTimer = null;
+  if (!settingsDirty) return;
+  settingsDirty = false;
   try { fss.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true }); writeAtomicSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); writeBridge(); }
   catch (e) { console.error('[folio] settings not saved:', e.message); }
 }
 function writeBridge() {
   const b = { port: mcpServerPort, token: settings.token, workspace: settings.workspace, allowWrite: settings.allowWrite, pid: process.pid };
-  try { fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); fss.chmodSync(BRIDGE_FILE(), 0o600); } catch {} // the mode only applies to a new file, so older installs are repaired here
+  try { writeAtomicSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {} // owner-only: it holds the token (an older, wider file is replaced with 0600)
 }
 
 const notes = createNotes(() => settings.workspace);
@@ -649,7 +651,7 @@ app.on('before-quit', (e) => { // a recording is saved before the app quits; a n
 });
 app.on('before-quit', (e) => {
   if (settingsInFlight) { e.preventDefault(); settingsWrite.finally(() => app.quit()); return; } // let it land first, then flush
-  flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
+  flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; writeAtomicSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
 async function devShot(w) {

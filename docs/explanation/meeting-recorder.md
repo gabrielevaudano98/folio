@@ -11,7 +11,8 @@ The meeting recorder is an optional feature: nothing is downloaded and nothing r
 3. The blocks travel on a MessagePort to the **meeting worker**, a separate process that exists only while you record.
 4. In the worker, a voice detector (Silero VAD) finds where speech starts and ends; each piece of speech (at most about
    30 seconds) is transcribed by Whisper large-v3-turbo. Lines come back to the app and are appended to a work file as they
-   arrive, so a crash loses only the speech that was still being transcribed.
+   arrive. A crash of Folio loses only the speech still being transcribed; a power cut can also lose the last few lines,
+   because the work file is not flushed to disk after each one.
 5. At Stop, the transcript is saved as a note in `Meetings/`, and the worker exits.
 6. If the notes model is installed, llama.cpp's server starts, reads the numbered transcript and proposes a summary,
    decisions, action items and open questions. Then it stops.
