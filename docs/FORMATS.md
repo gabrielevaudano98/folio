@@ -112,6 +112,28 @@ template: Brand.slides  # take theme, tokens, fonts and masters from another dec
 - `<!-- hidden -->` keeps a slide in the deck but leaves it out of presenting and exports. It keeps its number.
 - `<!-- comment (Ana, 2026-11-19): Check these numbers -->` is a review comment on the slide. Author and date are optional. Comments are not speaker notes; Resolve deletes the line.
 
+### Transitions and animations
+
+```markdown
+<!-- transition: push-left 0.6s -->
+
+::: box #claim x=80 y=160 w=520 h=300
+...
+:::
+
+<!--
+animate: #claim fade-in
+animate: #chart fly-in-up after 0.4s delay=200ms
+animate: body appear by=paragraph
+-->
+```
+
+- `transition:` applies to the slide it is on (front matter `transition:` sets the deck default). Names: `none`, `fade`, `fade-black`, `dissolve`, `push-left|right|up|down`, `wipe-left|right|up|down`, `cover-left|right`, `uncover-left|right`, `split`, `reveal`, `zoom`, `zoom-out`, `iris`, `clock`, `blinds`, `flip`, `cube`, `fall`, `morph`. An optional duration follows (`0.6s`, `800ms`; default 0.5s).
+- **Morph:** objects with the same `#id` on the previous slide glide to their new place and size; everything else cross-fades.
+- `animate:` lines live in one comment at the end of the slide, in build order. Each line: target (`#id` or `body` for the slide text), effect, then in any order: trigger `click` (default), `with` (with the previous) or `after` (after the previous ends); a duration; `delay=`; `repeat=2` or `repeat=loop`; `by=paragraph` (one click per paragraph or list item); `path=dx,dy` for `path-custom`.
+- Effects. Entrance: `appear`, `fade-in`, `zoom-in`, `grow-in`, `fly-in-left|right|up|down`, `float-in`, `wipe-in`, `spin-in`, `bounce-in`. Emphasis: `pulse`, `spin`, `grow`, `teeter`, `flash`, `shake`. Exit: `disappear`, `fade-out`, `zoom-out`, `fly-out-left|right|up|down`, `wipe-out`. Motion paths: `path-left|right|up|down|arc|custom`.
+- Objects whose first animation is an entrance start hidden. An unchanged line is written back exactly as typed. Marp ignores both (they are comments).
+
 ### PowerPoint in and out
 
 - **Export to PowerPoint** (File menu) renders each slide at its real size and measures it, so the .pptx matches Folio: text frames keep position, fonts, sizes, colours and spacing; placed objects become native shapes, lines and arrows, freeforms, pictures (crop kept), tables, charts, video and audio; masters become slide layouts with title, subtitle and body placeholders; the deck's tokens become the theme colours and fonts. Hidden slides stay hidden, sections and speaker notes are kept. Gradients are drawn as pictures. Fonts are named, not embedded: the portable family of a font stack is used (`Segoe UI` for the system stack, `Georgia` for serif, `Consolas` for mono).
