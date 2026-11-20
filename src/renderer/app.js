@@ -5,12 +5,9 @@ import { EditorView } from '@codemirror/view';
 import { undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
 import { createActionLog } from './history.js';
 import { createRich } from './rich.js';
-import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
-import { mountBoard } from './board.js';
-import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
 import { icons } from './icons.js';
 import tokensCss from './tokens.css';
@@ -23,7 +20,10 @@ const base = (p) => p.split('/').pop();
 const stem = (p) => base(p).replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx|txt)$/i, '');
 
 /* ---------- document types: every type has a visual view and a code view ---------- */
-const SURFACES = { slides: mountSlides, board: mountBoard, sheet: mountSheet };
+// the visual editors are loaded the first time a document of their type is opened, so startup parses only what pages need
+const SURFACES = { slides: () => import('./slides.js').then((m) => m.mountSlides), board: () => import('./board.js').then((m) => m.mountBoard), sheet: () => import('./sheet.js').then((m) => m.mountSheet) };
+const surfaceMods = {};
+const loadSurface = (type) => (surfaceMods[type] ||= SURFACES[type]().then((mount) => { surfaceMods[type].mount = mount; return mount; }, (e) => { delete surfaceMods[type]; throw e; }));
 const NEW_BOARD = (t) => `# ${t}\n\nA board in board-md. Shapes: \`id: shape "Label" @x,y\`. Connectors: \`a -> b "label"\`.\n\n\`\`\`board\nstart: terminator "Start" @40,60\nidea: rect "Write the idea" @230,55\nok: diamond "Clear?" @430,45\ndone: terminator "Share" @620,60\nnote: note "Double-click to edit, drag from the dots to connect" @220,190 200x80\n\nstart -> idea\nidea -> ok\nok -> done "yes"\nok.bottom -> idea.bottom "no" {route: orthogonal}\n\`\`\`\n`;
 const NEW_SHEET = (t) => `# ${t}\n\n## Sheet1\n\n| Item | Quantity | Price | Total |\n| --- | --- | --- | --- |\n| Notebooks | 4 | 3.5 | =B2*C2 |\n| Pens | 12 | 1.2 | =B3*C3 |\n| Folders | 6 | 2.1 | =B4*C4 |\n| Total |  |  | =SUM(D2:D4) |\n\n<!-- sheet: {"cols":{"C":{"format":"currency"},"D":{"format":"currency"}}} -->\n`;
 const NEW_CONTENT = { md: (t) => `# ${t}\n\n`, slides: () => NEW_DECK, board: NEW_BOARD, sheet: NEW_SHEET };
@@ -46,10 +46,12 @@ const surfaces = {};
 function surfaceFor(type) {
   if (!SURFACES[type]) return null;
   if (!surfaces[type]) {
+    const mount = surfaceMods[type]?.mount;
+    if (!mount) return null; // not loaded yet: callers load it with loadSurface() and try again
     const host = document.createElement('div');
     host.className = `surface surface-${type}`; host.id = `surface-${type}`;
     $('#pane-surface').appendChild(host);
-    surfaces[type] = SURFACES[type](host, surfaceCtx(type));
+    surfaces[type] = mount(host, surfaceCtx(type));
     surfaces[type].host = host;
   }
   $$('#pane-surface > .surface').forEach((h) => (h.hidden = h !== surfaces[type].host));
@@ -221,6 +223,7 @@ function setView(v, { persist = true } = {}) {
   const t = activeTab();
   if (type !== 'md') {
     const s = surfaceFor(type);
+    if (!s) { loadSurface(type).then(() => { if (curType() === type) setView(v, { persist }); }, (e) => toast(e.message, { kind: 'error' })); return; }
     if (t && s) { if (v !== 'code' && prev === 'code') s.setText(t.text); if (v !== 'visual') editor.applyRemote(t.text); s.setMode?.(v); }
     $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
     layoutPanes();
@@ -316,7 +319,11 @@ function activate(p, { line } = {}) {
   layoutPanes();
   if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
   if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
-  else { const s = surfaceFor(type); s.setText(t.text); s.setMode?.(v); }
+  else {
+    const s = surfaceFor(type);
+    if (s) { s.setText(t.text); s.setMode?.(v); }
+    else { loadSurface(type).then(() => { if (S.active === p) activate(p, { line }); }, (e) => toast(e.message, { kind: 'error' })); return; }
+  }
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
@@ -1153,7 +1160,7 @@ const COMMANDS = [
     curSurface()?.exportHandouts?.({ perPage: per });
   } },
   { id: 'export-notes', title: 'Export slide notes pages as PDF…', run: () => (curType() === 'slides' ? curSurface()?.exportHandouts?.({ notes: true }) : toast('Open a slides document first.')) },
-  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
+  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' && curSurface() ? curSurface().present() : toast('Open a slides document to present it.')) },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
   { id: 'export-pdf', title: 'Export as PDF…', key: 'Mod+Shift+E', run: () => exportAs('pdf') },
   { id: 'reveal', title: S.platform === 'darwin' ? 'Reveal in Finder' : 'Show in folder', run: () => folio.reveal(S.active || '') },

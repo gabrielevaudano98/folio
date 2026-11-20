@@ -15,6 +15,7 @@ import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
+import { writeAtomic, writeAtomicSync } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 
@@ -43,7 +44,7 @@ let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
 function saveSettings() {
   fss.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true });
-  fss.writeFileSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); // it holds the MCP token
+  writeAtomicSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); // it holds the MCP token; atomic, so a crash cannot leave it half written
   try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {}
   writeBridge();
 }
@@ -95,6 +96,16 @@ function createWindow() {
   const here = (u) => String(u).split(/[?#]/)[0];
   const lock = (e, url) => { if (here(url) === here(win.webContents.getURL())) return; e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); };
   win.webContents.on('will-navigate', lock);
+  // the page crashed (out of memory, a GPU or renderer fault): open it again rather than leave a blank window;
+  // notes are saved as you type and tabs are restored from settings. Three crashes in a minute stop the loop.
+  const crashes = [];
+  win.webContents.on('render-process-gone', (_e, d) => {
+    if (d.reason === 'clean-exit' || win.isDestroyed()) return;
+    console.error('[folio] window process gone:', d.reason, d.exitCode);
+    const now = Date.now(); crashes.push(now); while (crashes.length && now - crashes[0] > 60000) crashes.shift();
+    if (crashes.length <= 3) { win.webContents.reload(); return; }
+    dialog.showMessageBox(win, { type: 'error', message: 'Folio’s window keeps closing unexpectedly.', detail: `Reason: ${d.reason}. Your notes are saved on disk. Restart Folio, and if it happens again, report it with this reason.`, buttons: ['Quit'] }).then(() => app.quit());
+  });
   win.webContents.on('will-redirect', lock);
   win.on('close', (e) => {
     if (win.__forceClose) return;
@@ -186,7 +197,7 @@ h('fs:write', async (rel, content) => {
   const abs = notes.resolve(rel, { mustBeNote: true });
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, content, 'utf8');
+  await writeAtomic(abs, content);
   return true;
 });
 h('fs:create', async (rel, content = '') => {
@@ -194,7 +205,7 @@ h('fs:create', async (rel, content = '') => {
   if (fss.existsSync(abs)) throw new Error('A note with that name already exists.');
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, content, 'utf8');
+  await writeAtomic(abs, content);
   return notes.relOf(abs);
 });
 h('fs:mkdir', async (rel) => { await fs.mkdir(notes.resolve(rel, { notRoot: true }), { recursive: true }); return rel; });
@@ -623,11 +634,16 @@ async function devShot(w) {
   w.webContents.on('console-message', (e) => { const msg = e.message; if (/error|fail/i.test(String(msg))) console.log('console:', msg); });
   w.webContents.once('did-finish-load', async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    console.log('perf', JSON.stringify({ loadedMs: Math.round(process.uptime() * 1000) })); // process start to page loaded
     await wait(1500);
     for (const s of steps) {
       if (s.size) w.setContentSize(s.size[0], s.size[1]);
       if (s.dark !== undefined) nativeTheme.themeSource = s.dark ? 'dark' : 'light';
       if (s.js) { try { const v = await w.webContents.executeJavaScript(s.js); if (s.log) console.log('js', JSON.stringify(v)); } catch (e) { console.error('[folio-error] shot js', e.message); } }
+      if (s.metrics) { // memory of every process, in MB (private bytes on Windows and macOS, working set on Linux)
+        const m = app.getAppMetrics().map((x) => ({ type: x.type, mb: Math.round((x.memory.privateBytes ?? x.memory.workingSetSize) / 1024), cpu: Math.round(x.cpu.percentCPUUsage) }));
+        console.log('js', JSON.stringify({ metrics: m, totalMB: m.reduce((n, x) => n + x.mb, 0) }));
+      }
       if (s.tool) { try { await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); } catch (e) { console.error('shot tool', e.message); } }
       await wait(s.wait ?? 700);
       if (s.out) { const img = await w.webContents.capturePage(); fss.writeFileSync(s.out, img.toPNG()); console.log('shot', s.out); }

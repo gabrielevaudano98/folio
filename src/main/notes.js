@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
 import { findRefs, resolveTarget, rewriteRefs } from '../renderer/refs-syntax.js';
+import { writeAtomic } from './atomic.js';
 
 export const NOTE_EXT = ['.md', '.markdown', '.mdx', '.txt'];
 const IGNORE = new Set(['node_modules', '.git', '.obsidian', '.trash', '.DS_Store', 'dist', 'build']);
@@ -122,7 +123,7 @@ export function createNotes(getRoot) {
     if (exists && !overwrite) throw new NotesError(`A note already exists at ${rel}.`);
     const before = exists ? await fs.readFile(abs, 'utf8') : null;
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await fs.writeFile(abs, content, 'utf8');
+    await writeAtomic(abs, content);
     return { path: relOf(abs), before, after: content, created: !exists };
   }
 

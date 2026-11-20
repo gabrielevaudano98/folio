@@ -9,6 +9,7 @@ import { COMPONENTS, FEATURES, featureSupported, downloadBytes } from '../featur
 import { createInstaller } from '../features/installer.js';
 import { renderMeeting, fileName, lines as numberLines } from './transcript.js';
 import { draftNotes } from './notes-engine.js';
+import { writeAtomic } from '../atomic.js';
 
 const FEATURE = 'meeting-recorder';
 const RATE = 16000;
@@ -114,11 +115,10 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   /** writes the note into the workspace with a name that does not overwrite anything */
   async function writeNote(rel, text) {
     let p = rel;
-    for (let i = 2; fss.existsSync(notes.resolve(p, { mustBeNote: true })); i++) p = rel.replace(/\.md$/, ` ${i}.md`);
+    for (let i = 2; await fs.stat(notes.resolve(p, { mustBeNote: true })).then(() => true, () => false); i++) p = rel.replace(/\.md$/, ` ${i}.md`);
     const abs = notes.resolve(p, { mustBeNote: true });
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.tmp`);
-    await fs.writeFile(tmp, text, 'utf8'); await fs.rename(tmp, abs);
+    await writeAtomic(abs, text);
     return notes.relOf(abs);
   }
 
@@ -261,8 +261,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
       const at = current.indexOf('## Transcript');
       text = at >= 0 ? current.slice(0, at) + block + current.slice(at) : current.trimEnd() + '\n\n' + block;
     }
-    const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.tmp`);
-    await fs.writeFile(tmp, text, 'utf8'); await fs.rename(tmp, abs);
+    await writeAtomic(abs, text);
     phase('saved', { progress: null });
   }
 
