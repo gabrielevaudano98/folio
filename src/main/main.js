@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
+import { createFeatures } from './meeting/service.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 
@@ -170,13 +171,16 @@ h('app:init', () => ({
 }));
 h('settings:set', async (patch) => {
   const before = { ...settings };
-  Object.assign(settings, patch);
+  const { token: _t, features: _f, ...rest } = patch || {}; // the token and optional features have their own channels
+  Object.assign(settings, rest);
   if ('theme' in patch) nativeTheme.themeSource = settings.theme;
   if ('language' in patch) { setLocale(settings.language); buildMenu(); }
   saveSettings();
   if (patch.mcpEnabled !== undefined || patch.mcpPort !== before.mcpPort) await restartMcp();
   return { ...settings, token: undefined };
 });
+// optional features (meeting recorder): downloads, the recording session and its worker
+const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs') });
 h('workspace:choose', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;
@@ -680,10 +684,15 @@ app.on('second-instance', (_e, argv) => {
 });
 /** the app page may use the microphone (narration) and nothing else; no page may attach a webview */
 function lockDownSession() {
-  const ok = (wc, permission, mediaTypes) => mayUse(permission, wc === win?.webContents, mediaTypes);
+  const ok = (wc, permission, mediaTypes) => (permission === 'display-capture' ? wc === win?.webContents && features.allowLoopback(win.webContents.mainFrame) : mayUse(permission, wc === win?.webContents, mediaTypes));
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => cb(ok(wc, permission, details?.mediaTypes)));
   session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => ok(wc, permission, details?.mediaType ? [details.mediaType] : []));
   app.on('web-contents-created', (_e, contents) => contents.on('will-attach-webview', (e) => e.preventDefault()));
+  // screen capture is never granted; the meeting recorder gets the computer's sound (Windows loopback) while it records
+  session.defaultSession.setDisplayMediaRequestHandler((request, cb) => {
+    if (!features.allowLoopback(request.frame)) return cb({});
+    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }).then((s) => cb(s[0] ? { video: s[0], audio: 'loopback' } : {}), () => cb({}));
+  });
 }
 app.whenReady().then(async () => {
   lockDownSession();
@@ -701,6 +710,10 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (!isMac) app.quit(); });
+app.on('before-quit', (e) => { // a recording is saved before the app quits; a notes engine still running is stopped
+  if (!features.active()) { features.abortNotes(); return; }
+  e.preventDefault(); features.stop().finally(() => app.quit());
+});
 app.on('before-quit', () => { fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */

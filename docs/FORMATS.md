@@ -360,3 +360,39 @@ Not a document format: versions live beside the documents in `<workspace>/.folio
 ### Template questions
 
 In a template, `{{ask:Label}}` asks for a value when the template is used: `|people` writes the answer as `[[Name]]`, `|date` uses a date picker, `|long` a multi-line box. The same label is asked once. Round-trip: `test/formats.test.mjs` (template questions).
+
+## Meeting notes
+
+The meeting recorder writes a normal page in `Meetings/`, named `YYYY-MM-DD hh-mm Title.md`. Nothing in it needs Folio to read.
+
+```markdown
+---
+type: meeting
+title: "Weekly sync"
+date: 2026-11-20T14:04:00.000Z
+duration: 00:42:10
+transcription: whisper-large-v3-turbo-int8
+notes: qwen3-1.7b-q4km          # only when notes were written
+worker_peak_mb: 2080            # measured on this computer during the recording
+app_peak_mb: 2710
+transcription_speed: 0.21       # seconds of work per second of audio
+---
+
+# Weekly sync
+
+## Notes
+### Summary
+### Decisions
+- Use Whisper for transcription (line 6)
+### Action items
+- [ ] Prepare the Windows build · owner: Marco · due: Friday 27 November (line 3)
+### Open questions
+
+## Transcript
+
+**1** · 00:00:00 · Others: Good morning, let's start.
+```
+
+- Every transcript line has a number; every note cites the line it comes from. Folio keeps a point only when its quote is on that line, and keeps an owner or a date only when it is written on that line.
+- `You` is the microphone, `Others` is the computer's sound. Microphone lines that repeat what Others said at the same moment (echo without headphones) are left out.
+- Writing notes later never rewrites the person's edits: if the page changed, the notes are inserted above `## Transcript`.

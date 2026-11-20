@@ -1517,6 +1517,8 @@ export default {
   'menu.forward': 'Forward',
   'menu.go-to-note': 'Go to Note…',
   'menu.building-slide-templates': 'Building slide templates',
+  'app.optional-features': 'Optional features',
+  'cmd.meeting': 'Record a meeting… / Stop recording',
   // palette commands
   'cmd.reveal': 'Show in folder', 'cmd.reveal-mac': 'Reveal in Finder',
   'cmd.new-note': 'New note',

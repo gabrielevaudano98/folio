@@ -12,6 +12,10 @@ const on = (ch) => (fn) => {
   return () => ipcRenderer.removeListener(ch, l);
 };
 
+// the meeting recorder's audio goes straight from this page to its worker on a MessagePort the main process hands over
+let meetingPort = null;
+ipcRenderer.on('meeting:port', (e) => { meetingPort?.close(); meetingPort = e.ports[0] || null; });
+
 contextBridge.exposeInMainWorld('folio', {
   init: () => call('app:init'),
   setSettings: (p) => call('settings:set', p),
@@ -86,4 +90,25 @@ contextBridge.exposeInMainWorld('folio', {
   onTheme: on('theme:changed'),
   onSwitched: on('workspace:switched'),
   onBeforeClose: on('app:before-close'),
+  features: {
+    list: () => call('features:list'),
+    set: (id, patch) => call('features:set', id, patch),
+    install: (id, which) => call('features:install', id, which),
+    cancel: () => call('features:cancel'),
+    uninstall: (id, which) => call('features:uninstall', id, which),
+    onProgress: on('features:progress'),
+  },
+  meeting: {
+    start: (o) => call('meeting:start', o),
+    stop: () => { meetingPort?.close(); meetingPort = null; return call('meeting:stop'); },
+    status: () => call('meeting:status'),
+    recover: (id) => call('meeting:recover', id),
+    discard: (id) => call('meeting:discard', id),
+    /** one block of 16 kHz mono Int16 samples for a track ('me' or 'them') */
+    push: (track, pcm) => { if (meetingPort && pcm instanceof ArrayBuffer) meetingPort.postMessage({ track, pcm }, [pcm]); },
+    ready: () => !!meetingPort,
+    onState: on('meeting:state'),
+    onSegment: on('meeting:segment'),
+    onStopRequest: on('meeting:stop-request'),
+  },
 });

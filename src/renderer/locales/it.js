@@ -1513,6 +1513,8 @@ export default {
   'menu.forward': 'Avanti',
   'menu.go-to-note': 'Vai alla nota…',
   'menu.building-slide-templates': 'Creare modelli di slide',
+  'app.optional-features': 'Funzioni opzionali',
+  'cmd.meeting': 'Registra una riunione… / Interrompi la registrazione',
   // palette commands
   'cmd.reveal': 'Mostra nella cartella', 'cmd.reveal-mac': 'Mostra nel Finder',
   'cmd.new-note': 'Nuova nota',
