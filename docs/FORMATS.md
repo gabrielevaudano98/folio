@@ -21,6 +21,7 @@ Any document can point at a part of another one. References are plain text, so t
 
 - Target: a document name (`Budget`, `Budget.sheet`), a file name (`Budget.sheet.md`), a path relative to this document, or a path from the workspace root (`/Finance/Budget.sheet.md`).
 - Parts: sheets `Sheet!A1`, `Sheet!A1:D9`, `A1` (first sheet) or `Sheet` (whole sheet); slides `3` (slide number, value is its title); boards nothing (whole board) or a shape id (value is its label); pages `Heading text` (a section) or `^block-id`.
+- In the Write view a `![[…]]` alone on a line is also drawn live under the line (read-only, with an Open button); the text on disk stays exactly as written.
 - Values and embeds update when the source changes. Renaming or moving a document in Folio (or with the `move_note` tool) rewrites every reference to it.
 - References inside code spans and code fences are text.
 - In sheet formulas a reference is a value: `={{Budget.sheet#Costs!H6}}*1.22`, `=SUM({{Budget.sheet#Costs!D2:D5}})`. A missing target or a loop between documents gives `#REF!`.
@@ -63,7 +64,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Tag | `#project`, `#project/alpha` | Starts after a space, has a letter, may contain `-`, `_`, `/`. Also read from front matter `tags:`. Not in code. |
 | Status chip, inline field | `[status:: In progress]`, `[owner:: Ada]` | Dataview inline field. `status` is a coloured chip (Not started, In progress, Blocked, Done; other words are grey). Click the chip to change it. A page can offer its own words in the front matter: `folio:` then `  status: [Idea, Design, Shipped]` (or a `- Idea` list); the `@` picker offers the same words. |
 | Emoji | `😄` | The character itself. `:smile` in the Write view looks it up. |
-| Table column alignment | `\| :--- \| :---: \| ---: \|` | GFM. Set from a column's menu or the Table tab; sorting, moving rows and columns rewrite only the table. |
+| Table column alignment | `\| :--- \| :---: \| ---: \|` | GFM. Set from a column's menu or the Table tab; sorting, moving rows and columns (menu or dragging a grip) rewrite only the table. **Header row** off leaves the header cells empty (`\|  \|  \|`, valid GFM, hidden in Folio); on removes an empty header again. |
 | Properties | YAML front matter: `title: Text`, `count: 3`, `done: true`, `due: 2026-12-01`, `tags: [a, b/c]`, `owner: "[[Ada]]"` | Edited as fields above the title (a type chosen from a field's menu is remembered per property name in `.folio/property-types.json`; it only applies when the value fits); only the changed property's lines are rewritten. Nested maps are kept and shown read-only. |
 | Template button (Folio) | ```` ```template-button ```` with `label: New meeting`, `template: Meeting notes`, optional `where: above` | Drawn as a button; inserts the template from `Templates/` (or a starter). Other editors show a code block. |
 | Suggested insertion, deletion, replacement | `{++new text++}`, `{--old text--}`, `{~~old~>new~~}` | CriticMarkup. Accept or reject in the review pane; Suggesting mode writes them as you type. |

@@ -588,7 +588,7 @@ a.md-card:hover { box-shadow: inset 0 0 0 0.5px var(--color-rule-strong); }
 .asset-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: 16rem; overflow: auto; }
 .asset-list li { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-2xs) 0; font-size: var(--text-sm); }
 .asset-list .asset-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.asset-list .asset-size { color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
+.asset-list .asset-size { color: var(--color-muted); font-variant-numeric: tabular-nums; }
 .asset-section { margin: 0 0 var(--space-md); }
 .asset-section h3 { margin: 0 0 var(--space-xs); font-size: var(--text-sm); font-weight: var(--weight-bold); }
 .toast[data-kind="error"] p::before { content: "Error: "; font-weight: var(--weight-bold); color: var(--color-removed); }
@@ -1704,3 +1704,14 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .unlinked-row .btn, .broken-row .btn { height: 24px; padding: 0 8px; font-size: 12px; }
 .broken-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .broken-row > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rich-embed { margin: var(--space-sm) 0; border: 1px solid var(--color-rule); border-radius: var(--radius-md); overflow: hidden; user-select: none; }
+.rich-embed-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); padding: var(--space-2xs) var(--space-sm); background: var(--color-paper-2); font-size: var(--text-sm); color: var(--color-ink-2); }
+.rich-embed-body { padding: var(--space-sm) var(--space-md); max-height: 18rem; overflow: auto; }
+.rich-embed-missing { color: var(--color-muted); margin: 0; }
+
+.tbl-nohead tr:first-child { display: none; }
+.prose table thead:not(:has(th:not(:empty))) { display: none; }
+.tbl-drop { position: absolute; pointer-events: none; background: var(--color-accent-soft); outline: 2px solid var(--color-accent); outline-offset: -2px; border-radius: var(--radius-xs); opacity: 0.6; }
+.tbl-drop[hidden] { display: none; }
+.tbl-grip { cursor: grab; }

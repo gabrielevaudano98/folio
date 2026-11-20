@@ -5,6 +5,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 /* ---------- pure ---------- */
 
@@ -80,21 +81,34 @@ function rebuild(editor, t, cells, row, col) {
   return true;
 }
 const textOf = (cell) => cell.textContent;
+export const emptyHeader = (table) => { if (!table.childCount) return false; let empty = true; table.child(0).descendants((n) => { if (n.isText || n.isLeaf) empty = false; }); return empty; };
 const textCell = (schema, text, attrs = null) => schema.nodes.tableCell.create(attrs, schema.nodes.paragraph.create(null, text ? schema.text(text) : null));
 
 export const tableCmd = {
   /* rows below the header move; the header stays the first row, as GFM needs */
-  moveRow(editor, dir) {
+  moveRow(editor, dir) { const t = tableAt(editor.state); return !!t && tableCmd.moveRowTo(editor, t.row + dir); },
+  moveCol(editor, dir) { const t = tableAt(editor.state); return !!t && tableCmd.moveColTo(editor, t.col + dir); },
+  /** the row with the cursor goes to index `to` (the others shift); never into or out of the header */
+  moveRowTo(editor, to) {
     const t = tableAt(editor.state); if (!t || t.row === 0) return false;
-    const to = t.row + dir; if (to < 1 || to >= t.map.height) return false;
-    const cells = grid(t.table); [cells[t.row], cells[to]] = [cells[to], cells[t.row]];
+    if (to < 1 || to >= t.map.height || to === t.row) return false;
+    const cells = grid(t.table); const [r] = cells.splice(t.row, 1); cells.splice(to, 0, r);
     return rebuild(editor, t, cells, to, t.col);
   },
-  moveCol(editor, dir) {
+  moveColTo(editor, to) {
     const t = tableAt(editor.state); if (!t) return false;
-    const to = t.col + dir; if (to < 0 || to >= t.map.width) return false;
-    const cells = grid(t.table).map((r) => { const x = r.slice(); [x[t.col], x[to]] = [x[to], x[t.col]]; return x; });
+    if (to < 0 || to >= t.map.width || to === t.col) return false;
+    const cells = grid(t.table).map((r) => { const x = r.slice(); const [c] = x.splice(t.col, 1); x.splice(to, 0, c); return x; });
     return rebuild(editor, t, cells, t.row, to);
+  },
+  /** GFM always has a header row. "No header" is an empty one, which the Write and Read views leave out */
+  hasHeader(state) { const t = tableAt(state); return !!t && !emptyHeader(t.table); },
+  toggleHeader(editor) {
+    const t = tableAt(editor.state); if (!t) return false; const { schema } = editor.state;
+    const cells = grid(t.table);
+    if (emptyHeader(t.table)) { if (cells.length < 2) return false; cells.shift(); return rebuild(editor, t, cells, Math.max(0, t.row - 1), t.col); }
+    cells.unshift(Array.from({ length: t.map.width }, (_, i) => textCell(schema, '', { ...cells[0][i].attrs, colspan: 1, rowspan: 1 })));
+    return rebuild(editor, t, cells, t.row + 1, t.col);
   },
   /* the whole column takes the alignment: GFM stores it once, in the rule under the header */
   alignCol(editor, align) {
@@ -175,6 +189,7 @@ export function tableMenuItems(editor, { icons = {}, kind = 'both', toSheet } = 
   const c = () => editor.chain().focus();
   const t = tableAt(editor.state); const align = tableCmd.colAlign(editor.state);
   const row = [{ head: 'Row' },
+    { label: 'Header row', icon: icons.table, checked: t ? !emptyHeader(t.table) : false, run: () => tableCmd.toggleHeader(editor) },
     { label: 'Insert above', icon: icons.rowAbove, run: () => c().addRowBefore().run(), disabled: t?.row === 0 },
     { label: 'Insert below', icon: icons.rowBelow, run: () => c().addRowAfter().run() },
     { label: 'Move up', icon: icons.arrowUp, run: () => tableCmd.moveRow(editor, -1), disabled: !t || t.row <= 1 },
@@ -213,6 +228,11 @@ export const TableHandles = Extension.create({
     return [new Plugin({
       key: new PluginKey('tableHandles'),
       props: {
+        // a table whose header row is empty is shown without it
+        decorations(state) {
+          const d = []; state.doc.descendants((n, pos) => { if (n.type.name === 'table') { if (emptyHeader(n)) d.push(Decoration.node(pos, pos + n.nodeSize, { class: 'tbl-nohead' })); return false; } return true; });
+          return d.length ? DecorationSet.create(state.doc, d) : null;
+        },
         // cells copied from a spreadsheet become a table (or fill this one), not a line of tabs
         handlePaste(view, event) {
           const text = event.clipboardData?.getData('text/plain');
@@ -270,8 +290,31 @@ export const TableHandles = Extension.create({
           popupMenu(grip, items, { label: kind === 'row' ? 'Row' : 'Column', onClose: () => { open = false; grip.setAttribute('aria-expanded', 'false'); } });
         };
         for (const b of ui.children) b.addEventListener('mousedown', (ev) => ev.preventDefault());
-        colGrip.addEventListener('click', () => menuFor(colGrip, 'col'));
-        rowGrip.addEventListener('click', () => menuFor(rowGrip, 'row'));
+        /* drag a grip to move its column or row: a line shows where it lands */
+        let dragged = false;
+        const line = document.createElement('div'); line.className = 'tbl-drop'; line.hidden = true; ui.append(line);
+        const drag = (grip, kind) => grip.addEventListener('pointerdown', (ev) => {
+          if (ev.button !== 0 || !hover) return;
+          const t0 = focusCell(); if (!t0) return; const tableEl = hover.tableEl; const x0 = ev.clientX, y0 = ev.clientY; let moving = false, target = null;
+          const rows = [...tableEl.rows]; const cols = [...rows[rows.length - 1].cells];
+          const spans = kind === 'col' ? cols.map((c) => c.getBoundingClientRect()) : rows.map((r) => r.getBoundingClientRect());
+          const pick = (ev2) => { const v = kind === 'col' ? ev2.clientX : ev2.clientY; let i = spans.findIndex((r) => v < (kind === 'col' ? r.right : r.bottom)); if (i < 0) i = spans.length - 1; return kind === 'row' ? Math.max(1, i) : i; };
+          const mv = (ev2) => {
+            if (!moving && Math.hypot(ev2.clientX - x0, ev2.clientY - y0) < 5) return;
+            moving = true; dragged = true; target = pick(ev2); const pr = page.getBoundingClientRect(), r = spans[target], tr = tableEl.getBoundingClientRect();
+            line.hidden = false; line.className = 'tbl-drop ' + (kind === 'col' ? 'is-col' : 'is-row');
+            Object.assign(line.style, kind === 'col' ? { left: `${r.left - pr.left}px`, top: `${tr.top - pr.top}px`, height: `${tr.height}px`, width: `${r.width}px` } : { left: `${tr.left - pr.left}px`, top: `${r.top - pr.top}px`, width: `${tr.width}px`, height: `${r.height}px` });
+          };
+          const up = () => {
+            removeEventListener('pointermove', mv); removeEventListener('pointerup', up); line.hidden = true;
+            if (moving && target != null) { view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(t0.pos + 1 + t0.map.map[t0.row * t0.map.width + t0.col] + 1)))); kind === 'col' ? tableCmd.moveColTo(editor, target) : tableCmd.moveRowTo(editor, target); }
+            setTimeout(() => { dragged = false; }, 0);
+          };
+          addEventListener('pointermove', mv); addEventListener('pointerup', up);
+        });
+        drag(colGrip, 'col'); drag(rowGrip, 'row');
+        colGrip.addEventListener('click', () => { if (!dragged) menuFor(colGrip, 'col'); });
+        rowGrip.addEventListener('click', () => { if (!dragged) menuFor(rowGrip, 'row'); });
         // the + bars add at the end, as in Notion
         addRow.addEventListener('click', () => {
           if (!hover) return; const tablePos = view.posAtDOM(hover.tableEl, 0);

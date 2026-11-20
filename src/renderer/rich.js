@@ -127,6 +127,15 @@ const FolioCodeBlock = CodeBlock.extend({
   },
 });
 
+/** `![[Note#Heading]]` alone on a line is shown live under the line (read-only; the text stays as written) */
+function embedCard(target, opts) {
+  const box = document.createElement('div'); box.className = 'rich-embed'; box.contentEditable = 'false'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', `Embedded ${target}`);
+  box.innerHTML = '<div class="rich-embed-bar"><span></span><button type="button" class="btn btn-quiet">Open</button></div><div class="rich-embed-body prose">Loading…</div>';
+  box.querySelector('span').textContent = target; box.querySelector('button').onclick = () => opts.onWikiLink?.(target);
+  Promise.resolve(opts.preview(target)).then((html) => { box.querySelector('.rich-embed-body').innerHTML = html || '<p class="rich-embed-missing">This target does not exist yet.</p>'; }, () => { box.querySelector('.rich-embed-body').textContent = 'Could not load this embed.'; });
+  return box;
+}
+
 /* callouts and [[wiki links]] are drawn, the Markdown text stays as written */
 const Decorate = Extension.create({
   name: 'folioDecorate',
@@ -137,6 +146,10 @@ const Decorate = Extension.create({
     const build = (doc) => {
       const deco = [];
       doc.descendants((n, pos) => {
+        if (n.type.name === 'paragraph' && n.childCount === 1 && n.firstChild.isText && opts.preview) {
+          const em = /^!\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]$/.exec(n.firstChild.text.trim());
+          if (em) deco.push(Decoration.widget(pos + n.nodeSize, () => embedCard(em[1], opts), { side: -1, key: 'embed:' + em[1] + ':' + opts.version?.() }));
+        }
         if (n.type.name === 'paragraph' && n.childCount === 1 && n.firstChild.isText) {
           const link = n.firstChild.marks.find((m) => m.type.name === 'link'); const href = link?.attrs.href || '';
           if (link && href && !/\.(md|markdown)(#.*)?$/i.test(href)) {
