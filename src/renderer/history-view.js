@@ -112,15 +112,19 @@ export function mountHistory(host, api) {
     return other ? { old: await textOf(other), new: await textOf(v), mode: 'other', other } : null;
   };
 
+  let showSeq = 0;
   async function showVersion() {
+    const seq = ++showSeq;
     const bar = host.querySelector('[data-bar]'), doc = host.querySelector('[data-doc]'); if (!bar || !doc) return;
     const v = selVersion();
-    if (st.sel === 'current' || !v) { bar.innerHTML = `<span class="hv-bar-text">${tr('hist.this-is-the-current-text-pick-an-earli')}</span>`; doc.innerHTML = st.view === 'version' || true ? body(st.live) : ''; return; }
+    if (st.sel === 'current' || !v) { bar.innerHTML = `<span class="hv-bar-text">${tr('hist.this-is-the-current-text-pick-an-earli')}</span>`; doc.innerHTML = body(st.live); return; }
     const text = await textOf(v);
+    if (seq !== showSeq) return; // another version was picked while this one was loading
     const opts = [['current', tl('hist', 'Current version')], ['previous', tl('hist', 'Previous version')], ...st.versions.filter((x) => x.id !== v.id).map((x) => [x.id, `${x.name || dayLabel(x.t) + ', ' + timeOf(x.t)}`])];
     const cmp = `<label class="hv-cmp">${tr('hist.compare-with')} <select data-compare>${opts.map(([id, l]) => `<option value="${esc(id)}" ${st.compare === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     if (st.view === 'version') { bar.innerHTML = `<span class="hv-bar-text">${esc(dayLabel(v.t))}, ${esc(timeOf(v.t))} · ${esc(who(v))}</span>`; doc.innerHTML = body(text); return; }
     const b = await baseFor();
+    if (seq !== showSeq) return;
     if (b.old === b.new) { bar.innerHTML = `<span class="hv-bar-text">${tr('hist.no-differences')}</span>${cmp}`; doc.innerHTML = body(b.new); return; }
     st.parts = wordParts(b.old, b.new, diffWords); st.hunks = countHunks(st.parts); st.hunk = Math.min(st.hunk, Math.max(0, st.hunks - 1));
     const canPut = b.mode === 'current';
@@ -157,11 +161,11 @@ export function mountHistory(host, api) {
     close();
   }
   async function putBack(i) {
-    const next = revertHunk(st.parts, i);
+    const next = revertHunk(st.parts, i); const before = st.live;
     await folio.historySnapshot(st.path, st.live, 'before-restore', true);
     await api.setText(next); st.live = next; await folio.historySnapshot(st.path, next, 'restore', true);
     st.versions = await loadVersions(); renderList(); await showVersion();
-    api.toast(tr('hist.put-that-change-back'), { action: [tr('hist.undo'), async () => { await api.setText(st.live = st.parts.filter((p) => p.kind !== 'del').map((p) => p.text).join('')); st.versions = await loadVersions(); renderList(); await showVersion(); }] });
+    api.toast(tr('hist.put-that-change-back'), { action: [tr('hist.undo'), async () => { await api.setText(before); st.live = before; await folio.historySnapshot(st.path, before, 'edit', true); st.versions = await loadVersions(); renderList(); await showVersion(); }] });
   }
   async function nameIt() {
     const v = selVersion(); if (!v || v.git) return;

@@ -753,4 +753,11 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   ok('history: two quick undo presses run one after the other');
 }
 
+// headings(): fences close only on the same character and length, ATX headings may be indented up to 3 spaces
+{
+  const h = headings('# One\n\n````\n~~~\n# not a heading\n```\n# still code\n````\n\n   ## Two\n\n    ### code, four spaces\n\n# C#\n\n## Closed ##\n');
+  assert.deepEqual(h.map((x) => [x.level, x.text]), [[1, 'One'], [2, 'Two'], [1, 'C#'], [2, 'Closed']]);
+  ok('headings: a fence closes on its own marker, indented ATX headings count, a trailing # in a title stays');
+}
+
 console.log(`\n${n} format checks passed`);

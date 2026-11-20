@@ -137,8 +137,9 @@ export function openGallery(dialog, host) {
     const draw = () => { drawNav(); drawMain(); };
     async function loadCommunity() {
       communityError = ''; draw();
-      const r = await host.community().catch((e) => ({ items: null, error: e.message }));
-      community = r.items; communityError = r.error || ''; draw();
+      let r; try { r = (await host.community()) || {}; } catch (e) { r = { items: null, error: e?.message || String(e) }; }
+      if (!dialog.isConnected) return;
+      community = Array.isArray(r.items) ? r.items : null; communityError = r.error || (community ? '' : 'Could not load the community templates.'); draw();
     }
     const select = (t) => { current = t; drawMain(); drawPreview(); dialog.querySelector(`.tg-card[data-id="${CSS.escape(t.id)}"]`)?.focus({ preventScroll: true }); };
     const reload = async (keep) => { items = await host.items(); current = keep ? byId(keep) || null : current && byId(current.id) ? byId(current.id) : null; draw(); drawPreview(); };
