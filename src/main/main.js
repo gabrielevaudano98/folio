@@ -466,7 +466,7 @@ const TARGETS = {
   windsurf: { name: 'Windsurf', file: path.join(home, '.codeium', 'windsurf', 'mcp_config.json'), key: 'mcpServers', shape: (e) => e, restart: 'Refresh in Windsurf → Cascade → MCP.' },
   lmstudio: { name: 'LM Studio', file: path.join(home, '.lmstudio', 'mcp.json'), key: 'mcpServers', shape: (e) => e, restart: 'LM Studio reloads mcp.json on save.' },
 };
-function quote(s) { if (isWin) return /[\s"]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s; return /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`; } // POSIX: single quotes, so $() and backticks in a path stay text
+function quote(s) { if (isWin) return /[\s"]/.test(s) ? `"${s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"` : s; return /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`; } // POSIX: single quotes, so $() and backticks in a path stay text
 async function readJson(file) {
   try { const t = await fs.readFile(file, 'utf8'); return t.trim() ? JSON.parse(t) : {}; }
   catch (e) { if (e.code === 'ENOENT') return {}; throw new Error(`Could not read ${file}: ${e.message}`); }
