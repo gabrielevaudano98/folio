@@ -71,7 +71,7 @@ jobs:
           LEGACY=$(find release -path '*app.asar.unpacked/dist/mcp-stdio.mjs' | head -n 1)
           test -f "$LEGACY" || { echo "unpacked bridge not found"; exit 1; }
           FOLIO_DEBUG_STDIO=1 FOLIO_BINARY="$BIN" FOLIO_LEGACY_SCRIPT="$LEGACY" node test/stdio-binary.test.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: folio-${{ runner.os }}-${{ github.sha }}
           path: |
