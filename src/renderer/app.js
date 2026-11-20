@@ -240,6 +240,7 @@ function setView(v, { persist = true } = {}) {
 /* ============ workspace ============ */
 async function loadWorkspace(dir, { restore = false } = {}) {
   S.workspace = dir;
+  actions.clear(); nav.list = []; nav.i = -1; // file actions and history belong to one folder
   $('#workspace-name').textContent = dir.split(/[\\/]/).filter(Boolean).pop();
   $('#tree').innerHTML = Array.from({ length: 7 }, (_, i) => `<div class="skeleton-row" style="--w:${[62, 48, 70, 40, 56, 66, 44][i]}%;--d:${i % 3 === 2 ? 1 : 0}"></div>`).join('');
   await refreshTree();
@@ -799,7 +800,11 @@ function retargetTabs(from, to) {
 async function trashRaw(p) {
   const open = S.tabs.filter((t) => t.path === p || t.path.startsWith(p + '/')).map((t) => t.path);
   const active = open.includes(S.active) ? S.active : null;
-  for (const q of open) { const t = tabOf(q); if (t && t.text !== t.saved) await saveTab(t); }
+  for (const q of open) {
+    const t = tabOf(q); if (!t || t.text === t.saved) continue;
+    await saveTab(t).catch(() => {});
+    if (t.text !== t.saved) throw new Error(`Could not save “${stem(q)}”, so it was not moved. Your changes are still open.`);
+  }
   const { token } = await folio.trash(p);
   for (const q of open) await closeTab(q);
   await refreshTree();
@@ -1108,8 +1113,8 @@ const COMMANDS = [
   { id: 'redo', title: 'Redo', key: 'Mod+Shift+Z', run: () => editUndo('redo') },
   { id: 'undo-file', title: 'Undo last file action', key: 'Mod+Alt+Z', run: () => fileUndo('undo') },
   { id: 'redo-file', title: 'Redo file action', key: 'Mod+Alt+Shift+Z', run: () => fileUndo('redo') },
-  { id: 'nav-back', title: 'Go back', key: 'Mod+Alt+Left', run: () => navGo(-1) },
-  { id: 'nav-forward', title: 'Go forward', key: 'Mod+Alt+Right', run: () => navGo(1) },
+  { id: 'nav-back', title: 'Go back', get key() { return S.platform === 'darwin' ? 'Mod+Alt+Left' : 'Alt+Left'; }, run: () => navGo(-1) },
+  { id: 'nav-forward', title: 'Go forward', get key() { return S.platform === 'darwin' ? 'Mod+Alt+Right' : 'Alt+Right'; }, run: () => navGo(1) },
   { id: 'new-note', title: 'New note', key: 'Mod+N', run: () => newNote() },
   { id: 'new-folder', title: 'New folder', run: () => newFolder(dirOf(S.active || '')) },
   { id: 'open-folder', title: 'Open folder…', key: 'Mod+O', run: chooseFolder },
@@ -1159,7 +1164,7 @@ const COMMANDS = [
   { id: 'insert-value', title: 'Insert live value from another document…', run: () => insertRef('value') },
   { id: 'insert-embed', title: 'Embed part of another document…', run: () => insertRef('embed') },
   { id: 'callout', title: 'Insert callout', run: () => insertMd('\n> [!NOTE]\n> \n') },
-  { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; showWelcome(); } },
+  { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
 ];
 function fmt(id, n) {
   if (isRich()) { if (id === 'heading') return rich.editor.chain().focus().toggleHeading({ level: n }).run(); return rich.run(id); }

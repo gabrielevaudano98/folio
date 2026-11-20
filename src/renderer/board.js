@@ -604,6 +604,7 @@ A o-- B   aggregation</pre>`;
     setText(t) {
       const moved = docs.bind(ctx.docKey?.());
       if (t === text) { if (moved) render(); return; }
+      if (!moved && text) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       const first = !parts;
       load(t); render();
       if (first || !fitted) { fitted = false; requestAnimationFrame(() => { if (canvas.clientWidth) { fitted = true; fit(); } }); }

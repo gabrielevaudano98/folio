@@ -16,7 +16,7 @@ const r = await runApp(w, [
   // ----- visual editor: the history survives a tab switch too
   open('Roadmap.md'), step("document.querySelector('.ProseMirror').editor.commands.insertContentAt(1,'Hello ')", 800),
   log("[document.querySelector('.ProseMirror').textContent.includes('Hello'), document.querySelector('#btn-undo').disabled]"),
-  open('Onboarding.md'), open('Roadmap.md'),
+  open('Onboarding.md'), log("document.querySelector('#btn-undo').disabled"), open('Roadmap.md'),
   log("[document.querySelector('.ProseMirror').textContent.includes('Hello'), document.querySelector('#btn-undo').disabled]"),
   run('undo', 600), log("document.querySelector('.ProseMirror').textContent.includes('Hello')"),
   // ----- Markdown source: undo and redo through the app command, and the history survives a tab switch
@@ -38,6 +38,10 @@ const r = await runApp(w, [
   // ----- sheet and board
   open('Budget.sheet.md'), log("document.querySelector('#btn-undo').disabled"),
   open('System.board.md'), log("document.querySelector('#btn-undo').disabled"),
+  // ----- an outside change (an AI edit, the code pane) is an undo step of its own
+  open('Brand.slides.md'), log("document.querySelectorAll('.sl-thumb').length"),
+  step("window.__folioSurface.setText(window.__folioEditor.text+'\\n\\n---\\n\\n# Added by AI\\n')", 900), log("document.querySelectorAll('.sl-thumb').length"),
+  run('undo', 900), log("document.querySelectorAll('.sl-thumb').length"),
   // ----- file actions: rename, undo, redo, trash, undo, new folder, undo
   open('Roadmap.md'), run('rename', 500), answer('Plan'), files,
   run('undo-file', 1200), files, run('redo-file', 1200), files,
@@ -54,9 +58,10 @@ console.log('\nundo, redo, back and forward'); if (process.env.DEBUG) console.lo
 const js = r.js;
 if (process.env.DEBUG) console.log(JSON.stringify(js));
 assert.deepEqual(js.at(-1), [], JSON.stringify(js.at(-1)));
-const [rv1, rv2, rv3, h1, b1, h2, h3, tab1, tab2, b2, h4, tab3, b3, sl1, sl2, sl3, sl4, sl5, sl6, sl7, sheetU, boardU,
+const [rv1, rvOther, rv2, rv3, h1, b1, h2, h3, tab1, tab2, b2, h4, tab3, b3, sl1, sl2, sl3, sl4, sl5, sl6, sl7, sheetU, boardU, ex0, ex1, ex2,
   f1, f2, f3, f4, f5, tabAfterTrash, d1, d2, f6, f7] = js;
-assert.deepEqual(rv1, [true, false]); assert.deepEqual(rv2, [true, false]); assert.equal(rv3, false); console.log('  ✓ in the visual editor Undo still works after switching tabs and coming back');
+assert.equal(rvOther, true); assert.deepEqual(rv1, [true, false]); assert.deepEqual(rv2, [true, false]); assert.equal(rv3, false); console.log('  ✓ a note opened in the visual editor starts with no undo history of its own, not another tab\'s');
+console.log('  ✓ in the visual editor Undo still works after switching tabs and coming back');
 assert.equal(h1, 'TWO ONE # '); assert.deepEqual(b1, [false, true, false, true]); console.log('  ✓ typing in a note enables Undo, and Redo stays off until something is undone');
 assert.equal(h2, 'ONE # Onbo'); assert.equal(h3, 'TWO ONE # '); console.log('  ✓ Undo and Redo from the app command change the note');
 assert.equal(tab1, 'Roadmap.md'); assert.equal(tab2, 'Onboarding.md'); assert.deepEqual(b2, [false, true, false, false]); console.log('  ✓ Back returns to the previous note and Forward becomes available');
@@ -66,6 +71,7 @@ assert.deepEqual(sl1, [true, false]); console.log('  ✓ a new object enables th
 assert.deepEqual(sl2, [true, true]); assert.equal(sl3, false); console.log('  ✓ another deck starts with no history, and Undo there cannot bring back the first deck\'s object');
 assert.deepEqual(sl4, [true, false]); assert.equal(sl5, false); assert.equal(sl6, true); assert.equal(sl7, false); console.log('  ✓ back in the first deck its history is intact: Undo, Redo and the toolbar button work');
 assert.equal(sheetU, true); assert.equal(boardU, true); console.log('  ✓ sheets and boards start with a clean history too');
+assert.equal(ex1, ex0 + 1); assert.equal(ex2, ex0); console.log('  ✓ a change that came from outside the canvas can be undone as its own step');
 assert(f1.includes('Plan.md') && !f1.includes('Roadmap.md')); assert(f2.includes('Roadmap.md') && !f2.includes('Plan.md')); assert(f3.includes('Plan.md') && !f3.includes('Roadmap.md')); console.log('  ✓ renaming a note can be undone and redone');
 assert(!f4.includes('Plan.md')); assert(f5.includes('Plan.md')); assert.equal(tabAfterTrash, 'Plan.md'); console.log('  ✓ moving a note to the Trash can be undone, and the note reopens');
 assert(d1.includes('Temp')); assert(!d2.includes('Temp')); console.log('  ✓ creating a folder can be undone');

@@ -572,7 +572,11 @@ export function mountSheet(host, ctx) {
   }
 
   return {
-    setText(t) { const moved = docs.bind(ctx.docKey?.()); if (t === text) { if (moved) render(); return; } load(t); render(); },
+    setText(t) {
+      const moved = docs.bind(ctx.docKey?.()); if (t === text) { if (moved) render(); return; }
+      if (!moved && text) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
+      load(t); render();
+    },
     setMode() { requestAnimationFrame(drawSel); },
     selectAtLine() {},
     refresh() { syncExternals(true); },

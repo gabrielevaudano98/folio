@@ -7,6 +7,7 @@ import { findRefs, resolveTarget, rewriteRefs } from '../src/renderer/refs-synta
 import { resolveRef } from '../src/renderer/refs.js';
 import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter, zoomTarget } from '../src/renderer/slides-core.js';
 import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle, linePoints, linePath, parseFill, fillCss, fillSvg, adjustCss, frameCss, safeColor, replaceImageSrc, pathBlock, polygonsBlock, simplify, pointsPath, parsePoints } from '../src/renderer/slides-objects.js';
+import { createActionLog, perDoc } from '../src/renderer/history.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -302,6 +303,38 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.equal(res.status, 303); assert.equal((await fetch(base + '/../etc/passwd')).status, 404);
   assert.deepEqual(QA.pollQa().map((q) => [q.text, q.name]), [['What about <b>pricing</b>?', 'Ada']]);
   QA.stopQa(); ok('Q&A: a question page on the local network, questions reach the presenter, nothing else is served');
+}
+
+{ // history: per-document stacks and the file-action log
+  const undo = [], redo = []; const docs = perDoc(undo, redo); const a = {}, b = {};
+  assert.equal(docs.bind(a), true); undo.push('a1', 'a2'); redo.push('ar');
+  assert.equal(docs.bind(a), false);
+  assert.equal(docs.bind(b), true); assert.deepEqual([undo, redo], [[], []]); undo.push('b1');
+  assert.equal(docs.bind(a), true); assert.deepEqual([undo, redo], [['a1', 'a2'], ['ar']]);
+  docs.bind(b); assert.deepEqual(undo, ['b1']);
+  ok('history: each document keeps its own undo and redo stacks');
+
+  const log = createActionLog(3); const calls = [];
+  const op = (name, fail = 0) => { let f = fail; return { label: name, undo: async () => { calls.push('u' + name); if (f-- > 0) throw new Error('boom'); }, redo: async () => { calls.push('r' + name); } }; };
+  log.push(op('1')); log.push(op('2')); log.push(op('3')); log.push(op('4'));
+  assert.equal(log.peek('undo').label, '4'); await log.run('undo'); await log.run('undo'); await log.run('undo');
+  assert.deepEqual(calls, ['u4', 'u3', 'u2']); assert.equal(log.canUndo, false); assert.equal(log.peek('redo').label, '2');
+  await log.run('redo'); assert.equal(calls.at(-1), 'r2'); log.push(op('5')); assert.equal(log.canRedo, false);
+  ok('history: the file-action log undoes, redoes and forgets redo steps after a new action');
+
+  const flaky = createActionLog(); flaky.push(op('x', 2));
+  await assert.rejects(flaky.run('undo')); assert.equal(flaky.canUndo, true);
+  await assert.rejects(flaky.run('undo')); assert.equal(flaky.canUndo, false);
+  ok('history: a failing file action is kept for one retry, then dropped so it cannot block the log');
+
+  const slow = createActionLog(); const order = [];
+  const gate = []; slow.push({ label: 'a', undo: () => new Promise((r) => gate.push(() => { order.push('a'); r(); })), redo() {} });
+  slow.push({ label: 'b', undo: () => new Promise((r) => gate.push(() => { order.push('b'); r(); })), redo() {} });
+  const p1 = slow.run('undo'), p2 = slow.run('undo');
+  await new Promise((r) => setTimeout(r, 20)); assert.equal(gate.length, 1); gate[0](); await p1;
+  await new Promise((r) => setTimeout(r, 20)); gate[1](); await p2;
+  assert.deepEqual(order, ['b', 'a']);
+  ok('history: two quick undo presses run one after the other');
 }
 
 console.log(`\n${n} format checks passed`);

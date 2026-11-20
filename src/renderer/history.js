@@ -15,22 +15,31 @@ export function perDoc(undo, redo) {
   };
 }
 
-/** Undo and redo for actions on files (create, rename, move, delete). Each op is { label, undo(), redo() }. */
+/** Undo and redo for actions on files (create, rename, move, delete). Each op is { label, undo(), redo() }.
+ *  Runs are serialized, so a second shortcut press waits for the first; a failed op goes back where it was
+ *  (and is dropped on its second failure, so a stale op can never block the stack). */
 export function createActionLog(limit = 50) {
   const done = [], undone = [];
-  return {
-    push(op) { done.push(op); if (done.length > limit) done.shift(); undone.length = 0; },
+  let gen = 0, chain = Promise.resolve();
+  const log = {
+    push(op) { gen++; done.push(op); if (done.length > limit) done.shift(); undone.length = 0; },
     get canUndo() { return done.length > 0; },
     get canRedo() { return undone.length > 0; },
     peek(dir) { const s = dir === 'redo' ? undone : done; return s[s.length - 1]; },
-    /** run the newest op of a stack; a failing op is dropped so the stack never gets stuck */
-    async run(dir) {
-      const from = dir === 'redo' ? undone : done, to = dir === 'redo' ? done : undone;
-      const op = from.pop(); if (!op) return null;
-      await op[dir]();
-      to.push(op);
-      return op;
+    run(dir) {
+      const next = chain.then(async () => {
+        const from = dir === 'redo' ? undone : done, to = dir === 'redo' ? done : undone;
+        const op = from.pop(); if (!op) return null;
+        const started = gen;
+        try { await op[dir](); }
+        catch (e) { op.fails = (op.fails || 0) + 1; if (op.fails < 2) from.push(op); throw e; }
+        if (gen === started) to.push(op); // a new action during the await has already cleared the other stack
+        return op;
+      });
+      chain = next.catch(() => {});
+      return next;
     },
-    clear() { done.length = 0; undone.length = 0; },
+    clear() { gen++; done.length = 0; undone.length = 0; },
   };
+  return log;
 }

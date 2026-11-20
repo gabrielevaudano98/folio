@@ -1334,7 +1334,10 @@ export function mountSlides(host, ctx) {
   return {
     setText(t) {
       const moved = docs.bind(ctx.docKey?.());
+      if (moved) lastPush = 0; // the coalescing timer belongs to one document
       if (t === text) { if (moved) syncHistory(); return; }
+      // a change that did not come from this canvas (an AI edit, the code pane) is a step of its own, so Undo gives it back
+      if (!moved && text && !restoring) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; lastPush = Date.now(); }
       text = t; deck = parse(t); loadTemplate();
       cur = Math.min(cur, deck.slides.length - 1);
       render(); syncHistory();

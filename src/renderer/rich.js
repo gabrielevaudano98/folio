@@ -10,7 +10,7 @@ import { Placeholder } from '@tiptap/extensions';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { icons } from './icons.js';
 import CodeBlock from '@tiptap/extension-code-block';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { renderMermaid, hydrateCharts } from './markdown.js';
 
@@ -290,6 +290,8 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       silent = true;
       try { editor.commands.setContent(md.slice(frontmatter.length), { contentType: 'markdown', emitUpdate: false }); }
       finally { silent = false; }
+      // a loaded document starts with a clean history, so Undo never reaches into the previous tab
+      const st = editor.state; editor.view.updateState(EditorState.create({ schema: st.schema, doc: st.doc, plugins: st.plugins }));
       host.querySelector('.rich-scroll').scrollTop = 0;
       syncToolbar();
     },
