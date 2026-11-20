@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-const electron = process.env.FOLIO_BINARY || createRequire(import.meta.url)('electron');
+const electron = process.env.FOLIO_BINARY ? path.resolve(process.env.FOLIO_BINARY) : createRequire(import.meta.url)('electron');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-stdio-'));
 fs.writeFileSync(path.join(root, 'Hello.md'), '# Hello\n');
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
@@ -32,5 +32,8 @@ console.log('\nstdio bridge through the app binary');
 // FOLIO_BINARY = a packaged build (CI): the app is inside it, so only the flag is passed
 const packaged = !!process.env.FOLIO_BINARY;
 await probe('--mcp-stdio', [...(packaged ? [] : ['dist/main.mjs']), '--mcp-stdio']);
+// FOLIO_LEGACY_SCRIPT = the unpacked mcp-stdio.mjs inside the packaged build, as old client configs point at it
 if (!packaged) await probe('legacy script path', ['dist/main.mjs', 'dist/mcp-stdio.mjs']);
+else if (process.env.FOLIO_LEGACY_SCRIPT) await probe('legacy script path', [path.resolve(process.env.FOLIO_LEGACY_SCRIPT)]);
+else { failed++; console.log('  ✗ FOLIO_LEGACY_SCRIPT not set for the packaged build'); }
 process.exit(failed ? 1 : 0);

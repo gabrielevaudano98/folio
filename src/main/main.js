@@ -450,7 +450,7 @@ h('mcp:rotate-token', () => { settings.token = crypto.randomBytes(24).toString('
 
 /* ---------------- connections to AI clients ---------------- */
 function stdioEntry() {
-  return { command: process.execPath, args: ['--mcp-stdio', '--bridge', BRIDGE_FILE()] };
+  return { command: process.execPath, args: [...(app.isPackaged ? [] : [app.getAppPath()]), '--mcp-stdio', '--bridge', BRIDGE_FILE()] };
 }
 const home = os.homedir();
 const appData = isMac ? path.join(home, 'Library', 'Application Support') : (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'));
@@ -471,7 +471,7 @@ h('connections:list', async () => {
   const list = [];
   for (const [id, t] of Object.entries(TARGETS)) {
     let installed = false, appPresent = fss.existsSync(path.dirname(t.file));
-    try { installed = !!(await readJson(t.file))?.[t.key]?.folio; } catch {}
+    try { const cur = (await readJson(t.file))?.[t.key]?.folio; installed = !!cur && Array.isArray(cur.args) && cur.args.includes('--mcp-stdio'); // a pre-1.2.3 entry still works but shows Connect, which rewrites it } catch {}
     list.push({ id, name: t.name, file: t.file, installed, appPresent, restart: t.restart, snippet: JSON.stringify({ [t.key]: { folio: t.shape(entry) } }, null, 2) });
   }
   const cli = `claude mcp add folio --scope user -- ${[entry.command, ...entry.args].map(quote).join(' ')}`;

@@ -66,7 +66,9 @@ jobs:
           test -f "$BIN" || { echo "packaged binary not found"; ls -R release | head -40; exit 1; }
           npx --yes @electron/fuses read --app "$BIN" | tee fuses.txt
           grep -E "RunAsNode is Disabled" fuses.txt
-          FOLIO_BINARY="$PWD/$BIN" node test/stdio-binary.test.mjs
+          LEGACY=$(find release -path '*app.asar.unpacked/dist/mcp-stdio.mjs' | head -n 1)
+          test -f "$LEGACY" || { echo "unpacked bridge not found"; exit 1; }
+          FOLIO_BINARY="$BIN" FOLIO_LEGACY_SCRIPT="$LEGACY" node test/stdio-binary.test.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: folio-${{ runner.os }}-${{ github.sha }}
