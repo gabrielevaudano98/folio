@@ -449,12 +449,8 @@ h('mcp:token', () => settings.token);
 h('mcp:rotate-token', () => { settings.token = crypto.randomBytes(24).toString('hex'); saveSettings(); return settings.token; });
 
 /* ---------------- connections to AI clients ---------------- */
-function stdioScript() {
-  const p = path.join(__dirname, 'mcp-stdio.mjs');
-  return p.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
-}
 function stdioEntry() {
-  return { command: process.execPath, args: [stdioScript(), '--bridge', BRIDGE_FILE()], env: { ELECTRON_RUN_AS_NODE: '1' } };
+  return { command: process.execPath, args: ['--mcp-stdio', '--bridge', BRIDGE_FILE()] };
 }
 const home = os.homedir();
 const appData = isMac ? path.join(home, 'Library', 'Application Support') : (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'));
@@ -478,7 +474,7 @@ h('connections:list', async () => {
     try { installed = !!(await readJson(t.file))?.[t.key]?.folio; } catch {}
     list.push({ id, name: t.name, file: t.file, installed, appPresent, restart: t.restart, snippet: JSON.stringify({ [t.key]: { folio: t.shape(entry) } }, null, 2) });
   }
-  const cli = `claude mcp add folio --scope user -e ELECTRON_RUN_AS_NODE=1 -- ${[entry.command, ...entry.args].map(quote).join(' ')}`;
+  const cli = `claude mcp add folio --scope user -- ${[entry.command, ...entry.args].map(quote).join(' ')}`;
   return { list, claudeCode: cli, httpUrl: mcpServerPort ? `http://127.0.0.1:${mcpServerPort}/mcp` : null };
 });
 h('connections:install', async (id) => {

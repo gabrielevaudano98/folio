@@ -62,6 +62,10 @@ Bigger bets after 1.3.
 - MCP server with live, reversible AI edits; one-click connection to Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code.
 - CI with format, MCP and UI smoke tests; CodeQL; Dependabot; cubic and Claude reviews.
 
+## Next (1.2.3, unreleased)
+
+- The MCP bridge now runs inside the app binary (`--mcp-stdio`), so the `RunAsNode` fuse is off. Existing client configs keep working; Connect rewrites them to the new form. CI starts the packaged Windows and macOS builds and talks MCP to them.
+
 ## Done in 1.2.2
 
 - Security review of the main process. A note can no longer pull a file from outside the open folder into an export (`file:` images, and links, are checked against the folder and limited to media types); remote images are fetched only from public addresses (checked by name and by what the name resolves to) and are limited to media types and 30 MB. Links inside the folder that lead outside are refused, as are hidden files and folders (`.git`, `.env`, `.ssh`) and changes to the folder itself, for the app and for AI assistants alike. Only the app page can call the main process, the window cannot be navigated to another page, only the microphone permission is granted, the settings file (which holds the MCP token) is owner-only, PDF export uses a private temporary folder, and the token is compared in constant time. Electron 45.4.1; the packaged app turns off `NODE_OPTIONS` and the inspector. Also fixes the image picker, which failed with an error, and asks macOS for microphone access so narration works in signed builds.
