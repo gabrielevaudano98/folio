@@ -19,13 +19,6 @@
   },
   "license": "AGPL-3.0-only",
   "devDependencies": {
-    "electron": "^45.4.1",
-    "electron-builder": "^26.18.0",
-    "esbuild": "^0.28.2",
-    "pixelmatch": "^5.3.0",
-    "pngjs": "^7.0.0"
-  },
-  "dependencies": {
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.13.1",
@@ -58,6 +51,9 @@
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
     "dompurify": "^3.4.18",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "highlight.js": "^11.12.0",
     "hot-formula-parser": "^4.0.0",
     "jszip": "^3.10.2",
@@ -71,6 +67,8 @@
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^12.3.0",
     "moveable": "^0.53.0",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0",
     "polygon-clipping": "^0.15.7",
     "pptxgenjs": "^4.0.1",
     "pptxtojson": "^3.0.0",
