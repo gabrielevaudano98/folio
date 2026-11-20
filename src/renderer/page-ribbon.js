@@ -37,7 +37,7 @@ export const TABS = [
     { label: 'Editing', rank: 1, items: [[[txt('find', 'Find', 'find', 'Mod+F')], [txt('replace', 'Replace', 'replace', 'Mod+H')], [txt('selectAll', 'Select all', 'check', 'Mod+A')]]] },
   ] },
   { id: 'insert', label: 'Insert', groups: [
-    { label: 'Pages', items: [big('ins:page', 'Sub-page', 'doc'), [[txt('ins:page-break', 'Page break', 'pageBreak', 'Mod+Alt+Enter')], [txt('ins:breadcrumb', 'Breadcrumb', 'folder')], [txt('ins:toc', 'Contents', 'outline')]]] },
+    { label: 'Pages', items: [big('ins:page', 'Sub-page', 'doc'), [[txt('ins:page-break', 'Page break', 'pageBreak', 'Mod+Alt+Enter')], [txt('ins:breadcrumb', 'Breadcrumb', 'folder')], [txt('addProperty', 'Property', 'tag', null, { tip: 'A field in the page properties (front matter)' })]]] },
     { label: 'Tables', rank: 4, items: [big('tableGrid', 'Table', 'table', null, { menu: true }), [[txt('ins:database-table', 'Database', 'sheet')], [txt('ins:database-board', 'Board', 'kanban')]]] },
     { label: 'Media', rank: 3, items: [big('ins:image', 'Picture', 'image'), [[txt('ins:video', 'Video', 'video')], [txt('ins:audio', 'Audio', 'audio')], [txt('ins:pdf', 'PDF', 'pdf')]], [[txt('ins:file', 'File', 'folder')], [txt('ins:bookmark', 'Bookmark', 'globe')], [txt('ins:web-embed', 'Web embed', 'embed')]]] },
     { label: 'Blocks', rank: 2, items: [big('ins:callout', 'Callout', 'callout'), [[txt('ins:toggle', 'Toggle', 'chevron')], [txt('ins:code', 'Code', 'codeBlock')], [txt('ins:divider', 'Divider', 'divider')]], [[txt('ins:mermaid', 'Diagram', 'board')], [txt('ins:chart', 'Chart', 'chart')], [txt('ins:synced', 'Synced block', 'copy')]]] },

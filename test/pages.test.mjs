@@ -22,6 +22,7 @@ fs.writeFileSync(path.join(ws, 'pages', 'Atlas Plan.md'), '# Atlas Plan\n\n## Go
 fs.mkdirSync(path.join(ws, 'People'), { recursive: true }); fs.writeFileSync(path.join(ws, 'People', 'Ada Lovelace.md'), '# Ada Lovelace\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| --- | --- |\n| Pear | 3 |\n| Apple | 10 |\n| Fig | 2 |\n\nEnd.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd8.md'), '---\ntitle: Weekly\ntags: [alpha]\ndone: false\n---\n# Weekly\n\nText #beta here.\n');
 const html = read('html.md'), obs = read('obsidian.md');
 const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); const p2 = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
 
@@ -170,6 +171,15 @@ const steps = [
   { js: "(() => { const r = document.querySelector('.ribbon'); document.querySelector('.rb-compact [data-cmd=ribbonMode]').click(); const full = r.dataset.mode; document.querySelector('#rb-tab-insert').click(); const ins = document.querySelector('#rb-tab-insert').getAttribute('aria-selected'); const vis = !document.querySelector('#rb-panel-insert').hidden && document.querySelector('#rb-panel-home').hidden; return [full, localStorage.getItem('folio.ribbon'), ins, vis]; })()", log: true, wait: 300 },
   { js: "document.querySelector('.ribbon [data-cmd=zoomIn]').click(); [document.querySelector('.rich-page').style.zoom, document.getElementById('st-zoom-val').textContent, /words/.test(document.getElementById('st-words').textContent)]", log: true, wait: 300 },
   { js: "document.querySelector('.ribbon [data-cmd=zoomReset]').click(); document.querySelector('.rb-tabs [data-cmd=ribbonMode]').click(); [document.querySelector('.rich-page').style.zoom, document.querySelector('.ribbon').dataset.mode]", log: true, wait: 2500 },
+  // D8: properties above the title, tag click, Tags in the sidebar
+  { js: "document.querySelector('[data-file=\"pages/d8.md\"]').click()", wait: 1500 },
+  { js: "[...document.querySelectorAll('.prop-row')].map((r) => r.dataset.key + ':' + r.dataset.type).join(',')", log: true, wait: 100 },
+  { js: "document.querySelector('.prop-row[data-key=done] .prop-check').click(); true", wait: 200 },
+  { js: "(() => { const i = document.querySelector('.prop-row[data-key=tags] .prop-add-chip'); i.focus(); i.value = 'gamma'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return true; })()", wait: 200 },
+  { js: "(() => { document.querySelector('.props-add').click(); const k = document.querySelector('.prop-new-key'); k.value = 'owner'; k.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); const v = document.querySelector('.prop-row[data-key=owner] .prop-input'); v.value = 'Ada'; v.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return document.activeElement !== v; })()", log: true, wait: 1500 },
+  { js: "(() => { const el = document.querySelector('.rich-tag'); const r = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, ctrlKey: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new MouseEvent('mousedown', o)); el.dispatchEvent(new MouseEvent('mouseup', o)); return el.textContent; })()", log: true, wait: 1200 },
+  { js: "[document.getElementById('sidebar-search').value, document.getElementById('results-head').textContent, [...document.querySelectorAll('#results .result-name')].map((x) => x.textContent).join('|')]", log: true, wait: 1500 },
+  { js: "[...document.querySelectorAll('#tags-list .tag-item')].map((b) => b.dataset.tag + (b.getAttribute('aria-current') ? '*' : '')).join(',')", log: true, wait: 100 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -180,8 +190,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 49, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, errors] = logs;
+  assert.equal(logs.length, 54, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -234,4 +244,10 @@ child.on('exit', () => {
   console.log('  ✓ format painter copies bold to the next selection; dragging a heading in the outline moves its section; Alt+Shift+→ demotes it');
   assert.deepEqual(modes, ['full', 'full', 'true', true]); assert.deepEqual(zoomed, ['1.1', '110%', true]); assert.deepEqual(zoomBack, ['', 'compact']);
   console.log('  ✓ the ribbon switches between one row and Word-style tabs and remembers it; page zoom shows in the status bar');
+  assert.equal(propRows, 'title:text,tags:tags,done:checkbox'); assert(propBlur);
+  assert.equal(read('d8.md'), '---\ntitle: Weekly\ntags: [alpha, gamma]\ndone: true\nowner: Ada\n---\n# Weekly\n\nText #beta here.\n', read('d8.md'));
+  console.log('  ✓ properties: a checkbox, a new tag and a new property each rewrite only their own front matter lines');
+  assert.equal(tagClicked, '#beta'); assert.equal(tagSearch[0], '#beta'); assert.match(tagSearch[1], /^1 page tagged #beta/); assert.equal(tagSearch[2], 'd8');
+  assert(tagPane.includes('beta*') && tagPane.includes('gamma') && tagPane.includes('alpha'), tagPane);
+  console.log('  ✓ Ctrl/⌘ click on a tag lists its pages; the Tags section lists every tag, with the current one marked');
 });

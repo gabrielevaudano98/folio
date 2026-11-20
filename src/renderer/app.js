@@ -11,6 +11,7 @@ import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
+import { renameTag } from './page-props.js';
 import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
@@ -138,6 +139,7 @@ async function boot() {
     createDoc: createDocHere,
     onCommand: (id) => { if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
     isOn: (id) => (id === 'focus' ? app.classList.contains('focus') : id === 'outline' ? app.dataset.outline === 'open' : id === 'spellcheck' ? !!S.settings.spellcheck : false),
+    onTag: (t) => showTag(t),
     onStats: (st) => { S.richStats = st; if (isRich()) renderStatus(); },
     mentions: mentionCtx,
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
@@ -262,7 +264,7 @@ async function refreshTree() {
   try {
     S.tree = await folio.tree();
     S.files = flatten(S.tree);
-    renderTree();
+    renderTree(); tagsStale();
   } catch (e) {
     $('#tree').innerHTML = `<div class="side-empty">Could not read this folder. ${esc(e.message)}<br><button class="btn" type="button" data-act="choose">Choose another folder…</button></div>`;
   }
@@ -380,7 +382,7 @@ function renderTabsDirty() {
 async function saveTab(t) {
   if (t.text === t.saved) return;
   const text = t.text;
-  try { await folio.write(t.path, text); t.saved = text; if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); } renderTabsDirty(); }
+  try { await folio.write(t.path, text); t.saved = text; if (t.path === S.active) { setSaveState('Saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
   catch (e) { toast(`Could not save ${base(t.path)}. ${e.message}`, { kind: 'error', action: ['Retry', () => saveTab(t)] }); setSaveState('Not saved'); }
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
@@ -562,14 +564,53 @@ async function createDocHere({ type, name, content }) {
 /* inline pickers in pages: [[ @ # : (page-mentions.js) */
 const textOf = async (p) => tabOf(p)?.text ?? await folio.read(p).catch(() => '');
 let tagCache = { at: 0, tags: [] };
+const tagsStale = () => { tagCache.at = 0; tagsSoon(); };
 async function tagIndex() {
   if (Date.now() - tagCache.at < 30000) return tagCache.tags;
   const counts = new Map();
-  for (const f of S.files.filter((x) => /\.(md|markdown)$/i.test(x) && docKind(x) === 'page').slice(0, 600)) {
-    for (const t of extractTags(await textOf(f))) { const k = t.toLowerCase(); const c = counts.get(k); counts.set(k, { tag: c?.tag || t, count: (c?.count || 0) + 1 }); }
+  for (const f of S.files.filter((x) => /\.(md|markdown)$/i.test(x) && docKind(x) === 'page').slice(0, 2000)) {
+    for (const t of extractTags(await textOf(f))) { const k = t.toLowerCase(); const c = counts.get(k) || { tag: t, count: 0, files: [] }; c.count++; c.files.push(f); counts.set(k, c); }
   }
   tagCache = { at: Date.now(), tags: [...counts.values()].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)) };
   return tagCache.tags;
+}
+/* the Tags section of the sidebar (Obsidian's tag pane): nested tags under their parent, counts, rename */
+const tagsOpen = () => S.settings.showTags !== false;
+async function renderTags() {
+  const box = $('#tags-list'); if (!box) return;
+  $('#tags-head').setAttribute('aria-expanded', String(tagsOpen())); box.hidden = !tagsOpen();
+  if (!S.workspace) { box.innerHTML = ''; return; }
+  const all = await tagIndex();
+  if (!all.length) { box.innerHTML = '<div class="side-empty">Write #tag in a page, or add tags in its properties.</div>'; return; }
+  // parents of nested tags are listed even when no page uses them alone; they count every page under them
+  const byKey = new Map(all.map((t) => [t.tag.toLowerCase(), { ...t, files: [...t.files] }]));
+  for (const t of all) { const parts = t.tag.split('/'); for (let i = 1; i < parts.length; i++) { const p = parts.slice(0, i).join('/'); const k = p.toLowerCase(); const e = byKey.get(k) || { tag: p, count: 0, files: [] }; e.files = [...new Set([...e.files, ...t.files])]; e.count = e.files.length; byKey.set(k, e); } }
+  const sorted = [...byKey.values()].sort((a, b) => a.tag.localeCompare(b.tag, undefined, { sensitivity: 'base' }));
+  const active = /^#(\S+)$/.exec($('#sidebar-search').value.trim())?.[1]?.toLowerCase();
+  box.innerHTML = sorted.map((t) => { const depth = t.tag.split('/').length - 1; const name = t.tag.split('/').pop();
+    return `<button type="button" class="tag-item" data-tag="${esc(t.tag)}" style="--depth:${depth}"${active === t.tag.toLowerCase() ? ' aria-current="true"' : ''}><span class="tag-name">#${esc(depth ? name : t.tag)}</span><span class="tag-count">${t.count}</span></button>`; }).join('');
+}
+const tagsSoon = debounce(() => renderTags(), 400);
+function showTag(tag) {
+  const si = $('#sidebar-search'); si.value = '#' + tag.replace(/^#/, '');
+  if (app.dataset.sidebar !== 'open') toggleSidebar?.();
+  runSearch(si.value); renderTags();
+}
+async function renameTagEverywhere(tag) {
+  const to = await prompt({ title: `Rename #${tag}`, label: 'New name', value: tag, hint: 'Every page that uses it is updated, nested tags too (#tag/child).', action: 'Rename' });
+  const next = (to || '').trim().replace(/^#/, ''); if (!next || next === tag) return;
+  if (!/^[\p{L}\p{N}_\-/]+$/u.test(next) || !/[\p{L}_]/u.test(next)) { toast('A tag has letters, numbers, - _ or /, and at least one letter.', { kind: 'error' }); return; }
+  const files = (await tagIndex()).filter((t) => t.tag.toLowerCase() === tag.toLowerCase() || t.tag.toLowerCase().startsWith(tag.toLowerCase() + '/')).flatMap((t) => t.files);
+  let changed = 0;
+  for (const f of [...new Set(files)]) {
+    const t = tabOf(f); const before = t ? t.text : await folio.read(f).catch(() => null); if (before == null) continue;
+    const after = renameTag(before, tag, next); if (after === before) continue;
+    await folio.write(f, after); changed++;
+    if (t) { if (t.text === t.saved) t.saved = after; t.text = after; if (f === S.active) { setActiveText(after); renderPreview(); renderOutline(); } }
+  }
+  tagCache.at = 0; await renderTags();
+  if (/^#/.test($('#sidebar-search').value)) showTag(next);
+  toast(changed ? `Renamed #${tag} to #${next} in ${changed} ${changed === 1 ? 'page' : 'pages'}.` : `No page uses #${tag}.`);
 }
 function mentionCtx() {
   if (!S.workspace || !S.active) return null;
@@ -893,6 +934,14 @@ const runSearch = debounce(async (q) => {
   if (!q.trim()) { files.hidden = false; res.hidden = true; return; }
   files.hidden = true; res.hidden = false;
   if (!S.workspace) { $('#results').innerHTML = '<div class="side-empty">Open a folder to search it.</div>'; return; }
+  const tagQ = /^(?:#|tag:#?)([\p{L}\p{N}_\-/]+)$/u.exec(q.trim());
+  if (tagQ) {
+    const want = tagQ[1].toLowerCase(); const all = await tagIndex();
+    const files = [...new Set(all.filter((t) => t.tag.toLowerCase() === want || t.tag.toLowerCase().startsWith(want + '/')).flatMap((t) => t.files))].sort((a, b) => stem(a).localeCompare(stem(b)));
+    $('#results-head').textContent = files.length ? `${files.length} ${files.length === 1 ? 'page' : 'pages'} tagged #${tagQ[1]}` : `No page is tagged #${tagQ[1]}`;
+    $('#results').innerHTML = files.map((f) => `<button class="result" type="button" data-file="${esc(f)}" data-line="1"><span class="result-name">${esc(stem(f))}</span>${dirOf(f) ? `<span class="result-folder">${esc(dirOf(f))}</span>` : ''}</button>`).join('');
+    return;
+  }
   try {
     const results = await folio.search(q, { limit: 80 });
     const total = results.reduce((n, r) => n + r.total, 0);
@@ -1335,6 +1384,12 @@ function bindChrome() {
   $('#btn-new').onclick = () => newNote();
   $('#btn-sidebar').onclick = toggleSidebar;
   $('#btn-outline').onclick = toggleOutline;
+  $('#tags-head').addEventListener('click', () => { saveSetting({ showTags: !tagsOpen() }); renderTags(); });
+  $('#tags-list').addEventListener('click', (e) => { const b = e.target.closest('[data-tag]'); if (b) showTag(b.dataset.tag); });
+  $('#tags-list').addEventListener('contextmenu', (e) => {
+    const b = e.target.closest('[data-tag]'); if (!b) return; e.preventDefault(); const tag = b.dataset.tag;
+    showMenu(null, [{ label: `Show pages tagged #${tag}`, run: () => showTag(tag) }, { label: 'Rename tag…', run: () => renameTagEverywhere(tag) }, { label: 'Copy tag', run: () => { folio.copy('#' + tag); toast(`Copied #${tag}`); } }], { x: e.clientX, y: e.clientY });
+  });
   $('#st-zoom').addEventListener('click', (e) => { const b = e.target.closest('[data-zoom]'); if (b && isRich()) rich.zoom(+b.dataset.zoom); });
   $('#st-words').addEventListener('click', () => { if (isRich() && curType() === 'md') rich.run('counts', $('#st-words')); });
   $('#ai-status').onclick = openAiSheet;
@@ -1437,6 +1492,7 @@ function bindChrome() {
 
   // preview interactions
   $('#preview').addEventListener('click', async (e) => {
+    const tg = e.target.closest('.md-tag'); if (tg) { showTag(tg.textContent.replace(/^#/, '')); return; }
     const copy = e.target.closest('.copy-code');
     if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = 'Copied'; setTimeout(() => (copy.textContent = 'Copy'), 1400); return; }
     const box = e.target.closest('.task-list-item input');
@@ -1539,6 +1595,7 @@ function dragResize(handle, onMove) {
 function bindIpc() {
   folio.onTreeChanged(() => { refreshTree(); backlinksSoon(); });
   folio.onFileChanged(({ path: p, content }) => {
+    tagsStale();
     if (p !== S.active) backlinksSoon();
     if (p !== S.active && /\{\{|!\[\[|```chart/.test(activeTab()?.text || '')) { renderPreview(); curSurface()?.refresh?.(); }
     const t = tabOf(p); if (!t || content === t.saved) return;

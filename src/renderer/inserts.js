@@ -138,6 +138,7 @@ export const INSERTS = [
     run: async (e, c) => { const t = await c.pickRef?.({ kind: 'link' }); if (t) e.chain().focus().insertContent({ type: 'text', text: t }).run(); } },
   { id: 'value', label: 'Live value', cat: 'Links and embeds', icon: 'sheet', desc: '{{Budget.sheet#Costs!H6}}', aliases: ['{{', 'cell', 'number', 'formula result'],
     run: async (e, c) => { const t = await c.pickRef?.({ kind: 'value' }); if (t) e.chain().focus().insertContent({ type: 'text', text: t }).run(); } },
+  { id: 'property', label: 'Property', cat: 'Advanced', icon: 'tag', desc: 'A field above the title (front matter)', aliases: ['property', 'properties', 'front matter', 'yaml', 'metadata', 'field', 'tags'], md: '', run: (e, c) => c.addProperty?.() },
   { id: 'today', label: 'Today', cat: 'Links and embeds', icon: 'calendar', desc: 'A link to today’s daily note', aliases: ['date', 'now', 'daily note', 'journal', 'day'], get md() { return dayLink(0); }, run: (e) => putText(e, dayLink(0)) },
   { id: 'tomorrow', label: 'Tomorrow', cat: 'Links and embeds', icon: 'calendar', desc: 'A link to tomorrow’s daily note', aliases: ['date', 'next day', 'daily note', 'journal'], get md() { return dayLink(1); }, run: (e) => putText(e, dayLink(1)) },
   { id: 'status', label: 'Status chip', cat: 'Links and embeds', icon: 'status', desc: '[status:: In progress], or type @status', aliases: ['status', 'chip', 'badge', 'label', 'progress', 'done', 'inline field'], md: '[status:: In progress]', run: (e) => putText(e, '[status:: In progress]') },

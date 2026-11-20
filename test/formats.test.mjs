@@ -21,6 +21,7 @@ import { findMatches, replaceAll } from '../src/renderer/page-find.js';
 import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
+import { parseProps, setProp, removeProp, renameProp, newKey, renameTag } from '../src/renderer/page-props.js';
 import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
@@ -389,6 +390,28 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   ok("the ribbon has Word's tabs with labelled groups, a compact row, and every Insert button is a registry item");
   assert.deepEqual(headings('---\ntitle: x\n---\n\nTitle\n=====\n\nPara\nmore\n---\n\n- item\n---\n\n***\n---\n').map((h) => [h.line, h.level, h.text]), [[4, 1, 'Title'], [7, 2, 'Para more']]);
   ok('the outline reads setext headings (=== and ---), not lists or thematic breaks'); }
+
+// D8: properties (front matter) and tags
+{
+  const t = '---\ntitle: My page # note\ntags: [q4, project/alpha]\naliases:\n  - One\n  - "Two: x"\ndone: false\ncount: 3\ndue: 2026-12-01\nowner: "[[Ada]]"\nfolio:\n  status: [a, b]\n---\n# Body #q4\n';
+  assert.deepEqual(parseProps(t).props.map((p) => [p.key, p.type]), [['title', 'text'], ['tags', 'tags'], ['aliases', 'list'], ['done', 'checkbox'], ['count', 'number'], ['due', 'date'], ['owner', 'link'], ['folio', 'object']]);
+  assert.deepEqual(parseProps(t).props[2].value, ['One', 'Two: x']); assert.equal(parseProps(t).props[0].value, 'My page');
+  ok('front matter reads as typed properties (text, tags, list, checkbox, number, date, link); nested maps are read-only');
+  const only = (a, b) => { const x = a.split('\n'), y = b.split('\n'); return y.filter((l) => !x.includes(l)); };
+  assert.deepEqual(only(t, setProp(t, 'done', true)), ['done: true']);
+  assert.deepEqual(only(t, setProp(t, 'aliases', ['One', 'Three'])), ['  - Three']);
+  assert.deepEqual(only(t, setProp(t, 'tags', ['q4', 'q1'])), ['tags: [q4, q1]']);
+  assert.equal(setProp(t, 'folio', 'x'), t); assert.equal(setProp(t, 'title', 'a: b').includes('title: "a: b"'), true);
+  assert(setProp(t, 'new', 'hi').includes('  status: [a, b]\nnew: hi\n---\n# Body #q4\n'));
+  assert.equal(removeProp(t, 'count').includes('count:'), false); assert(renameProp(t, 'due', 'deadline').includes('\ndeadline: 2026-12-01\n')); assert.equal(renameProp(t, 'due', 'title'), t);
+  ok('changing a property rewrites only its lines; comments, quoting, order and nested values stay; lists keep their style');
+  assert.equal(setProp('# Hi\n', 'tags', ['a'], 'tags'), '---\ntags:\n  - a\n---\n\n# Hi\n'); assert.equal(removeProp('---\nx: 1\n---\n# Hi\n', 'x'), '# Hi\n');
+  assert.equal(setProp('', 'done', false, 'checkbox'), '---\ndone: false\n---\n'); assert.equal(newKey(t), 'property'); assert.equal(newKey(setProp(t, 'property', '')), 'property 2');
+  ok('the first property creates the front matter; removing the last removes it');
+  assert.equal(renameTag(t, 'project', 'work'), t.replace('project/alpha', 'work/alpha'));
+  assert.equal(renameTag('a #q4 b `#q4` #q4x (#q4)\n```\n#q4\n```\n#Q4.', 'q4', 'q1'), 'a #q1 b `#q4` #q4x (#q1)\n```\n#q4\n```\n#q1.');
+  assert.equal(renameTag(t, 'q4', 'bad tag'), t);
+  ok('renaming a tag changes it in the text and the front matter, nested tags too, never inside code or longer tags'); }
 
 // the / menu registry
 {

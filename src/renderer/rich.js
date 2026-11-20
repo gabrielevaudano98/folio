@@ -11,6 +11,7 @@ import { CalloutUI, HeadingFold, HFOLD, TocView, BreadcrumbView, PageBreakView }
 import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
 import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
 import { FindReplace, mountFindBar } from './page-find.js';
+import { mountProps } from './page-props-ui.js';
 import { Markdown } from '@tiptap/markdown';
 import { Placeholder } from '@tiptap/extensions';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
@@ -118,7 +119,7 @@ const FolioCodeBlock = CodeBlock.extend({
 /* callouts and [[wiki links]] are drawn, the Markdown text stays as written */
 const Decorate = Extension.create({
   name: 'folioDecorate',
-  addOptions() { return { onWikiLink: null, resolveValue: null, linkKind: null, preview: null }; },
+  addOptions() { return { onWikiLink: null, resolveValue: null, linkKind: null, preview: null, onTag: null }; },
   addProseMirrorPlugins() {
     const opts = this.options;
     const hover = { el: null, card: null, timer: 0, seq: 0, hide() { clearTimeout(this.timer); this.seq++; this.card?.remove(); this.card = null; this.el = null; } };
@@ -143,7 +144,7 @@ const Decorate = Extension.create({
           }
           if (!n.marks.some((mk) => mk.type.name === 'code')) {
             TAG.lastIndex = 0; let t;
-            while ((t = TAG.exec(n.text))) { const from = pos + t.index + t[1].length; deco.push(Decoration.inline(from, from + t[2].length + 1, { class: 'rich-tag', title: 'Tag' })); }
+            while ((t = TAG.exec(n.text))) { const from = pos + t.index + t[1].length; deco.push(Decoration.inline(from, from + t[2].length + 1, { class: 'rich-tag', title: 'Tag. Ctrl or ⌘ click to see every page with it' })); }
             FIELD.lastIndex = 0; let f;
             while ((f = FIELD.exec(n.text))) { const key = f[1].trim().toLowerCase(); deco.push(Decoration.inline(pos + f.index, pos + f.index + f[0].length, { class: key === 'status' ? `rich-field rich-status is-${statusClass(f[2])}` : 'rich-field', 'data-key': key, title: key === 'status' ? 'Status' : f[1] })); }
           }
@@ -183,6 +184,8 @@ const Decorate = Extension.create({
           scroll() { hover.hide(); return false; },
         },
         handleClick(view, pos, event) {
+          const tag = event.target.closest?.('.rich-tag');
+          if (tag && (event.metaKey || event.ctrlKey)) { opts.onTag?.(tag.textContent.replace(/^#/, '')); return true; }
           const el = event.target.closest?.('.rich-wikilink, .rich-ref');
           if (el && (event.metaKey || event.ctrlKey)) { opts.onWikiLink?.(el.dataset.target); return true; }
           return false;
@@ -626,7 +629,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null }) {
+export function createRich(host, { onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -656,7 +659,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
 
-  const insertCtx = () => ({ pickImage: onPickImage, pickRef, createDoc, pickMedia, askUrl, footnote: (e) => pageCmd.footnote(e) });
+  const insertCtx = () => ({ addProperty: () => props.add(), pickImage: onPickImage, pickRef, createDoc, pickMedia, askUrl, footnote: (e) => pageCmd.footnote(e) });
   const editor = new Editor({
     element: page,
     extensions: [
@@ -676,7 +679,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       HeadingFold.configure({ icons }),
       BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
       MarkdownLinkInput,
-      Decorate.configure({ onWikiLink, resolveValue, linkKind, preview }),
+      Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t) }),
       Markdown.configure({ markedOptions: { gfm: true } }),
       Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : 'Write, or select text to format it') }),
       BubbleMenu.configure({ element: bubble, shouldShow: ({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && !(state.selection instanceof NodeSelection) }),
@@ -704,6 +707,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
     const c = editor.chain().focus();
     switch (id) {
       case 'painter': return painter.toggle(false);
+      case 'addProperty': return props.add();
       case 'find': return findBar.open(false);
       case 'replace': return findBar.open(true);
       case 'selectAll': return c.selectAll().run();
@@ -919,6 +923,14 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
   /* find and replace */
   const findBar = mountFindBar(host.querySelector('.rich-scroll').parentElement === host ? host : host, editor, { icons, keyLabel });
   host.insertBefore(host.querySelector('.find-bar'), host.querySelector('.rich-scroll'));
+
+  /* properties: the front matter as fields above the title; only the lines of a changed property are rewritten */
+  const props = mountProps(page, {
+    icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n),
+    tags: () => (mentions ? mentions()?.tags?.() : []) || [],
+    get: () => model?.fm || '',
+    set: (fm) => { if (!model) model = codec.load(''); const old = model.fm; model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
+  });
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {
     const v = styleSel.value, c = editor.chain().focus();
@@ -1037,6 +1049,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
         codec.bind(model, editor.state.doc);
       } finally { silent = false; }
       host.querySelector('.rich-scroll').scrollTop = 0;
+      props.render();
       syncToolbar();
     },
     getMarkdown() {
@@ -1069,6 +1082,7 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       return { ...all, zoom: pv.zoom, selection: empty ? null : count(editor.state.doc.textBetween(from, to, '\n', ' '), sp) };
     },
     find(replace = false) { return findBar.open(replace); },
+    addProperty() { props.add(); },
     setRibbonMode(m) { ribbon.setMode(m); },
     zoom(step) { return step === 0 ? setZoom(1) : setZoom(pv.zoom + step * 0.1); },
     sync() { syncToolbar(); },
