@@ -57,6 +57,12 @@ export function findMentions(text, name) {
   return out;
 }
 /** turn one mention into a link: [[Name]], or [[Name|as written]] when the case differs */
+/** every unlinked mention of `name` in a text, linked in one pass (from the end, so the offsets stay true) */
+export function linkAllMentions(text, name) {
+  const hits = findMentions(text, name).sort((a, b) => b.start - a.start); let out = text;
+  for (const h of hits) out = linkMention(out, h, name);
+  return { text: out, count: hits.length };
+}
 export const linkMention = (text, m, name) => text.slice(0, m.start) + (m.match === name ? `[[${name}]]` : `[[${name}|${m.match}]]`) + text.slice(m.end);
 
 const norm = (p) => String(p).replace(/\\/g, '/').replace(/^\.?\//, '');

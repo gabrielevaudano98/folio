@@ -246,7 +246,7 @@ const steps = [
   { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.startsWith('Import')).click(); true", wait: 3000 },
   // D12: unlinked mentions with Link, and Create page for a broken link
   { js: "document.querySelector('[data-file=\\\"pages/Atlas.md\\\"]').click()", wait: 2000 },
-  { js: "(() => { const ul = document.querySelector('#unlinked'); const n = ul.querySelectorAll('li').length; const row = [...ul.querySelectorAll('li')].find((li) => li.querySelector('a').dataset.bl === 'pages/d12.md'); row?.querySelector('[data-link-mention]').click(); return [n >= 1 && !!row, !document.querySelector('#unlinked-head').hidden]; })()", log: true, wait: 2000 },
+  { js: "(() => { const ul = document.querySelector('#unlinked'); const rows = ul.querySelectorAll('.unlinked-row'); const n = rows.length; const row = [...rows].find((li) => li.querySelector('a').dataset.bl === 'pages/d12.md'); const all = !!ul.querySelector('[data-link-all]') === (n > 1); row?.querySelector('[data-link-mention]').click(); return [n >= 1 && !!row && all, !document.querySelector('#unlinked-head').hidden]; })()", log: true, wait: 2000 },
   { js: "document.querySelector('[data-file=\\\"pages/d12.md\\\"]').click()", wait: 1800 },
   { js: "(() => { const b = document.querySelector('[data-create-page=Nowhere]'); const had = !!b; b?.click(); return had; })()", log: true, wait: 1500 },
   // D16: the right dock (Outline | Review), the Viewing mode, an empty page offering a start, a template that asks questions

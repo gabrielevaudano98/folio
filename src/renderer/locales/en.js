@@ -17,5 +17,7 @@ export default {
   'help.kb.chip': 'Alt+Enter in a status, tag or link', 'help.kb.chipDo': 'Open its menu, list the pages with the tag, or follow the link',
   'help.kb.menu': 'Arrows, Home, End or a letter in a menu', 'help.kb.menuDo': 'Move between its items',
   'help.kb.tab': 'Delete on a tab', 'help.kb.tabDo': 'Close the page',
+  'links.linkAll': 'Link all ({n})', 'links.linked': 'Linked “{name}” {n} times.', 'links.undo': 'Undo',
+  'links.title': 'Link check', 'links.summary': '{n} broken references in {files} pages.', 'links.none': 'Every reference points to a page that exists.', 'links.line': 'line {n}', 'links.create': 'Create page', 'links.created': 'Created {name}.',
   'settings.language': 'Language', 'settings.languageHint': 'Menus, panels and messages. Pages are never translated.',
 };

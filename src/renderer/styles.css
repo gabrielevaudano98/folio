@@ -1747,3 +1747,11 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .help-list dt code { font-size: var(--text-sm); overflow-wrap: anywhere; }
 .help-list dd { margin: 0; color: var(--color-ink-2); font-size: var(--text-sm); }
 .help-list dd kbd { color: var(--color-ink); }
+
+/* ---------- link health, Link all (D12 leftovers) ---------- */
+.links-list { list-style: none; margin: 0; padding: 0; }
+.links-list li { display: flex; align-items: center; gap: var(--space-sm); border-bottom: 1px solid var(--color-rule); padding: var(--space-2xs) 0; }
+.link-open { flex: 1; min-width: 0; display: flex; gap: var(--space-sm); align-items: baseline; text-align: left; background: none; border: 0; padding: var(--space-2xs) 0; color: var(--color-ink); cursor: pointer; }
+.link-open:hover .bl-ref { text-decoration: underline; }
+.link-open:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.unlinked-all { list-style: none; padding: var(--space-2xs) 0; }

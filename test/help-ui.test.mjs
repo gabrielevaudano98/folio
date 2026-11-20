@@ -11,7 +11,8 @@ fs.mkdirSync(pages, { recursive: true }); fs.mkdirSync(ud);
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47603, authorName: 'Tester' }));
 const long = Array.from({ length: 4000 }, (_, i) => `${i % 5 === 0 ? `## Section ${i}\n\n` : ''}Paragraph ${i} of the long page, with a few words in it.`).join('\n\n');
 fs.writeFileSync(path.join(pages, 'long.md'), `# Long\n\n${long}\n`);
-fs.writeFileSync(path.join(pages, 'a.md'), '# A\n\nHello.\n');
+fs.writeFileSync(path.join(pages, 'a.md'), '# A\n\nHello, see [[Nowhere]] and [[b]].\n');
+fs.writeFileSync(path.join(pages, 'b.md'), '# B\n\nBack to A is not linked, but [[Missing page]] is.\n');
 
 const runCmd = (id) => `(() => { const b = document.createElement('button'); b.dataset.cmd = 'app:${id}'; document.querySelector('.ribbon').append(b); b.click(); b.remove(); return true; })()`;
 const steps = [
@@ -24,6 +25,12 @@ const steps = [
   { js: "(() => { const i = document.querySelector('#help-search'); i.value = 'callout'; i.dispatchEvent(new Event('input', { bubbles: true })); return [...document.querySelectorAll('#help-body h3')].map((h) => h.id); })()", log: true, wait: 200 },
   { js: "(() => { const i = document.querySelector('#help-search'); i.value = 'qqzzxx'; i.dispatchEvent(new Event('input', { bubbles: true })); return document.querySelector('#help-body').textContent.trim(); })()", log: true, wait: 200 },
   { js: "document.querySelector('#sheet-help [data-close-sheet]').click(); document.querySelector('#sheet-help').open", log: true, wait: 300 },
+  // link check over the whole workspace: broken references grouped by page, Create page fixes one
+  { js: runCmd('link-health'), wait: 1200 },
+  { js: "(() => { const d = document.querySelector('#sheet-links'); return [d.open, [...d.querySelectorAll('h3')].map((h) => h.textContent).sort(), d.querySelectorAll('[data-create]').length]; })()", log: true, wait: 100 },
+  { js: "document.querySelector('#sheet-links [data-create=Nowhere]').click(); true", wait: 1500 },
+  { js: "(() => { const d = document.querySelector('#sheet-links'); return [d.open, [...d.querySelectorAll('.bl-ref')].map((x) => x.textContent)]; })()", log: true, wait: 100 },
+  { js: "document.querySelector('#sheet-links [data-close-sheet]').click(); true", wait: 300 },
   // language: Italian translates the settings sheet, the Info tab and <html lang>
   { js: "document.querySelector('#dock-tab-info').click(); true", wait: 800 },
   { js: "document.querySelector('#dock-info .side-head').textContent", log: true, wait: 100 },
@@ -46,12 +53,15 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nhelp, language and long pages'); if (process.env.DEBUG) console.log(JSON.stringify(logs, null, 1));
-  assert.equal(logs.length, 10, out.slice(-1500));
-  const [sheet, filtered, none, closed, infoEn, lang, infoIt, ready, perf, errors] = [logs[0], logs[1], logs[2], logs[3], logs[4], logs[5], logs[6], logs[7], logs[8], logs[9]];
+  assert.equal(logs.length, 12, out.slice(-1500));
+  const [sheet, filtered, none, closed, health1, health2, infoEn, lang, infoIt, ready, perf, errors] = logs;
   assert.deepEqual(sheet.slice(0, 4), [true, 'help-title', 'help-search', true]); assert.equal(sheet[4], true);
   console.log('  ✓ the help sheet opens on its search field and lists the shortcuts from the commands');
   assert.deepEqual(filtered, ['help-syntax']); assert.match(none, /Nothing matches/); assert.equal(closed, false);
   console.log('  ✓ typing filters it, with a message when nothing matches; the close button closes it');
+  assert.deepEqual(health1, [true, ['a', 'b'], 2]); assert.deepEqual(health2, [true, ['[[Missing page]]']]);
+  assert(fs.existsSync(path.join(ws, 'Nowhere.md')), 'Create page wrote the page');
+  console.log('  ✓ the link check lists every broken reference by page; Create page makes the page and the list updates');
   assert.equal(infoEn, 'Details'); assert.deepEqual(lang, ['Lingua', 'it', true, 'it']); assert.equal(infoIt, 'Dettagli');
   console.log('  ✓ the Language setting translates the settings sheet and the Info tab at once, and sets the page language');
   assert.deepEqual(ready[0], true);

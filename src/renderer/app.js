@@ -8,7 +8,7 @@ import { portableMarkdown } from './page-syntax.js';
 import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
-import { parseRef, resolveTarget, docKind, findMentions, linkMention } from './refs-syntax.js';
+import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { docInfo, infoRows } from './page-info.js';
@@ -152,7 +152,7 @@ async function boot() {
     askUrl: (title) => prompt({ title, label: 'Address', placeholder: 'https://', action: 'Insert' }).then((u) => { u = (u || '').trim(); if (!u) return null; return /^[a-z][\w+.-]*:/i.test(u) ? u : 'https://' + u; }),
     openMedia: (src) => openMedia(src),
     createDoc: createDocHere,
-    onCommand: (id) => { if (id === 'template') return insertTemplateCmd(); if (id === 'daily-note') return openDailyNote(todayKey()); if (id === 'template-button') return insertTemplateButton(); if (id === 'help') return openHelp(); if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
+    onCommand: (id) => { if (id === 'template') return insertTemplateCmd(); if (id === 'daily-note') return openDailyNote(todayKey()); if (id === 'template-button') return insertTemplateButton(); if (id === 'help') return openHelp(); if (id === 'link-health') return openLinkHealth(); if (id === 'focus') toggleFocus(); else if (id === 'outline') toggleOutline(); else if (id === 'spellcheck') { const v = !S.settings.spellcheck; saveSetting({ spellcheck: v }); editor.setSpellcheck(v); rich.editor.view.dom.setAttribute('spellcheck', String(v)); } },
     isOn: (id) => (id === 'focus' ? app.classList.contains('focus') : id === 'outline' ? app.dataset.outline === 'open' : id === 'spellcheck' ? !!S.settings.spellcheck : false),
     onTag: (t) => showTag(t),
     onTemplate: (b, pos) => runTemplateButton(b, pos),
@@ -889,7 +889,7 @@ async function renderBacklinks() {
 function renderUnlinked(list) {
   const ul = $('#unlinked'), head = $('#unlinked-head');
   head.hidden = ul.hidden = !list.length;
-  ul.innerHTML = list.slice(0, 50).map((m, i) => {
+  ul.innerHTML = (list.length > 1 ? `<li class="unlinked-all"><button type="button" class="btn btn-quiet" data-link-all>${esc(tr('links.linkAll', { n: list.length }))}</button></li>` : '') + list.slice(0, 50).map((m, i) => {
     const t = m.text, k = t.toLowerCase().indexOf(m.match.toLowerCase());
     const snip = k < 0 ? esc(t) : `${esc(t.slice(0, k))}<mark>${esc(t.slice(k, k + m.match.length))}</mark>${esc(t.slice(k + m.match.length))}`;
     return `<li class="unlinked-row"><a href="#" data-bl="${esc(m.path)}" data-bl-line="${m.line}" title="${esc(m.path)}"><span class="bl-name">${esc(stem(m.path))}</span><span class="bl-ref unlinked-snip">${snip}</span></a><button type="button" class="btn btn-quiet" data-link-mention="${i}" aria-label="Link this mention in ${esc(stem(m.path))}">Link</button></li>`;
@@ -907,7 +907,20 @@ async function linkOneMention(m) {
   toast(`Linked “${m.name}” in ${stem(m.path)}.`, { action: ['Undo', async () => { if (tab) { tab.text = text; if (S.active === tab.path) setActiveText(text); await saveTab(tab); } else await folio.write(m.path, text); renderBacklinks(); }] });
   renderBacklinks();
 }
-$('#unlinked').addEventListener('click', (e) => { const b = e.target.closest('[data-link-mention]'); if (b) { e.preventDefault(); linkOneMention($('#unlinked')._list[Number(b.dataset.linkMention)]); } });
+/* Link all: every mention of this page's name, in every document, one undoable step */
+async function linkAllMentionsNow(list) {
+  const name = list[0].name, before = new Map(); let total = 0;
+  for (const path of new Set(list.map((m) => m.path))) {
+    const tab = tabOf(path), text = tab ? tab.text : await folio.read(path);
+    const r = linkAllMentions(text, name); if (!r.count) continue;
+    before.set(path, text); total += r.count;
+    if (tab) { tab.text = r.text; if (S.active === tab.path) setActiveText(r.text); await saveTab(tab); } else await folio.write(path, r.text);
+  }
+  const restore = async () => { for (const [path, text] of before) { const tab = tabOf(path); if (tab) { tab.text = text; if (S.active === tab.path) setActiveText(text); await saveTab(tab); } else await folio.write(path, text); } renderBacklinks(); };
+  toast(tr('links.linked', { n: total, name }), { action: [tr('links.undo'), restore] });
+  renderBacklinks();
+}
+$('#unlinked').addEventListener('click', (e) => { if (e.target.closest('[data-link-all]')) { e.preventDefault(); return linkAllMentionsNow($('#unlinked')._list); } const b = e.target.closest('[data-link-mention]'); if (b) { e.preventDefault(); linkOneMention($('#unlinked')._list[Number(b.dataset.linkMention)]); } });
 $('#broken-links').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-create-page]'); if (!b) return; e.preventDefault();
   try { const p = await folio.create(b.dataset.createPage + '.md', `# ${b.dataset.createPage}\n\n`); await refreshTree(); toast(`Created ${p}.`); renderBacklinks(); } catch (er) { toast(er.message, { kind: 'error' }); }
@@ -1424,6 +1437,21 @@ function openSettings() {
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
 }
 
+/* ============ link health: every broken reference in the workspace, grouped by page ============ */
+async function openLinkHealth() {
+  const d = $('#sheet-links');
+  const broken = await folio.brokenLinks().catch(() => []);
+  const byFile = new Map(); for (const b of broken) { if (!byFile.has(b.path)) byFile.set(b.path, []); byFile.get(b.path).push(b); }
+  d.innerHTML = `<div class="sheet-head"><div><h2 id="links-title">${esc(tr('links.title'))}</h2><p>${esc(broken.length ? tr('links.summary', { n: broken.length, files: byFile.size }) : tr('links.none'))}</p></div><button class="icon-btn" type="button" data-close-sheet aria-label="${esc(tr('help.close'))}">${icons.close}</button></div>
+    <div class="sheet-body">${[...byFile].map(([p, rows]) => `<section class="group"><h3>${esc(stem(p))}</h3><ul class="links-list">${rows.map((b) => { const nm = /^\[\[([^\]|#]+)\]\]$/.exec(b.ref)?.[1]?.trim(); return `<li><button type="button" class="link-open" data-open="${esc(p)}" data-line="${b.line}"><span class="bl-ref">${esc(b.ref)}</span><span class="bl-kind">${esc(tr('links.line', { n: b.line }))}</span></button>${nm ? `<button type="button" class="btn btn-quiet" data-create="${esc(nm)}">${esc(tr('links.create'))}</button>` : ''}</li>`; }).join('')}</ul></section>`).join('')}</div>`;
+  d.onclick = async (e) => {
+    const o = e.target.closest('[data-open]'); if (o) { d.close(); return openFile(o.dataset.open, { line: Number(o.dataset.line) }); }
+    const c = e.target.closest('[data-create]'); if (!c) return;
+    try { await folio.create(c.dataset.create + '.md', `# ${c.dataset.create}\n\n`); await refreshTree(); toast(tr('links.created', { name: c.dataset.create })); openLinkHealth(); } catch (er) { toast(er.message, { kind: 'error' }); }
+  };
+  if (!d.open) d.showModal();
+}
+
 /* ============ help sheet (shortcuts from the commands themselves, so it can't drift) ============ */
 function openHelp(query = '') {
   const d = $('#sheet-help');
@@ -1475,6 +1503,7 @@ const COMMANDS = [
   { id: 'toggle-sidebar', title: 'Toggle sidebar', key: 'Mod+\\', run: toggleSidebar },
   { id: 'toggle-outline', title: 'Toggle outline', key: 'Mod+Shift+O', run: toggleOutline },
   { id: 'focus', title: 'Focus mode', key: 'Mod+.', run: toggleFocus },
+  { id: 'link-health', title: 'Check links in all pages…', run: () => openLinkHealth() },
   { id: 'help', title: 'Help: shortcuts and syntax', key: 'F1', run: () => openHelp() },
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
   { id: 'assets-clean', title: 'Files: clean up unused files…', run: () => openAssets() },

@@ -10,18 +10,37 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 /* ---------- pure ---------- */
 
 /** cells copied from Excel, Google Sheets or Numbers arrive as tab-separated lines; anything else is not a table */
-export function parseTSV(text) {
+export const parseTSV = (text) => parseDelimited(text, '\t');
+
+/** comma- or semicolon-separated text is a table only when it cannot be anything else: at least 3 lines (2 with `;`),
+ *  the same number of fields on every line (quotes respected), short cells, not code. Otherwise null and the text pastes as text. */
+export function parseCSV(text) {
+  const s = String(text || '');
+  if (/[\t{}<>]/.test(s) || s.length > 200000) return null;
+  for (const [d, minRows] of [[';', 2], [',', 3]]) {
+    if (!s.includes(d)) continue;
+    const rows = parseDelimited(s, d, { strict: true });
+    if (!rows || rows.length < minRows) continue;
+    if (rows.some((r) => r.some((c) => c.length > 80))) continue;
+    if (rows[0].some((c) => c === '')) continue;
+    return rows;
+  }
+  return null;
+}
+
+function parseDelimited(text, delim, { strict = false } = {}) {
   const s = String(text || '').replace(/\r\n?/g, '\n').replace(/\n+$/, '');
-  if (!s.includes('\t')) return null;
+  if (!s.includes(delim)) return null;
   const rows = []; let row = [], cell = '', quoted = false;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quoted) { if (c === '"' && s[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') quoted = false; else cell += c; continue; }
     if (c === '"' && cell === '') { quoted = true; continue; }
-    if (c === '\t') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c;
+    if (c === delim) { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c;
   }
   row.push(cell); rows.push(row);
   const width = Math.max(...rows.map((r) => r.length));
+  if (strict && (quoted || rows.some((r) => r.length !== width))) return null;
   if (width < 2 || rows.length > 500 || width > 50) return null;
   return rows.map((r) => [...r, ...Array(width - r.length).fill('')].map((c) => c.replace(/\n/g, ' ').trim()));
 }
@@ -237,7 +256,7 @@ export const TableHandles = Extension.create({
         handlePaste(view, event) {
           const text = event.clipboardData?.getData('text/plain');
           if (!text || view.state.selection.$from.parent.type.spec.code) return false;
-          const rows = parseTSV(text); if (!rows) return false;
+          const rows = parseTSV(text) || parseCSV(text); if (!rows) return false;
           event.preventDefault(); tableCmd.paste(editor, rows); return true;
         },
       },
