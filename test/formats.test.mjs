@@ -214,6 +214,26 @@ const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');
 assert.deepEqual(s.categories, ['Q1', 'Q2', 'Q3', 'Q4']); assert.equal(s.series.length, 4); ok('chart series in rows skip text rows');
 assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG');
 
+// motion: transitions and animations
+{
+  const M = await import('../src/renderer/slides-motion.js');
+  const mt = fx('Motion.slides.md'); const md = parseDeck(mt);
+  const s1 = md.slides[0], s2 = md.slides[1];
+  assert.deepEqual(s1.animations.map((a) => [a.target, a.effect, a.kind, a.trigger, a.duration, a.delay, a.repeat, a.by]), [['a', 'fade-in', 'entrance', 'click', 0.5, 0, 1, null], ['b', 'fly-in-up', 'entrance', 'with', 0.4, 0.2, 1, null], ['b', 'pulse', 'emphasis', 'after', 0.6, 0, 2, 'paragraph']]); ok('animation lines parse: target, effect, trigger, duration, delay, repeat, by paragraph');
+  assert.equal(s2.transition, 'morph 0.8s'); assert.deepEqual(M.parseTransition(s2.transition), { name: 'morph', duration: 0.8 }); assert.equal(md.global.transition, 'fade'); ok('transitions per slide and for the whole deck');
+  assert.equal(s1.notes, ''); assert.equal(s2.animations[0].target, 'body'); ok('animation blocks are not speaker notes');
+  for (const a of s1.animations) assert.equal(M.parseAnim(M.animText(a)).effect, a.effect);
+  assert.deepEqual(s1.animations.map(M.animText), ['#a fade-in', '#b fly-in-up with 0.4s delay=200ms', '#b pulse after repeat=2 by=paragraph']); const ch2 = { ...s1.animations[1], duration: 0.8 }; assert.equal(M.animText(ch2), '#b fly-in-up with 800ms delay=200ms'); ok('animation lines write back as they were typed; changed ones are rewritten');
+  const fm2 = parseFrontmatter(mt); const ch = splitSlides(fm2.body);
+  assert.equal(joinDeck(fm2.raw, ch.map((c, i) => M.setAnimations(c, parseDeck(mt).slides[i].animations))), mt); ok('rewriting the animations of every slide leaves the file byte-identical');
+  const ch0 = M.setAnimations(ch[0], [...s1.animations.slice(1), s1.animations[0]]); assert.match(ch0, /animate: #b fly-in-up with 0.4s delay=200ms\nanimate: #b pulse after repeat=2 by=paragraph\nanimate: #a fade-in\n-->/); assert.equal(scanObjects(ch0).length, 2); ok('reordering animations rewrites only the animation block');
+  assert.equal(M.setAnimations(ch[0], []).includes('animate'), false); ok('removing every animation removes the block');
+  const steps = M.buildSteps(s1.animations, (a) => (a.target === 'b' ? 3 : 1));
+  assert.deepEqual(steps.map((st) => st.map((x) => [x.anim.effect, x.anim.part ?? null, +x.start.toFixed(2)])), [[['fade-in', null, 0], ['fly-in-up', null, 0.2], ['pulse', 0, 0.6]], [['pulse', 1, 0]], [['pulse', 2, 0]]]); ok('build steps: with joins the click, after waits for the previous end, by paragraph adds a click per paragraph');
+  assert.deepEqual(M.hiddenAtStart(s1.animations).map((a) => a.target), ['a', 'b']); ok('objects that enter start hidden');
+  assert.equal(Object.keys(M.TRANSITIONS).length >= 24, true); for (const t of Object.keys(M.TRANSITIONS)) assert.equal(M.transitionFrames(t).length, 2); for (const e of Object.keys(M.EFFECTS)) assert(M.keyframes(M.parseAnim(`#x ${e}`)).length >= 2); ok('24+ transitions and every effect have keyframes');
+}
+
 // PowerPoint interop: package reading, text conversion, and a .pptx made by pptxgenjs back to slides-md
 {
   const I = await import('../src/renderer/slides-import.js');

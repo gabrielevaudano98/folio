@@ -19,14 +19,15 @@ export const LAYOUTS = [
 ];
 export const THEMES = [['folio', 'Folio'], ['graphite', 'Graphite'], ['paper', 'Paper']];
 /** slide sizes: name → [width, height] in px */
+import { parseAnim } from './slides-motion.js';
 export const SIZES = { '16:9': [1280, 720], '4:3': [960, 720], '1:1': [1080, 1080], '9:16': [720, 1280], '16:10': [1280, 800], A4: [1123, 794], 'A4-portrait': [794, 1123] };
 /** theme tokens a deck (or its template) may set in front matter, and the CSS variable each one drives */
 export const TOKENS = { paper: '--sl-bg', ink: '--sl-ink', muted: '--sl-muted', accent: '--sl-accent', card: '--sl-card', 'heading-font': '--sl-face', 'body-font': '--sl-body' };
 const FONT_NAME = /^[\w \-'",.]{1,120}$/;
 const MARP_THEME = { default: 'folio', gaia: 'paper', uncover: 'graphite' };
-const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source', 'master', 'section'];
+const DIRECTIVES = ['theme', 'paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color', 'layout', 'size', 'transition', 'math', 'title', 'author', 'description', 'marp', 'style', 'headingDivider', 'source', 'master', 'section', 'animate', 'advance', 'link'];
 const LOCAL = ['paginate', 'header', 'footer', 'class', 'backgroundColor', 'backgroundImage', 'color'];
-const SPOT = ['layout', 'source', 'master', 'section']; // Folio layouts apply to one slide only
+const SPOT = ['layout', 'source', 'master', 'section', 'transition', 'advance', 'link']; // Folio layouts apply to one slide only
 
 const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -72,20 +73,20 @@ export function splitSlides(body) {
 const FLAG = /^\s*(master|hidden)\s*$/;
 export const COMMENT = /^\s*comment(?:\s*\(([^,)]*)(?:,\s*([^)]*))?\))?\s*:\s*([\s\S]*?)\s*$/;
 function parseComments(chunk) {
-  const directives = {}; const notes = []; const comments = [];
+  const directives = {}; const notes = []; const comments = []; const anims = [];
   const body = chunk.replace(/<!--([\s\S]*?)-->/g, (all, inner) => {
     const flag = inner.match(FLAG); if (flag) { directives[flag[1]] = ''; return ''; }
     const c = inner.match(COMMENT); if (c) { comments.push({ author: (c[1] || '').trim(), date: (c[2] || '').trim(), text: c[3], raw: all }); return ''; }
     const lines = inner.trim().split(/\r?\n/);
     const parsed = lines.map((l) => l.trim().match(/^(_?)([a-zA-Z]+)\s*:\s*(.*)$/));
     if (parsed.length && parsed.every((p) => p && DIRECTIVES.includes(p[2]))) {
-      for (const p of parsed) directives[(p[1] || '') + p[2]] = p[3].trim().replace(/^["']|["']$/g, '');
+      for (const p of parsed) { if (p[2] === 'animate') anims.push(p[3].trim()); else directives[(p[1] || '') + p[2]] = p[3].trim().replace(/^["']|["']$/g, ''); }
       return '';
     }
     notes.push(inner.trim());
     return '';
   });
-  return { body, directives, notes: notes.join('\n\n'), comments };
+  return { body, directives, notes: notes.join('\n\n'), comments, anims };
 }
 
 function parseBg(body) {
@@ -120,7 +121,7 @@ export function parseDeck(text, { template = null } = {}) {
   for (const [k, v] of Object.entries(fm.data)) global[k] = v;
   const carried = {};
   const slides = chunks.map((src, i) => {
-    const { body, directives, notes, comments } = parseComments(src);
+    const { body, directives, notes, comments, anims } = parseComments(src);
     for (const [k, v] of Object.entries(directives)) {
       if (k.startsWith('_') || SPOT.includes(k)) continue;
       if (LOCAL.includes(k)) carried[k] = v; else global[k] = v;
@@ -138,7 +139,7 @@ export function parseDeck(text, { template = null } = {}) {
     const title = ((content.trim() || withObjects).match(/^\s*#{1,6}\s+(.+)$/m) || [])[1]?.replace(/[*_`]/g, '') || '';
     const mParts = directives.master != null ? String(directives.master).trim().split(/\s+/).filter(Boolean) : null;
     const master = mParts ? (mParts[0] || 'all') : null; const only = !!mParts && mParts.includes('only');
-    return { index: i, src, content: content.trim(), objects, directives, notes, comments, bgs, layout, classes: cls, eff, title, master, only, hidden: directives.hidden != null, section: directives.section || null };
+    return { index: i, src, content: content.trim(), objects, directives, notes, comments, bgs, layout, classes: cls, eff, title, master, only, hidden: directives.hidden != null, section: directives.section || null, animations: anims.map(parseAnim), transition: directives.transition ?? null, advance: directives.advance ?? null };
   });
   let n = 0; for (const sl of slides) sl.number = sl.master ? null : ++n;
   const masters = [...(tpl ? tpl.masters.map((m) => ({ ...m, fromTemplate: true })) : []), ...slides.filter((sl) => sl.master)];

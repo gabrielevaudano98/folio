@@ -24,6 +24,7 @@ export function mountSlides(host, ctx) {
       <button class="btn" type="button" data-sl="review" aria-haspopup="menu" title="Find and replace, comments, accessibility">Review</button>
       <div class="seg sl-views" role="radiogroup" aria-label="Slide view"><button type="button" role="radio" data-slv="normal" aria-checked="true">Normal</button><button type="button" role="radio" data-slv="sorter" aria-checked="false">Sorter</button><button type="button" role="radio" data-slv="outline" aria-checked="false">Outline</button></div>
       <label class="sf-check"><input type="checkbox" data-sl-ideas> Ideas</label>
+      <label class="sf-check"><input type="checkbox" data-sl-anim> Animate</label>
       <label class="sf-check"><input type="checkbox" data-sl-design> Design</label>
       <label class="sf-check"><input type="checkbox" data-sl-format> Format</label>
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
@@ -57,7 +58,7 @@ export function mountSlides(host, ctx) {
     <div class="sl-main">
       <ol class="sl-thumbs" aria-label="Slides"></ol>
       <div class="sl-center">
-        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div><div class="sl-format sl-review" hidden role="region" aria-label="Review"></div><div class="sl-format sl-ideas" hidden role="region" aria-label="Design ideas"></div></div>
+        <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div><div class="sl-format sl-review" hidden role="region" aria-label="Review"></div><div class="sl-format sl-ideas" hidden role="region" aria-label="Design ideas"></div><div class="sl-format sl-anim" hidden role="region" aria-label="Animations"></div></div>
         <div class="sl-find" role="search" aria-label="Find and replace in this deck" hidden></div>
         <div class="sl-sync" role="status" hidden></div>
         <div class="sl-gallery" role="dialog" aria-label="Insert" hidden></div>
@@ -181,7 +182,7 @@ export function mountSlides(host, ctx) {
       frame, stage, width: deck.width, height: deck.height, selected,
       getChunk: () => chunks().list[cur],
       edit(fn) { const { fm, list } = chunks(); list[cur] = fn(list[cur]); commit(joinDeck(fm, list)); },
-      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); syncFmt(); renderFormat(); drawVertices(); },
+      onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); syncFmt(); renderFormat(); drawVertices(); animPane?.render(); },
     });
     }
     host.querySelector('[data-sl-layout]').value = s.layout;
@@ -189,7 +190,7 @@ export function mountSlides(host, ctx) {
     host.querySelector('[data-sl-size]').value = SIZES[deck.global.size] ? deck.global.size : '16:9';
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur-label').innerHTML = s.master ? `Master${s.master !== 'all' ? ` for <b>${esc(s.master)}</b> slides` : ' for <b>all</b> slides'}` : `Slide <b class="sl-cur">${s.number}</b> content`;
-    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign(); renderReview(); renderView(); renderIdeas();
+    renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign(); renderReview(); renderView(); renderIdeas(); renderAnim();
     if (document.activeElement !== notesEl) notesEl.value = s.notes;
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.shown.length} ${deck.shown.length === 1 ? 'slide' : 'slides'}${deck.masters.length ? ` · ${deck.masters.length} ${deck.masters.length === 1 ? 'master' : 'masters'}` : ''}`);
@@ -686,7 +687,7 @@ export function mountSlides(host, ctx) {
   /* format pane (P6) */
   const fpane = host.querySelector('.sl-format');
   host.querySelector('[data-sl-format]').addEventListener('change', (e) => { fpane.hidden = !e.target.checked; dockRoom(); renderFormat(); });
-  function dockRoom() { const open = !fpane.hidden || !dpane.hidden || !rpane.hidden || !ipane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
+  function dockRoom() { const open = !fpane.hidden || !dpane.hidden || !rpane.hidden || !ipane.hidden || !apane.hidden || !host.querySelector('.sl-layers').hidden; host.classList.toggle('sl-docked', open); requestAnimationFrame(fit); }
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : /^#[0-9a-f]{3}$/i.test(c || '') ? '#' + c.slice(1).split('').map((x) => x + x).join('') : d);
   const fRow = (label, html) => `<label class="fp-row"><span>${label}</span>${html}</label>`;
   const num = (k, v, step = 1, min = '', max = '') => `<input class="input fp-num" type="number" data-fk="${k}" value="${v ?? ''}" step="${step}"${min !== '' ? ` min="${min}"` : ''}${max !== '' ? ` max="${max}"` : ''}>`;
@@ -1105,35 +1106,31 @@ export function mountSlides(host, ctx) {
     { label: 'PDF…', run: () => exportPdf() },
   ]));
 
+  /* animations */
+  const apane = host.querySelector('.sl-anim');
+  let animPane = null, animMod = null;
+  async function renderAnim() {
+    if (!apane.hidden && !animPane) { animMod = await import('./slides-anim-pane.js'); animPane = animMod.createAnimPane(apane, {
+      deck: () => deck, cur: () => cur,
+      selection: () => selected.map((i) => ({ index: i, id: objsNow()[i]?.id, kind: objsNow()[i]?.kind })),
+      edit: (fn) => editChunk2(fn),
+      applyAll: (t) => { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, 'transition', t), list.map((c) => setDirective(c, 'transition', null)))); ctx.toast('Transition applied to every slide.'); },
+      preview: async () => { const sec = frame.querySelector('section.slide'); if (!sec) return; const { previewSlide } = await import('./slides-present.js'); await previewSlide(sec, deck.slides[cur], { W: deck.width, H: deck.height }); render({ keepEditor: true }); },
+      close: () => { apane.hidden = true; host.querySelector('[data-sl-anim]').checked = false; dockRoom(); },
+    }); }
+    animPane?.render();
+    if (deck?.slides[cur]?.animations?.length) { animMod ||= await import('./slides-anim-pane.js'); animMod.badges(frame.querySelector('section.slide'), deck.slides[cur]); }
+  }
+  host.querySelector('[data-sl-anim]').addEventListener('change', (e) => { apane.hidden = !e.target.checked; dockRoom(); renderAnim(); });
+
   /* presenter */
-  function present(start = 0) {
-    const show = deck.shown; if (!show.length) return ctx.toast('There are no slides to present, only masters.');
-    const startSlide = deck.slides[start]; let i = Math.max(0, show.indexOf(startSlide?.master ? show[0] : startSlide)), showNotes = false;
-    const ov = document.createElement('div');
-    ov.className = 'presenter'; ov.tabIndex = 0; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Presentation');
-    document.body.appendChild(ov);
-    const draw = () => {
-      const s = show[i];
-      const k = Math.min(innerWidth / deck.width, (innerHeight - (showNotes ? 160 : 0)) / deck.height);
-      ov.innerHTML = `<div class="pr-stage" style="width:${deck.width * k}px;height:${deck.height * k}px"><div class="sl-scale" style="transform:scale(${k})">${renderSlide(deck, s)}</div></div>
-        ${showNotes ? `<div class="pr-notes"><b>Notes</b><p>${esc(s.notes || 'No notes for this slide.')}</p></div>` : ''}
-        <div class="pr-bar">${i + 1} / ${show.length}<span>Arrows to move, N for notes, Esc to exit</span></div>`;
-      hydrate(ov);
-    };
-    const close = () => { removeEventListener('resize', draw); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); ov.remove(); select(show[i].index); };
-    ov.addEventListener('keydown', (e) => {
-      if (['ArrowRight', 'ArrowDown', ' ', 'PageDown', 'Enter'].includes(e.key)) { i = Math.min(show.length - 1, i + 1); draw(); }
-      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) { i = Math.max(0, i - 1); draw(); }
-      else if (e.key === 'Home') { i = 0; draw(); } else if (e.key === 'End') { i = show.length - 1; draw(); }
-      else if (e.key.toLowerCase() === 'n') { showNotes = !showNotes; draw(); }
-      else if (e.key === 'Escape') close();
-      e.preventDefault();
-    });
-    ov.addEventListener('click', (e) => { if (e.clientX > innerWidth / 3) i = Math.min(show.length - 1, i + 1); else i = Math.max(0, i - 1); draw(); });
-    document.addEventListener('fullscreenchange', function f() { if (!document.fullscreenElement && ov.isConnected) { document.removeEventListener('fullscreenchange', f); close(); } });
-    addEventListener('resize', draw);
-    draw(); ov.focus();
-    ov.requestFullscreen?.().catch(() => {});
+  let show = null;
+  async function present(start = 0) {
+    const order = deck.shown; if (!order.length) return ctx.toast('There are no slides to present, only masters.');
+    const startSlide = deck.slides[start]; const from = Math.max(0, order.indexOf(startSlide?.master ? order[0] : startSlide));
+    const { startShow } = await import('./slides-present.js');
+    show = startShow({ deck, order, start: from, renderSlide, hydrate, onExit: (s) => { show = null; select(s.index); } });
+    window.__folioShow = show;
   }
 
   /* exports */
