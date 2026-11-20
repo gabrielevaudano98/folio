@@ -5,8 +5,9 @@
 // If Folio is closed, it works directly on the last opened folder.
 import fs from 'node:fs';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { buildServer, runTool } from '../main/mcp-tools.js';
+import { buildServer, runTool, TOOLS } from '../main/mcp-tools.js';
 import { createNotes } from '../main/notes.js';
+import { createHistory } from '../main/history.js';
 
 const argv = process.argv.slice(2);
 const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
@@ -37,6 +38,7 @@ async function relay(name, args, ctx) {
 }
 
 const notes = createNotes(() => rootOverride || readBridge().workspace);
+const history = createHistory(() => rootOverride || readBridge().workspace);
 
 const backend = {
   capabilities() {
@@ -46,8 +48,8 @@ const backend = {
   async call(name, args, ctx) {
     const r = await relay(name, args, ctx);
     if (r) return r.value;
-    if (readBridge().allowWrite === false && /create|write|edit|append|move/.test(name)) throw new Error('Folio is set to read-only for AI assistants.');
-    return runTool(notes, name, args, {});
+    if (readBridge().allowWrite === false && TOOLS.find((t) => t.name === name)?.write) throw new Error('Folio is set to read-only for AI assistants.');
+    return runTool(notes, name, args, { history, client: ctx?.client, onWrite: async (r) => { try { if (r.before != null) await history.snapshot(r.path, r.before, { reason: 'before-ai', force: true }); await history.snapshot(r.path, r.after, { by: ctx?.client || 'AI', reason: 'ai', force: true }); } catch {} } });
   },
 };
 

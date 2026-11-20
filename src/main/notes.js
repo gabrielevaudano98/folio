@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
-import { findRefs, resolveTarget, rewriteRefs } from '../renderer/refs-syntax.js';
+import { findRefs, resolveTarget, rewriteRefs, findMentions } from '../renderer/refs-syntax.js';
 
 export const NOTE_EXT = ['.md', '.markdown', '.mdx', '.txt'];
 const IGNORE = new Set(['node_modules', '.git', '.obsidian', '.trash', '.DS_Store', 'dist', 'build']);
@@ -35,8 +35,9 @@ export function createNotes(getRoot) {
   /**
    * Turn a path inside the workspace into an absolute one, or throw. It refuses paths that leave the workspace
    * (also through a link), hidden files and folders (.git, .env, .ssh), and, when asked, the workspace folder itself.
+   * `allowAsset` lets the app's own asset code reach the visible `.asset` folders (never the MCP tools).
    */
-  function resolve(rel, { mustBeNote = false, notRoot = false } = {}) {
+  function resolve(rel, { mustBeNote = false, notRoot = false, allowAsset = false } = {}) {
     if (typeof rel !== 'string' || !rel.trim()) throw new NotesError('A relative path is required.');
     const base = root();
     const abs = path.resolve(base, rel.replace(/^[/\\]+/, ''));
@@ -46,7 +47,7 @@ export function createNotes(getRoot) {
     const realAbs = real(abs);
     if (!inside(realBase, realAbs)) throw new NotesError(`Path leaves the workspace through a link: ${rel}`);
     // hidden means hidden by name or by where a link really leads (public -> .git)
-    const hidden = (from, to) => path.relative(from, to).split(path.sep).some((seg) => seg.startsWith('.'));
+    const hidden = (from, to) => path.relative(from, to).split(path.sep).some((seg) => seg.startsWith('.') && !(allowAsset && seg === '.asset'));
     if (hidden(base, abs) || hidden(realBase, realAbs)) throw new NotesError(`Hidden files and folders are not available: ${rel}`);
     if (mustBeNote && !NOTE_EXT.includes(path.extname(abs).toLowerCase())) {
       throw new NotesError(`Only Markdown or text files can be written (${NOTE_EXT.join(', ')}).`);
@@ -85,7 +86,10 @@ export function createNotes(getRoot) {
       const abs = path.join(dir, e.name);
       if (e.isSymbolicLink() && !linkOk(abs)) continue;
       if (e.isDirectory()) {
-        if (depth < 10) nodes.push({ type: 'dir', name: e.name, path: relOf(abs), children: await tree(abs, depth + 1) });
+        if (depth >= 10) continue;
+        const children = await tree(abs, depth + 1);
+        if (e.name === 'assets' && !children.length) continue; // a legacy picture folder holds no pages: not shown
+        nodes.push({ type: 'dir', name: e.name, path: relOf(abs), children });
       } else if (NOTE_EXT.includes(path.extname(e.name).toLowerCase())) {
         nodes.push({ type: 'file', name: e.name, path: relOf(abs) });
       }
@@ -217,14 +221,14 @@ export function createNotes(getRoot) {
     return { files, texts };
   }
   /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten */
-  async function rewriteAfterMove(from, to) {
+  async function rewriteAfterMove(from, to, onBefore) {
     const { files, texts } = await allTexts();
     const before = files.map((f) => (f === to ? from : f));
     const changed = [];
     for (let i = 0; i < files.length; i++) {
       if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
       const next = rewriteRefs(texts[i], before[i], from, to, before);
-      if (next !== texts[i]) { await fs.writeFile(resolve(files[i]), next, 'utf8'); changed.push(files[i]); }
+      if (next !== texts[i]) { if (onBefore) await onBefore(files[i], texts[i]); await fs.writeFile(resolve(files[i]), next, 'utf8'); changed.push(files[i]); }
     }
     return changed;
   }
@@ -239,6 +243,13 @@ export function createNotes(getRoot) {
     });
     return out;
   }
+  /** documents that name `target` in plain text without linking to it */
+  async function unlinkedMentions(target) {
+    const { files, texts } = await allTexts(); const want = relOf(resolve(target)); const out = [];
+    const name = want.split('/').pop().replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx|txt)$/i, '');
+    files.forEach((f, i) => { if (f === want || !/\.(md|markdown|mdx|txt)$/i.test(f)) return; for (const m of findMentions(texts[i], name)) if (out.length < 300) out.push({ path: f, name, ...m }); });
+    return out;
+  }
   async function brokenLinks(only) {
     const { files, texts } = await allTexts(); const out = [];
     files.forEach((f, i) => {
@@ -248,5 +259,5 @@ export function createNotes(getRoot) {
     return out;
   }
 
-  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, outline, move, rewriteAfterMove, backlinks, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
+  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, outline, move, rewriteAfterMove, backlinks, unlinkedMentions, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
 }

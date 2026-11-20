@@ -1,4 +1,5 @@
 // Folio — slides surface: thumbnails, stage, per-slide Markdown, presenter, PDF and PowerPoint export.
+import { t as tr, tl } from './i18n.js';
 import { setFlag, addComment, removeComment, sectionsOf, SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
 import { createEditor } from './editor.js';
 import { perDoc } from './history.js';
@@ -33,42 +34,42 @@ export function mountSlides(host, ctx) {
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
       <label class="sf-check"><input type="checkbox" data-sl-grid> Grid</label>
       <div class="sf-sep"></div>
-      <label class="sf-field"><span>Layout</span><select class="rb-select" data-sl-layout>${LAYOUTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-      <label class="sf-field"><span>Theme</span><select class="rb-select sf-narrow" data-sl-theme>${THEMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-      <label class="sf-field"><span>Size</span><select class="rb-select sf-narrow" data-sl-size>${Object.keys(SIZES).map((k) => `<option value="${k}">${k.replace("-portrait", " portrait")}</option>`).join("")}</select></label>
-      <label class="sf-check"><input type="checkbox" data-sl-paginate> Slide numbers</label>
+      <label class="sf-field"><span>${tr('slides.layout')}</span><select class="rb-select" data-sl-layout>${LAYOUTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+      <label class="sf-field"><span>${tr('slides.theme')}</span><select class="rb-select sf-narrow" data-sl-theme>${THEMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+      <label class="sf-field"><span>${tr('slides.size')}</span><select class="rb-select sf-narrow" data-sl-size>${Object.keys(SIZES).map((k) => `<option value="${k}">${k.replace("-portrait", " portrait")}</option>`).join("")}</select></label>
+      <label class="sf-check"><input type="checkbox" data-sl-paginate> ${tr('slides.slide-numbers')}</label>
       <div class="sf-spacer"></div>
       <button class="btn" type="button" data-sl="export" aria-haspopup="menu">${icons.export} Export</button>
       <span class="sl-present-split"><button class="btn btn-primary" type="button" data-sl="present">${icons.play} Present</button><button class="btn btn-primary sl-present-more" type="button" data-sl="present-menu" aria-haspopup="menu" aria-label="More ways to present">▾</button></span>
     </div>
-    <div class="sf-toolbar sl-fmtbar" role="toolbar" aria-label="Format selected object">
-      <select class="rb-select sf-narrow" data-tx="style" aria-label="Paragraph style"><option value="p">Text</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option></select>
-      <button class="rb" type="button" data-tx="bold" aria-label="Bold" title="Bold">${icons.bold}</button><button class="rb" type="button" data-tx="italic" aria-label="Italic" title="Italic">${icons.italic}</button>
-      <button class="rb" type="button" data-tx="underline" aria-label="Underline" title="Underline">${icons.underline}</button><button class="rb" type="button" data-tx="strike" aria-label="Strikethrough" title="Strikethrough">${icons.strike}</button>
-      <button class="rb" type="button" data-tx="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button><button class="rb" type="button" data-tx="link" aria-label="Link" title="Link">${icons.link}</button>
-      <button class="rb" type="button" data-tx="bullet" aria-label="Bulleted list" title="Bulleted list">${icons.listBullet}</button><button class="rb" type="button" data-tx="ordered" aria-label="Numbered list" title="Numbered list">${icons.listOrdered}</button>
+    <div class="sf-toolbar sl-fmtbar" role="toolbar" aria-label="${tr('slides.format-selected-object')}">
+      <select class="rb-select sf-narrow" data-tx="style" aria-label="${tr('slides.paragraph-style')}"><option value="p">${tr('slides.text')}</option><option value="h1">${tr('slides.heading-1')}</option><option value="h2">${tr('slides.heading-2')}</option><option value="h3">${tr('slides.heading-3')}</option></select>
+      <button class="rb" type="button" data-tx="bold" aria-label="${tr('slides.bold')}" title="${tr('slides.bold')}">${icons.bold}</button><button class="rb" type="button" data-tx="italic" aria-label="${tr('slides.italic')}" title="${tr('slides.italic')}">${icons.italic}</button>
+      <button class="rb" type="button" data-tx="underline" aria-label="${tr('slides.underline')}" title="${tr('slides.underline')}">${icons.underline}</button><button class="rb" type="button" data-tx="strike" aria-label="${tr('slides.strikethrough')}" title="${tr('slides.strikethrough')}">${icons.strike}</button>
+      <button class="rb" type="button" data-tx="highlight" aria-label="${tr('slides.highlight')}" title="${tr('slides.highlight')}">${icons.highlighter}</button><button class="rb" type="button" data-tx="link" aria-label="${tr('slides.link')}" title="${tr('slides.link')}">${icons.link}</button>
+      <button class="rb" type="button" data-tx="bullet" aria-label="${tr('slides.bulleted-list')}" title="${tr('slides.bulleted-list')}">${icons.listBullet}</button><button class="rb" type="button" data-tx="ordered" aria-label="${tr('slides.numbered-list')}" title="${tr('slides.numbered-list')}">${icons.listOrdered}</button>
       <div class="sf-sep"></div>
-      <label class="sf-field"><span>Font</span><select class="rb-select sf-narrow" data-at="font"><option value="">Theme</option><option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option><option value="rounded">Rounded</option></select></label>
-      <label class="sf-field"><span>Size</span><input class="input sf-num" type="number" min="8" max="400" step="1" data-at="size" placeholder="auto"></label>
-      <label class="sf-field"><span>Text</span><input class="sf-color" type="color" data-at="color" value="#1a1a1a" aria-label="Text colour"></label>
-      <label class="sf-field"><span>Fill</span><input class="sf-color" type="color" data-at="fill" value="#f2f2f2" aria-label="Fill colour"></label>
+      <label class="sf-field"><span>${tr('slides.font')}</span><select class="rb-select sf-narrow" data-at="font"><option value="">${tr('slides.theme')}</option><option value="sans">${tr('slides.sans')}</option><option value="serif">${tr('slides.serif')}</option><option value="mono">${tr('slides.mono')}</option><option value="rounded">${tr('slides.rounded')}</option></select></label>
+      <label class="sf-field"><span>${tr('slides.size')}</span><input class="input sf-num" type="number" min="8" max="400" step="1" data-at="size" placeholder="${tr('slides.auto')}"></label>
+      <label class="sf-field"><span>${tr('slides.text')}</span><input class="sf-color" type="color" data-at="color" value="#1a1a1a" aria-label="${tr('slides.text-colour')}"></label>
+      <label class="sf-field"><span>${tr('slides.fill')}</span><input class="sf-color" type="color" data-at="fill" value="#f2f2f2" aria-label="${tr('slides.fill-colour')}"></label>
       <div class="sf-sep"></div>
-      <button class="rb" type="button" data-al="left" aria-label="Align left" title="Align left">${icons.alignLeft}</button><button class="rb" type="button" data-al="center" aria-label="Align centre" title="Align centre">${icons.alignCenter}</button><button class="rb" type="button" data-al="right" aria-label="Align right" title="Align right">${icons.alignRight}</button>
-      <label class="sf-field"><span>Vertical</span><select class="rb-select sf-narrow" data-at="valign"><option value="">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>
-      <label class="sf-field"><span>Spacing</span><select class="rb-select sf-narrow" data-at="line"><option value="">Theme</option><option value="1">1.0</option><option value="1.15">1.15</option><option value="1.4">1.4</option><option value="1.8">1.8</option></select></label>
-      <label class="sf-check"><input type="checkbox" data-at-fit> Shrink to fit</label>
+      <button class="rb" type="button" data-al="left" aria-label="${tr('slides.align-left')}" title="${tr('slides.align-left')}">${icons.alignLeft}</button><button class="rb" type="button" data-al="center" aria-label="${tr('slides.align-centre')}" title="${tr('slides.align-centre')}">${icons.alignCenter}</button><button class="rb" type="button" data-al="right" aria-label="${tr('slides.align-right')}" title="${tr('slides.align-right')}">${icons.alignRight}</button>
+      <label class="sf-field"><span>${tr('slides.vertical')}</span><select class="rb-select sf-narrow" data-at="valign"><option value="">${tr('slides.top')}</option><option value="middle">${tr('slides.middle')}</option><option value="bottom">${tr('slides.bottom')}</option></select></label>
+      <label class="sf-field"><span>${tr('slides.spacing')}</span><select class="rb-select sf-narrow" data-at="line"><option value="">${tr('slides.theme')}</option><option value="1">1.0</option><option value="1.15">1.15</option><option value="1.4">1.4</option><option value="1.8">1.8</option></select></label>
+      <label class="sf-check"><input type="checkbox" data-at-fit> ${tr('slides.shrink-to-fit')}</label>
     </div>
     <div class="sl-main">
-      <ol class="sl-thumbs" aria-label="Slides"></ol>
+      <ol class="sl-thumbs" aria-label="${tr('slides.slides')}"></ol>
       <div class="sl-center">
         <div class="sl-dock"><div class="sl-layers" hidden aria-label="Objects on this slide"></div><div class="sl-format" hidden role="region" aria-label="Format"></div><div class="sl-format sl-design" hidden role="region" aria-label="Design"></div><div class="sl-format sl-review" hidden role="region" aria-label="Review"></div><div class="sl-format sl-ideas" hidden role="region" aria-label="Design ideas"></div><div class="sl-format sl-anim" hidden role="region" aria-label="Animations"></div></div>
         <div class="sl-find" role="search" aria-label="Find and replace in this deck" hidden></div>
         <div class="sl-sync" role="status" hidden></div>
-        <div class="sl-gallery" role="dialog" aria-label="Insert" hidden></div>
-        <div class="sl-stage" tabindex="0" aria-label="Slide canvas. Arrow keys move the selected object, Delete removes it."><div class="sl-frame"></div></div>
+        <div class="sl-gallery" role="dialog" aria-label="${tr('slides.insert')}" hidden></div>
+        <div class="sl-stage" tabindex="0" aria-label="${tr('slides.slide-canvas-arrow-keys-move-the-selec')}"><div class="sl-frame"></div></div>
         <div class="sl-edit">
-          <div class="sl-edit-col"><div class="sl-edit-head"><span class="sl-cur-label">Slide <b class="sl-cur">1</b> content</span><span class="sl-hint">Markdown. <code>::: left</code> / <code>::: right</code>, <code>::: card</code>, <code>![bg right](img)</code></span></div><div class="sl-cm"></div></div>
-          <div class="sl-edit-col sl-notes-col"><label class="sl-edit-head" for="sl-notes-${host.id}">Speaker notes</label><textarea class="sl-notes input" id="sl-notes-${host.id}" placeholder="Only you see these while presenting"></textarea></div>
+          <div class="sl-edit-col"><div class="sl-edit-head"><span class="sl-cur-label">${tr('slides.slide')} <b class="sl-cur">1</b> ${tr('slides.content')}</span><span class="sl-hint">${tr('slides.markdown')} <code>${tr('slides.left')}</code> / <code>${tr('slides.right')}</code>, <code>${tr('slides.card')}</code>, <code>${tr('slides.bg-right-img')}</code></span></div><div class="sl-cm"></div></div>
+          <div class="sl-edit-col sl-notes-col"><label class="sl-edit-head" for="sl-notes-${host.id}">${tr('slides.speaker-notes')}</label><textarea class="sl-notes input" id="sl-notes-${host.id}" placeholder="${tr('slides.only-you-see-these-while-presenting')}"></textarea></div>
         </div>
       </div>
     </div>`;
@@ -284,7 +285,7 @@ export function mountSlides(host, ctx) {
   }
   function deleteSlide(i) {
     const { fm, list } = chunks();
-    if (list.length === 1) return ctx.toast('A deck needs at least one slide.');
+    if (list.length === 1) return ctx.toast(tr('slides.a-deck-needs-at-least-one-slide'));
     list.splice(i, 1); cur = Math.max(0, i - 1); commit(joinDeck(fm, list));
   }
   function duplicateSlide(i) {
@@ -313,26 +314,26 @@ export function mountSlides(host, ctx) {
     const item = (label, ok, run) => ({ label, run, disabled: !ok });
     const grouped = selected.some((i) => groupOf(objs[i]));
     ctx.showMenu(anchor, [
-      item(many ? 'Align left' : 'Align to slide: left', one, () => patchSel(alignPatches(objs, selected, 'left', slide))),
-      item(many ? 'Align center' : 'Align to slide: center', one, () => patchSel(alignPatches(objs, selected, 'center', slide))),
-      item(many ? 'Align right' : 'Align to slide: right', one, () => patchSel(alignPatches(objs, selected, 'right', slide))),
-      item(many ? 'Align top' : 'Align to slide: top', one, () => patchSel(alignPatches(objs, selected, 'top', slide))),
-      item(many ? 'Align middle' : 'Align to slide: middle', one, () => patchSel(alignPatches(objs, selected, 'middle', slide))),
-      item(many ? 'Align bottom' : 'Align to slide: bottom', one, () => patchSel(alignPatches(objs, selected, 'bottom', slide))), '-',
-      item('Distribute horizontally', three, () => patchSel(distributePatches(objs, selected, 'h'))),
-      item('Distribute vertically', three, () => patchSel(distributePatches(objs, selected, 'v'))), '-',
-      item('Bring to front', one, () => patchSel(zPatches(objs, selected, 'front'))),
-      item('Bring forward', one, () => patchSel(zPatches(objs, selected, 'forward'))),
-      item('Send backward', one, () => patchSel(zPatches(objs, selected, 'backward'))),
-      item('Send to back', one, () => patchSel(zPatches(objs, selected, 'back'))), '-',
-      item('Group', many, () => { const g = nextGroup(objs); patchSel(selected.map((i) => [i, { group: g }])); }),
-      item('Ungroup', grouped, () => patchSel(selected.map((i) => [i, { group: null }]))),
-      item('Lock', one, () => patchSel(selected.map((i) => [i, { lock: 'true' }]))), '-',
+      item(many ? tl('slides', 'Align left') : tl('slides', 'Align to slide: left'), one, () => patchSel(alignPatches(objs, selected, 'left', slide))),
+      item(many ? tl('slides', 'Align center') : tl('slides', 'Align to slide: center'), one, () => patchSel(alignPatches(objs, selected, 'center', slide))),
+      item(many ? tl('slides', 'Align right') : tl('slides', 'Align to slide: right'), one, () => patchSel(alignPatches(objs, selected, 'right', slide))),
+      item(many ? tl('slides', 'Align top') : tl('slides', 'Align to slide: top'), one, () => patchSel(alignPatches(objs, selected, 'top', slide))),
+      item(many ? tl('slides', 'Align middle') : tl('slides', 'Align to slide: middle'), one, () => patchSel(alignPatches(objs, selected, 'middle', slide))),
+      item(many ? tl('slides', 'Align bottom') : tl('slides', 'Align to slide: bottom'), one, () => patchSel(alignPatches(objs, selected, 'bottom', slide))), '-',
+      item(tl('slides', 'Distribute horizontally'), three, () => patchSel(distributePatches(objs, selected, 'h'))),
+      item(tl('slides', 'Distribute vertically'), three, () => patchSel(distributePatches(objs, selected, 'v'))), '-',
+      item(tl('slides', 'Bring to front'), one, () => patchSel(zPatches(objs, selected, 'front'))),
+      item(tl('slides', 'Bring forward'), one, () => patchSel(zPatches(objs, selected, 'forward'))),
+      item(tl('slides', 'Send backward'), one, () => patchSel(zPatches(objs, selected, 'backward'))),
+      item(tl('slides', 'Send to back'), one, () => patchSel(zPatches(objs, selected, 'back'))), '-',
+      item(tl('slides', 'Group'), many, () => { const g = nextGroup(objs); patchSel(selected.map((i) => [i, { group: g }])); }),
+      item(tl('slides', 'Ungroup'), grouped, () => patchSel(selected.map((i) => [i, { group: null }]))),
+      item(tl('slides', 'Lock'), one, () => patchSel(selected.map((i) => [i, { lock: 'true' }]))), '-',
       ...(() => { const ok = many && selected.every((i) => ['shape', 'box', 'path', 'image'].includes(objs[i]?.kind)); return [
-        item('Merge shapes: union', ok, () => mergeSel('union')), item('Merge shapes: intersect', ok, () => mergeSel('intersection')),
-        item('Merge shapes: subtract', ok, () => mergeSel('difference')), item('Merge shapes: combine', ok, () => mergeSel('xor')), '-']; })(),
-      item('Copy', one, () => copySel()), item('Cut', one, () => { copySel(); deleteSel(); }), { label: 'Paste', run: () => pasteSel(), disabled: !clip.length },
-      item('Duplicate', one, () => { copySel(); pasteSel(); }),
+        item(tl('slides', 'Merge shapes: union'), ok, () => mergeSel('union')), item(tl('slides', 'Merge shapes: intersect'), ok, () => mergeSel('intersection')),
+        item(tl('slides', 'Merge shapes: subtract'), ok, () => mergeSel('difference')), item(tl('slides', 'Merge shapes: combine'), ok, () => mergeSel('xor')), '-']; })(),
+      item(tl('slides', 'Copy'), one, () => copySel()), item(tl('slides', 'Cut'), one, () => { copySel(); deleteSel(); }), { label: tr('slides.paste'), run: () => pasteSel(), disabled: !clip.length },
+      item(tl('slides', 'Duplicate'), one, () => { copySel(); pasteSel(); }),
       item('Delete', one, () => deleteSel()),
     ]);
   }
@@ -344,7 +345,7 @@ export function mountSlides(host, ctx) {
   }
   function deleteSel() { const gone = [...selected].sort((a, b) => b - a); selected = []; editChunk2((c) => gone.reduce((t, i) => removeObject(t, i), c)); }
   function pasteSel() {
-    if (!clip.length) return ctx.toast('Nothing to paste. Copy an object first.');
+    if (!clip.length) return ctx.toast(tr('slides.nothing-to-paste-copy-an-object-first'));
     let n0 = 0;
     editChunk2((c) => { n0 = scanObjects(c).length; return clip.reduce((t, src) => addObject(t, retarget(src, t)), c); });
     selected = clip.map((_, j) => n0 + j); canvas?.select(selected, { notify: false });
@@ -353,12 +354,12 @@ export function mountSlides(host, ctx) {
     const pane = host.querySelector('.sl-layers'); if (pane.hidden) return;
     const objs = objsNow();
     const rows = objs.map((o, i) => ({ o, i, z: geometry(o).z })).sort((a, b) => b.z - a.z || b.i - a.i);
-    pane.innerHTML = `<div class="sl-layers-head">Objects</div>` + (rows.length ? rows.map(({ o, i }) => `
+    pane.innerHTML = `<div class="sl-layers-head">${tr('slides.objects')}</div>` + (rows.length ? rows.map(({ o, i }) => `
       <div class="sl-layer" role="button" tabindex="0" data-i="${i}" aria-pressed="${selected.includes(i)}">
         <span class="sl-layer-name">${esc(o.id || o.kind + ' ' + (i + 1))}</span>
         ${groupOf(o) ? `<span class="sl-layer-tag">${esc(groupOf(o))}</span>` : ''}
         <button class="sl-layer-lock" type="button" data-lock="${i}" aria-label="${locked(o) ? 'Unlock' : 'Lock'} ${esc(o.id || o.kind)}" aria-pressed="${locked(o)}">${locked(o) ? 'Locked' : 'Lock'}</button>
-      </div>`).join('') : '<p class="sl-layers-empty">No placed objects yet. Add a text box or shape.</p>');
+      </div>`).join('') : '<p class="sl-layers-empty">' + tr('slides.no-placed-objects-yet-add-a-text-box-o') + '</p>');
   }
   host.querySelector('.sl-layers').addEventListener('click', (e) => {
     const lk = e.target.closest('[data-lock]');
@@ -391,7 +392,7 @@ export function mountSlides(host, ctx) {
       if (k === 'style') { b.value = !live ? 'p' : textEdit.active('heading', { level: 1 }) ? 'h1' : textEdit.active('heading', { level: 2 }) ? 'h2' : textEdit.active('heading', { level: 3 }) ? 'h3' : 'p'; continue; }
       const name = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strike', highlight: 'highlight', link: 'link', bullet: 'bulletList', ordered: 'orderedList' }[k];
       b.setAttribute('aria-pressed', String(live && textEdit.active(name)));
-      b.title = live ? b.getAttribute('aria-label') : 'Double-click a box to edit its text';
+      b.title = live ? b.getAttribute('aria-label') : tl('slides', 'Double-click a box to edit its text');
     }
   }
   fmt.addEventListener('sl-text-state', syncFmt);
@@ -424,21 +425,21 @@ export function mountSlides(host, ctx) {
     const { fm: f, list } = chunks(); const before = scanObjects(list[cur]);
     const next = fn(list[cur]); const after = scanObjects(next);
     // safety net: an edit may never add, drop or merge objects or other slides
-    if (after.length !== before.length || splitSlides(next.replace(/^\n+/, '')).length !== 1 + (list[cur].match(/^---\s*$/gm) || []).length) { ctx.toast('That edit could not be saved safely, so nothing was changed.', { kind: 'error' }); return; }
+    if (after.length !== before.length || splitSlides(next.replace(/^\n+/, '')).length !== 1 + (list[cur].match(/^---\s*$/gm) || []).length) { ctx.toast(tr('slides.that-edit-could-not-be-saved-safely-so'), { kind: 'error' }); return; }
     list[cur] = next; commit(joinDeck(f, list), { keepFrame: true });
   }
 
   function startEdit(i) {
     const o = objsNow()[i]; if (!isText(o) || locked(o) || textEdit) return;
     const el = frame.querySelector(`.sl-obj[data-obj="${i}"]`); if (!el) return;
-    if (!inlineSafe(o.body)) { ctx.toast('This box has blocks the text editor cannot keep (containers, code, images, tables or HTML). Edit it in the code panel below.'); return; }
+    if (!inlineSafe(o.body)) { ctx.toast(tr('slides.this-box-has-blocks-the-text-editor-ca')); return; }
     const target = o.kind === 'shape' ? el.querySelector('.sl-obj-text') : el;
     if (o.kind === 'smartart') el.classList.add('is-sm-editing');
     selected = [i]; canvas?.select([], { notify: false }); editing = i; renderLayers();
     textEdit = startTextEdit({
       el: target, body: o.body.replace(/^\n+/, ''),
       onChange: (md) => editChunk2k((c) => setObjectBody(c, i, o.kind === 'shape' ? '\n' + md : md)),
-      onLink: (prev) => ctx.prompt({ title: prev ? 'Edit link' : 'Add link', label: 'Address', value: prev || 'https://', hint: 'Leave empty to remove the link', action: 'Apply', allowEmpty: true, validate: false }),
+      onLink: (prev) => ctx.prompt({ title: prev ? tl('slides', 'Edit link') : tl('slides', 'Add link'), label: tr('slides.address'), value: prev || 'https://', hint: tr('slides.leave-empty-to-remove-the-link'), action: tr('slides.apply'), allowEmpty: true, validate: false }),
       onEnd: () => { textEdit = null; const was = editing; editing = -1; selected = [was]; render({ keepEditor: false }); syncFmt(); stage.focus(); },
     });
     syncFmt();
@@ -464,19 +465,19 @@ export function mountSlides(host, ctx) {
     catch (e) { msg = `Synced copy of <b>${esc(ref)}</b>, but the source cannot be found (${esc(e.message)}).`; }
     if (n !== syncSeq) return;
     syncBar.hidden = false; syncBar.classList.toggle('is-changed', changed);
-    syncBar.innerHTML = `<span>${msg}</span>${changed ? '<button class="btn" type="button" data-sync="update">Update from source</button>' : ''}<button class="btn" type="button" data-sync="open">Open source</button><button class="btn" type="button" data-sync="unlink">Unlink</button>`;
+    syncBar.innerHTML = `<span>${msg}</span>${changed ? '<button class="btn" type="button" data-sync="update">' + tr('slides.update-from-source') + '</button>' : ''}<button class="btn" type="button" data-sync="open">${tr('slides.open-source')}</button><button class="btn" type="button" data-sync="unlink">${tr('slides.unlink')}</button>`;
   }
   syncBar.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-sync]'); if (!b) return; const ref = deck.slides[cur].eff.source;
     if (b.dataset.sync === 'unlink') editChunk2((c) => setDirective(c, 'source', null));
-    if (b.dataset.sync === 'update') { const src = await sourceOf(ref); editChunk2(() => syncedCopy(ref, src)); ctx.toast('Slide updated from its source.'); }
+    if (b.dataset.sync === 'update') { const src = await sourceOf(ref); editChunk2(() => syncedCopy(ref, src)); ctx.toast(tr('slides.slide-updated-from-its-source')); }
     if (b.dataset.sync === 'open') { const { parseRef, resolveTarget } = await import('./refs-syntax.js'); const env = ctx.refEnv(); const { target, part } = parseRef(ref); ctx.openRef(target ? resolveTarget(target, env.files, env.from) : env.from, part); }
   });
   async function reuseSlide() {
     const t = await ctx.pickRef?.({ kind: 'link' }); if (!t) return;
     const ref = t.replace(/^!?\[\[|\]\]$/g, '').replace(/\|.*$/, '');
-    if (!/#\d+$/.test(ref)) return ctx.toast('Choose a slide of a deck as the part.');
-    try { const src = await sourceOf(ref); const { fm, list } = chunks(); list.splice(cur + 1, 0, syncedCopy(ref, src)); cur += 1; commit(joinDeck(fm, list)); ctx.toast('Added a synced copy. It will offer to update when the source changes.'); }
+    if (!/#\d+$/.test(ref)) return ctx.toast(tr('slides.choose-a-slide-of-a-deck-as-the-part'));
+    try { const src = await sourceOf(ref); const { fm, list } = chunks(); list.splice(cur + 1, 0, syncedCopy(ref, src)); cur += 1; commit(joinDeck(fm, list)); ctx.toast(tr('slides.added-a-synced-copy-it-will-offer-to-u')); }
     catch (e) { ctx.toast(e.message, { kind: 'error' }); }
   }
   /* slide management (P8) */
@@ -484,24 +485,24 @@ export function mountSlides(host, ctx) {
   function editMany(idx, fn) { const { fm, list } = chunks(); for (const i of idx) list[i] = fn(list[i], i); commit(joinDeck(fm, list)); }
   function hideSlides(idx, on) { editMany(idx, (c) => setFlag(c, 'hidden', on)); ctx.toast(on ? `${idx.length === 1 ? 'Slide' : idx.length + ' slides'} hidden in the presentation.` : 'Slide shown again.'); }
   async function sectionAt(i) {
-    const name = await ctx.prompt({ title: deck.slides[i].section ? 'Rename section' : 'Add section', label: 'Section name', value: deck.slides[i].section || '', action: 'Save' });
+    const name = await ctx.prompt({ title: deck.slides[i].section ? tl('slides', 'Rename section') : tl('slides', 'Add section'), label: tr('slides.section-name'), value: deck.slides[i].section || '', action: tr('slides.save') });
     if (name == null) return; editAt(i, (c) => setDirective(c, 'section', name.trim() || null));
   }
   thumbs.addEventListener('click', (e) => {
     const b = e.target.closest('[data-sec-menu]'); if (!b) return; e.stopPropagation(); const i = Number(b.dataset.secMenu);
     const sec = sectionsOf(deck).find((x) => x.start === i);
     ctx.showMenu(b, [
-      { label: 'Rename section…', run: () => sectionAt(i) },
-      { label: 'Hide all slides in section', run: () => hideSlides(sec.slides.filter((j) => !deck.slides[j].master), true) },
-      { label: 'Show all slides in section', run: () => hideSlides(sec.slides, false) },
-      { label: 'Remove section (keep slides)', run: () => editAt(i, (c) => setDirective(c, 'section', null)) },
+      { label: tr('slides.rename-section'), run: () => sectionAt(i) },
+      { label: tr('slides.hide-all-slides-in-section'), run: () => hideSlides(sec.slides.filter((j) => !deck.slides[j].master), true) },
+      { label: tr('slides.show-all-slides-in-section'), run: () => hideSlides(sec.slides, false) },
+      { label: tr('slides.remove-section-keep-slides'), run: () => editAt(i, (c) => setDirective(c, 'section', null)) },
     ]);
   }, true);
 
   /* comments */
   const rpane = host.querySelector('.sl-review');
   async function commentPrompt() {
-    const text = await ctx.prompt({ title: 'Add comment', label: `Comment on slide ${deck.slides[cur].number ?? 'master'}`, value: '', action: 'Add comment' });
+    const text = await ctx.prompt({ title: tr('slides.add-comment'), label: tr('slides.comment-on-slide-master', { master: deck.slides[cur].number ?? 'master' }), value: '', action: tr('slides.add-comment') });
     if (!text || !text.trim()) return;
     const author = (await ctx.userName?.()) || '';
     editAt(cur, (c) => addComment(c, { author, date: new Date().toISOString().slice(0, 10), text }));
@@ -511,13 +512,13 @@ export function mountSlides(host, ctx) {
   function showReview(tab) { reviewTab = tab; rpane.hidden = false; dockRoom(); renderReview(); }
   function renderReview() {
     if (rpane.hidden || !deck) return;
-    const tabs = `<div class="fp-head rv-tabs"><button type="button" data-rt="comments" aria-pressed="${reviewTab === 'comments'}">Comments</button><button type="button" data-rt="a11y" aria-pressed="${reviewTab === 'a11y'}">Accessibility</button><button type="button" class="dp-x rv-close" data-rt="close" aria-label="Close review pane">Close</button></div>`;
+    const tabs = `<div class="fp-head rv-tabs"><button type="button" data-rt="comments" aria-pressed="${reviewTab === 'comments'}">${tr('slides.comments')}</button><button type="button" data-rt="a11y" aria-pressed="${reviewTab === 'a11y'}">${tr('slides.accessibility')}</button><button type="button" class="dp-x rv-close" data-rt="close" aria-label="${tr('slides.close-review-pane')}">${tr('slides.close')}</button></div>`;
     if (reviewTab === 'comments') {
       const all = deck.slides.flatMap((sl) => sl.comments.map((c, k) => ({ ...c, k, sl })));
-      rpane.innerHTML = tabs + `<div class="fp-btns"><button class="btn" type="button" data-rv="add">Add comment to this slide</button></div>` + (all.length ? `<ul class="rv-list">${all.map((c) => `<li class="${c.sl.index === cur ? 'is-cur' : ''}"><a href="#" data-go="${c.sl.index}">${c.sl.master ? 'Master' : 'Slide ' + c.sl.number}</a>${c.author || c.date ? ` <span class="rv-meta">${esc(c.author)}${c.date ? ' · ' + esc(c.date) : ''}</span>` : ''}<p>${esc(c.text)}</p><button class="dp-x" type="button" data-resolve="${c.sl.index}:${c.k}">Resolve</button></li>`).join('')}</ul>` : '<p class="fp-note">No comments. Comments are saved in the file, so they travel with the deck.</p>');
+      rpane.innerHTML = tabs + `<div class="fp-btns"><button class="btn" type="button" data-rv="add">${tr('slides.add-comment-to-this-slide')}</button></div>` + (all.length ? `<ul class="rv-list">${all.map((c) => `<li class="${c.sl.index === cur ? 'is-cur' : ''}"><a href="#" data-go="${c.sl.index}">${c.sl.master ? 'Master' : 'Slide ' + c.sl.number}</a>${c.author || c.date ? ` <span class="rv-meta">${esc(c.author)}${c.date ? ' · ' + esc(c.date) : ''}</span>` : ''}<p>${esc(c.text)}</p><button class="dp-x" type="button" data-resolve="${c.sl.index}:${c.k}">${tr('slides.resolve')}</button></li>`).join('')}</ul>` : '<p class="fp-note">' + tr('slides.no-comments-comments-are-saved-in-the') + '</p>');
     } else {
-      const sev = { error: 'Error', warning: 'Warning', tip: 'Tip' };
-      rpane.innerHTML = tabs + (a11yIssues.length ? `<p class="fp-note">${a11yIssues.filter((x) => x.severity === 'error').length} errors, ${a11yIssues.filter((x) => x.severity === 'warning').length} warnings.</p><ul class="rv-list">${a11yIssues.map((x, n) => `<li class="rv-${x.severity}"><span class="rv-sev">${sev[x.severity]}</span><p>${esc(x.message)}</p><span class="fp-btns"><button class="btn" type="button" data-go="${x.slide}" data-go-obj="${x.object ?? ''}">Go to slide</button>${x.kind === 'alt' && x.object != null ? `<button class="btn" type="button" data-fix="${n}">Add description…</button>` : ''}</span></li>`).join('')}</ul>` : '<p class="fp-note">No problems found. Titles, picture descriptions, contrast and text size look fine.</p>') + '<div class="fp-btns"><button class="btn" type="button" data-rv="recheck">Check again</button></div>';
+      const sev = { error: 'Error', warning: 'Warning', tip: tr('slides.tip') };
+      rpane.innerHTML = tabs + (a11yIssues.length ? `<p class="fp-note">${a11yIssues.filter((x) => x.severity === 'error').length} errors, ${a11yIssues.filter((x) => x.severity === 'warning').length} warnings.</p><ul class="rv-list">${a11yIssues.map((x, n) => `<li class="rv-${x.severity}"><span class="rv-sev">${sev[x.severity]}</span><p>${esc(x.message)}</p><span class="fp-btns"><button class="btn" type="button" data-go="${x.slide}" data-go-obj="${x.object ?? ''}">${tr('slides.go-to-slide')}</button>${x.kind === 'alt' && x.object != null ? `<button class="btn" type="button" data-fix="${n}">${tr('slides.add-description')}</button>` : ''}</span></li>`).join('')}</ul>` : '<p class="fp-note">' + tr('slides.no-problems-found-titles-picture-descr') + '</p>') + '<div class="fp-btns"><button class="btn" type="button" data-rv="recheck">' + tr('slides.check-again') + '</button></div>';
     }
   }
   async function runA11y() { const { checkDeck } = await import('./slides-a11y.js'); a11yIssues = checkDeck(deck); showReview('a11y'); }
@@ -527,7 +528,7 @@ export function mountSlides(host, ctx) {
     const rs = e.target.closest('[data-resolve]'); if (rs) { const [i, k] = rs.dataset.resolve.split(':').map(Number); editAt(i, (c) => removeComment(c, k)); return; }
     const fx = e.target.closest('[data-fix]'); if (fx) {
       const it = a11yIssues[Number(fx.dataset.fix)];
-      const alt = await ctx.prompt({ title: 'Describe the picture', label: 'Alternative text', value: '', hint: 'What does the picture show, in one sentence?', action: 'Save' });
+      const alt = await ctx.prompt({ title: tr('slides.describe-the-picture'), label: tr('slides.alternative-text'), value: '', hint: tr('slides.what-does-the-picture-show-in-one-sent'), action: tr('slides.save') });
       if (alt && alt.trim()) { editAt(it.slide, (c) => setObjectAttrs(c, it.object, { alt: alt.trim() })); runA11y(); }
       return;
     }
@@ -539,7 +540,7 @@ export function mountSlides(host, ctx) {
   const findBar = host.querySelector('.sl-find'); let hits = [], hit = -1;
   function openFind() {
     findBar.hidden = false;
-    findBar.innerHTML = `<input class="input" type="search" data-f="q" placeholder="Find in slides" aria-label="Find"><input class="input" type="text" data-f="r" placeholder="Replace with" aria-label="Replace with"><label class="sf-check"><input type="checkbox" data-f="case"> Match case</label><span class="sl-find-n" aria-live="polite"></span><button class="btn" type="button" data-fb="prev">Previous</button><button class="btn" type="button" data-fb="next">Next</button><button class="btn" type="button" data-fb="one">Replace</button><button class="btn" type="button" data-fb="all">Replace all</button><button class="dp-x" type="button" data-fb="close" aria-label="Close find">Close</button>`;
+    findBar.innerHTML = `<input class="input" type="search" data-f="q" placeholder="${tr('slides.find-in-slides')}" aria-label="${tr('slides.find')}"><input class="input" type="text" data-f="r" placeholder="${tr('slides.replace-with')}" aria-label="${tr('slides.replace-with')}"><label class="sf-check"><input type="checkbox" data-f="case"> ${tr('slides.match-case')}</label><span class="sl-find-n" aria-live="polite"></span><button class="btn" type="button" data-fb="prev">${tr('slides.previous')}</button><button class="btn" type="button" data-fb="next">${tr('slides.next')}</button><button class="btn" type="button" data-fb="one">${tr('slides.replace-2')}</button><button class="btn" type="button" data-fb="all">${tr('slides.replace-all')}</button><button class="dp-x" type="button" data-fb="close" aria-label="${tr('slides.close-find')}">${tr('slides.close')}</button>`;
     findBar.querySelector('[data-f=q]').focus();
   }
   const fq = () => findBar.querySelector('[data-f=q]')?.value || '';
@@ -557,7 +558,7 @@ export function mountSlides(host, ctx) {
     if (b.dataset.fb === 'close') { findBar.hidden = true; return; }
     if (b.dataset.fb === 'next' || b.dataset.fb === 'prev') return gotoHit(b.dataset.fb === 'next' ? 1 : -1);
     if (!re) return;
-    if (b.dataset.fb === 'all') { findAll(); const n = hits.length; if (!n) return; const { fm, list } = chunks(); commit(joinDeck(fm, list.map((c) => c.replace(re, () => rep)))); findAll(); return ctx.toast(`Replaced ${n} ${n === 1 ? 'match' : 'matches'}.`); }
+    if (b.dataset.fb === 'all') { findAll(); const n = hits.length; if (!n) return; const { fm, list } = chunks(); commit(joinDeck(fm, list.map((c) => c.replace(re, () => rep)))); findAll(); return ctx.toast(tr('slides.replaced-n-matches', { n: n })); }
     if (b.dataset.fb === 'one') { findAll(); if (!hits.length) return; const h = hits[Math.max(0, hit)] || hits[0]; const { fm, list } = chunks(); const c = list[h.i]; const m = new RegExp(re.source, re.flags.replace('g', '')).exec(c.slice(h.at)); if (!m) return; list[h.i] = c.slice(0, h.at) + rep + c.slice(h.at + m[0].length); commit(joinDeck(fm, list)); hit -= 1; gotoHit(1); }
   });
 
@@ -567,21 +568,21 @@ export function mountSlides(host, ctx) {
     const { parseRef, resolveTarget } = await import('./refs-syntax.js');
     const { target, part } = parseRef(t.replace(/^!?\[\[|\]\]$/g, '').replace(/\|.*$/, ''));
     const env = ctx.refEnv(); const path = resolveTarget(target, env.files, env.from);
-    if (!path || !/\.slides\.md$/i.test(path)) return ctx.toast('Choose a slide deck.');
+    if (!path || !/\.slides\.md$/i.test(path)) return ctx.toast(tr('slides.choose-a-slide-deck'));
     const src = parseFrontmatter(await env.read(path)); const all = splitSlides(src.body);
     const m = String(part || '').match(/^(\d+)(?:\s*-\s*(\d+))?$/);
     const pick = m ? all.slice(Number(m[1]) - 1, Number(m[2] || m[1])) : all;
-    if (!pick.length) return ctx.toast('No slides there.');
+    if (!pick.length) return ctx.toast(tr('slides.no-slides-there'));
     const { fm, list } = chunks(); list.splice(cur + 1, 0, ...pick.map((c) => '\n' + c.replace(/^\n+/, '').replace(/[ \t]*<!--\s*master(:[^>]*)?\s*-->[ \t]*\n?/g, '')));
-    cur += 1; commit(joinDeck(fm, list)); ctx.toast(`Inserted ${pick.length} ${pick.length === 1 ? 'slide' : 'slides'} from ${target}. They are copies; use “Synced copy of a slide” to keep one linked.`);
+    cur += 1; commit(joinDeck(fm, list)); ctx.toast(tr('slides.inserted-length-slides-from-target-the', { n: pick.length, target }));
   }
   host.querySelector('[data-sl="review"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [
-    { label: 'Find and replace…', key: 'Ctrl+H', run: openFind },
-    { label: 'Comments', run: () => showReview('comments') },
-    { label: 'Add comment…', run: commentPrompt },
-    { label: 'Check accessibility', run: runA11y }, '-',
-    { label: 'Insert slides from another deck…', run: reuseFromDeck },
-    { label: deck.slides[cur].hidden ? 'Show this slide' : 'Hide this slide', run: () => hideSlides([cur], !deck.slides[cur].hidden) },
+    { label: tr('slides.find-and-replace'), key: 'Ctrl+H', run: openFind },
+    { label: tr('slides.comments'), run: () => showReview('comments') },
+    { label: tr('slides.add-comment-2'), run: commentPrompt },
+    { label: tr('slides.check-accessibility'), run: runA11y }, '-',
+    { label: tr('slides.insert-slides-from-another-deck'), run: reuseFromDeck },
+    { label: deck.slides[cur].hidden ? tl('slides', 'Show this slide') : tl('slides', 'Hide this slide'), run: () => hideSlides([cur], !deck.slides[cur].hidden) },
   ]));
 
   /* views: normal, sorter, outline */
@@ -598,12 +599,12 @@ export function mountSlides(host, ctx) {
     if (view === 'normal' || !deck) return;
     if (view === 'sorter') {
       const tk = 220 / deck.width;
-      viewEl.innerHTML = `<p class="sl-view-hint">Click to select, Shift or Ctrl to select more, drag to move. Delete removes, H hides, Ctrl+D duplicates, Enter opens.</p><ol class="sl-sorter" tabindex="0" aria-label="Slide sorter">${deck.slides.map((sl, i) => `${sl.section ? `<li class="sl-sorter-sec">${esc(sl.section)}</li>` : ''}<li class="sl-sort${sortSel.has(i) ? ' is-sel' : ''}${sl.hidden ? ' is-hidden' : ''}${sl.master ? ' is-master' : ''}" data-si="${i}" draggable="true" aria-selected="${sortSel.has(i)}"><div class="sl-thumb-box" style="width:220px;height:${deck.height * tk}px"><div class="sl-scale" style="transform:scale(${tk})">${renderSlide(deck, sl)}</div></div><span>${sl.master ? 'Master' : sl.number}${sl.hidden ? ' · hidden' : ''}${sl.title ? ' · ' + esc(sl.title) : ''}</span></li>`).join('')}</ol>`;
+      viewEl.innerHTML = `<p class="sl-view-hint">${tr('slides.click-to-select-shift-or-ctrl-to-selec')}</p><ol class="sl-sorter" tabindex="0" aria-label="${tr('slides.slide-sorter')}">${deck.slides.map((sl, i) => `${sl.section ? `<li class="sl-sorter-sec">${esc(sl.section)}</li>` : ''}<li class="sl-sort${sortSel.has(i) ? ' is-sel' : ''}${sl.hidden ? ' is-hidden' : ''}${sl.master ? ' is-master' : ''}" data-si="${i}" draggable="true" aria-selected="${sortSel.has(i)}"><div class="sl-thumb-box" style="width:220px;height:${deck.height * tk}px"><div class="sl-scale" style="transform:scale(${tk})">${renderSlide(deck, sl)}</div></div><span>${sl.master ? 'Master' : sl.number}${sl.hidden ? ' · hidden' : ''}${sl.title ? ' · ' + esc(sl.title) : ''}</span></li>`).join('')}</ol>`;
       hydrate(viewEl);
     } else {
-      viewEl.innerHTML = `<p class="sl-view-hint">Edit titles here. Each line under a title is a bullet on that slide.</p><ol class="sl-outline">${deck.slides.map((sl, i) => {
+      viewEl.innerHTML = `<p class="sl-view-hint">${tr('slides.edit-titles-here-each-line-under-a-tit')}</p><ol class="sl-outline">${deck.slides.map((sl, i) => {
         const bullets = sl.content.split('\n').filter((l) => /^\s*[-*+]\s+\S/.test(l)).map((l) => l.replace(/^\s*[-*+]\s+/, ''));
-        return `${sl.section ? `<li class="sl-outline-sec">${esc(sl.section)}</li>` : ''}<li class="sl-outline-item${sl.hidden ? ' is-hidden' : ''}"><span class="sl-outline-n">${sl.master ? 'M' : sl.number}</span><div><input class="sl-outline-title" data-oi="${i}" value="${esc(sl.title)}" placeholder="Untitled slide" aria-label="Title of slide ${sl.number ?? 'master'}">${bullets.length ? `<ul>${bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</div></li>`;
+        return `${sl.section ? `<li class="sl-outline-sec">${esc(sl.section)}</li>` : ''}<li class="sl-outline-item${sl.hidden ? ' is-hidden' : ''}"><span class="sl-outline-n">${sl.master ? 'M' : sl.number}</span><div><input class="sl-outline-title" data-oi="${i}" value="${esc(sl.title)}" placeholder="${tr('slides.untitled-slide')}" aria-label="Title of slide ${sl.number ?? 'master'}">${bullets.length ? `<ul>${bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}</div></li>`;
       }).join('')}</ol>`;
     }
   }
@@ -634,7 +635,7 @@ export function mountSlides(host, ctx) {
   viewEl.addEventListener('keydown', (e) => {
     if (view !== 'sorter' || !sortSel.size || e.target.closest('input')) return;
     const idx = [...sortSel].sort((a, b) => a - b);
-    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); const { fm, list } = chunks(); if (idx.length >= list.length) return ctx.toast('A deck needs at least one slide.'); sortSel = new Set(); commit(joinDeck(fm, list.filter((_, i) => !idx.includes(i)))); }
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); const { fm, list } = chunks(); if (idx.length >= list.length) return ctx.toast(tr('slides.a-deck-needs-at-least-one-slide')); sortSel = new Set(); commit(joinDeck(fm, list.filter((_, i) => !idx.includes(i)))); }
     else if (e.key.toLowerCase() === 'h') { e.preventDefault(); hideSlides(idx, !deck.slides[idx[0]].hidden); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); const { fm, list } = chunks(); const at = idx[idx.length - 1] + 1; list.splice(at, 0, ...idx.map((i) => list[i])); sortSel = new Set(idx.map((_, k) => at + k)); commit(joinDeck(fm, list)); }
     else if (e.key === 'Enter') { cur = idx[0]; setView('normal'); }
@@ -650,33 +651,33 @@ export function mountSlides(host, ctx) {
     const g = deck.global; const s0 = deck.slides[cur]; const d = s0.directives;
     const fileFonts = String(g.fonts || '').split(',').map((x) => x.trim()).filter(Boolean);
     const fams = [...new Set([...fileFonts.map((f) => f.split('/').pop().split(/[-_.]/)[0]), ...FONT_CHOICES])];
-    const fontSel = (k) => `<select class="rb-select fp-sel" data-dk="${k}"><option value="">Theme default</option>${fams.map((f) => `<option${g[k] === f ? ' selected' : ''}>${esc(f)}</option>`).join('')}${g[k] && !fams.includes(g[k]) ? `<option selected>${esc(g[k])}</option>` : ''}</select>`;
-    const colour = (k, label, d0) => `<label class="fp-row"><span>${label}</span><span class="dp-col"><input class="sf-color" type="color" data-dk="${k}" value="${hex(g[k], d0)}">${g[k] ? `<button class="dp-x" type="button" data-dreset="${k}" aria-label="Reset ${label}">Reset</button>` : ''}</span></label>`;
+    const fontSel = (k) => `<select class="rb-select fp-sel" data-dk="${k}"><option value="">${tr('slides.theme-default')}</option>${fams.map((f) => `<option${g[k] === f ? ' selected' : ''}>${esc(f)}</option>`).join('')}${g[k] && !fams.includes(g[k]) ? `<option selected>${esc(g[k])}</option>` : ''}</select>`;
+    const colour = (k, label, d0) => `<label class="fp-row"><span>${label}</span><span class="dp-col"><input class="sf-color" type="color" data-dk="${k}" value="${hex(g[k], d0)}">${g[k] ? `<button class="dp-x" type="button" data-dreset="${k}" aria-label="Reset ${label}">${tr('slides.reset')}</button>` : ''}</span></label>`;
     const bgc = d._backgroundColor ?? d.backgroundColor, bgi = d._backgroundImage ?? d.backgroundImage;
     const gm = String(bgi || '').match(/^linear-gradient\((-?\d+)deg,\s*([^,]+),\s*([^)]+)\)$/);
     const bt = gm ? 'gradient' : s0.bgs.some((b) => !b.side) ? 'image' : bgc ? 'colour' : '';
     const ms = deck.masters;
-    dpane.innerHTML = `<div class="fp-head">Design</div>
-      <section class="fp-sec"><h3>Theme</h3>
-        ${fRow('Theme', `<select class="rb-select fp-sel" data-dk="theme">${THEMES.map(([v, l]) => `<option value="${v}"${deck.theme === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`)}
-        <div class="fp-row"><span>Template</span><span class="dp-tpl">${g.template ? `<b>${esc(g.template)}</b>` : 'None'}</span></div>
+    dpane.innerHTML = `<div class="fp-head">${tr('slides.design')}div>
+      <section class="fp-sec"><h3>${tr('slides.theme')}h3>
+        ${fRow(tl('slides', 'Theme'), `<select class="rb-select fp-sel" data-dk="theme">${THEMES.map(([v, l]) => `<option value="${v}"${deck.theme === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`)}
+        <div class="fp-row"><span>${tr('slides.template')}span><span class="dp-tpl">${g.template ? `<b>${esc(g.template)}</b>` : 'None'}</span></div>
         <div class="fp-btns"><button class="btn btn-primary" type="button" data-da="gallery">Browse templates…</button>${g.template ? '<button class="btn" type="button" data-da="untemplate">Remove</button>' : ''}<button class="btn" type="button" data-da="template">Use a deck…</button><button class="btn" type="button" data-da="save-template">Save as template…</button></div>
         <p class="fp-note">A template gives this deck its colours, fonts, backgrounds and slide layouts. ${g.template ? 'Edit the template file to change every deck that uses it.' : ''}</p></section>
       <section class="fp-sec"><h3>Colour schemes</h3><div class="dp-schemes">${[...(tplText ? templateInfo(tplText).variants : []), ...SCHEMES.map(([name, tokens]) => ({ name, tokens }))].map((v, n) => `<button type="button" class="dp-scheme" data-scheme="${n}" title="${esc(v.name)}" aria-label="Colour scheme ${esc(v.name)}"><i style="background:${v.tokens.paper}"></i><i style="background:${v.tokens.ink}"></i><i style="background:${v.tokens.accent}"></i><span>${esc(v.name)}</span></button>`).join('')}</div></section>
       <section class="fp-sec"><h3>Font pairs</h3><div class="dp-fonts">${FONT_PAIRS.map(([h, b], n) => `<button type="button" class="dp-font" data-fpair="${n}"><b style="font-family:'${h}'">${esc(h)}</b><span style="font-family:'${b}'">${h === b ? 'Body too' : esc(b)}</span></button>`).join('')}</div></section>
-      <section class="fp-sec"><h3>Colours</h3>${colour('paper', 'Background', '#fcfcfc')}${colour('ink', 'Text', '#1f1f1f')}${colour('muted', 'Secondary text', '#666666')}${colour('accent', 'Accent and links', '#1f1f1f')}${colour('card', 'Cards', '#f2f2f2')}</section>
-      <section class="fp-sec"><h3>Fonts</h3>${fRow('Headings', fontSel('heading-font'))}${fRow('Body', fontSel('body-font'))}
+      <section class="fp-sec"><h3>${tr('slides.colours')}h3>${colour('paper', 'Background', '#fcfcfc')}${colour('ink', tl('slides', 'Text'), '#1f1f1f')}${colour('muted', tl('slides', 'Secondary text'), '#666666')}${colour('accent', tl('slides', 'Accent and links'), '#1f1f1f')}${colour('card', 'Cards', '#f2f2f2')}</section>
+      <section class="fp-sec"><h3>${tr('slides.fonts')}h3>${fRow(tl('slides', 'Headings'), fontSel('heading-font'))}${fRow(tl('slides', 'Body'), fontSel('body-font'))}
         ${fileFonts.length ? `<p class="fp-note">Font files: ${fileFonts.map((f) => esc(f.split('/').pop())).join(', ')}</p>` : ''}
-        <div class="fp-btns"><button class="btn" type="button" data-da="font">Add font file…</button></div></section>
+        <div class="fp-btns"><button class="btn" type="button" data-da="font">${tr('slides.add-font-file')}</button></div></section>
       <section class="fp-sec"><h3>Background${s0.master ? ' of this master' : ' of this slide'}</h3>
-        ${fRow('Type', `<select class="rb-select fp-sel" data-dk="bg-type"><option value="">Theme</option><option value="colour"${bt === 'colour' ? ' selected' : ''}>Colour</option><option value="gradient"${bt === 'gradient' ? ' selected' : ''}>Gradient</option><option value="image"${bt === 'image' ? ' selected' : ''}>Picture</option></select>`)}
-        ${bt === 'colour' ? fRow('Colour', `<input class="sf-color" type="color" data-dk="bg-1" value="${hex(bgc, '#ffffff')}">`) : ''}
-        ${bt === 'gradient' ? `<div class="fp-grid">${fRow('From', `<input class="sf-color" type="color" data-dk="bg-1" value="${hex(gm[2].trim(), '#ffffff')}">`)}${fRow('To', `<input class="sf-color" type="color" data-dk="bg-2" value="${hex(gm[3].trim(), '#dddddd')}">`)}${fRow('Angle', `<input class="input fp-num" type="number" data-dk="bg-angle" value="${gm[1]}" step="15">`)}</div>` : ''}
-        ${bt === 'image' ? '<div class="fp-btns"><button class="btn" type="button" data-da="bg-image">Change picture…</button></div>' : ''}
-        <div class="fp-btns">${bt ? '<button class="btn" type="button" data-da="bg-all">Apply to all slides</button>' : ''}</div></section>
-      <section class="fp-sec"><h3>Masters</h3>
-        ${ms.length ? `<ul class="dp-masters">${ms.map((m) => `<li><span>${m.master === 'all' ? 'All slides' : `${esc(m.master)} slides`}</span>${m.fromTemplate ? '<em>from template</em>' : `<button class="btn" type="button" data-dm="${m.index}">Edit</button>`}</li>`).join('')}</ul>` : '<p class="fp-note">Objects on a master appear on every slide, like a logo or a footer bar.</p>'}
-        <div class="fp-btns"><button class="btn" type="button" data-da="master-all">Add master for all slides</button>${!s0.master && s0.layout !== 'default' ? `<button class="btn" type="button" data-da="master-layout">Add master for ${esc(s0.layout)} slides</button>` : ''}</div></section>`;
+        ${fRow(tl('slides', 'Type'), `<select class="rb-select fp-sel" data-dk="bg-type"><option value="">${tr('slides.theme')}</option><option value="colour"${bt === 'colour' ? ' selected' : ''}>${tr('slides.colour')}</option><option value="gradient"${bt === 'gradient' ? ' selected' : ''}>${tr('slides.gradient')}</option><option value="image"${bt === 'image' ? ' selected' : ''}>${tr('slides.picture')}</option></select>`)}
+        ${bt === 'colour' ? fRow(tl('slides', 'Colour'), `<input class="sf-color" type="color" data-dk="bg-1" value="${hex(bgc, '#ffffff')}">`) : ''}
+        ${bt === 'gradient' ? `<div class="fp-grid">${fRow(tl('slides', 'From'), `<input class="sf-color" type="color" data-dk="bg-1" value="${hex(gm[2].trim(), '#ffffff')}">`)}${fRow('To', `<input class="sf-color" type="color" data-dk="bg-2" value="${hex(gm[3].trim(), '#dddddd')}">`)}${fRow(tl('slides', 'Angle'), `<input class="input fp-num" type="number" data-dk="bg-angle" value="${gm[1]}" step="15">`)}</div>` : ''}
+        ${bt === 'image' ? '<div class="fp-btns"><button class="btn" type="button" data-da="bg-image">' + tr('slides.change-picture') + '</button></div>' : ''}
+        <div class="fp-btns">${bt ? '<button class="btn" type="button" data-da="bg-all">' + tr('slides.apply-to-all-slides') + '</button>' : ''}</div></section>
+      <section class="fp-sec"><h3>${tr('slides.masters')}</h3>
+        ${ms.length ? `<ul class="dp-masters">${ms.map((m) => `<li><span>${m.master === 'all' ? 'All slides' : `${esc(m.master)} slides`}</span>${m.fromTemplate ? '<em>' + tr('slides.from-template') + '</em>' : `<button class="btn" type="button" data-dm="${m.index}">${tr('slides.edit')}</button>`}</li>`).join('')}</ul>` : '<p class="fp-note">' + tr('slides.objects-on-a-master-appear-on-every-sl') + '</p>'}
+        <div class="fp-btns"><button class="btn" type="button" data-da="master-all">${tr('slides.add-master-for-all-slides')}</button>${!s0.master && s0.layout !== 'default' ? `<button class="btn" type="button" data-da="master-layout">Add master for ${esc(s0.layout)} slides</button>` : ''}</div></section>`;
   }
   function setBg(type, vals = {}) {
     editChunk2((c) => {
@@ -713,7 +714,7 @@ export function mountSlides(host, ctx) {
     if (a === 'template') {
       const t = await ctx.pickRef?.({ kind: 'link' }); if (!t) return;
       const target = t.replace(/^!?\[\[|\]\]$/g, '').replace(/\|.*$/, '').replace(/#.*$/, '');
-      if (!/\.slides$/i.test(target) && !/\.slides\.md$/i.test(target)) return ctx.toast('Choose a slide deck as the template.');
+      if (!/\.slides$/i.test(target) && !/\.slides\.md$/i.test(target)) return ctx.toast(tr('slides.choose-a-slide-deck-as-the-template'));
       return setFm('template', target);
     }
     if (a === 'untemplate') return setFm('template', null);
@@ -736,12 +737,12 @@ export function mountSlides(host, ctx) {
       let { fm, list } = chunks();
       fm = setGlobal(setGlobal(fm, 'backgroundColor', bgc || null), 'backgroundImage', bgi || (img ? `url(${img.src})` : null));
       list = list.map((c) => setDirective(setDirective(c, '_backgroundColor', null), '_backgroundImage', null).replace(/^!\[bg(?![^\]]*\b(left|right)\b)[^\]]*\]\([^)]*\)\s*\n?/gm, ''));
-      commit(joinDeck(fm, list)); return ctx.toast('Background applied to all slides.');
+      commit(joinDeck(fm, list)); return ctx.toast(tr('slides.background-applied-to-all-slides'));
     }
     if (a === 'master-all' || a === 'master-layout') {
       const which = a === 'master-all' ? '' : `: ${deck.slides[cur].layout}`;
       const { fm, list } = chunks(); list.unshift(`\n<!-- master${which} -->\n## Master${which ? ' for ' + which.slice(2) + ' slides' : ''}\n\nObjects placed here appear on every ${which ? which.slice(2) : ''} slide. Text in the flow is a note for you.\n\n::: box #footer x=88 y=650 w=500 h=40 size=18 color=#666666\nYour company\n:::\n`);
-      cur = 0; commit(joinDeck(fm, list)); return ctx.toast('Master added. Place a logo or footer on it.');
+      cur = 0; commit(joinDeck(fm, list)); return ctx.toast(tr('slides.master-added-place-a-logo-or-footer-on'));
     }
   });
 
@@ -759,51 +760,51 @@ export function mountSlides(host, ctx) {
   function renderFormat() {
     if (fpane.hidden) return;
     const objs = objsNow(); const picked = selected.map((i) => objs[i]).filter(Boolean);
-    if (!picked.length) { fpane.innerHTML = '<div class="fp-head">Format</div><p class="fp-empty">Select an object on the slide to format it.</p>'; return; }
+    if (!picked.length) { fpane.innerHTML = '<div class="fp-head">' + tr('slides.format') + '</div><p class="fp-empty">' + tr('slides.select-an-object-on-the-slide-to-forma') + '</p>'; return; }
     const o = picked[0], a = o.attrs, g = geometry(o), kinds = new Set(picked.map((x) => x.kind));
     const only = (k) => kinds.size === 1 && kinds.has(k);
     const fill = parseFill(a.fill) || { kind: 'none' };
     const ft = fill.kind === 'solid' ? (fill.color === 'none' ? 'none' : 'solid') : fill.kind;
     const adj = adjOf(a); const crop = (a.crop || '0,0,1,1').split(',').map(Number);
-    let h = `<div class="fp-head">Format <span class="fp-sub">${picked.length > 1 ? `${picked.length} objects` : esc(o.id || o.kind)}</span></div>`;
-    if (picked.length === 1 && o.kind !== 'line') h += `<section class="fp-sec"><h3>Position and size</h3><div class="fp-grid">${fRow('X', num('x', g.x))}${fRow('Y', num('y', g.y))}${fRow('Width', num('w', g.w, 1, 1))}${fRow('Height', num('h', g.h, 1, 1))}${fRow('Rotate', num('rotate', g.rotate || 0, 1, -360, 360))}</div></section>`;
+    let h = `<div class="fp-head">${tr('slides.format')} <span class="fp-sub">${picked.length > 1 ? `${picked.length} objects` : esc(o.id || o.kind)}</span></div>`;
+    if (picked.length === 1 && o.kind !== 'line') h += `<section class="fp-sec"><h3>${tr('slides.position-and-size')}</h3><div class="fp-grid">${fRow('X', num('x', g.x))}${fRow('Y', num('y', g.y))}${fRow(tl('slides', 'Width'), num('w', g.w, 1, 1))}${fRow(tl('slides', 'Height'), num('h', g.h, 1, 1))}${fRow(tl('slides', 'Rotate'), num('rotate', g.rotate || 0, 1, -360, 360))}</div></section>`;
     if ([...kinds].some((k) => k === 'box' || k === 'shape' || k === 'path')) {
-      h += `<section class="fp-sec"><h3>Fill</h3>${fRow('Type', sel('fill-type', ft, [['none', 'None'], ['solid', 'Solid'], ['linear', 'Linear gradient'], ['radial', 'Radial gradient']]))}`;
-      if (ft === 'solid') h += fRow('Colour', col('fill-1', fill.color, '#f2f2f2'));
-      if (ft === 'linear' || ft === 'radial') h += `<div class="fp-grid">${fRow('From', col('fill-1', fill.stops[0], '#111111'))}${fRow('To', col('fill-2', fill.stops.at(-1), '#888888'))}${ft === 'linear' ? fRow('Angle', num('fill-angle', fill.angle, 15, -360, 360)) : ''}</div>`;
+      h += `<section class="fp-sec"><h3>${tr('slides.fill')}</h3>${fRow(tl('slides', 'Type'), sel('fill-type', ft, [['none', tl('slides', 'None')], ['solid', tl('slides', 'Solid')], ['linear', tl('slides', 'Linear gradient')], ['radial', tl('slides', 'Radial gradient')]]))}`;
+      if (ft === 'solid') h += fRow(tl('slides', 'Colour'), col('fill-1', fill.color, '#f2f2f2'));
+      if (ft === 'linear' || ft === 'radial') h += `<div class="fp-grid">${fRow(tl('slides', 'From'), col('fill-1', fill.stops[0], '#111111'))}${fRow('To', col('fill-2', fill.stops.at(-1), '#888888'))}${ft === 'linear' ? fRow(tl('slides', 'Angle'), num('fill-angle', fill.angle, 15, -360, 360)) : ''}</div>`;
       h += '</section>';
     }
     if ([...kinds].some((k) => ['box', 'shape', 'image', 'line', 'path'].includes(k))) {
-      h += `<section class="fp-sec"><h3>${only('line') ? 'Line' : 'Border'}</h3><div class="fp-grid">${fRow('Colour', col('stroke', a.stroke, '#1a1a1a'))}${fRow('Width', num(only('line') ? 'width' : 'border', a[only('line') ? 'width' : 'border'] ?? '', 0.5, 0, 40))}</div>${fRow('Dashed', `<input type="checkbox" data-fk="dash"${a.dash === 'true' ? ' checked' : ''}>`)}`;
-      if (only('line')) h += `<div class="fp-grid">${fRow('Start', sel('tail', a.tail || '', [['', 'None'], ['arrow', 'Arrow']]))}${fRow('End', sel('head', a.head || '', [['', 'None'], ['arrow', 'Arrow']]))}</div>${fRow('Route', sel('route', a.route || '', [['', 'Straight'], ['elbow', 'Elbow']]))}`;
-      if (kinds.has('box') || kinds.has('image')) h += fRow('Corners', num('radius', a.radius ?? '', 1, 0, 400));
+      h += `<section class="fp-sec"><h3>${only('line') ? 'Line' : 'Border'}</h3><div class="fp-grid">${fRow(tl('slides', 'Colour'), col('stroke', a.stroke, '#1a1a1a'))}${fRow(tl('slides', 'Width'), num(only('line') ? 'width' : 'border', a[only('line') ? 'width' : 'border'] ?? '', 0.5, 0, 40))}</div>${fRow(tl('slides', 'Dashed'), `<input type="checkbox" data-fk="dash"${a.dash === 'true' ? ' checked' : ''}>`)}`;
+      if (only('line')) h += `<div class="fp-grid">${fRow(tl('slides', 'Start'), sel('tail', a.tail || '', [['', tl('slides', 'None')], ['arrow', tl('slides', 'Arrow')]]))}${fRow('End', sel('head', a.head || '', [['', tl('slides', 'None')], ['arrow', tl('slides', 'Arrow')]]))}</div>${fRow(tl('slides', 'Route'), sel('route', a.route || '', [['', tl('slides', 'Straight')], ['elbow', tl('slides', 'Elbow')]]))}`;
+      if (kinds.has('box') || kinds.has('image')) h += fRow(tl('slides', 'Corners'), num('radius', a.radius ?? '', 1, 0, 400));
       h += '</section>';
     }
-    h += `<section class="fp-sec"><h3>Effects</h3>${fRow('Shadow', sel('shadow', a.shadow || '', [['', 'None'], ...Object.keys(SHADOWS).map((k) => [k, k[0].toUpperCase() + k.slice(1)])]))}${fRow('Opacity', range('opacity', g.opacity ?? 1, 0, 1, 0.05))}`;
-    if ([...kinds].some((k) => ['image', 'icon', 'shape', 'path'].includes(k))) h += `<div class="fp-btns"><button class="btn" type="button" data-fa="flip-h">Flip horizontal</button><button class="btn" type="button" data-fa="flip-v">Flip vertical</button></div>`;
+    h += `<section class="fp-sec"><h3>${tr('slides.effects')}</h3>${fRow(tl('slides', 'Shadow'), sel('shadow', a.shadow || '', [['', tl('slides', 'None')], ...Object.keys(SHADOWS).map((k) => [k, k[0].toUpperCase() + k.slice(1)])]))}${fRow(tl('slides', 'Opacity'), range('opacity', g.opacity ?? 1, 0, 1, 0.05))}`;
+    if ([...kinds].some((k) => ['image', 'icon', 'shape', 'path'].includes(k))) h += `<div class="fp-btns"><button class="btn" type="button" data-fa="flip-h">${tr('slides.flip-horizontal')}</button><button class="btn" type="button" data-fa="flip-v">${tr('slides.flip-vertical')}</button></div>`;
     h += '</section>';
     if (only('image')) {
-      h += `<section class="fp-sec"><h3>Picture</h3>${fRow('Crop to shape', sel('mask', a.mask || '', [['', 'None'], ...Object.keys(MASKS).map((k) => [k, k[0].toUpperCase() + k.slice(1)])]))}
-        <div class="fp-grid">${fRow('Crop left %', num('crop-l', Math.round(crop[0] * 100), 1, 0, 95))}${fRow('Crop top %', num('crop-t', Math.round(crop[1] * 100), 1, 0, 95))}${fRow('Crop right %', num('crop-r', Math.round((1 - crop[0] - crop[2]) * 100), 1, 0, 95))}${fRow('Crop bottom %', num('crop-b', Math.round((1 - crop[1] - crop[3]) * 100), 1, 0, 95))}</div>
-        ${fRow('Brightness', range('adj-brightness', adj.brightness ?? 1, 0, 2, 0.05))}${fRow('Contrast', range('adj-contrast', adj.contrast ?? 1, 0, 2, 0.05))}${fRow('Saturation', range('adj-saturate', adj.saturate ?? 1, 0, 2, 0.05))}${fRow('Greyscale', range('adj-grayscale', adj.grayscale ?? 0, 0, 1, 0.05))}${fRow('Blur', range('adj-blur', adj.blur ?? 0, 0, 20, 0.5))}
-        ${fRow('Fit', sel('fit', a.fit || '', [['', 'Fill the frame'], ['contain', 'Show all']]))}
-        <label class="fp-row fp-wide"><span>Alt text</span><input class="input" type="text" data-fk="alt" value="${esc(a.alt ?? o.alt ?? '')}" placeholder="Describe the picture for screen readers"></label>
-        <div class="fp-btns"><button class="btn" type="button" data-fa="replace">Replace…</button><button class="btn" type="button" data-fa="natural">Reset size</button><button class="btn" type="button" data-fa="reset-adjust">Reset adjustments</button></div></section>`;
+      h += `<section class="fp-sec"><h3>${tr('slides.picture')}</h3>${fRow(tl('slides', 'Crop to shape'), sel('mask', a.mask || '', [['', tl('slides', 'None')], ...Object.keys(MASKS).map((k) => [k, k[0].toUpperCase() + k.slice(1)])]))}
+        <div class="fp-grid">${fRow(tl('slides', 'Crop left %'), num('crop-l', Math.round(crop[0] * 100), 1, 0, 95))}${fRow(tl('slides', 'Crop top %'), num('crop-t', Math.round(crop[1] * 100), 1, 0, 95))}${fRow(tl('slides', 'Crop right %'), num('crop-r', Math.round((1 - crop[0] - crop[2]) * 100), 1, 0, 95))}${fRow(tl('slides', 'Crop bottom %'), num('crop-b', Math.round((1 - crop[1] - crop[3]) * 100), 1, 0, 95))}</div>
+        ${fRow(tl('slides', 'Brightness'), range('adj-brightness', adj.brightness ?? 1, 0, 2, 0.05))}${fRow(tl('slides', 'Contrast'), range('adj-contrast', adj.contrast ?? 1, 0, 2, 0.05))}${fRow(tl('slides', 'Saturation'), range('adj-saturate', adj.saturate ?? 1, 0, 2, 0.05))}${fRow(tl('slides', 'Greyscale'), range('adj-grayscale', adj.grayscale ?? 0, 0, 1, 0.05))}${fRow(tl('slides', 'Blur'), range('adj-blur', adj.blur ?? 0, 0, 20, 0.5))}
+        ${fRow(tl('slides', 'Fit'), sel('fit', a.fit || '', [['', tl('slides', 'Fill the frame')], ['contain', tl('slides', 'Show all')]]))}
+        <label class="fp-row fp-wide"><span>${tr('slides.alt-text')}</span><input class="input" type="text" data-fk="alt" value="${esc(a.alt ?? o.alt ?? '')}" placeholder="${tr('slides.describe-the-picture-for-screen-reader')}"></label>
+        <div class="fp-btns"><button class="btn" type="button" data-fa="replace">${tr('slides.replace')}</button><button class="btn" type="button" data-fa="natural">${tr('slides.reset-size')}</button><button class="btn" type="button" data-fa="reset-adjust">${tr('slides.reset-adjustments')}</button></div></section>`;
     }
-    if (only('path') && a.points) h += `<section class="fp-sec"><h3>Free shape</h3>${fRow('Closed', `<input type="checkbox" data-fk="closed"${a.closed === 'true' ? ' checked' : ''}>`)}${fRow('Smooth', `<input type="checkbox" data-fk="smooth"${a.smooth === 'true' ? ' checked' : ''}>`)}<p class="fp-note">Drag the square handles to move points. Double-click one to remove it.</p></section>`;
-    if (only('icon')) h += `<section class="fp-sec"><h3>Icon</h3>${fRow('Colour', col('color', a.color, '#1a1a1a'))}${fRow('Line weight', range('weight', a.weight || 2, 0.5, 4, 0.25))}<div class="fp-btns"><button class="btn" type="button" data-fa="icon">Change icon…</button></div></section>`;
-    if (only('smartart')) h += `<section class="fp-sec"><h3>Diagram</h3>${fRow('Type', sel('type', a.type || 'process', SMART_TYPES))}${fRow('Colour', col('fill', a.fill, '#1f1f1f'))}<p class="fp-note">Double-click the diagram to edit its list. Indent an item to make a sub-item.</p><div class="fp-btns"><button class="btn" type="button" data-fa="explode">Convert to shapes</button><button class="btn" type="button" data-fa="sm-box">Convert to text box</button></div></section>`;
+    if (only('path') && a.points) h += `<section class="fp-sec"><h3>${tr('slides.free-shape')}h3>${fRow(tl('slides', 'Closed'), `<input type="checkbox" data-fk="closed"${a.closed === 'true' ? ' checked' : ''}>`)}${fRow(tl('slides', 'Smooth'), `<input type="checkbox" data-fk="smooth"${a.smooth === 'true' ? ' checked' : ''}>`)}<p class="fp-note">Drag the square handles to move points. Double-click one to remove it.</p></section>`;
+    if (only('icon')) h += `<section class="fp-sec"><h3>${tr('slides.icon-2')}h3>${fRow(tl('slides', 'Colour'), col('color', a.color, '#1a1a1a'))}${fRow(tl('slides', 'Line weight'), range('weight', a.weight || 2, 0.5, 4, 0.25))}<div class="fp-btns"><button class="btn" type="button" data-fa="icon">Change icon…</button></div></section>`;
+    if (only('smartart')) h += `<section class="fp-sec"><h3>Diagram</h3>${fRow(tl('slides', 'Type'), sel('type', a.type || 'process', SMART_TYPES))}${fRow(tl('slides', 'Colour'), col('fill', a.fill, '#1f1f1f'))}<p class="fp-note">Double-click the diagram to edit its list. Indent an item to make a sub-item.</p><div class="fp-btns"><button class="btn" type="button" data-fa="explode">Convert to shapes</button><button class="btn" type="button" data-fa="sm-box">Convert to text box</button></div></section>`;
     if (only('box') && /^\s*[-*+]\s/m.test(o.body || '')) h += `<section class="fp-sec"><h3>List</h3><div class="fp-btns"><button class="btn" type="button" data-fa="to-smartart">Convert to diagram…</button></div></section>`;
     { // link: where a click goes when presenting
       const L = String(a.link || ''); const kind = !L ? '' : ['next', 'prev', 'first', 'last', 'end', 'back'].includes(L) ? L : /^slide:/.test(L) ? 'slide' : /^\[\[/.test(L) ? 'doc' : 'url';
       const val = kind === 'slide' ? L.slice(6) : kind === 'doc' ? L.replace(/^\[\[|\]\]$/g, '') : kind === 'url' ? L : '';
-      h += `<section class="fp-sec"><h3>Link</h3>${fRow('Goes to', sel('link-kind', kind, [['', 'Nothing'], ['next', 'Next slide'], ['prev', 'Previous slide'], ['first', 'First slide'], ['last', 'Last slide'], ['slide', 'Slide number…'], ['back', 'Last slide viewed'], ['end', 'End of show'], ['url', 'Web address…'], ['doc', 'Folio document…']]))}${['slide', 'url', 'doc'].includes(kind) ? fRow(kind === 'slide' ? 'Slide' : kind === 'url' ? 'Address' : 'Document', `<input class="input" data-fk="link-value" value="${esc(val)}" placeholder="${kind === 'slide' ? '3' : kind === 'url' ? 'https://…' : 'Budget or Budget#Totals'}">`) : ''}<p class="fp-note">Links work when presenting and in PowerPoint.</p></section>`;
+      h += `<section class="fp-sec"><h3>${tr('slides.link')}h3>${fRow('Goes to', sel('link-kind', kind, [['', 'Nothing'], ['next', 'Next slide'], ['prev', 'Previous slide'], ['first', 'First slide'], ['last', 'Last slide'], ['slide', 'Slide number…'], ['back', 'Last slide viewed'], ['end', 'End of show'], ['url', 'Web address…'], ['doc', 'Folio document…']]))}${['slide', 'url', 'doc'].includes(kind) ? fRow(kind === 'slide' ? 'Slide' : kind === 'url' ? 'Address' : 'Document', `<input class="input" data-fk="link-value" value="${esc(val)}" placeholder="${kind === 'slide' ? '3' : kind === 'url' ? 'https://…' : 'Budget or Budget#Totals'}">`) : ''}<p class="fp-note">Links work when presenting and in PowerPoint.</p></section>`;
     }
     if (only('zoom')) {
       const list = deck.slides.filter((x) => !x.master); const secs = [...new Set(list.map((x) => x.section).filter(Boolean))];
       h += `<section class="fp-sec"><h3>Zoom</h3>${fRow('Shows', sel('zoom-to', a.section ? 'section:' + a.section : 'slide:' + (a.slide || ''), [...list.map((x) => ['slide:' + x.number, `Slide ${x.number}${x.title ? ' · ' + x.title.slice(0, 30) : ''}`]), ...secs.map((n) => ['section:' + n, `Section ${n}`])]))}${fRow('Return here', `<input type="checkbox" data-fk="return"${a.return === 'false' ? '' : ' checked'}>`)}<p class="fp-note">When presenting, a click on the zoom opens the slide or section, then comes back.</p></section>`;
     }
-    if (only('media')) h += `<section class="fp-sec"><h3>Playback</h3>${fRow('Loop', `<input type="checkbox" data-fk="loop"${a.loop === 'true' ? ' checked' : ''}>`)}${fRow('Muted', `<input type="checkbox" data-fk="muted"${a.muted === 'true' ? ' checked' : ''}>`)}${fRow('Start when the slide shows', `<input type="checkbox" data-fk="autoplay"${a.autoplay === 'true' ? ' checked' : ''}>`)}</section>`;
+    if (only('media')) h += `<section class="fp-sec"><h3>${tr('slides.playback')}h3>${fRow(tl('slides', 'Loop'), `<input type="checkbox" data-fk="loop"${a.loop === 'true' ? ' checked' : ''}>`)}${fRow(tl('slides', 'Muted'), `<input type="checkbox" data-fk="muted"${a.muted === 'true' ? ' checked' : ''}>`)}${fRow(tl('slides', 'Start when the slide shows'), `<input type="checkbox" data-fk="autoplay"${a.autoplay === 'true' ? ' checked' : ''}>`)}</section>`;
     const focusKey = document.activeElement?.closest?.('.sl-format') ? document.activeElement.dataset.fk : null;
     fpane.innerHTML = h;
     if (focusKey) fpane.querySelector(`[data-fk="${focusKey}"]`)?.focus();
@@ -877,7 +878,7 @@ export function mountSlides(host, ctx) {
   async function mergeSel(op) {
     const { merge } = await import('./slides-merge.js');
     const objs = objsNow(); const picked = [...selected].sort((a, b) => a - b); const list0 = picked.map((i) => objs[i]);
-    let res; try { res = merge(list0, op); } catch (e) { return ctx.toast(`Could not merge these shapes. ${e.message}`, { kind: 'error' }); }
+    let res; try { res = merge(list0, op); } catch (e) { return ctx.toast(tr('slides.could-not-merge-these-shapes-message', { message: e.message }), { kind: 'error' }); }
     if (!res.length) return ctx.toast(op === 'intersection' ? 'These shapes do not overlap, so nothing is left.' : 'Nothing is left after that operation.');
     const a = list0[0].attrs;
     const keep = ['fill', 'stroke', 'border', 'shadow', 'opacity', 'dash'].filter((k) => a[k] != null).map((k) => ` ${k}=${/[\s"']/.test(a[k]) ? `"${a[k]}"` : a[k]}`).join('') || ' fill=#e8e8e8';
@@ -896,12 +897,12 @@ export function mountSlides(host, ctx) {
       t = addObject(t, polygonsBlock(nid, res, keep));
       selected = [scanObjects(t).length - 1]; return t;
     });
-    ctx.toast('Merged into one shape. Undo with Ctrl+Z.');
+    ctx.toast(tr('slides.merged-into-one-shape-undo-with-ctrl-z'));
   }
   let drawing = null;
   function startDraw() {
     if (drawing) return;
-    ctx.toast('Draw on the slide with the mouse. Release to finish, Escape to cancel.');
+    ctx.toast(tr('slides.draw-on-the-slide-with-the-mouse-relea'));
     canvas?.select([], { notify: true });
     const veil = document.createElement('div'); veil.className = 'sl-draw'; frame.appendChild(veil);
     const svgNS = 'http://www.w3.org/2000/svg';
@@ -936,7 +937,7 @@ export function mountSlides(host, ctx) {
     const g = geometry(o); const pts = parsePoints(o.attrs.points); const k = parseFloat(frame.style.getPropertyValue('--k')) || 1;
     if (g.rotate) return;
     pts.forEach(([px, py], j) => {
-      const h = document.createElement('div'); h.className = 'sl-vtx'; h.title = 'Drag to move, double-click to remove';
+      const h = document.createElement('div'); h.className = 'sl-vtx'; h.title = tl('slides', 'Drag to move, double-click to remove');
       h.style.left = `${(g.x + px * g.w) * k}px`; h.style.top = `${(g.y + py * g.h) * k}px`;
       h.addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation(); try { h.setPointerCapture(e.pointerId); } catch {} const r = frame.getBoundingClientRect(); let last = null;
@@ -1029,7 +1030,7 @@ export function mountSlides(host, ctx) {
 
   function shapeGallery() {
     const seen = new Set(); const groups = LIBRARY.filter(([g]) => ['General', 'Flowchart', 'Architecture'].includes(g)).map(([g, items]) => [g, items.filter(([sh]) => !seen.has(sh) && seen.add(sh))]);
-    gallery.innerHTML = `<div class="slg-head">Shapes</div>` + groups.map(([g, items]) => `<div class="slg-group">${esc(g)}</div><div class="slg-grid">${items.map(([sh, label]) => `<button type="button" class="slg-item" data-shape="${sh}" title="${esc(label)}" aria-label="${esc(label)}"><svg viewBox="-4 -4 ${defaultSize(sh)[0] + 8} ${defaultSize(sh)[1] + 8}">${shapeSvg({ shape: sh, w: defaultSize(sh)[0], h: defaultSize(sh)[1], style: {} }, 'slg-shape')}</svg></button>`).join('')}</div>`).join('');
+    gallery.innerHTML = `<div class="slg-head">${tr('slides.shapes')}</div>` + groups.map(([g, items]) => `<div class="slg-group">${esc(g)}</div><div class="slg-grid">${items.map(([sh, label]) => `<button type="button" class="slg-item" data-shape="${sh}" title="${esc(label)}" aria-label="${esc(label)}"><svg viewBox="-4 -4 ${defaultSize(sh)[0] + 8} ${defaultSize(sh)[1] + 8}">${shapeSvg({ shape: sh, w: defaultSize(sh)[0], h: defaultSize(sh)[1], style: {} }, 'slg-shape')}</svg></button>`).join('')}</div>`).join('');
     gallery.hidden = false; gallery.querySelector('button')?.focus();
     gallery.onclick = (e) => {
       const b = e.target.closest('[data-shape]'); if (!b) return; const sh = b.dataset.shape; closeGallery();
@@ -1040,7 +1041,7 @@ export function mountSlides(host, ctx) {
   }
   async function iconGallery(onPick) {
     const { searchIcons, iconSvg } = await import('./slides-icons.js');
-    gallery.innerHTML = `<div class="slg-head">Icons <span class="slg-sub">Lucide</span></div><input class="input slg-search" type="search" placeholder="Search icons, e.g. rocket, chart, user" aria-label="Search icons"><div class="slg-grid slg-icons" role="listbox" aria-label="Icons"></div>`;
+    gallery.innerHTML = `<div class="slg-head">${tr('slides.icons')} <span class="slg-sub">${tr('slides.lucide')}</span></div><input class="input slg-search" type="search" placeholder="${tr('slides.search-icons-e-g-rocket-chart-user')}" aria-label="${tr('slides.search-icons')}"><div class="slg-grid slg-icons" role="listbox" aria-label="${tr('slides.icons')}"></div>`;
     gallery.hidden = false;
     const grid = gallery.querySelector('.slg-icons'), q = gallery.querySelector('.slg-search');
     let seq = 0;
@@ -1048,7 +1049,7 @@ export function mountSlides(host, ctx) {
       const n = ++seq; const names = await searchIcons(q.value, 96);
       const svgs = await Promise.all(names.map((nm) => iconSvg(nm, 2)));
       if (n !== seq) return;
-      grid.innerHTML = names.length ? names.map((nm, i) => `<button type="button" class="slg-item" data-icon="${nm}" title="${nm}" aria-label="${nm}">${svgs[i]}</button>`).join('') : '<p class="slg-empty">No icon matches.</p>';
+      grid.innerHTML = names.length ? names.map((nm, i) => `<button type="button" class="slg-item" data-icon="${nm}" title="${nm}" aria-label="${nm}">${svgs[i]}</button>`).join('') : '<p class="slg-empty">' + tr('slides.no-icon-matches') + '</p>';
     };
     q.addEventListener('input', show); await show(); q.focus();
     gallery.onclick = (e) => {
@@ -1075,9 +1076,9 @@ export function mountSlides(host, ctx) {
     const { parseRef, resolveTarget, docKind } = await import('./refs-syntax.js');
     const { target, part } = parseRef(t.replace(/^!?\[\[|\]\]$/g, '').replace(/^\{\{|\}\}$/g, ''));
     const env = ctx.refEnv(); const path = resolveTarget(target, env.files, env.from);
-    if (!path || docKind(path) !== 'sheet') return ctx.toast('Choose a sheet and a range, for example Costs!A1:E5.');
+    if (!path || docKind(path) !== 'sheet') return ctx.toast(tr('slides.choose-a-sheet-and-a-range-for-example'));
     const bang = part.lastIndexOf('!'); const sheet = bang >= 0 ? part.slice(0, bang).replace(/^'|'$/g, '') : ''; const range = bang >= 0 ? part.slice(bang + 1) : part;
-    if (!/:/.test(range)) return ctx.toast('A chart needs a range of cells, for example A1:E5.');
+    if (!/:/.test(range)) return ctx.toast(tr('slides.a-chart-needs-a-range-of-cells-for-exa'));
     box(`\`\`\`chart\ntype: column\nsource: /${path}\n${sheet ? `sheet: ${sheet}\n` : ''}range: ${range}\n\`\`\``, 640, 380);
   }
   async function insertRefBox(kind) {
@@ -1088,24 +1089,24 @@ export function mountSlides(host, ctx) {
   function insertMenu(anchor) {
     const line = (extra, w, h) => placeBlock(({ x, y, id }) => `::: line #${id('line')} x=${x} y=${y + h} w=${w} h=0${extra} :::`, w, h);
     ctx.showMenu(anchor, [
-      { label: 'Text box', run: () => addObjectBlock('box') },
-      { label: 'Shape…', run: shapeGallery },
-      { label: 'Icon…', run: () => iconGallery() },
+      { label: tr('slides.text-box'), run: () => addObjectBlock('box') },
+      { label: tr('slides.shape'), run: shapeGallery },
+      { label: tr('slides.icon'), run: () => iconGallery() },
       { label: 'Diagram (SmartArt)…', run: insertSmart }, '-',
-      { label: 'Freeform (draw)', run: startDraw },
-      { label: 'Line', run: () => line('', 320, 0) },
-      { label: 'Arrow', run: () => line(' head=arrow', 320, 0) },
-      { label: 'Connector between two objects', run: connectSelected, disabled: selected.length !== 2 }, '-',
-      { label: 'Image…', run: insertImage },
-      { label: 'Video or audio…', run: insertMedia },
-      { label: 'Table', run: () => box('| Item | Value |\n| --- | --- |\n| One | 1 |\n| Two | 2 |', 560, 220) },
-      { label: 'Chart from a sheet…', run: insertChart },
-      { label: 'Equation', run: () => box('$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$', 480, 160, ' align=center valign=middle') },
-      { label: 'Code', run: () => box('```js\nconst answer = 42;\n```', 520, 200) }, '-',
+      { label: tr('slides.freeform-draw'), run: startDraw },
+      { label: tr('slides.line'), run: () => line('', 320, 0) },
+      { label: tr('slides.arrow'), run: () => line(' head=arrow', 320, 0) },
+      { label: tr('slides.connector-between-two-objects'), run: connectSelected, disabled: selected.length !== 2 }, '-',
+      { label: tr('slides.image'), run: insertImage },
+      { label: tr('slides.video-or-audio'), run: insertMedia },
+      { label: tr('slides.table'), run: () => box('| Item | Value |\n| --- | --- |\n| One | 1 |\n| Two | 2 |', 560, 220) },
+      { label: tr('slides.chart-from-a-sheet'), run: insertChart },
+      { label: tr('slides.equation'), run: () => box('$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$', 480, 160, ' align=center valign=middle') },
+      { label: tr('slides.code'), run: () => box('```js\nconst answer = 42;\n```', 520, 200) }, '-',
       { label: 'Zoom to a slide', run: () => { const list = deck.slides.filter((x) => !x.master); const me = deck.slides[cur]; const t = list.find((x) => x.number > (me?.number || 0)) || list[0]; placeBlock(({ x, y, id }) => `::: zoom #${id('zoom')} x=${x} y=${y} w=384 h=216 slide=${t?.number || 1} :::`, 384, 216); } },
       { label: 'Summary zoom (one per section)', run: summaryZoom, disabled: !deck.slides.some((x) => x.section) }, '-',
-      { label: 'Live value from another document…', run: () => insertRefBox('value') },
-      { label: 'Embed from another document…', run: () => insertRefBox('embed') },
+      { label: tr('slides.live-value-from-another-document'), run: () => insertRefBox('value') },
+      { label: tr('slides.embed-from-another-document'), run: () => insertRefBox('embed') },
     ]);
   }
   /** a new slide with a zoom to each section, laid out in a grid */
@@ -1120,7 +1121,7 @@ export function mountSlides(host, ctx) {
   }
   function connectSelected() {
     const objs = objsNow(); const [a, b] = selected.map((i) => objs[i]);
-    if (!a || !b || a.kind === 'line' || b.kind === 'line') return ctx.toast('Select two objects (not lines) to connect.');
+    if (!a || !b || a.kind === 'line' || b.kind === 'line') return ctx.toast(tr('slides.select-two-objects-not-lines-to-connec'));
     const { fm, list } = chunks(); let t = list[cur];
     const ensure = (i) => { const o = scanObjects(t)[i]; if (o.id) return o.id; const nid = nextId(t, o.kind === 'image' ? 'image' : o.kind); t = setObjectAttrs(t, i, { id: nid }); return nid; };
     const ia = ensure(selected[0]), ib = ensure(selected[1]);
@@ -1163,15 +1164,15 @@ export function mountSlides(host, ctx) {
     const li = e.target.closest('[data-i]'); if (!li) return; e.preventDefault();
     const i = Number(li.dataset.i); select(i, { reveal: false });
     ctx.showMenu(null, [
-      { label: 'New slide after', run: () => addSlide('default', i + 1) },
-      { label: 'Duplicate', run: () => duplicateSlide(i) }, '-',
-      { label: 'Copy embed reference', run: () => ctx.copyRef?.(String(i + 1), 'embed') }, { label: 'Copy link to slide', run: () => ctx.copyRef?.(String(i + 1), 'link') }, '-',
-      { label: 'Move up', run: () => moveSlide(i, i - 1) }, { label: 'Move down', run: () => moveSlide(i, i + 1) }, '-',
-      { label: deck.slides[i].hidden ? 'Show slide' : 'Hide slide', run: () => hideSlides([i], !deck.slides[i].hidden) },
-      { label: deck.slides[i].section ? 'Rename section…' : 'Add section here…', run: () => sectionAt(i) },
-      ...(deck.slides[i].section ? [{ label: 'Remove section', run: () => editAt(i, (c) => setDirective(c, 'section', null)) }] : []),
-      { label: 'Add comment…', run: () => { select(i); commentPrompt(); } }, '-',
-      { label: 'Delete slide', danger: true, run: () => deleteSlide(i) },
+      { label: tr('slides.new-slide-after'), run: () => addSlide('default', i + 1) },
+      { label: tr('slides.duplicate'), run: () => duplicateSlide(i) }, '-',
+      { label: tr('slides.copy-embed-reference'), run: () => ctx.copyRef?.(String(i + 1), 'embed') }, { label: tr('slides.copy-link-to-slide'), run: () => ctx.copyRef?.(String(i + 1), 'link') }, '-',
+      { label: tr('slides.move-up'), run: () => moveSlide(i, i - 1) }, { label: tr('slides.move-down'), run: () => moveSlide(i, i + 1) }, '-',
+      { label: deck.slides[i].hidden ? tl('slides', 'Show slide') : tl('slides', 'Hide slide'), run: () => hideSlides([i], !deck.slides[i].hidden) },
+      { label: deck.slides[i].section ? tl('slides', 'Rename section…') : tl('slides', 'Add section here…'), run: () => sectionAt(i) },
+      ...(deck.slides[i].section ? [{ label: tr('slides.remove-section'), run: () => editAt(i, (c) => setDirective(c, 'section', null)) }] : []),
+      { label: tr('slides.add-comment-2'), run: () => { select(i); commentPrompt(); } }, '-',
+      { label: tr('slides.delete-slide'), danger: true, run: () => deleteSlide(i) },
     ], { x: e.clientX, y: e.clientY });
   });
   let drag = null;
@@ -1190,7 +1191,7 @@ export function mountSlides(host, ctx) {
   host.querySelector('[data-sl-paginate]').addEventListener('change', (e) => { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, 'paginate', String(e.target.checked)), list)); });
   let notesTimer;
   notesEl.addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(() => editChunk((c) => setNotes(c, notesEl.value)), 350); });
-  host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: 'Synced copy of a slide…', run: reuseSlide }, '-', ...BLOCKS.map(([id, l, body]) => ({ label: `Building block: ${l}`, run: () => addBlock(body) }))]));
+  host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: tr('slides.synced-copy-of-a-slide'), run: reuseSlide }, '-', ...BLOCKS.map(([id, l, body]) => ({ label: `Building block: ${l}`, run: () => addBlock(body) }))]));
   function addBlock(body) { const { fm, list } = chunks(); list.splice(cur + 1, 0, `\n${body}\n`); cur += 1; selected = []; commit(joinDeck(fm, list)); }
   host.querySelector('[data-sl="present"]').addEventListener('click', () => present(cur));
   host.querySelector('[data-sl="present-menu"]').addEventListener('click', async (e) => {
@@ -1239,8 +1240,8 @@ export function mountSlides(host, ctx) {
     } };
   }
   host.querySelector('[data-sl="export"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [
-    { label: 'PowerPoint (.pptx)…', run: () => exportPptx() },
-    { label: 'PDF…', run: () => exportPdf() },
+    { label: tr('slides.powerpoint-pptx'), run: () => exportPptx() },
+    { label: tr('slides.pdf'), run: () => exportPdf() },
   ]));
 
   /* animations */
@@ -1265,7 +1266,7 @@ export function mountSlides(host, ctx) {
   async function present(start = 0, showName = null) {
     const P = await import('./slides-present.js');
     const custom = showName ? P.customShows(deck)[showName] : null;
-    const order = custom || deck.shown; if (!order.length) return ctx.toast('There are no slides to present, only masters.');
+    const order = custom || deck.shown; if (!order.length) return ctx.toast(tr('slides.there-are-no-slides-to-present-only-ma'));
     const startSlide = deck.slides[start]; const from = custom ? 0 : Math.max(0, order.indexOf(startSlide?.master ? order[0] : startSlide));
     const openLink = (L, api) => {
       const wiki = L.match(/^\[\[(.+)\]\]$/);
@@ -1298,8 +1299,8 @@ export function mountSlides(host, ctx) {
       const body = await resolvedHtml();
       const html = `<!doctype html><html><head><meta charset="utf-8"><style>${await fontFaces({ inline: true })}@page{size:${deck.width}px ${deck.height}px;margin:0}html,body{margin:0}${slidesCss}.slide{page-break-after:always;break-after:page}</style></head><body>${body}</body></html>`;
       const out = await ctx.exportPdf(html);
-      if (out) ctx.toast('Slides exported to PDF.');
-    } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+      if (out) ctx.toast(tr('slides.slides-exported-to-pdf'));
+    } catch (e) { ctx.toast(tr('slides.export-failed-message', { message: e.message }), { kind: 'error' }); }
   }
   /** handouts (1–9 slides per A4 page) or notes pages (a slide with its speaker notes), as PDF */
   async function exportHandouts({ perPage = 3, notes = false } = {}) {
@@ -1327,8 +1328,8 @@ export function mountSlides(host, ctx) {
       };
       const bytes = await buildPptx(deck, { dataUrl: ctx.dataUrl, renderSlide, readNote: ctx.readNote, prepare });
       const out = await ctx.saveBinary('pptx', bytes);
-      if (out) ctx.toast('Slides exported to PowerPoint.');
-    } catch (e) { ctx.toast(`Export failed. ${e.message}`, { kind: 'error' }); }
+      if (out) ctx.toast(tr('slides.slides-exported-to-powerpoint'));
+    } catch (e) { ctx.toast(tr('slides.export-failed-message', { message: e.message }), { kind: 'error' }); }
   }
 
   return {

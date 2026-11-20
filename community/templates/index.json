@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "Folio community templates",
+  "templates": [
+    { "id": "sprint-planning", "name": "Sprint planning", "description": "Sprint goal, capacity, committed work and risks", "category": "Engineering", "icon": "🏃", "author": "Folio community", "file": "sprint-planning.md" },
+    { "id": "pr-faq", "name": "PR/FAQ (working backwards)", "description": "Write the press release and FAQ before building", "category": "Product", "icon": "📰", "author": "Folio community", "file": "pr-faq.md" },
+    { "id": "lean-canvas", "name": "Lean canvas", "description": "A one-page business model for a new idea", "category": "Strategy", "icon": "🧩", "author": "Folio community", "file": "lean-canvas.md" },
+    { "id": "swot", "name": "SWOT analysis", "description": "Strengths, weaknesses, opportunities and threats", "category": "Strategy", "icon": "🧭", "author": "Folio community", "file": "swot.md" },
+    { "id": "customer-journey", "name": "Customer journey map", "description": "Stages, actions, feelings and opportunities", "category": "Product", "icon": "🗺️", "author": "Folio community", "file": "customer-journey.md" },
+    { "id": "launch-checklist", "name": "Launch checklist", "description": "Everything to check before, during and after a launch", "category": "Planning", "icon": "🚀", "author": "Folio community", "file": "launch-checklist.md" },
+    { "id": "competitive-analysis", "name": "Competitive analysis", "description": "Compare competitors on the points that matter", "category": "Strategy", "icon": "🔎", "author": "Folio community", "file": "competitive-analysis.md" },
+    { "id": "interview-scorecard", "name": "Interview scorecard", "description": "Structured hiring interview with criteria and evidence", "category": "People", "icon": "🧑‍💼", "author": "Folio community", "file": "interview-scorecard.md" }
+  ]
+}

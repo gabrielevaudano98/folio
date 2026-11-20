@@ -13,8 +13,8 @@
   --color-chrome: oklch(97.2% 0 0 / 0.86);
   --color-ink: oklch(21% 0 0);
   --color-ink-2: oklch(38% 0 0);
-  --color-muted: oklch(52% 0 0);
-  --color-faint: oklch(66% 0 0);
+  --color-muted: oklch(48% 0 0);
+  --color-faint: oklch(54% 0 0);
   --color-rule: oklch(88% 0 0);
   --color-rule-strong: oklch(81% 0 0);
   --color-hover: oklch(21% 0 0 / 0.055);
@@ -69,6 +69,7 @@
   /* layout */
   --sidebar-w: 264px;
   --outline-w: 224px;
+  --dock-w-review: 320px;
   --titlebar-h: 52px;
   --statusbar-h: 28px;
   --measure: 72ch;
@@ -96,6 +97,25 @@
   --shadow-page: 0 0 0 0.5px oklch(20% 0 0 / 0.08), 0 1px 3px oklch(20% 0 0 / 0.06), 0 8px 28px -10px oklch(20% 0 0 / 0.14);
   --shadow-thumb: 0 1px 2px oklch(20% 0 0 / 0.25);
 
+  /* content palette: colours the author gives text in a page ([text]{color=…}). Not used by the interface, which stays grey. */
+  --content-gray: oklch(50% 0.00 0);
+  --content-gray-bg: oklch(93% 0.000 0);
+  --content-brown: oklch(50% 0.06 55);
+  --content-brown-bg: oklch(93% 0.017 55);
+  --content-orange: oklch(50% 0.15 55);
+  --content-orange-bg: oklch(93% 0.043 55);
+  --content-yellow: oklch(50% 0.15 90);
+  --content-yellow-bg: oklch(93% 0.043 90);
+  --content-green: oklch(50% 0.13 150);
+  --content-green-bg: oklch(93% 0.037 150);
+  --content-blue: oklch(50% 0.14 250);
+  --content-blue-bg: oklch(93% 0.040 250);
+  --content-purple: oklch(50% 0.14 300);
+  --content-purple-bg: oklch(93% 0.040 300);
+  --content-pink: oklch(50% 0.14 350);
+  --content-pink-bg: oklch(93% 0.040 350);
+  --content-red: oklch(50% 0.17 25);
+  --content-red-bg: oklch(93% 0.049 25);
 }
 
 [data-mode="dark"] {
@@ -106,8 +126,8 @@
   --color-chrome: oklch(20.5% 0 0 / 0.86);
   --color-ink: oklch(93.5% 0 0);
   --color-ink-2: oklch(80% 0 0);
-  --color-muted: oklch(66% 0 0);
-  --color-faint: oklch(52% 0 0);
+  --color-muted: oklch(72% 0 0);
+  --color-faint: oklch(62% 0 0);
   --color-rule: oklch(30% 0 0);
   --color-rule-strong: oklch(36% 0 0);
   --color-hover: oklch(93% 0 0 / 0.07);
@@ -128,4 +148,23 @@
   --syn-number: oklch(82% 0 0);
   --syn-type: oklch(88% 0 0);
   --syn-title: oklch(98% 0 0);
+  /* content palette, dark */
+  --content-gray: oklch(76% 0.00 0);
+  --content-gray-bg: oklch(32% 0.000 0);
+  --content-brown: oklch(76% 0.05 55);
+  --content-brown-bg: oklch(32% 0.024 55);
+  --content-orange: oklch(76% 0.12 55);
+  --content-orange-bg: oklch(32% 0.060 55);
+  --content-yellow: oklch(76% 0.12 90);
+  --content-yellow-bg: oklch(32% 0.060 90);
+  --content-green: oklch(76% 0.10 150);
+  --content-green-bg: oklch(32% 0.052 150);
+  --content-blue: oklch(76% 0.11 250);
+  --content-blue-bg: oklch(32% 0.056 250);
+  --content-purple: oklch(76% 0.11 300);
+  --content-purple-bg: oklch(32% 0.056 300);
+  --content-pink: oklch(76% 0.11 350);
+  --content-pink-bg: oklch(32% 0.056 350);
+  --content-red: oklch(76% 0.14 25);
+  --content-red-bg: oklch(32% 0.068 25);
 }

@@ -19,6 +19,12 @@ assert.equal(notes.resolve('docs/a.md'), path.join(ws, 'docs', 'a.md')); ok('a n
 throws(() => notes.resolve('../outside/secret.md'), 'dot-dot'); ok('.. traversal is refused');
 assert.equal(notes.resolve('/docs/a.md'), path.join(ws, 'docs', 'a.md')); ok('a leading slash stays inside the workspace');
 throws(() => notes.resolve('.git/config'), 'git'); throws(() => notes.resolve('.env'), 'env'); throws(() => notes.resolve('docs/.hidden/x.md'), 'nested'); ok('hidden files and folders are refused');
+fs.mkdirSync(path.join(ws, 'docs', '.asset', '.trash'), { recursive: true }); fs.writeFileSync(path.join(ws, 'docs', '.asset', 'aaaaaaaa-x.png'), 'png');
+throws(() => notes.resolve('docs/.asset/aaaaaaaa-x.png'), 'asset by default'); ok('.asset is hidden unless the caller asks for it');
+assert.equal(notes.resolve('docs/.asset/aaaaaaaa-x.png', { allowAsset: true }), path.join(ws, 'docs', '.asset', 'aaaaaaaa-x.png')); ok('allowAsset reaches a file in a .asset folder');
+for (const bad of ['docs/.asset/.trash/x', '.git/config', '.env', 'docs/.hidden/.asset/x', 'docs/.asset/.env', '../outside/secret.md']) throws(() => notes.resolve(bad, { allowAsset: true }), bad);
+ok('allowAsset opens nothing else: trash, .git, .env, other hidden folders and traversal stay refused');
+try { fs.symlinkSync(outside, path.join(ws, 'docs2-link')); fs.mkdirSync(path.join(ws, 'docs2')); fs.symlinkSync(outside, path.join(ws, 'docs2', '.asset')); fs.writeFileSync(path.join(outside, 'p.png'), 'x'); throws(() => notes.resolve('docs2/.asset/p.png', { allowAsset: true }), 'linked .asset'); ok('a .asset folder that is a link out of the workspace is refused'); } catch (e) { if (e.code !== 'EPERM') throw e; }
 throws(() => notes.resolve('.', { notRoot: true })); throws(() => notes.resolve('docs/..', { notRoot: true })); ok('the workspace folder itself is refused for changes');
 assert.equal(notes.resolve('.'), ws); ok('but it can still be named for listing');
 await assert.rejects(notes.move('.', 'moved'), NotesError); ok('the workspace folder cannot be moved');

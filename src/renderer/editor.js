@@ -181,15 +181,15 @@ const aiField = StateField.define({
 });
 
 /* formatting commands */
-function wrap(view, mark, ph = 'text') {
+function wrap(view, mark, ph = 'text', close = mark) {
   const tr = view.state.changeByRange((r) => {
     const sel = view.state.sliceDoc(r.from, r.to);
-    const before = view.state.sliceDoc(r.from - mark.length, r.from), after = view.state.sliceDoc(r.to, r.to + mark.length);
-    if (before === mark && after === mark) {
-      return { changes: [{ from: r.from - mark.length, to: r.from }, { from: r.to, to: r.to + mark.length }], range: EditorSelection.range(r.from - mark.length, r.to - mark.length) };
+    const before = view.state.sliceDoc(r.from - mark.length, r.from), after = view.state.sliceDoc(r.to, r.to + close.length);
+    if (before === mark && after === close) {
+      return { changes: [{ from: r.from - mark.length, to: r.from }, { from: r.to, to: r.to + close.length }], range: EditorSelection.range(r.from - mark.length, r.to - mark.length) };
     }
     const text = sel || ph;
-    return { changes: { from: r.from, to: r.to, insert: mark + text + mark }, range: EditorSelection.range(r.from + mark.length, r.from + mark.length + text.length) };
+    return { changes: { from: r.from, to: r.to, insert: mark + text + close }, range: EditorSelection.range(r.from + mark.length, r.from + mark.length + text.length) };
   });
   view.dispatch(tr, { userEvent: 'input.format' }); view.focus(); return true;
 }
@@ -326,6 +326,7 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
       return view.state.doc.lineAt(block.from).number;
     },
     run(name, ...a) { const c = commands[name]; return c ? (a.length ? c(...a)(view) : c(view)) : false; },
+    wrap(before, after) { return wrap(view, before, 'text', after); },
     insert(text) { const r = view.state.selection.main; view.dispatch({ changes: { from: r.from, to: r.to, insert: text }, selection: { anchor: r.from + text.length } }); view.focus(); },
     focus() { view.focus(); },
     setLive(on) { view.dispatch({ effects: liveComp.reconfigure(on ? livePlugin(resolveImage) : []) }); },

@@ -32,6 +32,39 @@ export function findRefs(text) {
   return out;
 }
 
+/** plain-text mentions of a document's name that are not links yet: outside front matter, code, links and references.
+ *  Returns [{ start, end, line, text }] with offsets in `text`. */
+export function findMentions(text, name) {
+  const n = String(name || '').trim(); if (n.length < 3) return [];
+  const re = new RegExp(`(?<![\\p{L}\\p{N}_])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'giu');
+  const fm = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text); const skipTo = fm ? fm[0].length : 0;
+  const refs = findRefs(text); const out = []; let fence = null, off = 0, lineNo = 0;
+  for (const line of text.split('\n')) {
+    lineNo++;
+    const f = line.match(/^\s*(```|~~~)/);
+    if (f) fence = fence ? (line.trim().startsWith(fence) ? null : fence) : f[1];
+    else if (!fence && off >= skipTo) {
+      const masked = line.replace(/`[^`]*`/g, (m) => ' '.repeat(m.length)).replace(/\[[^\]]*\]\([^)]*\)|<[^>]*>|https?:\/\/\S+|\{\{[^}]*\}\}/g, (m) => ' '.repeat(m.length));
+      re.lastIndex = 0; let m;
+      while ((m = re.exec(masked))) {
+        const a = off + m.index, b = a + m[0].length;
+        if (refs.some((r) => a < r.end && b > r.start)) continue;
+        out.push({ start: a, end: b, line: lineNo, text: line.trim().slice(0, 200), match: text.slice(a, b) });
+      }
+    }
+    off += line.length + 1;
+  }
+  return out;
+}
+/** turn one mention into a link: [[Name]], or [[Name|as written]] when the case differs */
+/** every unlinked mention of `name` in a text, linked in one pass (from the end, so the offsets stay true) */
+export function linkAllMentions(text, name) {
+  const hits = findMentions(text, name).sort((a, b) => b.start - a.start); let out = text;
+  for (const h of hits) out = linkMention(out, h, name);
+  return { text: out, count: hits.length };
+}
+export const linkMention = (text, m, name) => text.slice(0, m.start) + (m.match === name ? `[[${name}]]` : `[[${name}|${m.match}]]`) + text.slice(m.end);
+
 const norm = (p) => String(p).replace(/\\/g, '/').replace(/^\.?\//, '');
 const stem = (p) => norm(p).split('/').pop().replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx|txt)$/i, '');
 const noExt = (p) => norm(p).replace(/\.(md|markdown|mdx|txt)$/i, '');
