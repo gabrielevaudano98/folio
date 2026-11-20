@@ -14,7 +14,7 @@ The startup bundle held every editor (1.3 MB of JavaScript, including the slide 
 
 ## Decision
 
-`app.js` imports `slides.js`, `board.js` and `sheet.js` the first time a document of that type is shown; esbuild splits them into chunks. The startup bundle is 237 KB.
+`app.js` imports `slides.js`, `board.js` and `sheet.js` the first time a document of that type is shown; esbuild splits them into chunks. This took the startup bundle from 1.3 MB to 237 KB; after the 1.3.0 page features (i18n, templates, page tools) it is 863 KB, still without the visual editors.
 
 ## Consequences
 

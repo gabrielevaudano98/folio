@@ -9,8 +9,8 @@ The tools Folio offers to AI assistants, over HTTP (in the app) and stdio (the b
 | `list_notes` | no | List Markdown notes in the workspace, most recently modified first. |
 | `read_note` | no | Read the full Markdown of a note, or a line range. |
 | `search_notes` | no | Full-text search across every note. Returns paths and matching lines with line numbers. |
-| `get_outline` | no | Return the heading structure of a note with line numbers. |
-| `get_format_guide` | no | Return the syntax of Folio document types: slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/). |
+| `get_outline` | no | Return the heading structure of a note: level, text, first line and last line of each section (sub-sections included). |
+| `get_format_guide` | no | Return the syntax of Folio document types: pages (.md: footnotes, maths, colour, alignment, hidden comments), slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/). |
 | `get_sheet_values` | no | Evaluate every formula in a .sheet.md note and return each sheet as a grid of computed values, with cell addresses. |
 | `get_open_note` *(app only)* | no | Return the note the user has open in Folio right now, its unsaved text and the current selection. |
 | `create_note` | yes | Create a new note. Fails if the path already exists. |
@@ -20,6 +20,18 @@ The tools Folio offers to AI assistants, over HTTP (in the app) and stdio (the b
 | `resolve_ref` | no | Compute what a Folio reference points at, as Folio would show it: a sheet cell value or range, a slide title, a board shape label, or a page section. Reference syntax: "Doc#part", e.g. "Budget.sheet#Summary!B7", "Pitch.slides#3", "System.board#api", "Roadmap#Goals". |
 | `get_backlinks` | no | List every link ([[..]]), live value ({{..}}) and embed (![[..]]) in the workspace that points at a document. |
 | `find_broken_links` | no | List references whose target document does not exist, in one document or the whole workspace. |
+| `find_unused_assets` | no | List pictures, media and attachments in the hidden .asset folders that no page references (candidates for clean-up; Folio asks the user before removing anything), with their size. |
+| `find_missing_assets` | no | List asset references (images, media, attachments) whose file does not exist, with the page and line. |
+| `read_section` | no | Read one section of a page: a heading and everything under it. Name the heading ("Goals"), give a path to tell twins apart ("Plan > Goals"), or pass its line from get_outline. |
+| `replace_section` | yes | Replace what is under a heading (sub-sections included) with new Markdown. The heading line stays unless includeHeading is true, in which case content must start with its own heading. The rest of the page is untouched. |
+| `insert_after` | yes | Insert Markdown as new blocks after a heading's section (sub-sections included) or after the block that ends with a block id, e.g. "^a1b2c3". |
+| `add_comment` | yes | Comment on a passage of a page. The passage is highlighted and the comment written as CriticMarkup ({==passage==}{>>You, date: comment<<}), which Folio shows in its Review tab and other editors show as plain text. |
+| `suggest_edit` | yes | Propose a change as a tracked suggestion the user can accept or reject, instead of editing the text: oldText → newText, or delete oldText (newText empty), or add newText after insertAfter. Optional comment explains why. |
+| `resolve_link` | no | Say where a link points: pass "[[Note#Heading\|label]]" or "Note#^id". Returns the document path (or that it does not exist, with similar names), its type, and the heading or block it targets with line numbers. |
+| `list_versions` | no | List the saved versions of a document, newest first: id, time, who made it (you or an AI client), why, words added or removed, and the name if the user named it. |
+| `get_version` | no | Read the full text of a saved version (id from list_versions; a prefix is enough, or "latest"). |
+| `diff_versions` | no | Show what changed between two versions as a unified diff, with the number of words added and removed. "to" defaults to the current text of the file; "current" and "latest" are accepted. |
+| `restore_version` | yes | Put a saved version back as the document's text. The current text is saved as a version first, so the restore itself can be undone. |
 | `move_note` | yes | Move or rename a note inside the workspace. References to it in other documents are updated. |
 | `open_note` *(app only)* | no | Open a note in Folio so the user sees it, optionally scrolled to a line. |
 | `list_slides` | no | List the slides of a deck: number, title, layout, section, hidden, transition, number of placed objects and animations, and whether it has speaker notes. |
@@ -69,7 +81,7 @@ Full-text search across every note. Returns paths and matching lines with line n
 
 ## `get_outline`
 
-Return the heading structure of a note with line numbers.
+Return the heading structure of a note: level, text, first line and last line of each section (sub-sections included).
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
@@ -77,11 +89,11 @@ Return the heading structure of a note with line numbers.
 
 ## `get_format_guide`
 
-Return the syntax of Folio document types: slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/).
+Return the syntax of Folio document types: pages (.md: footnotes, maths, colour, alignment, hidden comments), slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/).
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
-| `type` | `slides`, `board`, `sheet`, `template`, `all` | no |  |
+| `type` | `page`, `slides`, `board`, `sheet`, `template`, `all` | no |  |
 
 ## `get_sheet_values`
 
@@ -159,6 +171,124 @@ List references whose target document does not exist, in one document or the who
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | no |  |
+
+## `find_unused_assets`
+
+List pictures, media and attachments in the hidden .asset folders that no page references (candidates for clean-up; Folio asks the user before removing anything), with their size.
+
+No arguments.
+
+## `find_missing_assets`
+
+List asset references (images, media, attachments) whose file does not exist, with the page and line.
+
+No arguments.
+
+## `read_section`
+
+Read one section of a page: a heading and everything under it. Name the heading ("Goals"), give a path to tell twins apart ("Plan > Goals"), or pass its line from get_outline.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `heading` | string | no |  |
+| `line` | integer | no |  |
+| `includeChildren` | boolean | no | Include sub-sections (default true) |
+
+## `replace_section`
+
+Replace what is under a heading (sub-sections included) with new Markdown. The heading line stays unless includeHeading is true, in which case content must start with its own heading. The rest of the page is untouched.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `heading` | string | no |  |
+| `line` | integer | no |  |
+| `content` | string | yes |  |
+| `includeHeading` | boolean | no |  |
+
+## `insert_after`
+
+Insert Markdown as new blocks after a heading's section (sub-sections included) or after the block that ends with a block id, e.g. "^a1b2c3".
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `after` | string | yes | A heading ("Goals", "Plan > Goals") or a block id ("^a1b2c3") |
+| `line` | integer | no | Line of the heading, when its text is not unique |
+| `content` | string | yes |  |
+
+## `add_comment`
+
+Comment on a passage of a page. The passage is highlighted and the comment written as CriticMarkup ({==passage==}{>>You, date: comment<<}), which Folio shows in its Review tab and other editors show as plain text.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `quote` | string | yes | The exact passage to comment on |
+| `comment` | string | yes |  |
+| `occurrence` | integer | no | Which match, when the passage appears more than once |
+| `author` | string | no |  |
+
+## `suggest_edit`
+
+Propose a change as a tracked suggestion the user can accept or reject, instead of editing the text: oldText → newText, or delete oldText (newText empty), or add newText after insertAfter. Optional comment explains why.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `oldText` | string | no |  |
+| `newText` | string | no |  |
+| `insertAfter` | string | no |  |
+| `comment` | string | no |  |
+| `occurrence` | integer | no |  |
+| `author` | string | no |  |
+
+## `resolve_link`
+
+Say where a link points: pass "[[Note#Heading|label]]" or "Note#^id". Returns the document path (or that it does not exist, with similar names), its type, and the heading or block it targets with line numbers.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `link` | string | yes |  |
+| `from` | string | no | Path of the page containing the link, for relative names |
+
+## `list_versions`
+
+List the saved versions of a document, newest first: id, time, who made it (you or an AI client), why, words added or removed, and the name if the user named it.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `limit` | integer | no |  |
+
+## `get_version`
+
+Read the full text of a saved version (id from list_versions; a prefix is enough, or "latest").
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `id` | string | yes |  |
+
+## `diff_versions`
+
+Show what changed between two versions as a unified diff, with the number of words added and removed. "to" defaults to the current text of the file; "current" and "latest" are accepted.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `from` | string | yes |  |
+| `to` | string | no |  |
+
+## `restore_version`
+
+Put a saved version back as the document's text. The current text is saved as a version first, so the restore itself can be undone.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `id` | string | yes |  |
 
 ## `move_note`
 

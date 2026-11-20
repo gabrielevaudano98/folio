@@ -71,7 +71,8 @@ export async function writeNew(file, data) {
   const tmp = tmpName(file);
   const fh = await fs.open(tmp, 'wx');
   try { await fh.writeFile(data, typeof data === 'string' ? 'utf8' : undefined); await fh.sync(); }
-  finally { await fh.close().catch(() => {}); }
+  catch (e) { await fh.close().catch(() => {}); await fs.rm(tmp, { force: true }).catch(() => {}); throw e; }
+  await fh.close().catch(() => {});
   try { await fs.link(tmp, file); }
   catch (e) {
     if (e.code === 'EEXIST') throw e;

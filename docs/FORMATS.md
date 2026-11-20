@@ -21,11 +21,89 @@ Any document can point at a part of another one. References are plain text, so t
 
 - Target: a document name (`Budget`, `Budget.sheet`), a file name (`Budget.sheet.md`), a path relative to this document, or a path from the workspace root (`/Finance/Budget.sheet.md`).
 - Parts: sheets `Sheet!A1`, `Sheet!A1:D9`, `A1` (first sheet) or `Sheet` (whole sheet); slides `3` (slide number, value is its title); boards nothing (whole board) or a shape id (value is its label); pages `Heading text` (a section) or `^block-id`.
+- In the Write view a `![[…]]` alone on a line is also drawn live under the line (read-only, with an Open button); the text on disk stays exactly as written.
 - Values and embeds update when the source changes. Renaming or moving a document in Folio (or with the `move_note` tool) rewrites every reference to it.
 - References inside code spans and code fences are text.
 - In sheet formulas a reference is a value: `={{Budget.sheet#Costs!H6}}*1.22`, `=SUM({{Budget.sheet#Costs!D2:D5}})`. A missing target or a loop between documents gives `#REF!`.
 - Synced slide copies: a slide that starts with `<!-- source: Pitch.slides#2 -->` is a copy of that slide. Folio shows when the source has changed and offers Update (replace this slide with the source) or Unlink (remove the comment).
 - MCP tools: `resolve_ref`, `get_backlinks`, `find_broken_links`.
+
+## Pages
+
+A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extensions. Write it as you would anywhere else.
+
+| What | Markdown | Notes |
+| --- | --- | --- |
+| Bold, italic, strike, code, link | `**b**` `*i*` `~~s~~` `` `c` `` `[text](url)` | |
+| Underline | `<u>text</u>` | |
+| Highlight | `==text==` | |
+| Superscript, subscript | `E = mc<sup>2</sup>`, `H<sub>2</sub>O` | |
+| Inline maths | `$e^{i\pi} + 1 = 0$` | KaTeX. No space after the opening `$` or before the closing one, no digit right after it, so `$5 and $10` stays text. |
+| Maths block | `$$` on its own line, the formula, `$$` | |
+| Footnote | `Claim[^1]` and, anywhere, `[^1]: Source text.` | Labels can be words: `[^source]`. |
+| Inline footnote | `Claim^[Source text.]` | |
+| Hidden comment | `%%only in the file%%` | Not shown in Read view or exports. |
+| Callout | `> [!tip] Title` then `> body` | GitHub and Obsidian types: note, abstract (summary, tldr), info, todo, tip (hint), success (check, done), question (help, faq), warning (attention), important, failure (fail, missing), danger (error), caution, bug, example, quote (cite). Unknown types are notes. `[!tip]-` starts folded, `[!tip]+` can fold. |
+| Notion callout (icon, colour) | `> [!callout|💡 yellow] Title` | Obsidian metadata after `|`: an emoji and/or a colour from the list below. Works on any type. |
+| Toggle | `<details>`, `<summary>Title</summary>`, a blank line, the content, `</details>` | `<details open>` starts open. Toggles can nest. |
+| Toggle heading | `<summary><h2>Title</h2></summary>` inside a toggle | h1 to h3. |
+| Columns | `:::: columns`, then two to five `::: column` … `:::`, then `::::` | The outer fence has four colons so it can hold the inner ones. |
+| Table of contents | `[TOC]` on its own line | Live list of the page's headings. |
+| Breadcrumb | `[BREADCRUMB]` on its own line | Where the page sits in the workspace. Folio only. |
+| Page break | `<div class="page-break"></div>` | A new page in print and PDF export. |
+| Image with width and caption | `![Alt|400](.asset/3fa9c1d2-photo.png "Caption")` | Width in pixels after `|` (Obsidian); the title is the caption. |
+| Video, audio | `![Demo](.asset/9be41c07-clip.mp4)`, `![](.asset/1c0d5e22-talk.mp3)` | Image syntax with a media file: mp4, webm, mov, m4v; mp3, m4a, wav, ogg, aac, flac. |
+| PDF | `![Annual report](.asset/77ab0e91-report.pdf)` | A card that opens the file. |
+| Web embed | `![](https://www.youtube.com/watch?v=…)` | YouTube, Vimeo, Loom, Figma, Google Maps and Drive, Miro, X, CodePen, Gist, Spotify, SoundCloud, Excalidraw, Canva: a card that opens in the browser (Folio does not load other sites inside the page). |
+| Web bookmark, file | a paragraph that is only a link: `[https://site.com](https://site.com)`, `[budget.xlsx](.asset/d20f6a3b-budget.xlsx)` | Drawn as a card. |
+| Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen from the block's menu. |
+| Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
+| Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
+| Link to a day | `[[2026-11-21]]` | The daily note, `Journal/2026-11-21.md`, made when you first open it. `@tomorrow`, `@next friday` and `@domani` write it. |
+| Link to a person | `[[Ada Lovelace]]` | A note in a `People/` folder; shown as a person chip. |
+| Tag | `#project`, `#project/alpha` | Starts after a space, has a letter, may contain `-`, `_`, `/`. Also read from front matter `tags:`. Not in code. |
+| Status chip, inline field | `[status:: In progress]`, `[owner:: Ada]` | Dataview inline field. `status` is a coloured chip (Not started, In progress, Blocked, Done; other words are grey). Click the chip to change it. A page can offer its own words in the front matter: `folio:` then `  status: [Idea, Design, Shipped]` (or a `- Idea` list); the `@` picker offers the same words. |
+| Emoji | `😄` | The character itself. `:smile` in the Write view looks it up. |
+| Table column alignment | `\| :--- \| :---: \| ---: \|` | GFM. Set from a column's menu or the Table tab; sorting, moving rows and columns (menu or dragging a grip) rewrite only the table. **Header row** off leaves the header cells empty (`\|  \|  \|`, valid GFM, hidden in Folio); on removes an empty header again. |
+| Properties | YAML front matter: `title: Text`, `count: 3`, `done: true`, `due: 2026-12-01`, `tags: [a, b/c]`, `owner: "[[Ada]]"` | Edited as fields above the title (a type chosen from a field's menu is remembered per property name in `.folio/property-types.json`; it only applies when the value fits); only the changed property's lines are rewritten. Nested maps are kept and shown read-only. |
+| Template button (Folio) | ```` ```template-button ```` with `label: New meeting`, `template: Meeting notes`, optional `where: above` | Drawn as a button; inserts the template from `Templates/` (or a starter). Other editors show a code block. |
+| Suggested insertion, deletion, replacement | `{++new text++}`, `{--old text--}`, `{~~old~>new~~}` | CriticMarkup. Accept or reject in the review pane; Suggesting mode writes them as you type. |
+| Comment | `{==quoted text==}{>>Ada, 2026-11-20 14:05: Comment<<}` | CriticMarkup. The `Author, date time:` prefix is optional; comments that follow each other are replies. |
+| Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |
+| Alignment (Folio) | a paragraph, then `{align=center}` on the next line; a heading: `## Title {align=right}` | left, center, right, justify. |
+
+The Write view has pickers for these: `[[` (pages, people, `Note#` headings, `Note#^` blocks, "Create"), `@` (people, pages, dates in English and Italian, status), `#` (tags in the workspace) and `:` (emoji). They only insert the plain text above.
+
+### Assets (`.asset`)
+
+Pictures, video, audio, PDFs, fonts and attachments live in a hidden `.asset` folder next to the page that first used them. A reference is an ordinary relative path in the Markdown (`![](.asset/3fa9c1d2-photo.png)`, `../.asset/…` from a sub-folder), so the file stays portable and any editor can read it.
+
+- **Names.** `<8 hex of the content hash>-<name>`: the same bytes are stored once (pasting a picture twice, or the same file into two pages, reuses the file). Writes are atomic (temp file, then rename). One file is at most 250 MB.
+- **Hidden and protected.** The folder starts with a dot, so the tree, search, tags and backlinks never list it, and Folio also sets the hidden attribute on Windows and macOS. Folio refuses to rename, move, create or trash a path inside `.asset`. The operating system can still delete it: Folio then reports which files a page is missing (on open and when the window regains focus).
+- **Removing a picture from a page** asks once whether to remove the file too, only if no other page uses it. The choice can be remembered (move to the asset trash, delete permanently, or keep). Nothing is removed while you can still press Undo: the question appears about two seconds after the save, and a reference that comes back cancels it.
+- **AI edits.** When an AI assistant's edit drops the last reference to a file, Folio asks the same question. Removal re-checks that no page uses the file at that moment. MCP tools `find_unused_assets` and `find_missing_assets` list them; none of them removes anything.
+- **Asset trash.** `.asset/.trash/<time>~<name>`, purged after 30 days. A reference to a file that is gone (Undo after removing it, restoring an old version) brings it back from there automatically.
+- **Moving a page** to another folder copies the files it uses into the new folder's `.asset` and rewrites its references.
+- **Old workspaces.** `assets/` references keep working. *Files: clean up unused files…* lists unused and missing files and moves `assets/` into `.asset` (a version of every changed page is kept first; the old files go to the asset trash).
+
+### Paste, import and export
+
+Nothing here adds syntax: pasting and importing write the Markdown above. HTML from Word, Google Docs, Notion and web pages becomes headings, lists, `- [ ]` tasks, GFM tables (column alignment kept), links, `**bold**`, `*italic*`, `~~strike~~`, `==highlight==`, `<sub>`, `<sup>`, `<u>` and `![alt|width](.asset/…)` images (pasted pictures are saved in the page's `.asset` folder). Export to Word writes headings, real lists and tables, footnotes, a contents field for `[TOC]`, and turns CriticMarkup into tracked changes (`{++ ++}`, `{-- --}`, `{~~ ~>  ~~}`) and comments (`{== ==}{>> <<}`, replies threaded); "Final text only" accepts every suggestion and drops comments. Hidden `%%comments%%`, front matter and `[BREADCRUMB]` are not exported.
+
+Colour and alignment use Pandoc attribute syntax. Other editors show them as plain text; **Export as portable Markdown** removes them.
+
+The Write view never reformats what you did not touch:
+
+- Opening a page does not change the file.
+- Editing a block rewrites only that block (a paragraph, a heading, a whole list or table). Every other byte stays as written, including blank lines, bullet markers and front matter.
+- A rewritten list keeps the bullet marker (`*`, `+`, `-`) and numbering style (`1.` or `1)`) the page already uses.
+- Markdown the Write view cannot edit without loss (raw HTML, link reference definitions) is shown drawn, marked "Kept as written", and edited as source (double-click, Enter, or "Edit source"). It is written back exactly as typed.
+
+Assistants editing a page through MCP can rely on the same rule: unchanged blocks keep their text.
+
+### Working on a page as an assistant (MCP)
+
+Work by section instead of rewriting the page: `get_outline` (level, text, first and last line of each section), `read_section`, `replace_section` (everything under a heading, sub-sections included; the heading stays), `insert_after` (after a heading's section, or after the block ending with a block id ` ^abc123`). A heading is named by its text (case does not matter), by a path (`Plan > Goals`) when twins exist, or by its line. To propose instead of apply, `suggest_edit` writes a tracked change (`{~~old~>new~~}`, `{--old--}`, or `{++new++}` after an anchor) and `add_comment` writes `{==passage==}{>>Client, date: comment<<}`; the person accepts or rejects them in the Review tab. The passage must match exactly once outside code (pass `occurrence` otherwise) and may not contain CriticMarkup delimiters. `resolve_link` says where `[[Note#Heading]]` or `[[Note#^id]]` points. Every write adds a version, and `list_versions`, `get_version`, `diff_versions` and `restore_version` (itself a version first) bring any earlier text back.
 
 ## slides-md
 
@@ -270,6 +348,18 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 - A cell that starts with `=` is a formula, Excel syntax: `SUM`, `AVERAGE`, `IF`, `IFS`, `IFERROR`, `COUNTIF`, `SUMIF`, `VLOOKUP`, `HLOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `ROUND`, `TEXTJOIN`, dates, finance and about 380 more. `$` locks a reference. Write a pipe inside a cell as `\|`.
 - The optional `<!-- sheet: {...} -->` comment right after a table holds formatting: `cols` and `cells` with `format` (`number`, `integer`, `currency`, `usd`, `percent`, `date`, `text`), `bold`, `italic`, `align`, `width`; `view: "kanban"` and `kanbanBy` (column index) for the Kanban view.
 - Values are not stored, only formulas. Through MCP, `get_sheet_values` returns the computed values.
+
+### Templates
+
+A template is a page in `Templates/` (folders are categories). It can describe itself in a `template:` map at the top of its front matter (`description`, `category`, `icon`, `source`); that map is removed from pages made from it. When used, these variables are filled: `{{title}}` (the new page's name), `{{date}}`, `{{time}}`, `{{datetime}}`, `{{yesterday}}`, `{{tomorrow}}`, `{{weekday}}`, each with an optional moment.js format (`{{date:dddd D MMMM YYYY}}`), and `{{cursor}}` (where the caret goes). Other `{{…}}` text is left as written. The template's properties are merged into the page's.
+
+## Version history
+
+Not a document format: versions live beside the documents in `<workspace>/.folio/history/` — `objects/ab/cdef….gz` (SHA-256 of the text, gzip) and `files/<sha1(path), 20 chars>.json` (`{path, versions:[{id,t,size,words,delta,by,reason,name?,note?}]}`). Dot folders are ignored by the tree, search, tags and backlinks. Round-trip: `test/history.test.mjs` (snapshot, rename, retention, diff and revert) and the UI test (edit → version → name → restore).
+
+### Template questions
+
+In a template, `{{ask:Label}}` asks for a value when the template is used: `|people` writes the answer as `[[Name]]`, `|date` uses a date picker, `|long` a multi-line box. The same label is asked once. Round-trip: `test/formats.test.mjs` (template questions).
 
 ## Meeting notes
 

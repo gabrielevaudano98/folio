@@ -38,4 +38,4 @@ assert.equal(black, true); assert.deepEqual(jumped, [4, 5]); console.log('  ✓ 
 assert.match(url, /^http:\/\/[\d.]+:\d+\/$/); void questions; console.log('  ✓ Q&A publishes a page on the local network with its address and QR code');
 const text = w.read('Pitch.slides.md');
 assert.match(text, /<!-- advance: \ds -->/); console.log('  ✓ rehearsed timings are saved as auto-advance on each slide');
-assert.match(text, /::: media #narration x=1192 y=632 w=56 h=56 src=\S*narration-5[^ ]*\.webm autoplay=true :::/); assert(fs.readdirSync(w.ws + '/assets').some((f) => /narration-5/.test(f))); console.log('  ✓ narration is recorded per slide as an audio object that plays when the slide shows');
+assert.match(text, /::: media #narration x=1192 y=632 w=56 h=56 src=\S*narration-5[^ ]*\.webm autoplay=true :::/); assert(fs.readdirSync(w.ws + '/.asset').some((f) => /narration-5/.test(f))); console.log('  ✓ narration is recorded per slide as an audio object that plays when the slide shows');

@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, screen, session, utilityProcess, MessageChannelMain, net, desktopCapturer } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -9,7 +9,11 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { tl, setLocale } from '../renderer/i18n.js';
 import { createNotes, NOTE_EXT } from './notes.js';
+import { createHistory } from './history.js';
+import { createGitLog } from './git-log.js';
+import { createAssets, isAssetPath } from './assets.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
@@ -37,8 +41,10 @@ const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 const BRIDGE_FILE = () => path.join(app.getPath('userData'), 'mcp-bridge.json');
 const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
-  lineWidth: 72, spellcheck: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true,
+  lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
+  language: 'en',
+  templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
@@ -73,6 +79,12 @@ function writeBridge() {
 }
 
 const notes = createNotes(() => settings.workspace);
+const history = createHistory(() => settings.workspace);
+const gitLog = createGitLog(() => settings.workspace);
+const assets = createAssets(notes);
+const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset folder belongs to Folio. Remove files from a page, or use Clean up unused files.'); };
+/* history must never get in the way of saving */
+const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); } return null; };
 let win = null;
 
 /* ---------------- window ---------------- */
@@ -157,6 +169,7 @@ async function setWorkspace(dir) {
   await watcher?.close();
   watcher = null;
   if (!dir) return;
+  assets.purgeTrash().catch(() => {}); // removed files older than 30 days leave the asset trash
   watcher = chokidar.watch(dir, {
     ignoreInitial: true, depth: 12,
     ignored: (p) => /(^|[/\\])(\.|node_modules)/.test(path.relative(dir, p)),
@@ -194,6 +207,7 @@ h('settings:set', async (patch) => {
   const { token: _t, features: _f, ...rest } = patch || {}; // the token and optional features have their own channels
   Object.assign(settings, rest);
   if ('theme' in patch) nativeTheme.themeSource = settings.theme;
+  if ('language' in patch) { setLocale(settings.language); buildMenu(); }
   saveSettings();
   if (patch.mcpEnabled !== undefined || patch.mcpPort !== before.mcpPort) await restartMcp();
   return { ...settings, token: undefined };
@@ -201,7 +215,7 @@ h('settings:set', async (patch) => {
 // optional features (meeting recorder): downloads, the recording session and its worker
 const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs') });
 h('workspace:choose', async () => {
-  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: 'Open a folder of notes' });
+  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;
   await setWorkspace(r.filePaths[0]);
   return r.filePaths[0];
@@ -215,11 +229,14 @@ h('workspace:close', async () => { await setWorkspace(null); return true; });
 h('workspace:reveal', (rel) => shell.showItemInFolder(rel ? notes.resolve(rel) : notes.root()));
 h('fs:tree', () => notes.tree());
 h('fs:read', (rel) => notes.read(rel));
+h('fs:info', async (rel) => { const st = await fs.stat(notes.resolve(rel)).catch(() => null); return st ? { size: st.size, mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs } : null; });
 h('fs:write', async (rel, content) => {
   const abs = notes.resolve(rel, { mustBeNote: true });
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
+  try { if (!(await history.list(rel)).length) { const was = await fs.readFile(abs, 'utf8').catch(() => null); if (was != null) await keep(rel, was, { reason: 'open', force: true }); } } catch {}
   await writeAtomic(abs, content);
+  keep(rel, content, { reason: 'edit' });
   return true;
 });
 h('fs:create', async (rel, content = '') => {
@@ -228,15 +245,25 @@ h('fs:create', async (rel, content = '') => {
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await writeAtomic(abs, content);
+  keep(notes.relOf(abs), content, { reason: 'created', force: true });
   return notes.relOf(abs);
 });
-h('fs:mkdir', async (rel) => { await fs.mkdir(notes.resolve(rel, { notRoot: true }), { recursive: true }); return rel; });
+h('fs:mkdir', async (rel) => { guardAsset(rel); await fs.mkdir(notes.resolve(rel, { notRoot: true }), { recursive: true }); return rel; });
 h('fs:rename', async (from, to) => {
+  guardAsset(from); guardAsset(to);
   const isDir = (await fs.stat(notes.resolve(from, { notRoot: true })).catch(() => null))?.isDirectory();
   const r = await notes.move(from, to);
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
-  for (const [a, b] of pairs) for (const c of await notes.rewriteAfterMove(a, b).catch(() => [])) changed.add(c);
+  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b, (f, text) => keep(f, text, { reason: 'before-rename', force: true })).catch(() => [])) changed.add(c); }
+  /* a page (or a folder of pages) moved: files a page uses that did not move with it are copied into its new .asset, references follow */
+  for (const [a, b] of pairs) {
+    if (path.dirname(a) === path.dirname(b)) continue;
+    try {
+      const text = await notes.read(b); const moved = await assets.relocate(a, b, text);
+      if (moved.text !== text) { await keep(b, text, { reason: 'move', force: true }); ownWrites.set(notes.resolve(b), moved.text); await writeAtomic(notes.resolve(b), moved.text); changed.add(b); }
+    } catch (e) { console.error('assets relocate', e.message); }
+  }
   return { to: r.to, changed: [...changed] };
 });
 // A copy of every trashed item is kept in a private folder for this session so the move can be undone.
@@ -246,6 +273,7 @@ let undoDir = null;
 const undoRoot = () => path.join(app.getPath('userData'), 'undo');
 async function clearTrashed() { trashed.clear(); undoDir = null; await fs.rm(undoRoot(), { recursive: true, force: true }).catch(() => {}); }
 h('fs:trash', async (rel) => {
+  guardAsset(rel);
   const abs = notes.resolve(rel, { notRoot: true });
   if (!undoDir) { await fs.mkdir(undoRoot(), { recursive: true, mode: 0o700 }); undoDir = await fs.mkdtemp(path.join(undoRoot(), 's-')); } // mkdtemp makes it owner-only
   const token = crypto.randomUUID(); const keep = path.join(undoDir, token);
@@ -266,29 +294,26 @@ h('fs:untrash', async (token) => {
   return e.rel;
 });
 h('fs:search', (q, opts) => notes.search(q, opts));
+/* version history */
+h('history:list', (rel) => history.list(rel));
+h('history:get', (rel, id) => history.get(rel, id));
+h('history:snapshot', (rel, text, reason, force) => keep(rel, text, { reason: reason || 'edit', force: !!force }));
+h('history:name', (rel, id, label, note) => history.name(rel, id, label, note));
+h('history:git', (rel) => gitLog.list(notes.relOf(notes.resolve(rel))));
+h('history:git-get', (rel, hash) => gitLog.show(notes.relOf(notes.resolve(rel)), hash));
+h('history:deleted', () => history.deleted());
+h('history:clear', (rel) => history.clear(rel));
+h('history:usage', () => history.usage());
 h('app:user-name', () => { try { const n = os.userInfo().username || ''; return n.charAt(0).toUpperCase() + n.slice(1); } catch { return ''; } });
 h('fs:backlinks', (rel) => notes.backlinks(rel));
+h('fs:unlinked', (rel) => notes.unlinkedMentions(rel));
 h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));
-/** a new file in the note's assets/ folder, checked by the workspace boundary after the folder exists, so an assets
- * link that leads outside the folder is refused; returns its absolute path and the reference to put in the note */
-async function assetFile(noteRel, name) {
-  const noteDir = path.dirname(notes.resolve(noteRel));
-  await fs.mkdir(path.join(noteDir, 'assets'), { recursive: true });
-  const file = notes.contain(path.join(noteDir, 'assets', `${Date.now().toString(36)}-${String(name).replace(/[^\w.-]+/g, '-')}`));
-  return { file, ref: path.relative(noteDir, path.join(noteDir, 'assets', path.basename(file))).split(path.sep).join('/') };
-}
-h('fs:save-image', async (noteRel, name, bytes) => {
-  const { file, ref } = await assetFile(noteRel, name || 'image.png');
-  await fs.writeFile(file, Buffer.from(bytes), { flag: 'wx' });
-  return ref;
-});
+h('fs:save-image', (noteRel, name, bytes) => assets.save(noteRel, name, bytes));
 h('fs:pick-image', async (noteRel) => {
-  const r = await dialog.showOpenDialog(win, { title: 'Insert image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }] });
+  const r = await dialog.showOpenDialog(win, { title: tl('dlg', 'Insert image'), properties: ['openFile'], filters: [{ name: tl('dlg', 'Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
-  const { file, ref } = await assetFile(noteRel, path.basename(r.filePaths[0]));
-  await fs.copyFile(r.filePaths[0], file, fss.constants.COPYFILE_EXCL);
-  return ref;
+  return assets.importFile(noteRel, r.filePaths[0]);
 });
 /** a PowerPoint file or template to import: its name and bytes (FOLIO_IMPORT_FILE stands in for the dialog in tests) */
 h('qa:start', (title) => startQa(String(title || '').slice(0, 80)));
@@ -305,16 +330,78 @@ h('fs:pick-office', async () => {
   return { name: path.basename(file).replace(/\.(pptx|potx)$/i, ''), ext: path.extname(file).slice(1).toLowerCase(), bytes: new Uint8Array(await fs.readFile(file)) };
 });
 h('fs:pick-media', async (noteRel, kind) => {
-  const font = kind === 'font';
-  const r = await dialog.showOpenDialog(win, { title: font ? 'Add a font file' : 'Insert video or audio', properties: ['openFile'], filters: font ? [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] : [{ name: 'Video and audio', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
+  const FILTERS = {
+    font: [{ name: tl('dlg', 'Fonts'), extensions: ['woff2', 'woff', 'ttf', 'otf'] }],
+    video: [{ name: tl('dlg', 'Video'), extensions: ['mp4', 'webm', 'mov', 'm4v'] }],
+    audio: [{ name: tl('dlg', 'Audio'), extensions: ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }],
+    pdf: [{ name: 'PDF', extensions: ['pdf'] }],
+    file: [],
+  };
+  const TITLES = { font: tl('dlg', 'Add a font file'), video: tl('dlg', 'Insert a video'), audio: tl('dlg', 'Insert audio'), pdf: tl('dlg', 'Insert a PDF'), file: tl('dlg', 'Attach a file') };
+  const r = await dialog.showOpenDialog(win, { title: TITLES[kind] || tl('dlg', 'Insert video or audio'), properties: ['openFile'], filters: FILTERS[kind] ?? [{ name: tl('dlg', 'Video and audio'), extensions: ['mp4', 'webm', 'mov', 'm4v', 'mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
-  const { file, ref } = await assetFile(noteRel, path.basename(r.filePaths[0]));
-  await fs.copyFile(r.filePaths[0], file, fss.constants.COPYFILE_EXCL);
-  return ref;
+  return assets.importFile(noteRel, r.filePaths[0]);
 });
-h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel).split(path.sep).join('/'));
+/* assets: files a page lost, files a page needs, unused and missing files, migration from assets/ */
+/* property types chosen per name, kept beside the history: <workspace>/.folio/property-types.json */
+const typesFile = () => path.join(notes.root(), '.folio', 'property-types.json');
+h('props:types', async () => { try { return JSON.parse(await fs.readFile(typesFile(), 'utf8')); } catch { return {}; } });
+h('props:set-type', async (key, type) => {
+  if (typeof key !== 'string' || !/^[A-Za-z_][\w .-]{0,40}$/.test(key) || !['text', 'number', 'checkbox', 'date', 'datetime', 'list', 'tags', 'link'].includes(type)) throw new Error('Not a property type.');
+  let cur = {}; try { cur = JSON.parse(await fs.readFile(typesFile(), 'utf8')); } catch {}
+  cur[key.toLowerCase()] = type; await fs.mkdir(path.dirname(typesFile()), { recursive: true }); await writeAtomic(typesFile(), JSON.stringify(cur, null, 1)); return cur;
+});
+h('assets:sync', async (noteRel, before, after) => ({ ...(await assets.heal(noteRel, after)), orphans: await assets.orphans(noteRel, before, after), refs: [...assets.refsOf(noteRel, after)] }));
+h('assets:restore', async (paths) => { let n = 0; for (const p of paths.slice(0, 500)) if (await assets.restore(p).catch(() => false)) n++; return n; });
+h('assets:heal', (noteRel, text) => assets.heal(noteRel, text));
+h('assets:remove', async (paths, permanent, { onlyUnused = true } = {}) => { const list = paths.slice(0, 500); const busy = onlyUnused ? await assets.stillUsed(list) : new Set(); let n = 0; for (const p of list) if (!busy.has(p) && await assets.remove(p, { permanent: !!permanent }).catch(() => false)) n++; return n; });
+h('assets:usage', () => assets.usage());
+h('assets:migrate', () => assets.migrateLegacy({ onBefore: (f, t) => keep(f, t, { reason: 'assets', force: true }) }));
+h('assets:reveal', (assetRel) => { const abs = notes.resolve(assetRel, { allowAsset: true }); shell.showItemInFolder(abs); });
+h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel, { allowAsset: true }).split(path.sep).join('/'));
 h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal(url); });
+/* open a file of the workspace (an attached PDF, a document) with the system's app */
+/* templates (D9): the community gallery and links to Markdown files. Text only, 1 MB at most, HTTPS (or this machine) */
+const TEMPLATE_MAX = 1024 * 1024;
+h('templates:fetch', async (url) => {
+  const u = new URL(String(url));
+  const local = u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname);
+  if (u.protocol !== 'https:' && !local) throw new Error('Only https:// links can be downloaded.');
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const res = await net.fetch(u.href, { signal: ctl.signal, redirect: 'follow' });
+    if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+    const type = res.headers.get('content-type') || '';
+    if (/^(image|video|audio|application\/(pdf|zip|octet-stream))/i.test(type)) throw new Error('That link is not a text file.');
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > TEMPLATE_MAX) throw new Error('That file is larger than 1 MB.');
+    return buf.toString('utf8');
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'The download took too long.' : e.message); } finally { clearTimeout(timer); }
+});
+h('templates:import-files', async () => {
+  const r = await dialog.showOpenDialog(win, { title: tl('dlg', 'Import templates'), properties: ['openFile', 'multiSelections'], filters: [{ name: tl('dlg', 'Markdown'), extensions: ['md', 'markdown', 'txt'] }] });
+  if (r.canceled) return [];
+  const out = [];
+  for (const f of r.filePaths.slice(0, 50)) { const st = await fs.stat(f); if (st.size > TEMPLATE_MAX) continue; out.push({ name: path.basename(f).replace(/\.(md|markdown|txt)$/i, ''), text: await fs.readFile(f, 'utf8') }); }
+  return out;
+});
+h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
+h('clipboard:read', () => ({ text: clipboard.readText(), html: clipboard.readHTML() }));
+/* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */
+h('import:document', async () => {
+  const pick = !app.isPackaged && process.env.FOLIO_IMPORT_FILE ? { filePaths: [process.env.FOLIO_IMPORT_FILE] } : await dialog.showOpenDialog(win, { title: tl('dlg', 'Import a document'), properties: ['openFile'], filters: [{ name: tl('dlg', 'Documents'), extensions: ['docx', 'html', 'htm'] }] });
+  const f = pick.filePaths?.[0]; if (pick.canceled || !f) return null;
+  const st = await fs.stat(f); if (st.size > 60 * 1024 * 1024) throw new Error('That file is larger than 60 MB.');
+  const name = path.basename(f).replace(/\.(docx|html?)$/i, '');
+  if (/\.html?$/i.test(f)) return { name, html: await fs.readFile(f, 'utf8'), messages: [] };
+  const { default: mammoth } = await import('mammoth');
+  const r = await mammoth.convertToHtml({ buffer: await fs.readFile(f) }, {
+    styleMap: ["p[style-name='Title'] => h1:fresh", "p[style-name='Subtitle'] => p > em:fresh", "p[style-name='Quote'] => blockquote > p:fresh", "p[style-name='Intense Quote'] => blockquote > p:fresh", "r[style-name='Code'] => code", "p[style-name='Code'] => pre:separator('\\n')", 'highlight => mark'],
+    convertImage: mammoth.images.imgElement((img) => img.read('base64').then((b) => ({ src: `data:${img.contentType};base64,${b}` }))),
+  });
+  return { name, html: r.value, messages: r.messages.filter((m) => m.type === 'warning').slice(0, 5).map((m) => m.message) };
+});
 
 h('export:html', async (rel, html) => {
   const r = await dialog.showSaveDialog(win, { defaultPath: rel.replace(/\.\w+$/, '.html').split('/').pop(), filters: [{ name: 'HTML', extensions: ['html'] }] });
@@ -355,7 +442,7 @@ h('fs:data-url', async (src, noteRel) => {
   }
   // local files: only inside the open folder, and only media types, so a note cannot pull in files like ~/.ssh/id_rsa
   const rel = decodeURI(src).replace(/^\.\//, '');
-  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src)) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel));
+  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src)) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel), { allowAsset: true });
   const mime = MIME[path.extname(abs).toLowerCase()];
   if (!mime) throw new Error('Only images, audio, video and fonts can be embedded.');
   const buf = await fs.readFile(abs);
@@ -373,7 +460,7 @@ h('export:pdf', async (rel, html, opts = {}) => {
   let pdf;
   try {
     await pw.loadFile(tmp);
-    pdf = await pw.webContents.printToPDF(opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
+    pdf = await pw.webContents.printToPDF(opts.print ? opts.print : opts.cssPage ? { printBackground: true, preferCSSPageSize: true, margins: { marginType: 'none' } } : { printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
   } finally { pw.destroy(); if (!process.env.FOLIO_KEEP_HTML) fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {}); }
   await fs.writeFile(r.filePath, pdf); if (!process.env.FOLIO_EXPORT_DIR) shell.showItemInFolder(r.filePath); return r.filePath;
 });
@@ -413,9 +500,13 @@ const appBackend = {
     if (!settings.workspace) throw new Error('No folder is open in Folio. Ask the user to open one.');
     logActivity({ client: ctx.client, tool: name, path: args.path || args.from || args.query || '' });
     return runTool(notes, name, args, {
+      history, client: ctx.client,
       onWrite: async (r) => {
+        if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
+        await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true });
         ownWrites.set(notes.resolve(r.path), r.after);
-        win?.webContents.send('ai:edit', { ...r, client: ctx.client });
+        const orphans = r.before != null ? await assets.orphans(r.path, r.before, r.after).catch(() => []) : [];
+        win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
       openNote: () => askRenderer('open-note'),
@@ -527,12 +618,12 @@ h('connections:install', async (id) => {
   if (fss.existsSync(t.file)) await fs.copyFile(t.file, t.file + '.folio-backup');
   cfg[t.key] = { ...(cfg[t.key] || {}), folio: t.shape(stdioEntry()) };
   await fs.mkdir(path.dirname(t.file), { recursive: true });
-  await fs.writeFile(t.file, JSON.stringify(cfg, null, 2));
+  await writeAtomic(t.file, JSON.stringify(cfg, null, 2));
   return { file: t.file, restart: t.restart };
 });
 h('connections:remove', async (id) => {
   const t = TARGETS[id]; const cfg = await readJson(t.file);
-  if (cfg[t.key]?.folio) { delete cfg[t.key].folio; await fs.writeFile(t.file, JSON.stringify(cfg, null, 2)); }
+  if (cfg[t.key]?.folio) { delete cfg[t.key].folio; await writeAtomic(t.file, JSON.stringify(cfg, null, 2)); }
   return true;
 });
 
@@ -540,63 +631,69 @@ h('connections:remove', async (id) => {
 function buildMenu() {
   const cmd = (id) => () => win?.webContents.send('menu:command', id);
   const template = [
-    ...(isMac ? [{ label: 'Folio', submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'Cmd+,', click: cmd('settings') }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }] : []),
-    { label: 'File', submenu: [
-      { label: 'New Note', accelerator: 'CmdOrCtrl+N', click: cmd('new-note') },
-      { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: cmd('open-folder') },
-      { label: 'Quick Open…', accelerator: 'CmdOrCtrl+P', click: cmd('quick-open') },
+    ...(isMac ? [{ label: 'Folio', submenu: [{ role: 'about' }, { type: 'separator' }, { label: tl('menu', 'Settings…'), accelerator: 'Cmd+,', click: cmd('settings') }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] }] : []),
+    { label: tl('menu', 'File'), submenu: [
+      { label: tl('menu', 'New Note'), accelerator: 'CmdOrCtrl+N', click: cmd('new-note') },
+      { label: tl('menu', 'Open Folder…'), accelerator: 'CmdOrCtrl+O', click: cmd('open-folder') },
+      { label: tl('menu', 'Quick Open…'), accelerator: 'CmdOrCtrl+P', click: cmd('quick-open') },
       { type: 'separator' },
-      { label: 'Save', accelerator: 'CmdOrCtrl+S', click: cmd('save') },
-      { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
+      { label: tl('menu', 'Save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
+      { label: tl('menu', 'Close Tab'), accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
       { type: 'separator' },
-      { label: 'Import PowerPoint…', click: cmd('import-pptx') },
+      { label: tl('menu', 'Import Word or HTML…'), click: cmd('import-document') },
+      { label: tl('menu', 'Import PowerPoint…'), click: cmd('import-pptx') },
       { type: 'separator' },
-      { label: 'Export as HTML…', click: cmd('export-html') },
-      { label: 'Export as PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export-pdf') },
-      { label: 'Export Slides as PowerPoint…', click: cmd('export-pptx') },
-      { label: 'Export Handouts…', click: cmd('export-handouts') },
-      { label: 'Export Notes Pages…', click: cmd('export-notes') },
-      ...(isMac ? [] : [{ type: 'separator' }, { label: 'Settings…', accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
+      { label: tl('menu', 'Export…'), accelerator: 'CmdOrCtrl+Shift+E', click: cmd('export') },
+      { label: tl('menu', 'Export as PDF…'), click: cmd('export-pdf') },
+      { label: tl('menu', 'Export as Word…'), click: cmd('export-docx') },
+      { label: tl('menu', 'Export as HTML…'), click: cmd('export-html') },
+      { label: tl('menu', 'Export as Portable Markdown…'), click: cmd('export-md') },
+      { label: tl('menu', 'Export Slides as PowerPoint…'), click: cmd('export-pptx') },
+      { label: tl('menu', 'Export Handouts…'), click: cmd('export-handouts') },
+      { label: tl('menu', 'Export Notes Pages…'), click: cmd('export-notes') },
+      ...(isMac ? [] : [{ type: 'separator' }, { label: tl('menu', 'Settings…'), accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
     ] },
-    { label: 'Edit', submenu: [
-      { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: cmd('undo') },
-      { label: 'Redo', accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z', click: cmd('redo') },
-      ...(isMac ? [] : [{ label: 'Redo', accelerator: 'Ctrl+Y', visible: false, click: cmd('redo') }]),
-      { label: 'Undo File Action', accelerator: 'CmdOrCtrl+Alt+Z', click: cmd('undo-file') },
-      { label: 'Redo File Action', accelerator: 'CmdOrCtrl+Alt+Shift+Z', click: cmd('redo-file') },
-      { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
-      { label: 'Find in Note', accelerator: 'CmdOrCtrl+F', click: cmd('find') },
-      { label: 'Search All Notes', accelerator: 'CmdOrCtrl+Shift+F', click: cmd('search') }] },
-    { label: 'Format', submenu: [
-      { label: 'Bold', accelerator: 'CmdOrCtrl+B', click: cmd('bold') },
-      { label: 'Italic', accelerator: 'CmdOrCtrl+I', click: cmd('italic') },
-      { label: 'Link', accelerator: 'CmdOrCtrl+K', click: cmd('link') },
-      { label: 'Inline Code', accelerator: 'CmdOrCtrl+E', click: cmd('code') },
-      { label: 'Task', accelerator: 'CmdOrCtrl+L', click: cmd('task') }] },
-    { label: 'Go', submenu: [
-      { label: 'Back', accelerator: isMac ? 'Cmd+Alt+Left' : 'Alt+Left', click: cmd('nav-back') },
-      { label: 'Forward', accelerator: isMac ? 'Cmd+Alt+Right' : 'Alt+Right', click: cmd('nav-forward') },
+    { label: tl('menu', 'Edit'), submenu: [
+      { label: tl('menu', 'Undo'), accelerator: 'CmdOrCtrl+Z', click: cmd('undo') },
+      { label: tl('menu', 'Redo'), accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z', click: cmd('redo') },
+      ...(isMac ? [] : [{ label: tl('menu', 'Redo'), accelerator: 'Ctrl+Y', visible: false, click: cmd('redo') }]),
+      { label: tl('menu', 'Undo File Action'), accelerator: 'CmdOrCtrl+Alt+Z', click: cmd('undo-file') },
+      { label: tl('menu', 'Redo File Action'), accelerator: 'CmdOrCtrl+Alt+Shift+Z', click: cmd('redo-file') },
+      { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { label: tl('menu', 'Paste as Plain Text'), accelerator: 'CmdOrCtrl+Shift+V', click: cmd('paste-plain') }, { role: 'selectAll' }, { type: 'separator' },
+      { label: tl('menu', 'Find in Note'), accelerator: 'CmdOrCtrl+F', click: cmd('find') },
+      { label: tl('menu', 'Find and Replace…'), accelerator: process.platform === 'darwin' ? 'Cmd+Alt+H' : 'Ctrl+H', click: cmd('replace') },
+      { label: tl('menu', 'Search All Notes'), accelerator: 'CmdOrCtrl+Shift+F', click: cmd('search') }] },
+    { label: tl('menu', 'Format'), submenu: [
+      { label: tl('menu', 'Bold'), accelerator: 'CmdOrCtrl+B', click: cmd('bold') },
+      { label: tl('menu', 'Italic'), accelerator: 'CmdOrCtrl+I', click: cmd('italic') },
+      { label: tl('menu', 'Link'), accelerator: 'CmdOrCtrl+K', click: cmd('link') },
+      { label: tl('menu', 'Inline Code'), accelerator: 'CmdOrCtrl+E', click: cmd('code') },
+      { label: tl('menu', 'Task'), accelerator: 'CmdOrCtrl+L', click: cmd('task') }] },
+    { label: tl('menu', 'Go'), submenu: [
+      { label: tl('menu', 'Back'), accelerator: isMac ? 'Cmd+Alt+Left' : 'Alt+Left', click: cmd('nav-back') },
+      { label: tl('menu', 'Forward'), accelerator: isMac ? 'Cmd+Alt+Right' : 'Alt+Right', click: cmd('nav-forward') },
       { type: 'separator' },
-      { label: 'Go to Note…', click: cmd('quick-open') }] },
-    { label: 'View', submenu: [
-      { label: 'Editor', accelerator: 'CmdOrCtrl+1', click: cmd('mode-edit') },
-      { label: 'Split', accelerator: 'CmdOrCtrl+2', click: cmd('mode-split') },
-      { label: 'Preview', accelerator: 'CmdOrCtrl+3', click: cmd('mode-preview') },
+      { label: tl('menu', 'Go to Note…'), click: cmd('quick-open') }] },
+    { label: tl('menu', 'View'), submenu: [
+      { label: tl('menu', 'Editor'), accelerator: 'CmdOrCtrl+1', click: cmd('mode-edit') },
+      { label: tl('menu', 'Split'), accelerator: 'CmdOrCtrl+2', click: cmd('mode-split') },
+      { label: tl('menu', 'Preview'), accelerator: 'CmdOrCtrl+3', click: cmd('mode-preview') },
       { type: 'separator' },
-      { label: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+\\', click: cmd('toggle-sidebar') },
-      { label: 'Toggle Outline', accelerator: 'CmdOrCtrl+Shift+O', click: cmd('toggle-outline') },
-      { label: 'Focus Mode', accelerator: 'CmdOrCtrl+.', click: cmd('focus') },
-      { label: 'Command Palette…', accelerator: 'CmdOrCtrl+Shift+P', click: cmd('palette') },
+      { label: tl('menu', 'Toggle Sidebar'), accelerator: 'CmdOrCtrl+\\', click: cmd('toggle-sidebar') },
+      { label: tl('menu', 'Toggle Outline'), accelerator: 'CmdOrCtrl+Shift+O', click: cmd('toggle-outline') },
+      { label: tl('menu', 'Focus Mode'), accelerator: 'CmdOrCtrl+.', click: cmd('focus') },
+      { label: tl('menu', 'Command Palette…'), accelerator: 'CmdOrCtrl+Shift+P', click: cmd('palette') },
       { type: 'separator' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }, { role: 'togglefullscreen' },
       ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }])] },
-    { label: 'AI', submenu: [{ label: 'Connect AI Assistants…', accelerator: 'CmdOrCtrl+Shift+A', click: cmd('ai') }] },
+    { label: tl('menu', 'AI'), submenu: [{ label: tl('menu', 'Connect AI Assistants…'), accelerator: 'CmdOrCtrl+Shift+A', click: cmd('ai') }] },
     { role: 'windowMenu' },
     { role: 'help', submenu: [
-      { label: 'About Folio', click: () => app.showAboutPanel() },
-      { label: 'Source code and license', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio') },
-      { label: 'Report a problem', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/issues/new/choose') },
-      { label: 'Building slide templates', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/TEMPLATES.md') },
-      { label: 'File formats', click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/FORMATS.md') },
+      { label: tl('menu', 'Shortcuts and Syntax'), accelerator: 'F1', click: cmd('help') },
+      { label: tl('menu', 'About Folio'), click: () => app.showAboutPanel() },
+      { label: tl('menu', 'Source code and license'), click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio') },
+      { label: tl('menu', 'Report a problem'), click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/issues/new/choose') },
+      { label: tl('menu', 'Building slide templates'), click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/TEMPLATES.md') },
+      { label: tl('menu', 'File formats'), click: () => shell.openExternal('https://github.com/gabrielevaudano98/folio/blob/main/docs/FORMATS.md') },
     ] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -635,6 +732,7 @@ app.whenReady().then(async () => {
   try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {} // settings from before 1.2.2 were readable by other users
   fss.rmSync(undoRoot(), { recursive: true, force: true }); // leftovers from a crashed session
   nativeTheme.themeSource = settings.theme;
+  setLocale(settings.language);
   buildMenu();
   if (settings.workspace && fss.existsSync(settings.workspace)) await setWorkspace(settings.workspace);
   else settings.workspace = null;

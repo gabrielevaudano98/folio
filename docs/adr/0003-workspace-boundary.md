@@ -14,7 +14,7 @@ Both the window and AI assistants name files. A path that leaves the open folder
 
 ## Decision
 
-Every path the window or an MCP tool names is resolved by `notes.resolve()` in `src/main/notes.js`, which keeps it inside the folder, follows links and refuses hidden files and anything outside. Note writes are limited to Markdown and text files. Images, fonts, video and audio are copied by IPC handlers in `src/main/main.js` (`fs:save-image`, `fs:pick-image`, `fs:pick-media`) into the note's `assets/` folder; each new file's final path is checked with `notes.contain()`, so an `assets` link that leads outside the folder is refused.
+Every path the window or an MCP tool names is resolved by `notes.resolve()` in `src/main/notes.js`, which keeps it inside the folder, follows links and refuses hidden files and anything outside. Note writes are limited to Markdown and text files. Pictures, fonts, media and other attached files are copied by `src/main/assets.js` into the note's `.asset/` folder, whose real location is checked against the workspace before anything is written, so a `.asset` link that leads outside the folder is refused.
 
 ## Consequences
 

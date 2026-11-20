@@ -15,6 +15,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `tree` | request | `fs:tree` | `src/main/main.js` |
 | `list` | request | `fs:list` | `src/main/main.js` |
 | `read` | request | `fs:read` | `src/main/main.js` |
+| `info` | request | `fs:info` | `src/main/main.js` |
 | `write` | request | `fs:write` | `src/main/main.js` |
 | `create` | request | `fs:create` | `src/main/main.js` |
 | `mkdir` | request | `fs:mkdir` | `src/main/main.js` |
@@ -24,17 +25,39 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `search` | request | `fs:search` | `src/main/main.js` |
 | `backlinks` | request | `fs:backlinks` | `src/main/main.js` |
 | `userName` | request | `app:user-name` | `src/main/main.js` |
+| `unlinked` | request | `fs:unlinked` | `src/main/main.js` |
 | `brokenLinks` | request | `fs:broken-links` | `src/main/main.js` |
 | `saveImage` | request | `fs:save-image` | `src/main/main.js` |
 | `absUrl` | request | `fs:abs-url` | `src/main/main.js` |
 | `pickImage` | request | `fs:pick-image` | `src/main/main.js` |
 | `pickMedia` | request | `fs:pick-media` | `src/main/main.js` |
+| `assetsSync` | request | `assets:sync` | `src/main/main.js` |
+| `propTypes` | request | `props:types` | `src/main/main.js` |
+| `setPropType` | request | `props:set-type` | `src/main/main.js` |
+| `assetsRestore` | request | `assets:restore` | `src/main/main.js` |
+| `assetsHeal` | request | `assets:heal` | `src/main/main.js` |
+| `assetsRemove` | request | `assets:remove` | `src/main/main.js` |
+| `assetsUsage` | request | `assets:usage` | `src/main/main.js` |
+| `assetsMigrate` | request | `assets:migrate` | `src/main/main.js` |
+| `openFile` | request | `shell:open-file` | `src/main/main.js` |
+| `fetchTemplate` | request | `templates:fetch` | `src/main/main.js` |
+| `importTemplateFiles` | request | `templates:import-files` | `src/main/main.js` |
 | `pickOffice` | request | `fs:pick-office` | `src/main/main.js` |
 | `qa.start` | request | `qa:start` | `src/main/main.js` |
 | `qa.poll` | request | `qa:poll` | `src/main/main.js` |
 | `qa.stop` | request | `qa:stop` | `src/main/main.js` |
 | `openExternal` | request | `shell:open` | `src/main/main.js` |
 | `copy` | request | `clipboard:write` | `src/main/main.js` |
+| `historyList` | request | `history:list` | `src/main/main.js` |
+| `historyGet` | request | `history:get` | `src/main/main.js` |
+| `historySnapshot` | request | `history:snapshot` | `src/main/main.js` |
+| `historyName` | request | `history:name` | `src/main/main.js` |
+| `historyGit` | request | `history:git` | `src/main/main.js` |
+| `historyGitGet` | request | `history:git-get` | `src/main/main.js` |
+| `historyDeleted` | request | `history:deleted` | `src/main/main.js` |
+| `historyClear` | request | `history:clear` | `src/main/main.js` |
+| `readClipboard` | request | `clipboard:read` | `src/main/main.js` |
+| `importDocument` | request | `import:document` | `src/main/main.js` |
 | `exportHtml` | request | `export:html` | `src/main/main.js` |
 | `exportPdf` | request | `export:pdf` | `src/main/main.js` |
 | `exportBinary` | request | `export:binary` | `src/main/main.js` |
@@ -71,3 +94,5 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `meeting.onState` | event | `meeting:state` | — |
 | `meeting.onSegment` | event | `meeting:segment` | — |
 | `meeting.onStopRequest` | event | `meeting:stop-request` | — |
+
+Handled but not exposed by name in the preload (used through a generic helper or by the menu): `history:usage`, `assets:reveal`.

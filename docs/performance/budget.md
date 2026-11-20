@@ -22,7 +22,7 @@ and [WWDC22 Track down hangs](https://developer.apple.com/wwdc22/10082); Electro
 | Scroll, command palette, quick open | < 100 ms | 0–57 ms |
 | Memory at rest, all processes | as low as possible | 597 MB |
 | Installer: app code inside the asar | as small as possible | 14 MB (was 322 MB) |
-| JavaScript parsed at startup | as small as possible | 237 KB (was 1.3 MB) |
+| JavaScript parsed at startup | as small as possible | 863 KB after 1.3.0 (237 KB before it; 1.3 MB before lazy editors) |
 | Meeting recorder: worker / whole app | 3,072 / 4,096 MB | 1.5 GB / 2.2 GB (see [spike](meeting-spike.md)) |
 
 The baseline was measured with `scripts/perf.mjs` in a Linux cloud machine (2 vCPU, software rendering); Windows and
