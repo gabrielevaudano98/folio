@@ -1,6 +1,7 @@
 // Folio — slides surface: thumbnails, stage, per-slide Markdown, presenter, PDF and PowerPoint export.
 import { setFlag, addComment, removeComment, sectionsOf, SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
 import { createEditor } from './editor.js';
+import { perDoc } from './history.js';
 import slidesCss from './slides.css';
 import { hydrateCharts } from './markdown.js';
 import { mountCanvas } from './slides-canvas.js';
@@ -17,6 +18,8 @@ export function mountSlides(host, ctx) {
   const { icons } = ctx;
   host.innerHTML = `
     <div class="sf-toolbar" role="toolbar" aria-label="Slides">
+      <button class="btn btn-quiet sf-ic" type="button" data-sl="undo" aria-label="Undo" title="Undo (${ctx.keyLabel('Mod+Z')})">${icons.undo}</button>
+      <button class="btn btn-quiet sf-ic" type="button" data-sl="redo" aria-label="Redo" title="Redo (${ctx.keyLabel('Mod+Shift+Z')})">${icons.redo}</button>
       <button class="btn" type="button" data-sl="add">${icons.plus} New slide</button>
       <button class="btn" type="button" data-sl="box" title="Add a text box you can place anywhere">${icons.plus} Text box</button>
       <button class="btn" type="button" data-sl="insert" aria-haspopup="menu" title="Insert shapes, lines, images, tables, charts, icons, media">${icons.plus} Insert</button>
@@ -74,6 +77,7 @@ export function mountSlides(host, ctx) {
   let tplText = null, tplRef = null, tplSeq = 0;
   const parse = (t) => parseDeck(t, { template: tplText });
   const undo = []; const redo = []; let lastPush = 0, restoring = false;
+  const docs = perDoc(undo, redo); let seen = false;
   const thumbs = host.querySelector('.sl-thumbs');
   const frame = host.querySelector('.sl-frame');
   const stage = host.querySelector('.sl-stage');
@@ -124,7 +128,12 @@ export function mountSlides(host, ctx) {
     text = next; deck = parse(text); loadTemplate();
     cur = Math.min(cur, deck.slides.length - 1);
     render({ keepEditor, keepFrame });
+    syncHistory();
     ctx.onChange(text);
+  }
+  function syncHistory() {
+    const u = host.querySelector('[data-sl="undo"]'), r = host.querySelector('[data-sl="redo"]');
+    if (u) u.disabled = !undo.length; if (r) r.disabled = !redo.length;
   }
   function editChunk(fn) {
     const { fm, list } = chunks();
@@ -1135,6 +1144,9 @@ export function mountSlides(host, ctx) {
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); restore(redo, undo); }
   });
   host.querySelector('[data-sl="box"]').addEventListener('click', () => addObjectBlock('box'));
+  host.querySelector('[data-sl="undo"]').addEventListener('click', () => restore(undo, redo));
+  host.querySelector('[data-sl="redo"]').addEventListener('click', () => restore(redo, undo));
+  syncHistory();
   host.querySelector('[data-sl="insert"]').addEventListener('click', (e) => insertMenu(e.currentTarget));
 
   /* events */
@@ -1321,10 +1333,14 @@ export function mountSlides(host, ctx) {
 
   return {
     setText(t) {
-      if (t === text) return;
+      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true;
+      if (moved) lastPush = 0; // the coalescing timer belongs to one document
+      if (t === text) { if (moved) syncHistory(); return; }
+      // a change that did not come from this canvas (an AI edit, the code pane) is a step of its own, so Undo gives it back
+      if (!moved && had && !restoring) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; lastPush = 0; }
       text = t; deck = parse(t); loadTemplate();
       cur = Math.min(cur, deck.slides.length - 1);
-      render();
+      render(); syncHistory();
     },
     setMode(view) { host.classList.toggle('sl-compact', view === 'split'); requestAnimationFrame(fit); },
     selectAtLine(line) {
@@ -1334,6 +1350,8 @@ export function mountSlides(host, ctx) {
       if (idx !== cur) { cur = idx; render(); }
     },
     present: () => present(cur),
+    undo() { restore(undo, redo); }, redo() { restore(redo, undo); },
+    canUndo: () => undo.length > 0, canRedo: () => redo.length > 0,
     insertText(t) { const { fm, list } = chunks(); list[cur] = addObject(list[cur], t); commit(joinDeck(fm, list)); },
     gotoSlide(i) { if (deck && i >= 0) select(i, { reveal: false }); },
     refresh() { if (deck) { render({ keepEditor: true }); checkSync(); } },

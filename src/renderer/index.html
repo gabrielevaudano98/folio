@@ -55,8 +55,16 @@
     <main class="main" id="main">
       <header class="titlebar drag" id="titlebar">
         <button class="icon-btn no-drag" type="button" id="btn-sidebar" aria-label="Toggle sidebar" data-tip="Sidebar (⌘\)"></button>
+        <div class="nav-btns no-drag" role="group" aria-label="History">
+          <button class="icon-btn" type="button" id="btn-back" aria-label="Back" data-tip="Back (Alt+←)" disabled></button>
+          <button class="icon-btn" type="button" id="btn-forward" aria-label="Forward" data-tip="Forward (Alt+→)" disabled></button>
+        </div>
         <nav class="tabs no-drag" id="tabs" role="tablist" aria-label="Open notes"></nav>
         <div class="titlebar-spacer"></div>
+        <div class="nav-btns no-drag" role="group" aria-label="Undo and redo">
+          <button class="icon-btn" type="button" id="btn-undo" aria-label="Undo" data-tip="Undo (⌘Z)" disabled></button>
+          <button class="icon-btn" type="button" id="btn-redo" aria-label="Redo" data-tip="Redo (⌘⇧Z)" disabled></button>
+        </div>
         <div class="segmented no-drag" role="radiogroup" aria-label="View" id="view-switch">
           <button type="button" role="radio" data-view="edit" aria-checked="false" aria-label="Write" data-tip="Write (⌘1)"></button>
           <button type="button" role="radio" data-view="split" aria-checked="true" aria-label="Split" data-tip="Split (⌘2)"></button>

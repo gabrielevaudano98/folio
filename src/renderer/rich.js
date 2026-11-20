@@ -10,7 +10,7 @@ import { Placeholder } from '@tiptap/extensions';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { icons } from './icons.js';
 import CodeBlock from '@tiptap/extension-code-block';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { renderMermaid, hydrateCharts } from './markdown.js';
 
@@ -284,15 +284,31 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
 
   const api = {
     editor,
-    setMarkdown(md) {
+    /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
+    setMarkdown(md, { keepHistory = false } = {}) {
       const m = md.match(FM);
+      // the front matter lives outside the editor's history, so an outside change to it starts a fresh history
+      if ((m ? m[0] : '') !== frontmatter) keepHistory = false;
       frontmatter = m ? m[0] : '';
       silent = true;
       try { editor.commands.setContent(md.slice(frontmatter.length), { contentType: 'markdown', emitUpdate: false }); }
       finally { silent = false; }
+      // a loaded document starts with a clean history, so Undo never reaches into the previous tab
+      if (!keepHistory) { const st = editor.state; editor.view.updateState(EditorState.create({ schema: st.schema, doc: st.doc, plugins: st.plugins })); }
       host.querySelector('.rich-scroll').scrollTop = 0;
       syncToolbar();
     },
+    /** the visual editor state of this document, with its undo history; `md` says which text it matches */
+    snapshot() { return { state: editor.view.state, md: api.getMarkdown(), frontmatter }; },
+    restore(snap) {
+      frontmatter = snap.frontmatter; silent = true;
+      try { editor.view.updateState(snap.state); } finally { silent = false; }
+      syncToolbar();
+    },
+    undo() { return editor.commands.undo(); },
+    redo() { return editor.commands.redo(); },
+    canUndo() { return editor.can().undo(); },
+    canRedo() { return editor.can().redo(); },
     getMarkdown() {
       let out = editor.getMarkdown().replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
       // keep the conventions the rest of Folio (and the AI) reads

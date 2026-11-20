@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('folio', {
   mkdir: (p) => call('fs:mkdir', p),
   rename: (a, b) => call('fs:rename', a, b),
   trash: (p) => call('fs:trash', p),
+  untrash: (t) => call('fs:untrash', t),
   search: (q, o) => call('fs:search', q, o),
   backlinks: (p) => call('fs:backlinks', p),
   userName: () => call('app:user-name'),

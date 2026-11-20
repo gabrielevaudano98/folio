@@ -1,6 +1,7 @@
 // Folio — sheet surface: an Excel-style grid over sheet-md.
 import { parseWorkbook, serializeWorkbook, evaluator, display, colName, colIndex, addr, parseAddr, shiftFormula, FORMATS, formulaRefs } from './sheet-core.js';
 import { chartHtml, CHART_TYPES, specToText } from './chart.js';
+import { perDoc } from './history.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const DEFAULT_W = 104;
@@ -57,6 +58,7 @@ export function mountSheet(host, ctx) {
   let text = '', blocks = [], si = 0, ev = null;
   let anchor = [0, 0], focus = [0, 0], editing = null, colSel = false;
   const undo = [], redo = [];
+  const docs = perDoc(undo, redo); let seen = false;
   let clip = null;
 
   const sheets = () => blocks.filter((b) => b.type === 'sheet');
@@ -570,7 +572,11 @@ export function mountSheet(host, ctx) {
   }
 
   return {
-    setText(t) { if (t === text) return; load(t); render(); },
+    setText(t) {
+      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true; if (t === text) { if (moved) render(); return; }
+      if (!moved && had) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
+      load(t); render();
+    },
     setMode() { requestAnimationFrame(drawSel); },
     selectAtLine() {},
     refresh() { syncExternals(true); },
@@ -582,6 +588,7 @@ export function mountSheet(host, ctx) {
       const a = parseAddr(cell) || null; render();
       if (a) select(a[0], a[1]); wrap.focus();
     },
+    undo: () => doUndo(), redo: () => doRedo(), canUndo: () => undo.length > 0, canRedo: () => redo.length > 0,
     focus() { wrap.focus(); },
   };
 }

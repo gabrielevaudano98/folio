@@ -74,6 +74,9 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
+  // mouse and trackpad back/forward: Windows app commands, macOS swipes
+  win.on('app-command', (_e, c) => { if (c === 'browser-backward') win.webContents.send('menu:command', 'nav-back'); else if (c === 'browser-forward') win.webContents.send('menu:command', 'nav-forward'); });
+  win.on('swipe', (_e, dir) => { if (dir === 'left') win.webContents.send('menu:command', 'nav-back'); else if (dir === 'right') win.webContents.send('menu:command', 'nav-forward'); });
   if (!app.isPackaged && process.env.FOLIO_SHOT) devShot(win);
   win.webContents.setWindowOpenHandler(({ url, frameName }) => {
     // the presenter's audience window: full screen on another display when there is one
@@ -106,6 +109,7 @@ if (isWin) systemPreferences.on?.('accent-color-changed', () => win?.webContents
 let watcher = null;
 const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own echo
 async function setWorkspace(dir) {
+  await clearTrashed();
   settings.workspace = dir;
   if (dir) settings.recent = [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8);
   saveSettings();
@@ -187,7 +191,32 @@ h('fs:rename', async (from, to) => {
   for (const [a, b] of pairs) for (const c of await notes.rewriteAfterMove(a, b).catch(() => [])) changed.add(c);
   return { to: r.to, changed: [...changed] };
 });
-h('fs:trash', async (rel) => { await shell.trashItem(notes.resolve(rel)); return true; });
+// A copy of every trashed item is kept in a private folder for this session so the move can be undone.
+// Copies belong to the workspace they came from and are removed when it changes and when Folio quits.
+const trashed = new Map();
+let undoDir = null;
+const undoRoot = () => path.join(app.getPath('userData'), 'undo');
+async function clearTrashed() { trashed.clear(); undoDir = null; await fs.rm(undoRoot(), { recursive: true, force: true }).catch(() => {}); }
+h('fs:trash', async (rel) => {
+  const abs = notes.resolve(rel);
+  if (!undoDir) { await fs.mkdir(undoRoot(), { recursive: true, mode: 0o700 }); undoDir = await fs.mkdtemp(path.join(undoRoot(), 's-')); } // mkdtemp makes it owner-only
+  const token = crypto.randomUUID(); const keep = path.join(undoDir, token);
+  await fs.mkdir(keep);
+  await fs.cp(abs, path.join(keep, 'item'), { recursive: true });
+  if (process.env.FOLIO_FAKE_TRASH === '1' && !app.isPackaged) await fs.rm(abs, { recursive: true, force: true }); else await shell.trashItem(abs);
+  trashed.set(token, { rel, keep, root: notes.root() });
+  while (trashed.size > 25) { const [old, e] = trashed.entries().next().value; trashed.delete(old); fs.rm(e.keep, { recursive: true, force: true }).catch(() => {}); }
+  return { token };
+});
+h('fs:untrash', async (token) => {
+  const e = trashed.get(token);
+  if (!e || e.root !== notes.root()) throw new Error('That item can no longer be restored from here. Look in the system Trash.');
+  const abs = notes.resolve(e.rel);
+  if (fss.existsSync(abs)) throw new Error('Something with that name already exists.');
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.cp(path.join(e.keep, 'item'), abs, { recursive: true, force: false, errorOnExist: true }); // never overwrite something created meanwhile
+  return e.rel;
+});
 h('fs:search', (q, opts) => notes.search(q, opts));
 h('app:user-name', () => { try { const n = os.userInfo().username || ''; return n.charAt(0).toUpperCase() + n.slice(1); } catch { return ''; } });
 h('fs:backlinks', (rel) => notes.backlinks(rel));
@@ -452,7 +481,13 @@ function buildMenu() {
       { label: 'Export Notes Pages…', click: cmd('export-notes') },
       ...(isMac ? [] : [{ type: 'separator' }, { label: 'Settings…', accelerator: 'Ctrl+,', click: cmd('settings') }, { role: 'quit' }]),
     ] },
-    { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
+    { label: 'Edit', submenu: [
+      { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: cmd('undo') },
+      { label: 'Redo', accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z', click: cmd('redo') },
+      ...(isMac ? [] : [{ label: 'Redo', accelerator: 'Ctrl+Y', visible: false, click: cmd('redo') }]),
+      { label: 'Undo File Action', accelerator: 'CmdOrCtrl+Alt+Z', click: cmd('undo-file') },
+      { label: 'Redo File Action', accelerator: 'CmdOrCtrl+Alt+Shift+Z', click: cmd('redo-file') },
+      { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
       { label: 'Find in Note', accelerator: 'CmdOrCtrl+F', click: cmd('find') },
       { label: 'Search All Notes', accelerator: 'CmdOrCtrl+Shift+F', click: cmd('search') }] },
     { label: 'Format', submenu: [
@@ -461,6 +496,11 @@ function buildMenu() {
       { label: 'Link', accelerator: 'CmdOrCtrl+K', click: cmd('link') },
       { label: 'Inline Code', accelerator: 'CmdOrCtrl+E', click: cmd('code') },
       { label: 'Task', accelerator: 'CmdOrCtrl+L', click: cmd('task') }] },
+    { label: 'Go', submenu: [
+      { label: 'Back', accelerator: isMac ? 'Cmd+Alt+Left' : 'Alt+Left', click: cmd('nav-back') },
+      { label: 'Forward', accelerator: isMac ? 'Cmd+Alt+Right' : 'Alt+Right', click: cmd('nav-forward') },
+      { type: 'separator' },
+      { label: 'Go to Note…', click: cmd('quick-open') }] },
     { label: 'View', submenu: [
       { label: 'Editor', accelerator: 'CmdOrCtrl+1', click: cmd('mode-edit') },
       { label: 'Split', accelerator: 'CmdOrCtrl+2', click: cmd('mode-split') },
@@ -502,6 +542,7 @@ app.on('second-instance', (_e, argv) => {
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
 app.whenReady().then(async () => {
+  fss.rmSync(undoRoot(), { recursive: true, force: true }); // leftovers from a crashed session
   nativeTheme.themeSource = settings.theme;
   buildMenu();
   if (settings.workspace && fss.existsSync(settings.workspace)) await setWorkspace(settings.workspace);
@@ -513,7 +554,7 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (!isMac) app.quit(); });
-app.on('before-quit', () => { if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
+app.on('before-quit', () => { fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
 async function devShot(w) {
