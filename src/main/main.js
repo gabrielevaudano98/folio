@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createNotes, NOTE_EXT } from './notes.js';
+import { createHistory } from './history.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,9 @@ function writeBridge() {
 }
 
 const notes = createNotes(() => settings.workspace);
+const history = createHistory(() => settings.workspace);
+/* history must never get in the way of saving */
+const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); } return null; };
 let win = null;
 
 /* ---------------- window ---------------- */
@@ -157,7 +161,9 @@ h('fs:write', async (rel, content) => {
   const abs = notes.resolve(rel, { mustBeNote: true });
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
+  try { if (!(await history.list(rel)).length) { const was = await fs.readFile(abs, 'utf8').catch(() => null); if (was != null) await keep(rel, was, { reason: 'open', force: true }); } } catch {}
   await fs.writeFile(abs, content, 'utf8');
+  keep(rel, content, { reason: 'edit' });
   return true;
 });
 h('fs:create', async (rel, content = '') => {
@@ -166,6 +172,7 @@ h('fs:create', async (rel, content = '') => {
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, content, 'utf8');
+  keep(notes.relOf(abs), content, { reason: 'created', force: true });
   return notes.relOf(abs);
 });
 h('fs:mkdir', async (rel) => { await fs.mkdir(notes.resolve(rel), { recursive: true }); return rel; });
@@ -174,11 +181,19 @@ h('fs:rename', async (from, to) => {
   const r = await notes.move(from, to);
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
-  for (const [a, b] of pairs) for (const c of await notes.rewriteAfterMove(a, b).catch(() => [])) changed.add(c);
+  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b).catch(() => [])) changed.add(c); }
   return { to: r.to, changed: [...changed] };
 });
 h('fs:trash', async (rel) => { await shell.trashItem(notes.resolve(rel)); return true; });
 h('fs:search', (q, opts) => notes.search(q, opts));
+/* version history */
+h('history:list', (rel) => history.list(rel));
+h('history:get', (rel, id) => history.get(rel, id));
+h('history:snapshot', (rel, text, reason, force) => keep(rel, text, { reason: reason || 'edit', force: !!force }));
+h('history:name', (rel, id, label, note) => history.name(rel, id, label, note));
+h('history:deleted', () => history.deleted());
+h('history:clear', (rel) => history.clear(rel));
+h('history:usage', () => history.usage());
 h('app:user-name', () => { try { const n = os.userInfo().username || ''; return n.charAt(0).toUpperCase() + n.slice(1); } catch { return ''; } });
 h('fs:backlinks', (rel) => notes.backlinks(rel));
 h('fs:broken-links', (rel) => notes.brokenLinks(rel));
@@ -338,6 +353,8 @@ const appBackend = {
     logActivity({ client: ctx.client, tool: name, path: args.path || args.from || args.query || '' });
     return runTool(notes, name, args, {
       onWrite: async (r) => {
+        if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
+        await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true });
         ownWrites.set(notes.resolve(r.path), r.after);
         win?.webContents.send('ai:edit', { ...r, client: ctx.client });
       },

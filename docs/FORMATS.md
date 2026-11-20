@@ -260,3 +260,7 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 ### Templates
 
 A template is a page in `Templates/` (folders are categories). It can describe itself in a `template:` map at the top of its front matter (`description`, `category`, `icon`, `source`); that map is removed from pages made from it. When used, these variables are filled: `{{title}}` (the new page's name), `{{date}}`, `{{time}}`, `{{datetime}}`, `{{yesterday}}`, `{{tomorrow}}`, `{{weekday}}`, each with an optional moment.js format (`{{date:dddd D MMMM YYYY}}`), and `{{cursor}}` (where the caret goes). Other `{{…}}` text is left as written. The template's properties are merged into the page's.
+
+## Version history
+
+Not a document format: versions live beside the documents in `<workspace>/.folio/history/` — `objects/ab/cdef….gz` (SHA-256 of the text, gzip) and `files/<sha1(path), 20 chars>.json` (`{path, versions:[{id,t,size,words,delta,by,reason,name?,note?}]}`). Dot folders are ignored by the tree, search, tags and backlinks. Round-trip: `test/history.test.mjs` (snapshot, rename, retention, diff and revert) and the UI test (edit → version → name → restore).

@@ -19,6 +19,7 @@ import { mountBoard } from './board.js';
 import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
 import { icons } from './icons.js';
+import { mountHistory } from './history-view.js';
 import { htmlToMarkdown } from './page-paste.js';
 import { pageSetup, pdfOptions, pageCss } from './page-docx.js';
 import { parseProps } from './page-props.js';
@@ -174,6 +175,7 @@ async function boot() {
   }, true);
   $('.rich-scroll').addEventListener('scroll', () => { if (isRich()) markOutlineCurrent(); }, { passive: true });
 
+  initHistory();
   bindChrome();
   bindIpc();
   renderAiStatus();
@@ -359,6 +361,7 @@ function renderTabs() {
 async function closeTab(p = S.active) {
   const t = tabOf(p); if (!t) return;
   if (t.text !== t.saved) await saveTab(t);
+  folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
   if (S.active === p) {
@@ -1318,6 +1321,8 @@ const COMMANDS = [
   { id: 'toggle-outline', title: 'Toggle outline', key: 'Mod+Shift+O', run: toggleOutline },
   { id: 'focus', title: 'Focus mode', key: 'Mod+.', run: toggleFocus },
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
+  { id: 'history', title: 'Version history', key: 'Mod+Alt+Shift+H', run: () => openHistory() },
+  { id: 'name-version', title: 'Name the current version…', key: 'Mod+Alt+Shift+S', run: () => nameCurrentVersion() },
   { id: 'export', title: 'Export…', key: 'Mod+Shift+E', run: () => openExport() },
   { id: 'export-docx', title: 'Export as Word…', run: () => exportAs('docx') },
   { id: 'import-document', title: 'Import Word or HTML as a page…', run: () => importDocument() },
@@ -1532,6 +1537,39 @@ function toggleOutline() { const open = app.dataset.outline !== 'open'; app.data
 function toggleFocus() { app.classList.toggle('focus'); layoutPanes(); rich?.sync?.(); if (app.classList.contains('focus') && app.dataset.modeView === 'split') setView('edit', { persist: false }); }
 function focusSearch() { if (app.dataset.sidebar !== 'open') toggleSidebar(); $('#sidebar-search').focus(); $('#sidebar-search').select(); }
 
+/* ============ version history ============ */
+let hist;
+function initHistory() {
+  hist = mountHistory($('#history'), {
+    folio, icons,
+    getPath: () => S.active, getText: () => activeTab()?.text ?? '',
+    setText: async (text) => { setActiveText(text); await saveActive(); renderStatus(); previewSoon(); },
+    isPage: () => curType() === 'md', renderMd: (t) => render(t),
+    toast, ask: prompt, confirm: confirmSheet, menu: (el, items) => showMenu(el, items),
+    copyAs: async (path, text, v) => {
+      const dot = path.lastIndexOf('.'); const when = new Date(v.t).toISOString().slice(0, 16).replace('T', ' ');
+      let target = `${path.slice(0, dot)} (${v.name || when})${path.slice(dot)}`;
+      try { const p = await folio.create(target, text); await refreshTree(); hist.close(); openFile(p); toast('Made a copy from that version.'); }
+      catch (e) { toast(`Could not make a copy. ${e.message}`, { kind: 'error' }); }
+    },
+    opened: async (p) => { await refreshTree(); openFile(p); },
+    onClose: () => { $('#workspace').removeAttribute('data-history'); },
+  });
+}
+async function openHistory() {
+  if (!S.active) return toast('Open a document first.');
+  if (hist.isOpen()) return hist.close();
+  await saveActive(); $('#workspace').dataset.history = 'true'; await hist.open();
+}
+async function nameCurrentVersion() {
+  const t = activeTab(); if (!t) return;
+  const name = await prompt({ title: 'Name this version', label: 'Name', hint: 'Named versions are kept for good.', action: 'Save' }); if (!name) return;
+  await saveActive();
+  const v = await folio.historySnapshot(t.path, t.text, 'named', true);
+  const list = await folio.historyList(t.path); const id = v?.id || list[0]?.id;
+  if (id) { await folio.historyName(t.path, id, name); toast(`Saved the version “${name}”.`); }
+}
+
 /* ============ small UI kit: toast, prompt, confirm, menu, tooltip ============ */
 function toast(text, { kind = 'info', action } = {}) {
   const el = document.createElement('div');
@@ -1638,6 +1676,7 @@ function bindChrome() {
     const v = views[(i + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; setView(v); $(`#view-switch [data-view="${v}"]`).focus();
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
+    { label: 'Version history', key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: 'Export…', key: 'Mod+Shift+E', run: openExport },
     { label: 'Import Word or HTML…', run: importDocument }, '-',
     { label: 'Focus mode', key: 'Mod+.', run: toggleFocus },

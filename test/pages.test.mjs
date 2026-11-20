@@ -31,6 +31,7 @@ fs.writeFileSync(path.join(ws, 'pages', 'd6.md'), '# Table\n\n| Name | Qty |\n| 
 fs.writeFileSync(path.join(ws, 'pages', 'd7.md'), '# Find\n\nalpha beta alpha\n\nAlpha gamma\n\n## Second\n\nPainted **bold** and plain\n\n## Third\n\nLast words\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd8.md'), '---\ntitle: Weekly\ntags: [alpha]\ndone: false\n---\n# Weekly\n\nText #beta here.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd9.md'), '# Plan\n\nIntro.\n');
+fs.writeFileSync(path.join(ws, 'pages', 'd15.md'), '# History\n\nFirst draft of the text.\n');
 fs.writeFileSync(path.join(ws, 'pages', 'd11.md'), '# Paste\n\nStart here\n\n{++new idea++} and {==noted==}{>>Ada, 2026-11-20 14:05: Check<<}\n');
 const exportDir = path.join(tmp, 'out'); fs.mkdirSync(exportDir);
 const importFile = path.join(tmp, 'Imported doc.docx');
@@ -238,6 +239,17 @@ const steps = [
   { js: "(() => { const d = document.querySelector('#sheet-prompt'); d.querySelector('[data-format=docx]').click(); d.querySelector('[data-size=Letter]').click(); d.querySelector('[data-landscape=true]').click(); const rev = !d.querySelector('[data-review]').hidden; d.querySelector('button[type=submit]').click(); return rev; })()", log: true, wait: 3500 },
   { js: "document.querySelector('#btn-more').click(); true", wait: 400 },
   { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.startsWith('Import')).click(); true", wait: 3000 },
+  // D15: version history — edit, open the history, see the change, restore the first version
+  { js: "document.querySelector('[data-file=\\\"pages/d15.md\\\"]').click()", wait: 1500 },
+  { js: "(() => { const p = [...document.querySelectorAll('.rich-prose p')].find((x) => x.textContent.startsWith('First draft')); document.querySelector('.rich-prose').focus(); const r = document.createRange(); r.selectNodeContents(p); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; })()", wait: 400 },
+  { js: "document.execCommand('insertText', false, ' Second thoughts.'); true", wait: 1800 },
+  { js: "document.querySelector('#btn-more').click(); true", wait: 400 },
+  { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.startsWith('Version history')).click(); true", wait: 1200 },
+  { js: "(() => { const h = document.querySelector('#history'); const items = [...h.querySelectorAll('.hv-versions .hv-v')]; items[items.length - 1].click(); return [!h.hidden, items.length]; })()", log: true, wait: 800 },
+  { js: "(() => { const h = document.querySelector('#history'); return [h.querySelectorAll('.hv-diff ins').length, h.querySelector('.hv-bar-text').textContent.includes('change'), h.querySelectorAll('[data-put]').length]; })()", log: true, wait: 100 },
+  { js: "(async () => { const h = document.querySelector('#history'); h.querySelector('[data-act=name]').click(); await new Promise((r) => setTimeout(r, 400)); const i = document.querySelector('#prompt-input'); i.value = 'First draft'; document.querySelector('.prompt-form').requestSubmit(); await new Promise((r) => setTimeout(r, 700)); return h.querySelector('.hv-v.is-named')?.textContent.includes('First draft') === true; })()", log: true, wait: 300 },
+  { js: "document.querySelector('#history [data-act=restore]').click(); true", wait: 1500 },
+  { js: "[document.querySelector('#history').hidden, document.querySelector('.rich-prose').textContent.includes('Second thoughts')]", log: true, wait: 100 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -249,8 +261,8 @@ child.on('exit', async () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\npages'); if (process.env.DEBUG) console.log(logs, out.slice(-3000));
-  assert.equal(logs.length, 66, out.slice(-2000));
-  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, pasteWord, pasteMd, exportSheet, errors] = logs;
+  assert.equal(logs.length, 70, out.slice(-2000));
+  const [rawCount, typed, rawEdited, typed2, obsNodes, c1, c2, c3, mathDone, s1, s2, s3, s4, empty, closed, plusOpened, dragged, menuOpen, folds, hiddenBy, t1, t2, resized, captioned, colours, langSet, m1, m2, m3, m4, m5, m6, m7, m8, chips, hovered, tableTab, pasted, findOpen, replaced, undone, closed2, painting, dragged2, outlineAfter, modes, zoomed, zoomBack, propRows, propBlur, tagClicked, tagSearch, tagPane, tplCount, tplButton, paneShown, marks10, counts10, galleryOkrs, favsAndCommunity, communityCount, savedView, pasteWord, pasteMd, exportSheet, histOpen, histDiff, histNamed, histRestored, errors] = logs;
   assert.deepEqual(errors, []);
   assert(rawCount >= 3 && typed && rawEdited && typed2, JSON.stringify(logs)); console.log('  ✓ HTML the editor cannot hold is shown as raw blocks');
   assert.equal(read('html.md'), html.replace('Final paragraph.', 'Final paragraph. Done').replace('Centred paragraph', 'Centred text')); console.log('  ✓ typing in a paragraph and editing a raw block change only those lines');
@@ -332,6 +344,11 @@ child.on('exit', async () => {
   assert.equal(savedView[0].replace(/\d+$/, ''), 'All of mine'); assert(savedView[1].includes('Lean canvas'), savedView[1]);
   console.log('  ✓ gallery: a starred template opens under Favourites; a community template downloads into Templates/ and shows under My templates');
 
+  assert.deepEqual(histOpen[0], true); assert(histOpen[1] >= 3, JSON.stringify(histOpen));
+  assert(histDiff[0] >= 1 && histDiff[1] && histDiff[2] >= 1, JSON.stringify(histDiff)); assert.equal(histNamed, true);
+  assert.deepEqual(histRestored, [true, false], JSON.stringify(histRestored));
+  assert.equal(read('d15.md'), '# History\n\nFirst draft of the text.\n');
+  console.log('  ✓ version history: the edit appears as a version, the diff shows what changed, a version can be named, and restoring it puts the first text back');
   assert.equal(pasteWord, true); assert.equal(pasteMd, true); assert.equal(exportSheet, true);
   const d11 = read('d11.md');
   assert(d11.includes('Start here\n\nPasted **bold** ==marked==\n\n- Alpha\n- Beta\n\n## From text\n\n- [ ] x\n- [ ] y') && !d11.includes('mso') && !d11.includes('<o:p>'), d11);
