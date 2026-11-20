@@ -1,6 +1,9 @@
 // Folio — renderer.
 import { diffLines } from 'diff';
 import { createEditor } from './editor.js';
+import { EditorView } from '@codemirror/view';
+import { undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
+import { createActionLog } from './history.js';
 import { createRich } from './rich.js';
 import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
@@ -61,6 +64,7 @@ function surfaceCtx(type) {
     dataUrl: (src) => folio.dataUrl(src, S.active),
     readNote: readRelative,
     getPath: () => S.active,
+    docKey: () => activeTab(),
     copy: (t) => folio.copy(t),
     revealLine: (n) => { if (app.dataset.modeView === 'split') editor.scrollToLine(n); },
     exportPdf: (html, o = {}) => folio.exportPdf(S.active, html, { cssPage: true, ...o }),
@@ -167,6 +171,8 @@ function paintStaticIcons() {
   $('#view-switch [data-view="split"]').innerHTML = icons.viewSplit;
   $('#view-switch [data-view="preview"]').innerHTML = icons.viewRead;
   $('#btn-sidebar').innerHTML = icons.sidebar;
+  $('#btn-back').innerHTML = icons.back; $('#btn-forward').innerHTML = icons.forward;
+  $('#btn-undo').innerHTML = icons.undo; $('#btn-redo').innerHTML = icons.redo;
   $('#btn-outline').innerHTML = icons.outline;
   $('#btn-more').innerHTML = icons.more;
   $('.workspace-chev').innerHTML = icons.chevronDown;
@@ -175,6 +181,7 @@ function paintStaticIcons() {
   $('.ai-banner-mark').innerHTML = icons.spark;
   $('#ai-banner-close').innerHTML = icons.close;
   $('#search-kbd').textContent = keyLabel('Mod+Shift+F');
+  $('#btn-back').dataset.tip = `Back (${S.platform === 'darwin' ? '⌘⌥←' : 'Alt+←'})`; $('#btn-forward').dataset.tip = `Forward (${S.platform === 'darwin' ? '⌘⌥→' : 'Alt+→'})`;
   $$('[data-tip]').forEach((el) => (el.dataset.tip = el.dataset.tip.replace(/⌘/g, mod()).replace(/⇧/g, shift())));
 }
 
@@ -290,7 +297,12 @@ async function openFile(p, { line, background = false } = {}) {
 }
 function activate(p, { line } = {}) {
   const prev = activeTab();
-  if (prev) prev.scroll = editor.view.scrollDOM.scrollTop;
+  if (prev) {
+    prev.scroll = editor.view.scrollDOM.scrollTop;
+    prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
+    prev.rich = docType(prev.path) === 'md' && isRich() ? rich.snapshot() : null;
+  }
+  navRecord(p);
   S.active = p;
   const t = activeTab();
   hideEmpty();
@@ -301,13 +313,13 @@ function activate(p, { line } = {}) {
   app.dataset.modeView = v;
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
   layoutPanes();
-  editor.setDoc(t.text);
-  if (type === 'md') { if (isRich()) rich.setMarkdown(t.text); }
+  if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
+  if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
   else { const s = surfaceFor(type); s.setText(t.text); s.setMode?.(v); }
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
-  renderTabs(); renderTree(); renderPreview(); renderOutline(); renderStatus();
+  renderTabs(); renderTree(); renderPreview(); renderOutline(); renderStatus(); updateHistoryButtons();
   saveSetting({ lastFile: p });
   if (type !== 'md') { if (v === 'code') editor.focus(); else curSurface()?.focus?.(); }
   else if (isRich()) rich.focus('start'); else if (app.dataset.modeView !== 'preview') editor.focus();
@@ -339,6 +351,7 @@ const surfaceSoon = debounce((text) => curSurface()?.setText(text), 250);
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
 function onEditorChange(text, isRemote, from = 'source') {
   const t = activeTab(); if (!t) return;
+  historySoon();
   if (from === 'source' && isRich()) return; // the hidden source view only mirrors
   if (from === 'source' && curType() !== 'md' && app.dataset.modeView === 'visual') return;
   if (text === t.text) return;
@@ -646,6 +659,9 @@ async function newNote(folder = dirOf(S.active || ''), type) {
     const p = await folio.create(file, content);
     if (folder) S.expanded.add(folder);
     await refreshTree(); await openFile(p);
+    let rec = null;
+    actions.push({ label: `created ${base(p)}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); await openFile(p); } });
+    updateHistoryButtons();
     if (type === 'md' && !isRich()) editor.view.dispatch({ selection: { anchor: editor.view.state.doc.length } });
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
@@ -738,7 +754,12 @@ async function templateGallery({ mode = 'new' } = {}) {
 async function newFolder(parent = '') {
   const name = await prompt({ title: 'New folder', label: 'Name', value: '', action: 'Create' });
   if (!name) return;
-  try { const p = (parent ? parent + '/' : '') + name; await folio.mkdir(p); S.expanded.add(p); await refreshTree(); } catch (e) { toast(e.message, { kind: 'error' }); }
+  try {
+    const p = (parent ? parent + '/' : '') + name; await folio.mkdir(p); S.expanded.add(p); await refreshTree();
+    let rec = null;
+    actions.push({ label: `created folder ${name}`, undo: async () => { rec = await trashRaw(p); }, redo: async () => { await untrashRaw(rec); } });
+    updateHistoryButtons();
+  } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 async function renamePath(p, isDir) {
   const name = await prompt({ title: isDir ? 'Rename folder' : 'Rename note', label: 'Name', value: isDir ? base(p) : stem(p), action: 'Rename' });
@@ -748,16 +769,23 @@ async function renamePath(p, isDir) {
   if (to === p) return;
   await movePath(p, to, isDir);
 }
+/** rename or move, with the links in other documents kept in step; returns how many documents changed */
+async function moveRaw(from, to) {
+  const r = await folio.rename(from, to);
+  retargetTabs(from, to);
+  await refreshTree();
+  return r?.changed?.length || 0;
+}
 async function movePath(from, to, isDir) {
   try {
-    const r = await folio.rename(from, to);
-    retargetTabs(from, to);
-    const n = r?.changed?.length || 0;
-    if (n) toast(`Updated links in ${n} ${n === 1 ? 'document' : 'documents'}.`);
-    await refreshTree();
+    const n = await moveRaw(from, to);
+    actions.push({ label: `${dirOf(from) === dirOf(to) ? 'renamed' : 'moved'} ${isDir ? base(from) : stem(from)}`, undo: () => moveRaw(to, from), redo: () => moveRaw(from, to) });
+    toast(n ? `Updated links in ${n} ${n === 1 ? 'document' : 'documents'}.` : `${dirOf(from) === dirOf(to) ? 'Renamed' : 'Moved'} “${isDir ? base(from) : stem(from)}”.`, { action: ['Undo', () => fileUndo('undo')] });
+    updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 function retargetTabs(from, to) {
+  nav.list = nav.list.map((x) => (x === from || x.startsWith(from + '/') ? to + x.slice(from.length) : x));
   for (const t of S.tabs) {
     if (t.path === from || t.path.startsWith(from + '/')) {
       const np = to + t.path.slice(from.length);
@@ -767,13 +795,30 @@ function retargetTabs(from, to) {
   }
   renderTabs(); renderStatus(); persistTabs();
 }
+/** move to the Trash, keeping a copy so the move can be undone; unsaved edits are saved first so they come back too */
+async function trashRaw(p) {
+  const open = S.tabs.filter((t) => t.path === p || t.path.startsWith(p + '/')).map((t) => t.path);
+  const active = open.includes(S.active) ? S.active : null;
+  for (const q of open) { const t = tabOf(q); if (t && t.text !== t.saved) await saveTab(t); }
+  const { token } = await folio.trash(p);
+  for (const q of open) await closeTab(q);
+  await refreshTree();
+  return { token, open, active };
+}
+async function untrashRaw(rec) {
+  await folio.untrash(rec.token); await refreshTree();
+  for (const q of rec.open) await openFile(q, { background: true });
+  if (rec.active) await openFile(rec.active);
+}
 async function trashPath(p, isDir) {
-  const ok = await confirmSheet({ title: `Move “${isDir ? base(p) : stem(p)}” to the Trash?`, body: 'You can restore it from the system Trash.', action: 'Move to Trash', danger: true });
+  const ok = await confirmSheet({ title: `Move “${isDir ? base(p) : stem(p)}” to the Trash?`, body: 'You can undo this, or restore it from the system Trash.', action: 'Move to Trash', danger: true });
   if (!ok) return;
   try {
-    await folio.trash(p);
-    for (const t of [...S.tabs]) if (t.path === p || t.path.startsWith(p + '/')) { t.saved = t.text; await closeTab(t.path); }
-    await refreshTree();
+    let rec = await trashRaw(p);
+    const name = isDir ? base(p) : stem(p);
+    actions.push({ label: `moved ${name} to the Trash`, undo: async () => { await untrashRaw(rec); }, redo: async () => { rec = await trashRaw(p); } });
+    toast(`Moved “${name}” to the Trash.`, { action: ['Undo', () => fileUndo('undo')] });
+    updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 async function chooseFolder() {
@@ -1003,7 +1048,68 @@ function openSettings() {
 }
 
 /* ============ palette ============ */
+/* ---------- back and forward between notes ---------- */
+const nav = { list: [], i: -1, busy: false };
+function navRecord(p) {
+  if (nav.busy || nav.list[nav.i] === p) return;
+  nav.list.length = nav.i + 1; nav.list.push(p);
+  if (nav.list.length > 100) nav.list.shift();
+  nav.i = nav.list.length - 1;
+}
+function navFind(d) { for (let j = nav.i + d; j >= 0 && j < nav.list.length; j += d) if (S.files.includes(nav.list[j])) return j; return -1; }
+async function navGo(d) {
+  const j = navFind(d); if (j < 0) return;
+  nav.busy = true;
+  try { await openFile(nav.list[j]); nav.i = j; } catch (e) { toast(e.message, { kind: 'error' }); } finally { nav.busy = false; }
+  updateHistoryButtons();
+}
+
+/* ---------- undo and redo ---------- */
+const actions = createActionLog(50);
+/** where Undo and Redo go right now: the editor with focus, else the visible document view */
+function docTarget() {
+  const dom = document.activeElement?.closest?.('.cm-editor');
+  const v = dom && EditorView.findFromDOM(dom);
+  if (v) return { run: (d) => (d === 'undo' ? cmUndo(v) : cmRedo(v)), can: (d) => (d === 'undo' ? undoDepth(v.state) : redoDepth(v.state)) > 0 };
+  const type = curType();
+  if (type !== 'md' && app.dataset.modeView !== 'code') {
+    const sf = curSurface();
+    if (sf?.undo) return { run: (d) => sf[d](), can: (d) => (d === 'undo' ? sf.canUndo() : sf.canRedo()) };
+  }
+  if (type === 'md' && isRich()) return { run: (d) => rich[d](), can: (d) => (d === 'undo' ? rich.canUndo() : rich.canRedo()) };
+  return { run: (d) => editor[d](), can: (d) => (d === 'undo' ? editor.canUndo() : editor.canRedo()) };
+}
+function editUndo(dir) {
+  const a = document.activeElement;
+  if (a?.matches?.('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea')) { document.execCommand(dir); return; }
+  if (a?.closest?.('#sidebar')) return fileUndo(dir); // in the file list, Undo means the last file action
+  if (!S.active) return;
+  docTarget().run(dir);
+  updateHistoryButtons();
+}
+async function fileUndo(dir) {
+  const op = actions.peek(dir);
+  if (!op) return toast(dir === 'undo' ? 'No file action to undo.' : 'No file action to redo.');
+  try { await actions.run(dir); toast(`${dir === 'undo' ? 'Undid' : 'Redid'}: ${op.label}.`); }
+  catch (e) { toast(e.message, { kind: 'error' }); }
+  await refreshTree(); updateHistoryButtons();
+}
+function updateHistoryButtons() {
+  const t = S.active ? docTarget() : null;
+  $('#btn-undo').disabled = !t || !t.can('undo');
+  $('#btn-redo').disabled = !t || !t.can('redo');
+  $('#btn-back').disabled = navFind(-1) < 0;
+  $('#btn-forward').disabled = navFind(1) < 0;
+}
+const historySoon = debounce(() => updateHistoryButtons(), 60);
+
 const COMMANDS = [
+  { id: 'undo', title: 'Undo', key: 'Mod+Z', run: () => editUndo('undo') },
+  { id: 'redo', title: 'Redo', key: 'Mod+Shift+Z', run: () => editUndo('redo') },
+  { id: 'undo-file', title: 'Undo last file action', key: 'Mod+Alt+Z', run: () => fileUndo('undo') },
+  { id: 'redo-file', title: 'Redo file action', key: 'Mod+Alt+Shift+Z', run: () => fileUndo('redo') },
+  { id: 'nav-back', title: 'Go back', key: 'Mod+Alt+Left', run: () => navGo(-1) },
+  { id: 'nav-forward', title: 'Go forward', key: 'Mod+Alt+Right', run: () => navGo(1) },
   { id: 'new-note', title: 'New note', key: 'Mod+N', run: () => newNote() },
   { id: 'new-folder', title: 'New folder', run: () => newFolder(dirOf(S.active || '')) },
   { id: 'open-folder', title: 'Open folder…', key: 'Mod+O', run: chooseFolder },
@@ -1215,6 +1321,19 @@ function bindChrome() {
   bindTooltips();
   $('#btn-new').onclick = () => newNote();
   $('#btn-sidebar').onclick = toggleSidebar;
+  $('#btn-back').onclick = () => navGo(-1); $('#btn-forward').onclick = () => navGo(1);
+  $('#btn-undo').onclick = () => editUndo('undo'); $('#btn-redo').onclick = () => editUndo('redo');
+  // clicking these must not take the focus away from the editor they act on
+  for (const id of ['#btn-back', '#btn-forward', '#btn-undo', '#btn-redo']) $(id).addEventListener('mousedown', (e) => e.preventDefault());
+  document.addEventListener('focusin', historySoon);
+  // back and forward from the keyboard win over the editors' own word-jump keys; the mouse side buttons do the same
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey || e.shiftKey || (S.platform === 'darwin' ? !e.metaKey : e.ctrlKey || e.metaKey)) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (e.target.closest?.('input, textarea, select')) return;
+    e.preventDefault(); e.stopPropagation(); navGo(e.key === 'ArrowLeft' ? -1 : 1);
+  }, true);
+  document.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); navGo(e.button === 3 ? -1 : 1); } });
   $('#btn-outline').onclick = toggleOutline;
   $('#ai-status').onclick = openAiSheet;
   $('#view-switch').onclick = (e) => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); };
@@ -1452,6 +1571,7 @@ window.__folioErrors = [];
 /** tests and automation: run a command by id, as the menu would */
 window.__folioRun = (id) => COMMANDS.find((x) => x.id === id)?.run();
 Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
+Object.defineProperty(window, '__folioEditor', { get: () => editor });
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
 addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); if (e.reason?.stack) console.error('[folio-error-stack]', e.reason.stack.split('\n').slice(0, 4).join(' | ')); console.error('[folio-error]', e.reason?.message || e.reason); });
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>Folio could not start. ${esc(e.message)}</p></div></div>`); console.error(e); });

@@ -1160,3 +1160,9 @@ html[data-platform="win32"] .winctl-space, html[data-platform="linux"] .winctl-s
 .sl-zoom-pct { font: inherit; font-size: var(--text-xs, 12px); min-width: 4.5ch; border: 0; background: none; color: inherit; cursor: pointer; font-variant-numeric: tabular-nums; }
 .sl-frame.is-copying .sl-moveable { opacity: .6; }
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* history buttons: back and forward, undo and redo */
+.nav-btns { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.nav-btns .icon-btn:disabled { opacity: 0.35; cursor: default; }
+.sf-ic { padding-inline: var(--space-xs); }
+.sf-ic:disabled { opacity: 0.35; }

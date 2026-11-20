@@ -61,3 +61,8 @@ Bigger bets after 1.3.
 - Page editor (Word-style), slides-md with PowerPoint and PDF export, board-md canvas, sheet-md grid with formulas, charts in sheets, pages and slides.
 - MCP server with live, reversible AI edits; one-click connection to Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code.
 - CI with format, MCP and UI smoke tests; CodeQL; Dependabot; cubic and Claude reviews.
+
+## Done in 1.2.1
+
+- Undo and redo everywhere: one history per tab (pages, visual editor, slides, boards, sheets), toolbar buttons, Edit menu and palette; undo and redo for file actions (create, rename, move, trash); back and forward between notes.
+- Security: transitive `image-size` and `katex` pinned to patched versions; CodeQL action v4; animation comment scanner without regex backtracking.

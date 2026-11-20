@@ -293,6 +293,17 @@ export function createRich(host, { onChange, resolveImage, onPickImage, onLink, 
       host.querySelector('.rich-scroll').scrollTop = 0;
       syncToolbar();
     },
+    /** the visual editor state of this document, with its undo history; `md` says which text it matches */
+    snapshot() { return { state: editor.view.state, md: api.getMarkdown(), frontmatter }; },
+    restore(snap) {
+      frontmatter = snap.frontmatter; silent = true;
+      try { editor.view.updateState(snap.state); } finally { silent = false; }
+      syncToolbar();
+    },
+    undo() { return editor.commands.undo(); },
+    redo() { return editor.commands.redo(); },
+    canUndo() { return editor.can().undo(); },
+    canRedo() { return editor.can().redo(); },
     getMarkdown() {
       let out = editor.getMarkdown().replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
       // keep the conventions the rest of Folio (and the AI) reads

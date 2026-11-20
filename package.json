@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A Markdown editor your AI assistants can read and edit through MCP.",
   "main": "dist/main.mjs",
   "scripts": {
@@ -196,5 +196,9 @@
   },
   "bugs": {
     "url": "https://github.com/gabrielevaudano98/folio/issues"
+  },
+  "overrides": {
+    "image-size": "^2.1.0",
+    "katex": "^0.19.1"
   }
 }

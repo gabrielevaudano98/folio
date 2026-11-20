@@ -25,6 +25,9 @@ La sintassi completa dei formati è in [`docs/FORMATS.md`](docs/FORMATS.md).
 - **Write (WYSIWYG live)**: titoli, grassetto, corsivo, link, citazioni, liste, checkbox cliccabili, immagini e righe orizzontali appaiono già formattati; la sintassi Markdown ricompare solo sulla riga dove hai il cursore (stile Typora/Obsidian). Tabelle, codice e formule restano in sorgente e si vedono renderizzati in Split/Read
 - **Split** (sorgente + anteprima sincronizzati) e **Read** — `⌘1` `⌘2` `⌘3`
 - Schede, albero cartelle con drag & drop, rinomina, cestino di sistema
+- **Annulla e ripeti ovunque**: `⌘Z` / `⇧⌘Z` (su Windows anche `Ctrl+Y`) valgono per pagine, slide, lavagne e fogli, con la cronologia **separata per ogni scheda** (cambiare scheda non la perde). Pulsanti nella barra del titolo, menu Modifica e palette
+- **Annulla azioni sui file**: crea, rinomina, sposta ed elimina si annullano con `⌘⌥Z` (o `⌘Z` con l'elenco file in primo piano, o il pulsante *Annulla* nella notifica). Gli elementi eliminati tornano con il loro contenuto
+- **Indietro e avanti tra le note**: `Alt+←` / `Alt+→` (macOS `⌘⌥←` / `⌘⌥→`), pulsanti nella barra, tasti laterali del mouse, swipe sul trackpad
 - Salvataggio automatico, ricarica se il file cambia su disco
 - Palette comandi `⌘⇧P`, apertura rapida `⌘P`, ricerca in tutte le note `⌘⇧F`, cerca/sostituisci `⌘F`
 - Formattazione: `⌘B` `⌘I` `⌘K` (link) `⌘E` (codice) `⌘L` (task), liste che continuano con Invio
