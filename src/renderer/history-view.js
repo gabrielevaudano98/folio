@@ -153,19 +153,19 @@ export function mountHistory(host, api) {
   async function select(id) { st.sel = id; st.hunk = 0; if (id === 'current') st.view = 'changes'; renderList(); host.querySelectorAll('[data-act=name],[data-act=copy],[data-act=restore]').forEach((b) => (b.disabled = id === 'current')); host.querySelectorAll('[data-act=name]').forEach((b) => { if (st.versions.find((x) => x.id === id)?.git) b.disabled = true; }); await showVersion(); }
 
   async function restoreWhole() {
-    const v = selVersion(); if (!v) return; const text = await textOf(v);
+    const v = selVersion(); if (!v) return; const text = await textOf(v); const path = st.path;
     if (text === st.live) return api.toast(tr('hist.that-is-already-the-current-text'));
     await folio.historySnapshot(st.path, st.live, 'before-restore', true);
     await api.setText(text); await folio.historySnapshot(st.path, text, 'restore', true);
-    api.toast(tr('hist.restored-the-version-from-tolowercase', { toLowerCase: dayLabel(v.t).toLowerCase(), t: timeOf(v.t) }), { action: [tr('hist.undo'), async () => { await api.setText(st.live); await folio.historySnapshot(st.path, st.live, 'edit', true); }] });
+    api.toast(tr('hist.restored-the-version-from-tolowercase', { toLowerCase: dayLabel(v.t).toLowerCase(), t: timeOf(v.t) }), { action: [tr('hist.undo'), async () => { if (api.getPath() !== path) return api.toast(tl('hist', 'Open that page again to undo.')); await api.setText(st.live); await folio.historySnapshot(st.path, st.live, 'edit', true); }] });
     close();
   }
   async function putBack(i) {
-    const next = revertHunk(st.parts, i); const before = st.live;
+    const next = revertHunk(st.parts, i); const before = st.live; const path = st.path;
     await folio.historySnapshot(st.path, st.live, 'before-restore', true);
     await api.setText(next); st.live = next; await folio.historySnapshot(st.path, next, 'restore', true);
     st.versions = await loadVersions(); renderList(); await showVersion();
-    api.toast(tr('hist.put-that-change-back'), { action: [tr('hist.undo'), async () => { await api.setText(before); st.live = before; await folio.historySnapshot(st.path, before, 'edit', true); st.versions = await loadVersions(); renderList(); await showVersion(); }] });
+    api.toast(tr('hist.put-that-change-back'), { action: [tr('hist.undo'), async () => { if (api.getPath() !== path) return api.toast(tl('hist', 'Open that page again to undo.')); await api.setText(before); st.live = before; await folio.historySnapshot(st.path, before, 'edit', true); st.versions = await loadVersions(); renderList(); await showVersion(); }] });
   }
   async function nameIt() {
     const v = selVersion(); if (!v || v.git) return;

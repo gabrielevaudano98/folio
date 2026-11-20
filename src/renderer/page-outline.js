@@ -8,9 +8,9 @@ export function sections(text) {
   const lines = String(text).split('\n'); const out = []; let fence = null, i = 0;
   if (/^---\s*$/.test(lines[0] || '')) { i = 1; while (i < lines.length && !/^(---|\.\.\.)\s*$/.test(lines[i])) i++; i++; }
   for (; i < lines.length; i++) {
-    const f = /^\s{0,3}(`{3,}|~{3,})/.exec(lines[i]);
-    if (f) { if (!fence) fence = f[1][0].repeat(f[1].length); else if (lines[i].trim().startsWith(fence)) fence = null; continue; }
-    if (fence) continue;
+    const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(lines[i]); // same rules as headings(): a fence closes on its own marker with nothing after it
+    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = null; continue; }
+    if (f && !(f[1][0] === '`' && f[2].includes('`'))) { fence = f[1]; continue; }
     const m = /^ {0,3}(#{1,6})(?:\s|$)/.exec(lines[i]);
     if (m) { out.push({ line: i, level: m[1].length }); continue; }
     const u = /^ {0,3}(=+|-+)\s*$/.exec(lines[i + 1] || '');

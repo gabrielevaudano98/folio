@@ -758,6 +758,7 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   const h = headings('# One\n\n````\n~~~\n# not a heading\n```\n# still code\n````\n\n   ## Two\n\n    ### code, four spaces\n\n# C#\n\n## Closed ##\n');
   assert.deepEqual(h.map((x) => [x.level, x.text]), [[1, 'One'], [2, 'Two'], [1, 'C#'], [2, 'Closed']]);
   ok('headings: a fence closes on its own marker, indented ATX headings count, a trailing # in a title stays');
+  assert.deepEqual(sections('```\n```x\n# inside\n```\n# Real\n').map((x) => x.line), [4]); ok('outline sections close a fence the same way headings() does');
 }
 
 console.log(`\n${n} format checks passed`);
