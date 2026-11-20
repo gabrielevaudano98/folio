@@ -19,6 +19,7 @@ const steps = [
   { js: "document.querySelector('[data-file=\"pages/a.md\"]').click()", wait: 900 },
   { js: "document.querySelector('#view-switch [data-view=\"edit\"]').click()", wait: 900 },
   { js: "document.querySelectorAll('.rich-prose img').length", log: true, wait: 100 },
+  { js: "(async () => { const imgs = [...document.querySelectorAll('.rich-prose img')]; const loaded = imgs.length > 0 && imgs.every((i) => i.complete && i.naturalWidth > 0); const url = await window.folio.absUrl('pages/.asset/aaaaaaaa-team.png').catch((e) => String(e.message)); const data = await window.folio.dataUrl('.asset/aaaaaaaa-team.png', 'pages/a.md').catch((e) => String(e.message)); return { loaded, url, data: String(data).slice(0, 22) }; })()", log: true, wait: 100 },
   { js: "(() => { const img = document.querySelector('.rich-prose img'); const el = img.closest('p, figure, .rich-img') || img.parentElement; const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.left + 20, clientY: r.top + 6 })); return true; })()", wait: 300 },
   { js: "document.querySelector('.block-grip').click(); document.querySelector('.block-menu [data-act=delete]').click(); document.querySelectorAll('.rich-prose img').length", log: true, wait: 7000 },
   { js: "document.querySelector('.asset-toast')?.textContent.includes('Remove the file') || false", log: true, wait: 100 },
@@ -37,10 +38,12 @@ child.on('exit', () => {
   clearTimeout(timer); clearInterval(poll);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nassets ui'); if (process.env.DEBUG) console.log(logs);
-  assert.equal(logs.length, 6, out.slice(-2000));
-  const [before, after, asked, moved, undone, errors] = logs;
+  assert.equal(logs.length, 7, out.slice(-2000));
+  const [before, shown, after, asked, moved, undone, errors] = logs;
   assert.deepEqual(errors, []);
-  assert.equal(before, 1); assert.equal(after, 0); assert.equal(asked, true, 'the removal question appears');
+  assert.equal(before, 1); assert.equal(after, 0);
+  assert.equal(shown.loaded, true, 'the picture in .asset really loads'); assert.match(shown.url, /\.asset\/aaaaaaaa-team\.png$/); assert.match(shown.data, /^data:image\/png;base64/);
+  console.log('  ✓ a picture in the hidden .asset folder loads, and its file URL and data URL resolve'); assert.equal(asked, true, 'the removal question appears');
   assert(trashedSeen && trashedSeen[0].endsWith('~aaaaaaaa-team.png'), 'the file went to the asset trash'); assert.equal(moved, true);
   console.log('  ✓ removing a picture from the page asks about the file; Remove moves it to the hidden asset trash');
   assert.equal(undone, 1); assert(fs.existsSync(file), 'the file is back'); assert.equal(fs.readdirSync(trash).length, 0);

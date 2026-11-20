@@ -324,8 +324,8 @@ h('assets:heal', (noteRel, text) => assets.heal(noteRel, text));
 h('assets:remove', async (paths, permanent, { onlyUnused = true } = {}) => { const list = paths.slice(0, 500); const busy = onlyUnused ? await assets.stillUsed(list) : new Set(); let n = 0; for (const p of list) if (!busy.has(p) && await assets.remove(p, { permanent: !!permanent }).catch(() => false)) n++; return n; });
 h('assets:usage', () => assets.usage());
 h('assets:migrate', () => assets.migrateLegacy({ onBefore: (f, t) => keep(f, t, { reason: 'assets', force: true }) }));
-h('assets:reveal', (assetRel) => { const abs = notes.resolve(assetRel); shell.showItemInFolder(abs); });
-h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel).split(path.sep).join('/'));
+h('assets:reveal', (assetRel) => { const abs = notes.resolve(assetRel, { allowAsset: true }); shell.showItemInFolder(abs); });
+h('fs:abs-url', (rel) => 'file://' + notes.resolve(rel, { allowAsset: true }).split(path.sep).join('/'));
 h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal(url); });
 /* open a file of the workspace (an attached PDF, a document) with the system's app */
 /* templates (D9): the community gallery and links to Markdown files. Text only, 1 MB at most, HTTPS (or this machine) */
@@ -352,7 +352,7 @@ h('templates:import-files', async () => {
   for (const f of r.filePaths.slice(0, 50)) { const st = await fs.stat(f); if (st.size > TEMPLATE_MAX) continue; out.push({ name: path.basename(f).replace(/\.(md|markdown|txt)$/i, ''), text: await fs.readFile(f, 'utf8') }); }
   return out;
 });
-h('shell:open-file', async (rel) => { const abs = notes.resolve(rel); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
+h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
 h('clipboard:read', () => ({ text: clipboard.readText(), html: clipboard.readHTML() }));
 /* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */
@@ -409,7 +409,7 @@ h('fs:data-url', async (src, noteRel) => {
   }
   // local files: only inside the open folder, and only media types, so a note cannot pull in files like ~/.ssh/id_rsa
   const rel = decodeURI(src).replace(/^\.\//, '');
-  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src)) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel));
+  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src)) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel), { allowAsset: true });
   const mime = MIME[path.extname(abs).toLowerCase()];
   if (!mime) throw new Error('Only images, audio, video and fonts can be embedded.');
   const buf = await fs.readFile(abs);
