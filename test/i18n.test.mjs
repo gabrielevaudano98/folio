@@ -42,8 +42,8 @@ console.log('  ✓ every translation maps to a real key and keeps its {placehold
   const gaps = [];
   for (const f of walk('src/main')) {
     const src = fs.readFileSync(f, 'utf8');
-    for (const m of src.matchAll(/\btl\('(menu|dlg)', '((?:[^'\\]|\\.)*)'\)/g)) {
-      const k = `${m[1]}.${slugKey(m[2].replace(/\\'/g, "'"))}`;
+    for (const m of src.matchAll(/\btl\('(menu|dlg)', '((?:[^'\\]|\\.)*)'\)|\brestart:\s*'((?:[^'\\]|\\.)*)'/g)) {
+      const k = `${m[1] ?? 'dlg'}.${slugKey((m[2] ?? m[3]).replace(/\\'/g, "'"))}`;
       if (!(k in en)) gaps.push(`${f}: ${k} (English)`); else if (!(k in LOCALES.it.dict)) gaps.push(`${f}: ${k} (Italian)`);
     }
     for (const m of src.matchAll(/\bt\('([a-z][\w-]*\.[\w.-]+)'/g)) if (!(m[1] in en) && !(`${m[1]}_other` in en)) gaps.push(`${f}: ${m[1]} (English)`);

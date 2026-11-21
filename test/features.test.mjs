@@ -231,7 +231,7 @@ await t('meeting:recover and meeting:discard refuse an id that is not one of our
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-feat-')); const handlers = {};
   createFeatures({ app: { getPath: () => tmp }, net: {}, utilityProcess: {}, MessageChannelMain: class {}, h: (name, fn) => { handlers[name] = fn; }, getWin: () => null,
     settings: {}, saveSettings: () => {}, notes: { resolve: (r) => path.join(tmp, r), root: () => tmp }, workerPath: '', env: { LOCALAPPDATA: tmp, XDG_DATA_HOME: tmp } });
-  const keep = path.join(tmp, 'keep.txt'); fs.writeFileSync(keep, 'x');
+  const keep = path.join(path.dirname(componentsRoot({ getPath: () => tmp }, { LOCALAPPDATA: tmp, XDG_DATA_HOME: tmp })), 'keep.jsonl'); fs.mkdirSync(path.dirname(keep), { recursive: true }); fs.writeFileSync(keep, 'x');
   for (const bad of ['../keep', '..\\keep', 'A_b', 'a b', '', '.', 'x/../y']) {
     await assert.rejects(handlers['meeting:recover'](bad), /Unknown recording\./, `recover ${JSON.stringify(bad)}`);
     await assert.rejects(handlers['meeting:discard'](bad), /Unknown recording\./, `discard ${JSON.stringify(bad)}`);
