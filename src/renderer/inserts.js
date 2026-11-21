@@ -55,7 +55,7 @@ const toggle = (level) => ({
   md: `\n<details>\n<summary>${level ? `<h${level}>Title</h${level}>` : 'Title'}</summary>\n\n\n\n</details>\n`,
   run: (e) => {
     const { $from } = e.state.selection; const para = $from.parent;
-    const title = para.isTextblock && para.type.name !== 'codeBlock' ? para.textContent : '';
+    const title = para.isTextblock && para.type.name !== 'codeBlock' && !para.content.content.some((n) => !n.isText || n.marks.some((m) => m.type.name === 'hiddenComment')) ? para.textContent : '';
     if (title) e.chain().focus().insertContentAt({ from: $from.before(), to: $from.after() }, toggleNode(level, title)).run();
     else placeBlock(e, toggleNode(level));
     const at = title ? $from.before() : placeBlock.at;
