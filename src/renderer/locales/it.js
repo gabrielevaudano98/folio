@@ -628,6 +628,7 @@ export default {
   'hist.that-is-already-the-current-text': 'Questo è già il testo attuale.',
   'hist.this-is-the-current-text-pick-an-earli': 'Questo è il testo attuale. Scegli una versione precedente per vedere cosa è cambiato.',
   'hist.undo': 'Annulla',
+  'hist.open-that-page-again-to-undo': 'Riapri quella pagina per annullare.',
   'hist.version': 'Versione',
   'hist.version-history': 'Cronologia versioni',
   'hist.versions': 'Versioni',
