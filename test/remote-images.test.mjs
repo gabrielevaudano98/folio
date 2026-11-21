@@ -5,10 +5,11 @@ import { workspace, runApp, open, step, log, errors } from './harness.mjs';
 
 // a 1×1 PNG, and a picture that sends more than 30 MB without saying how long it is
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
-const hits = {};
+const hits = new Map(); const hit = (k) => hits.get(k) || 0;
 const server = http.createServer((q, s) => {
-  hits[q.url] = (hits[q.url] || 0) + 1;
-  if (q.url === '/big.png') {
+  const route = ['/pixel.png', '/big.png', '/edit.png'].includes(q.url) ? q.url : 'other';
+  hits.set(route, hit(route) + 1);
+  if (route === '/big.png') {
     s.writeHead(200, { 'content-type': 'image/png' }); // no content-length: chunked
     const chunk = Buffer.alloc(1024 * 1024); let sent = 0;
     const more = () => { while (sent < 31) { sent++; if (!s.write(chunk)) return s.once('drain', more); } s.end(); };
@@ -40,7 +41,7 @@ console.log('\nremote images');
   assert.deepEqual(before, [true, false, true]); console.log('  ✓ opening a note shows a notice and loads no web image');
   assert.deepEqual(after, [true, null]); console.log('  ✓ choosing to load goes through the main process, which refuses the local network');
   assert.deepEqual(ed, [0, true]); console.log('  ✓ the editor view loads no web image either and shows a placeholder');
-  assert.equal(Object.values(hits).reduce((a, b) => a + b, 0), 0, `the page itself contacted the image server: ${JSON.stringify(hits)}`); console.log('  ✓ the page never contacted the image server itself');
+  assert.equal([...hits.values()].reduce((a, b) => a + b, 0), 0, `the page itself contacted the image server: ${JSON.stringify([...hits])}`); console.log('  ✓ the page never contacted the image server itself');
   assert.deepEqual(errs, [], JSON.stringify(errs));
 }
 
@@ -62,10 +63,10 @@ console.log('\nremote images');
   ], { FOLIO_TEST_LOOPBACK: '1' });
   const [imgs, editBefore, editAfter, errs] = r.js.slice(-4);
   assert.deepEqual(imgs, [['data:image/png;', false], ['data:image/png;', false], ['', true]], JSON.stringify(imgs)); console.log('  ✓ allowed images arrive as data: URLs; one that streams past 30 MB without a length is refused');
-  assert.equal(hits['/pixel.png'], 1, JSON.stringify(hits)); console.log('  ✓ the same address shown twice is downloaded once');
+  assert.equal(hit('/pixel.png'), 1, JSON.stringify([...hits])); console.log('  ✓ the same address shown twice is downloaded once');
   assert.deepEqual(editBefore, [true, false]); console.log('  ✓ the visual editor shows the same notice and holds the image back');
   assert.deepEqual(editAfter, [false, 'data:image/png;']); console.log('  ✓ allowing from the editor loads its images without reopening the note');
-  assert.equal(hits['/edit.png'], 1, JSON.stringify(hits));
+  assert.equal(hit('/edit.png'), 1, JSON.stringify([...hits]));
   assert.deepEqual(errs, [], JSON.stringify(errs));
 }
 server.close();

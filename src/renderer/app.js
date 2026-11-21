@@ -261,15 +261,21 @@ let remoteGen = 0; // bumped when the folder changes, so a download still in fli
 const remoteOK = new Set(), remoteCache = new Map(), remoteJobs = new Map(), remoteFailed = new Set(); // grants, fetched images, downloads in flight and failures belong to the open folder
 const isRemote = (s) => /^https?:\/\//i.test(s || '');
 const remoteAllowed = (t) => !!t && (S.settings.remoteImages === true || remoteOK.has(t.path));
-function resetRemote() { remoteOK.clear(); remoteCache.clear(); remoteJobs.clear(); remoteFailed.clear(); remoteGen++; }
+let remoteBytes = 0; const REMOTE_CACHE_MAX = 64 * 1024 * 1024; // fetched images kept for redraws, oldest dropped past this
+function resetRemote() { remoteOK.clear(); remoteCache.clear(); remoteJobs.clear(); remoteFailed.clear(); remoteBytes = 0; remoteGen++; }
+function cacheRemote(src, u) {
+  if (!u || u.length > REMOTE_CACHE_MAX) return;
+  remoteCache.set(src, u); remoteBytes += u.length;
+  for (const [k, v] of remoteCache) { if (remoteBytes <= REMOTE_CACHE_MAX) break; remoteCache.delete(k); remoteBytes -= v.length; }
+}
 // one download per address at a time; a failure is not retried until the folder changes or the person asks again
 function remoteImage(src) {
   const t = activeTab(); if (!remoteAllowed(t)) return Promise.resolve(null);
-  if (remoteCache.has(src)) return Promise.resolve(remoteCache.get(src));
+  if (remoteCache.has(src)) { const u = remoteCache.get(src); remoteCache.delete(src); remoteCache.set(src, u); return Promise.resolve(u); } // most recently used last
   if (remoteFailed.has(src)) return Promise.resolve(null);
   if (!remoteJobs.has(src)) {
     const g = remoteGen;
-    remoteJobs.set(src, folio.dataUrl(src, t.path).then((u) => { if (g === remoteGen) remoteCache.set(src, u); return u; }, () => { if (g === remoteGen) remoteFailed.add(src); return null; }).finally(() => { if (g === remoteGen) remoteJobs.delete(src); }));
+    remoteJobs.set(src, folio.dataUrl(src, t.path).then((u) => { if (g === remoteGen) cacheRemote(src, u); return u; }, () => { if (g === remoteGen) remoteFailed.add(src); return null; }).finally(() => { if (g === remoteGen) remoteJobs.delete(src); }));
   }
   return remoteJobs.get(src);
 }
@@ -290,7 +296,7 @@ function resolveImg(src) {
   const d = dirOf(t.path); return folio.absUrl(normalize(d ? `${d}/${rel}` : rel)).catch(() => null);
 }
 // the person allowed this note's web images (or all of them): forget earlier failures and redraw every view that shows images
-function allowRemote(path) { if (path) remoteOK.add(path); remoteFailed.clear(); renderPreview(); rich?.refreshImages?.(); renderRemoteNotice(); }
+function allowRemote(path) { if (path) remoteOK.add(path); remoteFailed.clear(); renderPreview(); if (curType() === 'md' && isRich()) rich?.refreshImages?.(); renderRemoteNotice(); } // the hidden editor may still hold another note: it reloads its pictures when it is shown
 // edit view: the same notice as the preview, above the editor, while the open note has blocked web images
 let remoteBlockedCount = 0; // web images the visual editor holds back in the open note
 function renderRemoteNotice() {
@@ -574,6 +580,7 @@ async function renderPreview() {
   const tpl = document.createElement('template'); tpl.innerHTML = render(t.text);
   const blocked = [];
   const block = (img) => { img.classList.add('remote-blocked'); img.alt = img.alt || tr('app.remote-image'); };
+  for (const el of tpl.content.querySelectorAll('[srcset]')) el.removeAttribute('srcset'); // a candidate list cannot be checked address by address
   for (const img of tpl.content.querySelectorAll('img')) {
     const src = img.getAttribute('src') || '';
     if (src && !/^(data:|blob:)/.test(src)) {

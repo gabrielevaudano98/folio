@@ -425,11 +425,12 @@ const FolioImage = PageImage.extend({
       const kind = mediaKind(node.attrs.src || '');
       const dom = document.createElement('figure'); dom.className = `rich-figure rich-media-${kind}`; dom.contentEditable = 'false';
       // every address goes through the app's resolver (workspace boundary, web-image consent); a web image or media it holds back registers a retry
-      let retry = null; const isWeb = (src) => /^https?:\/\//i.test(src);
+      let retry = null, gone = false; const isWeb = (src) => /^https?:\/\//i.test(src);
       const setSrc = (el, src, miss) => {
         if (/^(data:|blob:)/.test(src)) { el.src = src; return; }
         let r; try { r = opts.resolve?.(src); } catch { r = null; }
         Promise.resolve(r).then((u) => {
+          if (gone) return; // the view was destroyed while the address was being checked
           if (u) { el.src = u; if (retry) { opts.blocked?.delete(retry); retry = null; } el.classList.remove('remote-blocked'); return; }
           miss?.();
           if (isWeb(src) && !retry) { retry = () => setSrc(el, src, miss); opts.blocked?.add(retry); }
@@ -482,7 +483,7 @@ const FolioImage = PageImage.extend({
         selectNode() { dom.classList.add('media-selected'); }, deselectNode() { dom.classList.remove('media-selected'); },
         stopEvent: (e) => !!e.target.closest?.('.rich-img-resize, .rich-caption input, video, audio'),
         ignoreMutation: () => true,
-        destroy() { if (retry) opts.blocked?.delete(retry); },
+        destroy() { gone = true; if (retry) opts.blocked?.delete(retry); retry = null; },
       };
     };
   },
