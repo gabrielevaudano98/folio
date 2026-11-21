@@ -424,7 +424,7 @@ const FolioImage = PageImage.extend({
       const opts = this.options;
       const kind = mediaKind(node.attrs.src || '');
       const dom = document.createElement('figure'); dom.className = `rich-figure rich-media-${kind}`; dom.contentEditable = 'false';
-      const setSrc = (el, src) => { if (/^(https?:|data:|file:|blob:)/.test(src)) el.src = src; else Promise.resolve(opts.resolve?.(src)).then((u) => { if (u) el.src = u; }); };
+      const setSrc = (el, src) => { if (/^(data:|file:|blob:)/.test(src)) el.src = src; else Promise.resolve(opts.resolve?.(src)).then((u) => { if (u) el.src = u; }); };
       const commit = (attrs) => { const pos = typeof getPos === 'function' ? getPos() : null; if (pos != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs })); };
       const name = (node.attrs.src || '').split(/[/?#]/).filter(Boolean).pop()?.replace(/^(?=[a-z]*\d)[a-z0-9]{8}-/, '') || 'file';
       let body;

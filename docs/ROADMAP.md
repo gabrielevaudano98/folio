@@ -82,3 +82,4 @@ Bigger bets after 1.3.
 
 - Undo and redo everywhere: one history per tab (pages, visual editor, slides, boards, sheets), toolbar buttons, Edit menu and palette; undo and redo for file actions (create, rename, move, trash); back and forward between notes.
 - Security: transitive `image-size` and `katex` pinned to patched versions; CodeQL action v4; animation comment scanner without regex backtracking.
+- Web images in notes are opt-in. The preview and the editor no longer load them by themselves, so a note you did not write cannot tell that you opened it. A notice offers to load them for that note, or Settings loads them always; either way they go through the app's guarded fetch (public addresses only), and the page's security policy no longer allows `https:` images.
