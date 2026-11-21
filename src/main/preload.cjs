@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld('folio', {
   onMenu: on('menu:command'),
   onTheme: on('theme:changed'),
   onSwitched: on('workspace:switched'),
-  onBeforeClose: on('app:before-close'),
+  onBeforeClose: (fn) => { const off = on('app:before-close')(fn); ipcRenderer.send('app:close-ready'); return off; },
   features: {
     list: () => call('features:list'),
     set: (id, patch) => call('features:set', id, patch),

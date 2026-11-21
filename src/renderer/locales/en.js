@@ -106,6 +106,7 @@ export default {
   'app.broken-references_other': '{n} broken references',
   'app.browse-the-gallery': 'Browse the gallery',
   'app.cancel': 'Cancel',
+  'app.ai-draft-kept-in-tab-file': '{client} changed {name} while it had unsaved edits, and Folio could not keep a copy of either version in the history. Your edits stay in the tab; the AI version is only in the file, until the tab saves over it.',
   'app.ai-draft-kept-in-tab': '{client} changed {name} while it had unsaved edits, and Folio could not keep a copy of them. Your edits stay in the tab; the AI version is in its version history.',
   'app.ai-replaced-draft': '{client} changed {name} while it had unsaved edits. Your version is kept in its version history.',
   'app.some-pages-could-not-be-saved': 'Some pages could not be saved',

@@ -108,17 +108,19 @@ function createWindow() {
   const lock = (e, url) => { if (here(url) === here(win.webContents.getURL())) return; e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); };
   win.webContents.on('will-navigate', lock);
   win.webContents.on('will-redirect', lock);
+  win.webContents.on('did-start-loading', () => { closeReady = false; }); // a reload: the new page says when it listens again
   win.on('close', (e) => {
-    if (win.__forceClose) return;
+    if (win.__forceClose || !closeReady || win.webContents.isCrashed()) return; // nobody to ask yet (or any more): just close
     e.preventDefault();
     win.webContents.send('app:before-close');
   });
 }
 ipcMain.on('app:close-ok', (e) => { if (fromApp(e) && win) { win.__forceClose = true; const q = quitPending; if (q) quitOk = true; win.close(); if (q) app.quit(); } });
 ipcMain.on('app:close-cancel', (e) => { if (fromApp(e)) quitPending = false; });
+ipcMain.on('app:close-ready', (e) => { if (fromApp(e)) closeReady = true; }); // the page listens for app:before-close from now on
 /* Quit (⌘Q, the menu, the dock) first lets the page save its tabs, the same way closing the window does; the other quit steps run only once it agreed */
-let quitPending = false, quitOk = false;
-const quitAgreed = () => quitOk || !win || win.isDestroyed() || win.webContents.isCrashed(); // a crashed page cannot answer: quit anyway
+let quitPending = false, quitOk = false, closeReady = false;
+const quitAgreed = () => quitOk || !closeReady || !win || win.isDestroyed() || win.webContents.isCrashed(); // a page that is not listening yet, or crashed, cannot answer: quit anyway (it has no unsaved tabs to lose)
 
 nativeTheme.on('updated', () => {
   if (win && !isMac) win.setTitleBarOverlay?.(themeColors());
@@ -476,10 +478,10 @@ const appBackend = {
       history, client: ctx.client,
       onWrite: async (r) => {
         if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
-        await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true });
+        const aiKept = (await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true })) !== false;
         ownWrites.set(notes.resolve(r.path), r.after);
         const orphans = r.before != null ? await assets.orphans(r.path, r.before, r.after).catch(() => []) : [];
-        win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans });
+        win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans, aiKept });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
       openNote: () => askRenderer('open-note'),

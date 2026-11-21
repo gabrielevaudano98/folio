@@ -1397,7 +1397,7 @@ function lineChanges(before, after) {
   }
   return { changed: [...new Set(changed)], added, removed, parts };
 }
-function onAiEdit({ path: p, before, after, client, created, orphans }) {
+function onAiEdit({ path: p, before, after, client, created, orphans, aiKept = true }) {
   if (orphans?.length) { const pend = pendingAssets.get(p) || new Map(); for (const o of orphans) pend.set(o.path, o.bytes); pendingAssets.set(p, pend); clearTimeout(assetTimer); assetTimer = setTimeout(askAssetRemoval, 4000); }
   const prior = S.aiEdits.get(p);
   const rec = { before: prior && Date.now() - prior.at < 10 * 60e3 ? prior.before : before, after, client, at: Date.now(), created };
@@ -1411,8 +1411,9 @@ function onAiEdit({ path: p, before, after, client, created, orphans }) {
       // a background tab has no undo: the draft is replaced only once it is safely kept as a version; until then (or if that fails) the tab keeps it
       const draft = t.text;
       folio.historySnapshot(p, draft, 'before-ai', true).catch(() => false).then((kept) => {
-        if (kept !== false && t.text === draft && S.active !== p && tabOf(p) === t) { t.text = after; renderTabs(); toast(tr('app.ai-replaced-draft', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] }); }
-        else if (kept === false) toast(tr('app.ai-draft-kept-in-tab', { client, name: stem(p) }), { kind: 'error', action: [tr('app.open'), () => openFile(p)] });
+        // only the latest AI edit replaces the draft
+        if (kept !== false && S.aiEdits.get(p)?.after === after && t.text === draft && S.active !== p && tabOf(p) === t) { t.text = after; renderTabs(); toast(tr('app.ai-replaced-draft', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] }); }
+        else if (kept === false) toast(tr(aiKept ? 'app.ai-draft-kept-in-tab' : 'app.ai-draft-kept-in-tab-file', { client, name: stem(p) }), { kind: 'error', action: [tr('app.open'), () => openFile(p)] });
       });
     } else if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(tr('app.client-changed-this-note-while-you-had', { client, Z: keyLabel('Mod+Z') })); }
     else t.text = after;
