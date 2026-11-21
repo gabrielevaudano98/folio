@@ -102,6 +102,7 @@ export default {
   'app.broken-references_other': '{n} riferimenti interrotti',
   'app.browse-the-gallery': 'Sfoglia la galleria',
   'app.cancel': 'Annulla',
+  'app.ai-replaced-draft': '{client} ha modificato {name} mentre aveva modifiche non salvate. La tua versione è nella cronologia delle versioni.',
   'app.some-pages-could-not-be-saved': 'Alcune pagine non sono state salvate',
   'app.discard-changes': 'Scarta le modifiche',
   'app.unsaved-pages-lost': 'Folio non è riuscito a salvare {names}. Se continui, le modifiche non salvate vanno perse. Annulla le tiene aperte per riprovare o copiarle.',

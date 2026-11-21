@@ -1396,6 +1396,10 @@ function onAiEdit({ path: p, before, after, client, created, orphans }) {
   const t = tabOf(p);
   if (t) {
     const userDirty = t.text !== t.saved;
+    if (userDirty && p !== S.active) { // a background tab has no undo: keep the draft as a version and say where it is
+      folio.historySnapshot(p, t.text, 'before-ai', true).catch(() => {});
+      toast(tr('app.ai-replaced-draft', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] });
+    }
     t.saved = after;
     if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(tr('app.client-changed-this-note-while-you-had', { client, Z: keyLabel('Mod+Z') })); }
     else t.text = after;

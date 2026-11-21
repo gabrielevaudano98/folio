@@ -106,6 +106,7 @@ export default {
   'app.broken-references_other': '{n} broken references',
   'app.browse-the-gallery': 'Browse the gallery',
   'app.cancel': 'Cancel',
+  'app.ai-replaced-draft': '{client} changed {name} while it had unsaved edits. Your version is kept in its version history.',
   'app.some-pages-could-not-be-saved': 'Some pages could not be saved',
   'app.discard-changes': 'Discard changes',
   'app.unsaved-pages-lost': 'Folio could not save {names}. If you go on, the unsaved changes are lost. Cancel keeps them open so you can retry or copy them.',

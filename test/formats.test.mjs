@@ -782,4 +782,14 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   ok('git history: SHA-256 repositories (64-character commit ids) are listed');
 }
 
+{ // review fixes for PR #52 findings (second batch)
+  const { refsIn } = await import('../src/main/assets.js');
+  assert.deepEqual(refsIn('![](assets/photo(1).png) and .asset/a(2).b.png').map((r) => r.decoded), ['assets/photo(1).png', '.asset/a(2).b.png']);
+  ok('assets: a name with (1) in it is one reference, as in a Markdown link');
+  const { parseTSV } = await import('../src/renderer/page-table.js');
+  assert.equal(parseTSV(Array(600).fill('a\tb').join('\n')), null); assert.equal(parseTSV(Array(60).fill('x').join('\t')), null);
+  assert.deepEqual(parseTSV('a\tb\n1\t2'), [['a', 'b'], ['1', '2']]);
+  ok('pasted tables: past 500 rows or 50 columns the paste stays text, and parsing stops early');
+}
+
 console.log(`\n${n} format checks passed`);

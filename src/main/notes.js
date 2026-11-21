@@ -55,10 +55,10 @@ export function createNotes(getRoot) {
     return abs;
   }
   /** an absolute path that must lie inside the workspace (same checks as resolve) */
-  function contain(absPath) {
+  function contain(absPath, opts) {
     const rel = path.relative(root(), path.resolve(absPath));
     if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new NotesError(`Path escapes the workspace: ${absPath}`);
-    return resolve(rel);
+    return resolve(rel, opts);
   }
   const relOf = (abs) => path.relative(root(), abs).split(path.sep).join('/');
 

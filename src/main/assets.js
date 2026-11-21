@@ -23,7 +23,7 @@ const SKIP = new Set(['node_modules', '.git', '.folio', '.obsidian', 'dist', 'bu
 
 /* a reference to an asset inside any text: `.asset/x.png`, `../.asset/x.png`, `sub/assets/x.png`.
    Works for images, links, slide `src=`, `poster=`, front matter fonts and wiki embeds, because it only looks at the path. */
-const REF = /(?<![\w.%/:-])((?:(?:\.\.?|[\w%~-][\w%.~-]*)\/)*)(\.asset|assets)\/([^\s()"'<>[\]|,{}\\]+)/g;
+const REF = /(?<![\w.%/:-])((?:(?:\.\.?|[\w%~-][\w%.~-]*)\/)*)(\.asset|assets)\/((?:[^\s()"'<>[\]|,{}\\]|\([^\s()"'<>[\]|,{}\\]*\))+)/g; // balanced (1) in a name, as CommonMark allows
 export function refsIn(text) {
   const out = [];
   for (const m of String(text).matchAll(REF)) {
@@ -58,8 +58,8 @@ async function hideFolder(dir) {
 async function sameContent(a, b) {
   const [sa, sb] = await Promise.all([fs.stat(a), fs.stat(b)]);
   if (sa.size !== sb.size) return false;
-  const [ba, bb] = await Promise.all([fs.readFile(a), fs.readFile(b)]);
-  return ba.equals(bb);
+  const [ha, hb] = await Promise.all([hashFile(a), hashFile(b)]); // streamed: two big files are never held in memory together
+  return ha === hb;
 }
 async function hashFile(file) {
   return new Promise((res, rej) => { const h = crypto.createHash('sha256'); fss.createReadStream(file).on('data', (d) => h.update(d)).on('end', () => res(h.digest('hex'))).on('error', rej); });

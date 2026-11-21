@@ -341,9 +341,10 @@ h('templates:fetch', async (url) => {
     if (!res.ok) throw new Error(`The server answered ${res.status}.`);
     const type = res.headers.get('content-type') || '';
     if (/^(image|video|audio|application\/(pdf|zip|octet-stream))/i.test(type)) throw new Error('That link is not a text file.');
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > TEMPLATE_MAX) throw new Error('That file is larger than 1 MB.');
-    return buf.toString('utf8');
+    if (Number(res.headers.get('content-length')) > TEMPLATE_MAX) throw new Error('That file is larger than 1 MB.');
+    const chunks = []; let size = 0; const reader = res.body.getReader();
+    for (;;) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > TEMPLATE_MAX) { ctl.abort(); throw new Error('That file is larger than 1 MB.'); } chunks.push(value); }
+    return Buffer.concat(chunks).toString('utf8');
   } catch (e) { throw new Error(e.name === 'AbortError' ? 'The download took too long.' : e.message); } finally { clearTimeout(timer); }
 });
 h('templates:import-files', async () => {
@@ -410,7 +411,7 @@ h('fs:data-url', async (src, noteRel) => {
   }
   // local files: only inside the open folder, and only media types, so a note cannot pull in files like ~/.ssh/id_rsa
   const rel = decodeURI(src).replace(/^\.\//, '');
-  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src)) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel), { allowAsset: true });
+  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src), { allowAsset: true }) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel), { allowAsset: true });
   const mime = MIME[path.extname(abs).toLowerCase()];
   if (!mime) throw new Error('Only images, audio, video and fonts can be embedded.');
   const buf = await fs.readFile(abs);
