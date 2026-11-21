@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
 import { findRefs, resolveTarget, rewriteRefs, findMentions } from '../renderer/refs-syntax.js';
+import { writeAtomic } from './atomic.js';
 
 export const NOTE_EXT = ['.md', '.markdown', '.mdx', '.txt'];
 const IGNORE = new Set(['node_modules', '.git', '.obsidian', '.trash', '.DS_Store', 'dist', 'build']);
@@ -126,7 +127,7 @@ export function createNotes(getRoot) {
     if (exists && !overwrite) throw new NotesError(`A note already exists at ${rel}.`);
     const before = exists ? await fs.readFile(abs, 'utf8') : null;
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await fs.writeFile(abs, content, 'utf8');
+    await writeAtomic(abs, content);
     return { path: relOf(abs), before, after: content, created: !exists };
   }
 
@@ -140,7 +141,7 @@ export function createNotes(getRoot) {
       if (count > 1 && !e.replaceAll) throw new NotesError(`Edit ${i + 1}: oldText appears ${count} times; add surrounding context or set replaceAll.`);
       text = e.replaceAll ? text.split(e.oldText).join(e.newText) : text.replace(e.oldText, () => e.newText);
     }
-    await fs.writeFile(abs, text, 'utf8');
+    await writeAtomic(abs, text);
     return { path: relOf(abs), before, after: text, created: false };
   }
 
@@ -165,7 +166,7 @@ export function createNotes(getRoot) {
       text = before ? before.replace(/\n*$/, '\n\n') + addition + '\n' : addition + '\n';
     }
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await fs.writeFile(abs, text, 'utf8');
+    await writeAtomic(abs, text);
     return { path: relOf(abs), before, after: text, created: !before };
   }
 
@@ -220,15 +221,17 @@ export function createNotes(getRoot) {
     const texts = await Promise.all(files.map((f) => fs.readFile(resolve(f), 'utf8').catch(() => '')));
     return { files, texts };
   }
-  /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten */
+  /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten, with `.failed`
+   * listing the files that could not be updated (one failure does not stop the others) */
   async function rewriteAfterMove(from, to, onBefore) {
     const { files, texts } = await allTexts();
     const before = files.map((f) => (f === to ? from : f));
-    const changed = [];
+    const changed = []; changed.failed = [];
     for (let i = 0; i < files.length; i++) {
       if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
       const next = rewriteRefs(texts[i], before[i], from, to, before);
-      if (next !== texts[i]) { if (onBefore) await onBefore(files[i], texts[i]); await fs.writeFile(resolve(files[i]), next, 'utf8'); changed.push(files[i]); }
+      if (next === texts[i]) continue;
+      try { if (onBefore) await onBefore(files[i], texts[i]); await writeAtomic(resolve(files[i]), next); changed.push(files[i]); } catch { changed.failed.push(files[i]); }
     }
     return changed;
   }

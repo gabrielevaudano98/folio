@@ -9,6 +9,7 @@ import { COMPONENTS, FEATURES, featureSupported, downloadBytes } from '../featur
 import { createInstaller } from '../features/installer.js';
 import { renderMeeting, fileName, lines as numberLines } from './transcript.js';
 import { draftNotes } from './notes-engine.js';
+import { writeAtomic, writeNew } from '../atomic.js';
 
 const FEATURE = 'meeting-recorder';
 const RATE = 16000;
@@ -113,13 +114,11 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   }
   /** writes the note into the workspace with a name that does not overwrite anything */
   async function writeNote(rel, text) {
-    let p = rel;
-    for (let i = 2; fss.existsSync(notes.resolve(p, { mustBeNote: true })); i++) p = rel.replace(/\.md$/, ` ${i}.md`);
-    const abs = notes.resolve(p, { mustBeNote: true });
-    await fs.mkdir(path.dirname(abs), { recursive: true });
-    const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.tmp`);
-    await fs.writeFile(tmp, text, 'utf8'); await fs.rename(tmp, abs);
-    return notes.relOf(abs);
+    await fs.mkdir(path.dirname(notes.resolve(rel, { mustBeNote: true })), { recursive: true });
+    for (let i = 1; ; i++) { // writeNew never replaces a file, so a name taken at the same moment just moves to the next
+      const abs = notes.resolve(i === 1 ? rel : rel.replace(/\.md$/, ` ${i}.md`), { mustBeNote: true });
+      try { await writeNew(abs, text); return notes.relOf(abs); } catch (e) { if (e.code !== 'EEXIST') throw e; } // on failure the work file still holds the transcript
+    }
   }
 
   function memoryGuard() {
@@ -209,7 +208,13 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   }
 
   /** stops the recording, writes the transcript at once, then the notes when their model is installed */
-  async function stop() {
+  let stopping = null; // the stop in progress: a second caller (quit, a window crash) waits for the same save
+  function stop() {
+    if (stopping) return stopping;
+    stopping = stopNow().finally(() => { stopping = null; });
+    return stopping;
+  }
+  async function stopNow() {
     if (!session) throw new Error('Nothing is recording.');
     if (session.phase !== 'recording' && session.phase !== 'starting') return publicSession();
     const s = session;
@@ -261,8 +266,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
       const at = current.indexOf('## Transcript');
       text = at >= 0 ? current.slice(0, at) + block + current.slice(at) : current.trimEnd() + '\n\n' + block;
     }
-    const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.tmp`);
-    await fs.writeFile(tmp, text, 'utf8'); await fs.rename(tmp, abs);
+    await writeAtomic(abs, text);
     phase('saved', { progress: null });
   }
 

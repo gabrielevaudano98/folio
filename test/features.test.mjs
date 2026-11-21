@@ -152,6 +152,11 @@ await t('one download at a time; unknown or unavailable components are refused',
   await assert.rejects(inst.install(['nope']), /not available/);
   assert.equal((await createInstaller({ root: tmp, platformKey: 'other', fetch, components: catalog }).status('rt')).state, 'unsupported');
 });
+await t('an update cut between its two renames is put back at the next start', async () => {
+  const dest = inst.pathOf('model'); fs.renameSync(dest, dest + '.old'); // the live folder moved away, the new one never arrived
+  assert.equal((await inst.status('model')).state, 'not-installed');
+  await inst.cleanup(); assert.equal((await inst.status('model')).state, 'ready');
+});
 await t('uninstall removes files', async () => { await inst.uninstall('rt'); assert.equal((await inst.status('rt')).state, 'not-installed'); assert.ok(!fs.existsSync(inst.pathOf('rt'))); });
 server.close();
 
