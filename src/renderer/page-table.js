@@ -31,13 +31,13 @@ export function parseCSV(text) {
 
 function parseDelimited(text, delim, { strict = false } = {}) {
   const s = String(text || '').replace(/\r\n?/g, '\n').replace(/\n+$/, '');
-  if (!s.includes(delim)) return null;
+  if (!s.includes(delim) || s.length > 2e6) return null; // a huge paste is not a table: stop before splitting it
   const rows = []; let row = [], cell = '', quoted = false;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quoted) { if (c === '"' && s[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') quoted = false; else cell += c; continue; }
     if (c === '"' && cell === '') { quoted = true; continue; }
-    if (c === delim) { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c;
+    if (c === delim) { row.push(cell); cell = ''; if (row.length > 50) return null; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; if (rows.length > 500) return null; } else cell += c; // past the limits: stop early
   }
   row.push(cell); rows.push(row);
   const width = Math.max(...rows.map((r) => r.length));

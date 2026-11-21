@@ -70,6 +70,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `uninstall` | request | `connections:remove` | `src/main/main.js` |
 | `answer` | message | `ai:answer` | `src/main/main.js` |
 | `closeOk` | message | `app:close-ok` | `src/main/main.js` |
+| `closeCancel` | message | `app:close-cancel` | `src/main/main.js` |
 | `onTreeChanged` | event | `fs:tree-changed` | — |
 | `onFileChanged` | event | `fs:file-changed` | — |
 | `onAiEdit` | event | `ai:edit` | — |
@@ -95,4 +96,4 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `meeting.onSegment` | event | `meeting:segment` | — |
 | `meeting.onStopRequest` | event | `meeting:stop-request` | — |
 
-Handled but not exposed by name in the preload (used through a generic helper or by the menu): `history:usage`, `assets:reveal`.
+Handled but not exposed by name in the preload (used through a generic helper or by the menu): `app:close-ready`, `history:usage`, `assets:reveal`.

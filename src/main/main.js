@@ -84,7 +84,7 @@ const gitLog = createGitLog(() => settings.workspace);
 const assets = createAssets(notes);
 const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset folder belongs to Folio. Remove files from a page, or use Clean up unused files.'); };
 /* history must never get in the way of saving */
-const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); } return null; };
+const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); return false; } return null; }; // false: it could not be stored (null: nothing new to store)
 let win = null;
 
 /* ---------------- window ---------------- */
@@ -141,13 +141,19 @@ function createWindow() {
     dialog.showMessageBox(win, { type: 'error', message: 'Folio’s window keeps closing unexpectedly.', detail: `Reason: ${d.reason}. Your notes are saved on disk, apart from anything typed in the last moment before the crash. Restart Folio, and if it happens again, report it with this reason.`, buttons: ['Quit'] }).then(() => app.quit());
   });
   win.webContents.on('will-redirect', lock);
+  win.webContents.on('did-start-loading', () => { closeReady = false; }); // a reload: the new page says when it listens again
   win.on('close', (e) => {
-    if (win.__forceClose) return;
+    if (win.__forceClose || !closeReady || win.webContents.isCrashed()) return; // nobody to ask yet (or any more): just close
     e.preventDefault();
     win.webContents.send('app:before-close');
   });
 }
-ipcMain.on('app:close-ok', (e) => { if (fromApp(e) && win) { win.__forceClose = true; win.close(); } });
+ipcMain.on('app:close-ok', (e) => { if (fromApp(e) && win) { win.__forceClose = true; const q = quitPending; if (q) quitOk = true; win.close(); if (q) app.quit(); } });
+ipcMain.on('app:close-cancel', (e) => { if (fromApp(e)) quitPending = false; });
+ipcMain.on('app:close-ready', (e) => { if (fromApp(e)) closeReady = true; }); // the page listens for app:before-close from now on
+/* Quit (⌘Q, the menu, the dock) first lets the page save its tabs, the same way closing the window does; the other quit steps run only once it agreed */
+let quitPending = false, quitOk = false, closeReady = false;
+const quitAgreed = () => quitOk || !closeReady || !win || win.isDestroyed() || win.webContents.isCrashed(); // a page that is not listening yet, or crashed, cannot answer: quit anyway (it has no unsaved tabs to lose)
 
 nativeTheme.on('updated', () => {
   if (win && !isMac) win.setTitleBarOverlay?.(themeColors());
@@ -231,6 +237,7 @@ h('fs:tree', () => notes.tree());
 h('fs:read', (rel) => notes.read(rel));
 h('fs:info', async (rel) => { const st = await fs.stat(notes.resolve(rel)).catch(() => null); return st ? { size: st.size, mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs } : null; });
 h('fs:write', async (rel, content) => {
+  if (shotFailWrites) throw new Error('disk full (test)'); // only set by the dev test runner (FOLIO_SHOT, unpackaged)
   const abs = notes.resolve(rel, { mustBeNote: true });
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
@@ -373,9 +380,10 @@ h('templates:fetch', async (url) => {
     if (!res.ok) throw new Error(`The server answered ${res.status}.`);
     const type = res.headers.get('content-type') || '';
     if (/^(image|video|audio|application\/(pdf|zip|octet-stream))/i.test(type)) throw new Error('That link is not a text file.');
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > TEMPLATE_MAX) throw new Error('That file is larger than 1 MB.');
-    return buf.toString('utf8');
+    if (Number(res.headers.get('content-length')) > TEMPLATE_MAX) throw new Error('That file is larger than 1 MB.');
+    const chunks = []; let size = 0; const reader = res.body?.getReader(); if (!reader) return ''; // an empty answer is an empty template
+    for (;;) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > TEMPLATE_MAX) { ctl.abort(); throw new Error('That file is larger than 1 MB.'); } chunks.push(value); }
+    return Buffer.concat(chunks).toString('utf8');
   } catch (e) { throw new Error(e.name === 'AbortError' ? 'The download took too long.' : e.message); } finally { clearTimeout(timer); }
 });
 h('templates:import-files', async () => {
@@ -442,7 +450,7 @@ h('fs:data-url', async (src, noteRel) => {
   }
   // local files: only inside the open folder, and only media types, so a note cannot pull in files like ~/.ssh/id_rsa
   const rel = decodeURI(src).replace(/^\.\//, '');
-  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src)) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel), { allowAsset: true });
+  const abs = src.startsWith('file://') ? notes.contain(fileURLToPath(src), { allowAsset: true }) : notes.resolve(path.posix.join(path.posix.dirname(noteRel || ''), rel), { allowAsset: true });
   const mime = MIME[path.extname(abs).toLowerCase()];
   if (!mime) throw new Error('Only images, audio, video and fonts can be embedded.');
   const buf = await fs.readFile(abs);
@@ -503,10 +511,10 @@ const appBackend = {
       history, client: ctx.client,
       onWrite: async (r) => {
         if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
-        await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true });
+        const aiKept = (await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true })) !== false;
         ownWrites.set(notes.resolve(r.path), r.after);
         const orphans = r.before != null ? await assets.orphans(r.path, r.before, r.after).catch(() => []) : [];
-        win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans });
+        win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans, aiKept });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
       openNote: () => askRenderer('open-note'),
@@ -743,15 +751,19 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (!isMac) app.quit(); });
+app.on('before-quit', (e) => { if (quitAgreed()) return; e.preventDefault(); quitPending = true; win.webContents.send('app:before-close'); });
 app.on('before-quit', (e) => { // a recording is saved before the app quits; a notes engine still running is stopped
+  if (!quitAgreed()) return;
   if (!features.active()) { features.abortNotes(); return; }
   e.preventDefault(); features.stop().finally(() => app.quit());
 });
 app.on('before-quit', (e) => {
+  if (!quitAgreed()) return; // the page saves (or asks) first
   if (settingsInFlight) { e.preventDefault(); settingsWrite.finally(() => app.quit()); return; } // let it land first, then flush
   flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; writeAtomicSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
+let shotFailWrites = false; // the dev test runner can make every page write fail, to test what the app does then
 async function devShot(w) {
   const steps = JSON.parse(fss.readFileSync(process.env.FOLIO_SHOT, 'utf8'));
   w.webContents.on('console-message', (e) => { const msg = e.message; if (/error|fail/i.test(String(msg))) console.log('console:', msg); });
@@ -761,6 +773,8 @@ async function devShot(w) {
     await wait(1500);
     for (const s of steps) {
       if (s.size) w.setContentSize(s.size[0], s.size[1]);
+      if ('failWrites' in s) shotFailWrites = !!s.failWrites;
+      if (s.quit) app.quit(); // the same path as ⌘Q or the Quit menu item
       if (s.dark !== undefined) nativeTheme.themeSource = s.dark ? 'dark' : 'light';
       if (s.js) { try { const v = await w.webContents.executeJavaScript(s.js); if (s.log) console.log('js', JSON.stringify(v)); } catch (e) { console.error('[folio-error] shot js', e.message); } }
       if (s.metrics) { // memory of every process, in MB (private bytes on Windows and macOS, working set on Linux)

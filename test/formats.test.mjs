@@ -761,4 +761,37 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.deepEqual(sections('```\n```x\n# inside\n```\n# Real\n').map((x) => x.line), [4]); ok('outline sections close a fence the same way headings() does');
 }
 
+{ // review fixes for PR #52 findings
+  const { parseCallout } = await import('../src/renderer/callouts.js');
+  for (const k of ['constructor', 'toString', 'hasOwnProperty', 'valueOf']) { const c = parseCallout(`[!${k}] x`); assert.equal(c.type, 'note'); assert.ok(c.color); }
+  ok('callouts: a type named like an Object property ([!constructor]) is a plain note and does not throw');
+  const { DAY } = await import('../src/renderer/page-mentions.js');
+  assert.ok(DAY.test('2026-11-21') && DAY.test('2024-02-29') && DAY.test('0099-02-28')); assert.ok(!DAY.test('2026-02-31') && !DAY.test('2025-02-29') && !DAY.test('2026-13-01') && !DAY.test('2026-00-10') && !DAY.test('Notes'));
+  ok('daily notes: only a real calendar day is a daily note (2026-02-31 is not)');
+  const pt = await import('../src/main/page-tools.js');
+  assert.deepEqual(pt.sections('---\n# a YAML comment\ntitle: x\n---\n# Real\nbody\n').map((h) => [h.text, h.line]), [['Real', 5]]);
+  assert.deepEqual(pt.sections(' ---\n# Shown\n---\n').map((h) => h.text), ['Shown']); // an indented --- is not front matter
+  assert.deepEqual(pt.sections('---\r\n# c\r\n---\r\n# A\r\ntext\r\n## B #\r\n').map((h) => [h.text, h.line]), [['A', 4], ['B', 6]]);
+  ok('page tools: the "# comments" in YAML front matter are not headings; CRLF files work');
+  const doc = '# Parent\n## A\n# Other\n## Goals\n';
+  assert.throws(() => pt.findSection(doc, 'Parent > Goals'), /not found/); assert.equal(pt.findSection(doc, 'Other > Goals').line, 4);
+  assert.equal(pt.findSection('# Plan\n## Q1\n### Goals\n', 'Plan > Goals').line, 3);
+  ok('page tools: a heading path follows the real parents and never crosses into another top-level section');
+  const { parseLog, validHash } = await import('../src/main/git-log.js');
+  const SEP = '\x1f'; const h64 = 'a'.repeat(64);
+  assert.ok(validHash(h64) && validHash('a'.repeat(40)) && !validHash('a'.repeat(65)));
+  if (parseLog) assert.equal(parseLog(`${h64}${SEP}Ada${SEP}1700000000${SEP}msg`).length, 1);
+  ok('git history: SHA-256 repositories (64-character commit ids) are listed');
+}
+
+{ // review fixes for PR #52 findings (second batch)
+  const { refsIn } = await import('../src/main/assets.js');
+  assert.deepEqual(refsIn('![](assets/photo(1).png) and .asset/a(2).b.png').map((r) => r.decoded), ['assets/photo(1).png', '.asset/a(2).b.png']);
+  ok('assets: a name with (1) in it is one reference, as in a Markdown link');
+  const { parseTSV } = await import('../src/renderer/page-table.js');
+  assert.equal(parseTSV(Array(600).fill('a\tb').join('\n')), null); assert.equal(parseTSV(Array(60).fill('x').join('\t')), null);
+  assert.deepEqual(parseTSV('a\tb\n1\t2'), [['a', 'b'], ['1', '2']]);
+  ok('pasted tables: past 500 rows or 50 columns the paste stays text, and parsing stops early');
+}
+
 console.log(`\n${n} format checks passed`);
