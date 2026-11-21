@@ -17,4 +17,5 @@ Reports about escaping that folder, bypassing the token, or running code from a 
 ## Known limits
 
 - The `RunAsNode` fuse is off on macOS and Linux: the MCP bridge for desktop AI clients runs inside the app binary (`--mcp-stdio`), so `ELECTRON_RUN_AS_NODE` cannot turn it into a Node runtime. On Windows it stays on, because a GUI Electron exe receives no stdin from the program that starts it, so the bridge still runs as Node there. On macOS, clients configured before 1.2.3 keep working through a legacy path; disconnecting and then connecting again rewrites them. Builds are not yet code-signed.
+- A web image's address is checked by name and by what it resolves to, then fetched with a second lookup, so a server that changes its answer in between (DNS rebinding) could still reach a private address. Pinning the checked address is planned.
 - A change to the folder between the check and the write (a link swapped in at that instant) is not guarded against.

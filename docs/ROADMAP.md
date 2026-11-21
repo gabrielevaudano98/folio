@@ -70,6 +70,9 @@ Bigger bets after 1.3.
 - MCP server with live, reversible AI edits; one-click connection to Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code.
 - CI with format, MCP and UI smoke tests; CodeQL; Dependabot; cubic and Claude reviews.
 
+## Unreleased
+- Web images in notes are opt-in. The preview and the editor no longer load them by themselves, so a note you did not write cannot tell that you opened it. A notice offers to load them for that note, or Settings loads them always; either way they go through the app's guarded fetch (public addresses only), and the page's security policy no longer allows `https:` images.
+
 ## Done in 1.2.3
 
 - The MCP bridge now runs inside the app binary (`--mcp-stdio`), so the `RunAsNode` fuse is off on macOS and Linux (Windows keeps it, its exe gets no stdin). Existing client configs keep working; on macOS and Linux Connect rewrites them to the new form, while Windows keeps the legacy form. CI starts the packaged builds and talks MCP to them. Fuses are set per platform in `build/afterPack.cjs`.
@@ -82,4 +85,3 @@ Bigger bets after 1.3.
 
 - Undo and redo everywhere: one history per tab (pages, visual editor, slides, boards, sheets), toolbar buttons, Edit menu and palette; undo and redo for file actions (create, rename, move, trash); back and forward between notes.
 - Security: transitive `image-size` and `katex` pinned to patched versions; CodeQL action v4; animation comment scanner without regex backtracking.
-- Web images in notes are opt-in. The preview and the editor no longer load them by themselves, so a note you did not write cannot tell that you opened it. A notice offers to load them for that note, or Settings loads them always; either way they go through the app's guarded fetch (public addresses only), and the page's security policy no longer allows `https:` images.

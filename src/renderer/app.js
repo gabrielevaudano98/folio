@@ -256,10 +256,10 @@ function applyLayoutSettings() {
 }
 // Remote images: the page's CSP blocks them, so a note you did not write cannot make your machine call out just by being opened.
 // On request (per note for this session, or always from Settings) the main process fetches them with its network guard and hands back a data: URL.
-const remoteOK = new Set();
+const remoteOK = new Set(), remoteCache = new Map(); // grants and fetched images belong to the open folder
 const isRemote = (s) => /^https?:\/\//i.test(s || '');
 const remoteAllowed = (t) => !!t && (S.settings.remoteImages === true || remoteOK.has(t.path));
-async function remoteImage(src) { const t = activeTab(); if (!remoteAllowed(t)) return null; try { return await folio.dataUrl(src, t.path); } catch { return null; } }
+async function remoteImage(src) { const t = activeTab(); if (!remoteAllowed(t)) return null; if (remoteCache.has(src)) return remoteCache.get(src); try { const u = await folio.dataUrl(src, t.path); remoteCache.set(src, u); return u; } catch { return null; } }
 function resolveImg(src) { if (isRemote(src)) return remoteImage(src); const t = activeTab(); if (!t) return null; const rel = decodeURI(src).replace(/^\.\//, ''); const d = dirOf(t.path); return folio.absUrl(normalize(d ? `${d}/${rel}` : rel)).catch(() => null); }
 async function saveSetting(patch) { S.settings = await folio.setSettings(patch); }
 
@@ -1373,7 +1373,7 @@ async function chooseFolder() {
 async function switchWorkspace(dir, { saved = false } = {}) {
   if (!saved) { await actions.idle(); if (!(await saveAllOrAsk())) return false; } // let a file action still running finish in the folder it started in
   for (const t of S.tabs) t.dead = true; // the old tabs go now: nothing of theirs is written any more (not even a pending Retry)
-  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear();
+  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); remoteOK.clear(); remoteCache.clear();
   S.writesFrozen = false;
   renderTabs();
   await folio.openWorkspace(dir);

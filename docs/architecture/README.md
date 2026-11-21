@@ -177,7 +177,6 @@ See [`docs/adr/`](../adr/README.md).
 - `main.js` is the composition root and also holds the MCP HTTP server and the AI-app connection code; splitting them
   into modules is planned when they next change, not as a refactor of its own.
 - The meeting recorder is not yet measured on Windows hardware (loopback with USB and Bluetooth headsets, Defender).
-- Remote images in previews load directly (see `SECURITY.md`).
 - The audience Q&A page listens on all network interfaces while it is open, so anyone on the same network can send a
   question. It accepts only short text, keeps it in memory and serves no files; it closes when the presenter closes Q&A.
 - Windows keeps the `RunAsNode` fuse on for the stdio bridge.

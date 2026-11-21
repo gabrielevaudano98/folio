@@ -424,7 +424,7 @@ const FolioImage = PageImage.extend({
       const opts = this.options;
       const kind = mediaKind(node.attrs.src || '');
       const dom = document.createElement('figure'); dom.className = `rich-figure rich-media-${kind}`; dom.contentEditable = 'false';
-      const setSrc = (el, src) => { if (/^(data:|file:|blob:)/.test(src)) el.src = src; else Promise.resolve(opts.resolve?.(src)).then((u) => { if (u) el.src = u; }); };
+      const setSrc = (el, src, miss) => { if (/^(data:|file:|blob:)/.test(src)) el.src = src; else Promise.resolve(opts.resolve?.(src)).then((u) => { if (u) el.src = u; else miss?.(); }); };
       const commit = (attrs) => { const pos = typeof getPos === 'function' ? getPos() : null; if (pos != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs })); };
       const name = (node.attrs.src || '').split(/[/?#]/).filter(Boolean).pop()?.replace(/^(?=[a-z]*\d)[a-z0-9]{8}-/, '') || 'file';
       let body;
@@ -432,7 +432,7 @@ const FolioImage = PageImage.extend({
         body = document.createElement(kind); body.controls = true; body.preload = 'metadata'; body.className = 'rich-media-el'; setSrc(body, node.attrs.src || '');
       } else if (kind === 'image') {
         body = document.createElement('div'); body.className = 'rich-img-wrap';
-        const img = document.createElement('img'); img.alt = node.attrs.alt || ''; img.decoding = 'async'; setSrc(img, node.attrs.src || '');
+        const img = document.createElement('img'); img.alt = node.attrs.alt || ''; img.decoding = 'async'; setSrc(img, node.attrs.src || '', () => { img.classList.add('remote-blocked'); img.alt = img.alt || `${tl('rich', 'Image not loaded')}: ${node.attrs.src || ''}`; });
         const w = parseInt(node.attrs.size, 10); if (w) img.style.width = `${w}px`;
         const grip = document.createElement('span'); grip.className = 'rich-img-resize'; grip.setAttribute('aria-hidden', 'true'); grip.title = tl('rich', 'Drag to resize');
         grip.addEventListener('pointerdown', (e) => {
@@ -447,10 +447,11 @@ const FolioImage = PageImage.extend({
         const web = kind === 'web' ? webProvider(node.attrs.src) : null;
         body = document.createElement('div'); body.className = `rich-card rich-card-${kind}`; body.tabIndex = 0; body.setAttribute('role', 'link');
         const label = web ? (node.attrs.alt || web.name) : (node.attrs.alt || name);
-        body.innerHTML = `${web?.thumb ? `<img class="rich-card-thumb" alt="" src="${web.thumb}">` : `<span class="rich-card-ic" aria-hidden="true">${kind === 'web' ? icons.link : icons.doc}</span>`}<span class="rich-card-text"><span class="rich-card-title"></span><span class="rich-card-sub"></span></span>`;
+        body.innerHTML = `<span class="rich-card-ic" aria-hidden="true">${kind === 'web' ? icons.link : icons.doc}</span><span class="rich-card-text"><span class="rich-card-title"></span><span class="rich-card-sub"></span></span>`;
         body.querySelector('.rich-card-title').textContent = label;
         body.querySelector('.rich-card-sub').textContent = web ? `${web.name} · ${web.host} · Ctrl or ⌘ click to open` : `${kind === 'pdf' ? 'PDF' : 'File'} · ${name} · Ctrl or ⌘ click to open`;
         body.setAttribute('aria-label', `${label}. Open`);
+        if (web?.thumb) Promise.resolve(opts.resolve?.(web.thumb)).then((u) => { if (!u) return; const th = document.createElement('img'); th.className = 'rich-card-thumb'; th.alt = ''; th.src = u; body.querySelector('.rich-card-ic')?.replaceWith(th); });
         const open = () => (kind === 'web' ? opts.openUrl?.(node.attrs.src) : opts.openFile?.(node.attrs.src));
         body.addEventListener('click', (e) => { if (e.metaKey || e.ctrlKey) open(); });
         body.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) open(); });

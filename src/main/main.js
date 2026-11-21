@@ -427,7 +427,7 @@ const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
 const MAX_REMOTE = 30 * 1024 * 1024;
 h('fs:data-url', async (src, noteRel) => {
   if (/^data:/.test(src)) return src;
-  if (/^https?:\/\//.test(src)) {
+  if (/^https?:\/\//i.test(src)) {
     // a note can name any address: no private network (checked by name and by what it resolves to), only images, audio, video and fonts, bounded in size and time
     const { net } = await import('electron');
     // follow redirects by hand so every hop is checked before it is requested

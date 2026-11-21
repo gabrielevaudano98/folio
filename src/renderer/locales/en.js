@@ -946,6 +946,7 @@ export default {
   'rich.bold': 'Bold',
   'rich.bulleted-list': 'Bulleted list',
   'rich.caption': 'Caption',
+  'rich.image-not-loaded': 'Image not loaded',
   'rich.characters': 'Characters',
   'rich.characters-without-spaces': 'Characters without spaces',
   'rich.chart': 'Chart',

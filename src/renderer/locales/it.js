@@ -942,6 +942,7 @@ export default {
   'rich.bold': 'Grassetto',
   'rich.bulleted-list': 'Elenco puntato',
   'rich.caption': 'Didascalia',
+  'rich.image-not-loaded': 'Immagine non caricata',
   'rich.characters': 'Caratteri',
   'rich.characters-without-spaces': 'Caratteri senza spazi',
   'rich.chart': 'Grafico',

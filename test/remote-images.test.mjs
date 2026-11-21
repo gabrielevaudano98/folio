@@ -15,12 +15,15 @@ const r = await runApp(w, [
   log("[!!document.querySelector('#preview .remote-bar'), document.querySelector('#preview img')?.hasAttribute('src'), !!document.querySelector('#preview img.remote-blocked')]", 300),
   step("document.querySelector('#preview .remote-bar button').click()", 1500),
   log("[!!document.querySelector('#preview img.remote-blocked'), document.querySelector('#preview img')?.getAttribute('src')]", 300),
+  step("document.querySelector('#view-switch [data-view=\"edit\"]').click()", 1500),
+  log("[document.querySelectorAll('img[src^=\"http\"]').length, !!document.querySelector('.cm-live-img-missing, .rich-img-wrap img.remote-blocked')]", 300),
   errors,
 ]);
 server.close();
-const [before, after, errs] = r.js.slice(-3);
+const [before, after, edit, errs] = r.js.slice(-4);
 console.log('\nremote images');
 assert.deepEqual(before, [true, false, true]); console.log('  ✓ opening a note shows a notice and loads no web image');
 assert.deepEqual(after, [true, null]); console.log('  ✓ choosing to load goes through the main process, which refuses the local network');
+assert.deepEqual(edit, [0, true]); console.log('  ✓ the editor view loads no web image either and shows a placeholder');
 assert.equal(hits, 0, `the page itself requested the image ${hits} time(s)`); console.log('  ✓ the page never contacted the image server itself');
 assert.deepEqual(errs, [], JSON.stringify(errs));
