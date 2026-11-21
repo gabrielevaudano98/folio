@@ -7,8 +7,8 @@ const SEP = '\x1f';
 export const parseLog = (out) => String(out || '').split('\n').filter(Boolean).map((l) => {
   const [hash, author, ct, subject] = l.split(SEP);
   return { hash, author: author || 'Git', t: Number(ct) * 1000, subject: subject || '' };
-}).filter((c) => /^[0-9a-f]{40}$/.test(c.hash) && Number.isFinite(c.t));
-export const validHash = (h) => /^[0-9a-f]{7,40}$/.test(String(h));
+}).filter((c) => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(c.hash) && Number.isFinite(c.t));
+export const validHash = (h) => /^[0-9a-f]{7,64}$/.test(String(h));
 
 export function createGitLog(getRoot, run = (args, cwd) => new Promise((resolve, reject) => execFile('git', args, { cwd, timeout: 8000, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' } }, (e, stdout) => (e ? reject(e) : resolve(stdout))))) {
   const inside = async (root) => { try { return (await run(['rev-parse', '--is-inside-work-tree'], root)).trim() === 'true'; } catch { return false; } };

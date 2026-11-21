@@ -432,7 +432,7 @@ function renderTabs() {
 }
 async function closeTab(p = S.active) {
   const t = tabOf(p); if (!t) return;
-  if (t.text !== t.saved) await saveTab(t);
+  if (t.text !== t.saved && !(await saveTab(t))) return; // the write failed: keep the tab open with its text (the error toast offers Retry)
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
@@ -473,11 +473,19 @@ function setActiveText(text) {
 function renderTabsDirty() {
   for (const el of $$('#tabs .tab')) { const t = tabOf(el.dataset.tab); if (t) el.dataset.dirty = String(t.text !== t.saved); }
 }
+/** save a tab; resolves true when its text is on disk (or was already), false when the write failed (the tab keeps its text) */
 async function saveTab(t) {
-  if (t.text === t.saved) return;
+  if (t.text === t.saved) return true;
   const text = t.text, before = t.saved;
-  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
-  catch (e) { toast(tr('app.could-not-save-path-message', { path: base(t.path), message: e.message }), { kind: 'error', action: [tr('app.retry'), () => saveTab(t)] }); setSaveState('failed'); }
+  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); return true; }
+  catch (e) { toast(tr('app.could-not-save-path-message', { path: base(t.path), message: e.message }), { kind: 'error', action: [tr('app.retry'), () => saveTab(t)] }); setSaveState('failed'); return false; }
+}
+/** save every open tab before they go away (close folder, switch folder, reload, quit); when some write fails, ask before dropping the unsaved text */
+async function saveAllOrAsk() {
+  const failed = [];
+  for (const t of [...S.tabs]) if (!(await saveTab(t).catch(() => false))) failed.push(t);
+  if (!failed.length) return true;
+  return confirmSheet({ title: tl('app', 'Some pages could not be saved'), body: tr('app.unsaved-pages-lost', { names: failed.map((t) => stem(t.path)).join(', ') }), action: tl('app', 'Discard changes'), danger: true });
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
 let saveStateTimer;
@@ -1330,7 +1338,7 @@ async function chooseFolder() {
 }
 async function switchWorkspace(dir) {
   await actions.idle(); // let a file action that is still running finish in the folder it started in
-  for (const t of S.tabs) await saveTab(t);
+  if (!(await saveAllOrAsk())) return false;
   S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear();
   renderTabs();
   await folio.openWorkspace(dir);
@@ -1764,7 +1772,7 @@ const COMMANDS = [
   { id: 'align-center', title: 'Centre', key: 'Mod+Alt+E', run: () => isRich() && rich.run('alignCenter') },
   { id: 'align-right', title: 'Align right', key: 'Mod+Shift+R', run: () => isRich() && rich.run('alignRight') },
   { id: 'align-justify', title: 'Justify', key: 'Mod+Shift+J', run: () => isRich() && rich.run('alignJustify') },
-  { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
+  { id: 'close-folder', title: 'Close folder', run: async () => { if (!(await saveAllOrAsk())) return; await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
 ];
 /* everything the / menu offers is in the palette too (the Write view inserts it, the source view types its Markdown) */
 for (const it of INSERTS) {
@@ -2349,7 +2357,7 @@ function bindChrome() {
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
-    if (k === 'language') { for (const t of S.tabs) await saveTab(t); setLocale(v); location.reload(); }
+    if (k === 'language') { if (!(await saveAllOrAsk())) return; setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });
   document.addEventListener('input', (e) => {
@@ -2431,7 +2439,7 @@ function bindIpc() {
     if (ws !== S.workspace) { S.tabs = []; S.active = null; renderTabs(); await loadWorkspace(ws); }
     if (file) { await refreshTree(); openFile(file); }
   });
-  folio.onBeforeClose(async () => { for (const t of S.tabs) await saveTab(t).catch(() => {}); folio.closeOk(); });
+  folio.onBeforeClose(async () => { if (await saveAllOrAsk()) folio.closeOk(); });
 }
 
 window.__folioErrors = [];

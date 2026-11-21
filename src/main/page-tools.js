@@ -9,12 +9,16 @@ const fail = (m) => { throw new PageToolError(m); };
 /** headings with their section: { level, text, line, end } (1-based lines; `end` is the last line of the section, sub-sections included) */
 export function sections(text) {
   const lines = String(text).split('\n'); const out = []; let fence = null;
+  // YAML front matter (the first line is ---, up to the next --- or ...) is metadata: its "# comments" are not headings
+  let start = 0;
+  if (lines[0]?.trim() === '---') { const close = lines.findIndex((l, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(l)); if (close > 0) start = close + 1; }
   lines.forEach((l, i) => {
-    const f = l.match(/^\s*(```|~~~)/);
-    if (f) { fence = fence ? (l.trim().startsWith(fence) ? null : fence) : f[1]; return; }
-    if (fence) return;
-    const m = l.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
-    if (m) out.push({ level: m[1].length, text: m[2].replace(/\s*\^[\w-]+$/, '').trim(), line: i + 1 });
+    if (i < start) return;
+    const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
+    if (fence) { if (f && f[1][0] === fence.ch && f[1].length >= fence.len && !f[2].trim()) fence = null; return; }
+    if (f && !(f[1][0] === '`' && f[2].includes('`'))) { fence = { ch: f[1][0], len: f[1].length }; return; }
+    const m = l.match(/^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/);
+    if (m) out.push({ level: m[1].length, text: (m[2] || '').replace(/\s*\^[\w-]+$/, '').trim(), line: i + 1 });
   });
   out.forEach((h, k) => {
     let end = lines.length;
@@ -36,11 +40,13 @@ export function findSection(text, ref, { line } = {}) {
   const last = parts.pop();
   const hits = all.filter((h, k) => {
     if (plain(h.text) !== last) return false;
-    let at = k; // ancestors, nearest first
-    for (let p = parts.length - 1; p >= 0; p--) {
-      let found = false;
-      for (let j = at - 1; j >= 0; j--) if (all[j].level < (all[at].level) && plain(all[j].text) === parts[p]) { at = j; found = true; break; }
-      if (!found) return false;
+    // walk the real ancestor chain (each step: the nearest earlier heading of a lower level), nearest first;
+    // the path parts must appear on it in order (intermediate levels may be skipped), never on a sibling branch
+    let p = parts.length - 1; let at = k;
+    while (p >= 0) {
+      let j = at - 1; while (j >= 0 && all[j].level >= all[at].level) j--;
+      if (j < 0) return false;
+      at = j; if (plain(all[j].text) === parts[p]) p--;
     }
     return true;
   });

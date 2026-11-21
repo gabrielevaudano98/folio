@@ -198,6 +198,7 @@ h('fs:tree', () => notes.tree());
 h('fs:read', (rel) => notes.read(rel));
 h('fs:info', async (rel) => { const st = await fs.stat(notes.resolve(rel)).catch(() => null); return st ? { size: st.size, mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs } : null; });
 h('fs:write', async (rel, content) => {
+  if (shotFailWrites) throw new Error('disk full (test)'); // only set by the dev test runner (FOLIO_SHOT, unpackaged)
   const abs = notes.resolve(rel, { mustBeNote: true });
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
@@ -717,6 +718,7 @@ app.on('before-quit', (e) => { // a recording is saved before the app quits; a n
 app.on('before-quit', () => { fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
+let shotFailWrites = false; // the dev test runner can make every page write fail, to test what the app does then
 async function devShot(w) {
   const steps = JSON.parse(fss.readFileSync(process.env.FOLIO_SHOT, 'utf8'));
   w.webContents.on('console-message', (e) => { const msg = e.message; if (/error|fail/i.test(String(msg))) console.log('console:', msg); });
@@ -725,6 +727,7 @@ async function devShot(w) {
     await wait(1500);
     for (const s of steps) {
       if (s.size) w.setContentSize(s.size[0], s.size[1]);
+      if ('failWrites' in s) shotFailWrites = !!s.failWrites;
       if (s.dark !== undefined) nativeTheme.themeSource = s.dark ? 'dark' : 'light';
       if (s.js) { try { const v = await w.webContents.executeJavaScript(s.js); if (s.log) console.log('js', JSON.stringify(v)); } catch (e) { console.error('[folio-error] shot js', e.message); } }
       if (s.tool) { try { await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); } catch (e) { console.error('shot tool', e.message); } }

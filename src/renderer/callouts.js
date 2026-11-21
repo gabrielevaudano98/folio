@@ -32,12 +32,14 @@ export function parseCallout(line) {
   const m = CALLOUT_HEAD.exec(line || '');
   if (!m) return null;
   const kind = m[1].toLowerCase();
-  const type = CALLOUT_ALIASES[kind] || (CALLOUT_TYPES[kind] ? kind : 'note');
+  // own keys only: "[!constructor]" or "[!toString]" must not reach Object.prototype
+  const known = Object.hasOwn(CALLOUT_TYPES, kind), alias = Object.hasOwn(CALLOUT_ALIASES, kind) ? CALLOUT_ALIASES[kind] : null;
+  const type = alias || (known ? kind : 'note');
   const def = CALLOUT_TYPES[type];
   const meta = (m[2] || '').trim().split(/\s+/).filter(Boolean);
   const color = meta.find((w) => PALETTE.includes(w.toLowerCase()))?.toLowerCase() || def.color;
   const emoji = meta.find((w) => /\p{Extended_Pictographic}/u.test(w)) || null;
-  const label = CALLOUT_TYPES[kind] || CALLOUT_ALIASES[kind] ? def.label : kind[0].toUpperCase() + kind.slice(1);
+  const label = known || alias ? def.label : kind[0].toUpperCase() + kind.slice(1);
   const metaColor = meta.find((w) => PALETTE.includes(w.toLowerCase()))?.toLowerCase() || null;
   return { kind, type, label, color, metaColor, emoji, fold: m[3], title: m[4].trim(), markerLength: m[0].length - m[4].length };
 }
