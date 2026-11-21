@@ -426,7 +426,7 @@ export function mountBoard(host, ctx) {
   }
   function copy() {
     const ids = new Set([...sel].filter((s) => !s.startsWith('e:')));
-    if (!ids.size) return false; // only edges selected: nothing to copy (and Duplicate must not paste an older clipboard)
+    if (!ids.size) { if (sel.size) clipboard = null; return false; } // only edges selected: nothing to copy, and neither Duplicate nor a later paste may bring back an older clipboard
     clipboard = { nodes: model.nodes.filter((n) => ids.has(n.id)).map((n) => structuredClone(n)), edges: model.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map((e) => structuredClone(e)) };
   }
   function paste(at) {

@@ -432,7 +432,7 @@ function renderTabs() {
 }
 async function closeTab(p = S.active) {
   const t = tabOf(p); if (!t) return;
-  if (t.text !== t.saved && !(await saveTab(t))) return; // the write failed: keep the tab open with its text (the error toast offers Retry)
+  while (t.text !== t.saved) if (!(await saveTab(t))) return; // typing during the write saves again; a failed write keeps the tab open with its text (the toast offers Retry)
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
@@ -1331,6 +1331,8 @@ async function trashPath(p, isDir) {
 }
 async function chooseFolder() {
   try {
+    // save the open pages first: choosing a folder switches the main process to it at once, and a later save would land there
+    await actions.idle(); if (!(await saveAllOrAsk())) return;
     const dir = await folio.chooseWorkspace();
     if (!dir) return;
     await switchWorkspace(dir);
