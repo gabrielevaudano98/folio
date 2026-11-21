@@ -1,6 +1,6 @@
 // Folio — meeting recorder end to end, in the app: Settings section, a recording fed from a wav file, the saved note
-// with notes checked against the transcript. Needs the real components (about 1.8 GB), so it runs only when asked:
-//   FOLIO_MEETING_E2E=1 FOLIO_COMPONENTS_DIR=<folder with the components> FOLIO_MEETING_WAV=<16 kHz mono wav> node test/meeting.test.mjs
+// with notes checked against the transcript. The audio takes the real path: fake microphone → page → worker. Needs the real components (about 1.8 GB), so it runs only when asked:
+//   FOLIO_MEETING_E2E=1 FOLIO_COMPONENTS_DIR=<folder with the components> FOLIO_MEETING_WAV=<wav with speech> node test/meeting.test.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import path from 'node:path';
 import { workspace, runApp, log, step, errors } from './harness.mjs';
@@ -20,14 +20,14 @@ const steps = [
   { js: "(()=>{const i=document.querySelector('#prompt-input');i.value='Weekly sync';document.querySelector('#sheet-prompt form').requestSubmit();return 1})()", wait: 500 },
   waitFor("document.querySelector('.meeting-bar [data-meeting-stop]')", 90000),
   log("document.querySelector('.meeting-bar').textContent"),
-  { js: '1', wait: 8000 }, // the wav is fed by the main process; give the worker time to transcribe it
+  { js: '1', wait: 25000 }, // the fake microphone plays the wav through the page, as real audio would
   { js: "document.querySelector('.meeting-bar [data-meeting-stop]').click();1", wait: 500 },
   waitFor("(window.__folioToasts||[]).includes('Meeting saved.')", 120000),
   waitFor("!document.querySelector('.meeting-bar')", 600000), // notes are written after the transcript
   log('window.__folioToasts'),
   errors,
 ];
-const r = await runApp(w, steps, { FOLIO_FEATURES_ANY_PLATFORM: '1', FOLIO_FAKE_MEDIA: '1', FOLIO_MEETING_FAKE_WAV: process.env.FOLIO_MEETING_WAV, FOLIO_COMPONENTS_DIR: process.env.FOLIO_COMPONENTS_DIR }, 900000);
+const r = await runApp(w, steps, { FOLIO_FEATURES_ANY_PLATFORM: '1', FOLIO_FAKE_MEDIA: '1', FOLIO_FAKE_AUDIO_FILE: process.env.FOLIO_MEETING_WAV, FOLIO_COMPONENTS_DIR: process.env.FOLIO_COMPONENTS_DIR }, 900000);
 console.log('\nmeeting');
 const [ready, subs, sw, started, bar, saved, gone, toasts, errs] = r.js;
 assert.equal(started, true, r.log.slice(-3000));

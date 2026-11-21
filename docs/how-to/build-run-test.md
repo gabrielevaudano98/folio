@@ -17,9 +17,9 @@ You need Node.js 22 and git. On Linux, tests that open the window need `xvfb`.
 
 - **Meeting recorder end to end** downloads about 2.8 GB of components once, then records a wav file through the app:
   ```sh
-  FOLIO_MEETING_E2E=1 FOLIO_COMPONENTS_DIR=~/folio-components FOLIO_MEETING_WAV=meeting-16k.wav xvfb-run -a node test/meeting.test.mjs
+  FOLIO_MEETING_E2E=1 FOLIO_COMPONENTS_DIR=~/folio-components FOLIO_MEETING_WAV=meeting.wav xvfb-run -a node test/meeting.test.mjs
   ```
-  The wav must be 16 kHz mono 16-bit. The components folder must already hold the installed components; the simplest
+  The wav is played by Chromium's fake microphone, so the audio goes through the page and the worker as in a real recording. The components folder must already hold the installed components; the simplest
   way is to install them once from Settings in a dev build started with the same `FOLIO_COMPONENTS_DIR`.
 - **A packaged binary**: after `npx electron-builder --linux dir` (output in `release/linux-unpacked/`),
   `FOLIO_BINARY=release/linux-unpacked/folio node test/stdio-binary.test.mjs` checks the MCP bridge

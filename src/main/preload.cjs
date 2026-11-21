@@ -106,7 +106,8 @@ contextBridge.exposeInMainWorld('folio', {
     recover: (id) => call('meeting:recover', id),
     discard: (id) => call('meeting:discard', id),
     /** one block of 16 kHz mono Int16 samples for a track ('me' or 'them') */
-    push: (track, pcm) => { if (meetingPort && pcm instanceof ArrayBuffer) meetingPort.postMessage({ track, pcm }, [pcm]); },
+    // copied, not transferred: an ArrayBuffer in the transfer list reaches the worker as null (Electron MessagePortMain)
+    push: (track, pcm) => { if (meetingPort && pcm instanceof ArrayBuffer) meetingPort.postMessage({ track, pcm }); },
     ready: () => !!meetingPort,
     onState: on('meeting:state'),
     onSegment: on('meeting:segment'),

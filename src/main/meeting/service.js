@@ -168,7 +168,15 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
           const seg = { type: 'segment', id: m.id, track: m.track, t0: m.t0, t1: m.t1, text: m.text };
           session.segments.push(seg); fss.appendFile(workFile, JSON.stringify(seg) + '\n', () => {});
           send('meeting:segment', seg);
-        } else if (m.type === 'stats' && session) session.queueSec = m.queueSec;
+        } else if (m.type === 'stats' && session) {
+          session.queueSec = m.queueSec;
+          // no sound has reached the speech engine after a while: say so now, not with an empty note at the end
+          const heard = (m.audioSec?.me || 0) + (m.audioSec?.them || 0);
+          if (session.phase === 'recording' && !heard && !session.silentWarned && Date.now() - session.started.getTime() > 12000) {
+            session.silentWarned = true;
+            send('meeting:state', { ...publicSession(), error: 'No sound is reaching Folio. Check the microphone in Windows settings, then stop and start again.' });
+          }
+        }
         else if (m.type === 'done' && session) session.done?.(m);
         else if (m.type === 'error') { if (m.fatal) { clearTimeout(timer); reject(new Error(m.error)); } else send('meeting:state', { ...publicSession(), error: m.error }); }
       });
