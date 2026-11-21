@@ -632,6 +632,7 @@ export default {
   'hist.that-is-already-the-current-text': 'That is already the current text.',
   'hist.this-is-the-current-text-pick-an-earli': 'This is the current text. Pick an earlier version to see what changed.',
   'hist.undo': 'Undo',
+  'hist.open-that-page-again-to-undo': 'Open that page again to undo.',
   'hist.version': 'Version',
   'hist.version-history': 'Version history',
   'hist.versions': 'Versions',
