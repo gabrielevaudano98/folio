@@ -766,11 +766,13 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   for (const k of ['constructor', 'toString', 'hasOwnProperty', 'valueOf']) { const c = parseCallout(`[!${k}] x`); assert.equal(c.type, 'note'); assert.ok(c.color); }
   ok('callouts: a type named like an Object property ([!constructor]) is a plain note and does not throw');
   const { DAY } = await import('../src/renderer/page-mentions.js');
-  assert.ok(DAY.test('2026-11-21') && DAY.test('2024-02-29')); assert.ok(!DAY.test('2026-02-31') && !DAY.test('2025-02-29') && !DAY.test('2026-13-01') && !DAY.test('2026-00-10') && !DAY.test('Notes'));
+  assert.ok(DAY.test('2026-11-21') && DAY.test('2024-02-29') && DAY.test('0099-02-28')); assert.ok(!DAY.test('2026-02-31') && !DAY.test('2025-02-29') && !DAY.test('2026-13-01') && !DAY.test('2026-00-10') && !DAY.test('Notes'));
   ok('daily notes: only a real calendar day is a daily note (2026-02-31 is not)');
   const pt = await import('../src/main/page-tools.js');
   assert.deepEqual(pt.sections('---\n# a YAML comment\ntitle: x\n---\n# Real\nbody\n').map((h) => [h.text, h.line]), [['Real', 5]]);
-  ok('page tools: the "# comments" in YAML front matter are not headings');
+  assert.deepEqual(pt.sections(' ---\n# Shown\n---\n').map((h) => h.text), ['Shown']); // an indented --- is not front matter
+  assert.deepEqual(pt.sections('---\r\n# c\r\n---\r\n# A\r\ntext\r\n## B #\r\n').map((h) => [h.text, h.line]), [['A', 4], ['B', 6]]);
+  ok('page tools: the "# comments" in YAML front matter are not headings; CRLF files work');
   const doc = '# Parent\n## A\n# Other\n## Goals\n';
   assert.throws(() => pt.findSection(doc, 'Parent > Goals'), /not found/); assert.equal(pt.findSection(doc, 'Other > Goals').line, 4);
   assert.equal(pt.findSection('# Plan\n## Q1\n### Goals\n', 'Plan > Goals').line, 3);

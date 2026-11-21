@@ -27,7 +27,7 @@ export function statusOptions(text) {
 export const JOURNAL = 'Journal';
 /* a daily note name: YYYY-MM-DD that is a real calendar day (2026-02-31 is not) */
 const DAY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
-export const DAY = { test: (s) => { const m = DAY_SHAPE.exec(String(s)); if (!m) return false; const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]; } };
+export const DAY = { test: (s) => { const m = DAY_SHAPE.exec(String(s)); if (!m) return false; const d = new Date(0); d.setUTCFullYear(+m[1], +m[2] - 1, +m[3]); /* not Date.UTC, which maps years 0-99 to 1900-1999 */ return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]; } };
 /* #tag: starts after a space or "(", has a letter, digits and - _ / allowed (Obsidian rules) */
 export const TAG = /(^|[\s(])#((?=[\p{L}\p{N}_\-/]*[\p{L}_])[\p{L}\p{N}_\-/]+)/gu;
 /* [key:: value], the inline field of Dataview and Obsidian */

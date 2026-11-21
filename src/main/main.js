@@ -342,7 +342,7 @@ h('templates:fetch', async (url) => {
     const type = res.headers.get('content-type') || '';
     if (/^(image|video|audio|application\/(pdf|zip|octet-stream))/i.test(type)) throw new Error('That link is not a text file.');
     if (Number(res.headers.get('content-length')) > TEMPLATE_MAX) throw new Error('That file is larger than 1 MB.');
-    const chunks = []; let size = 0; const reader = res.body.getReader();
+    const chunks = []; let size = 0; const reader = res.body?.getReader(); if (!reader) return ''; // an empty answer is an empty template
     for (;;) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > TEMPLATE_MAX) { ctl.abort(); throw new Error('That file is larger than 1 MB.'); } chunks.push(value); }
     return Buffer.concat(chunks).toString('utf8');
   } catch (e) { throw new Error(e.name === 'AbortError' ? 'The download took too long.' : e.message); } finally { clearTimeout(timer); }

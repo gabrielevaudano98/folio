@@ -1,4 +1,5 @@
-// Folio: a failed save never throws away unsaved text (closing a tab, closing the folder, quitting).
+// Folio: a failed save never throws away unsaved text (closing a tab, closing the folder).
+// Switching folder, the language reload and quitting share saveAllOrAsk() with closing the folder.
 import assert from 'node:assert/strict';
 import { workspace, runApp, open, errors, log, step } from './harness.mjs';
 

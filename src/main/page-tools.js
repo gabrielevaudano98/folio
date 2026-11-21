@@ -11,9 +11,10 @@ export function sections(text) {
   const lines = String(text).split('\n'); const out = []; let fence = null;
   // YAML front matter (the first line is ---, up to the next --- or ...) is metadata: its "# comments" are not headings
   let start = 0;
-  if (lines[0]?.trim() === '---') { const close = lines.findIndex((l, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(l)); if (close > 0) start = close + 1; }
-  lines.forEach((l, i) => {
+  if (/^---[ \t]*\r?$/.test(lines[0] || '')) { const close = lines.findIndex((l, i) => i > 0 && /^(---|\.\.\.)[ \t]*\r?$/.test(l)); if (close > 0) start = close + 1; }
+  lines.forEach((raw, i) => {
     if (i < start) return;
+    const l = raw.replace(/\r$/, ''); // CRLF files (Windows)
     const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
     if (fence) { if (f && f[1][0] === fence.ch && f[1].length >= fence.len && !f[2].trim()) fence = null; return; }
     if (f && !(f[1][0] === '`' && f[2].includes('`'))) { fence = { ch: f[1][0], len: f[1].length }; return; }
