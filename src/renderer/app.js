@@ -150,6 +150,7 @@ async function boot() {
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
     onChange: (md) => onEditorChange(md, false, 'rich'),
     resolveImage: resolveImg,
+    onRemoteBlocked: (n) => { remoteBlockedCount = n; renderRemoteNotice(); },
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
     readNote: (src) => readRelative(src),
     isDark: () => S.dark,
@@ -257,11 +258,60 @@ function applyLayoutSettings() {
 // Remote images: the page's CSP blocks them, so a note you did not write cannot make your machine call out just by being opened.
 // On request (per note for this session, or always from Settings) the main process fetches them with its network guard and hands back a data: URL.
 let remoteGen = 0; // bumped when the folder changes, so a download still in flight cannot fill the new folder's cache
-const remoteOK = new Set(), remoteCache = new Map(); // grants and fetched images belong to the open folder
+const remoteOK = new Set(), remoteCache = new Map(), remoteJobs = new Map(), remoteFailed = new Set(); // grants, fetched images, downloads in flight and failures belong to the open folder
 const isRemote = (s) => /^https?:\/\//i.test(s || '');
 const remoteAllowed = (t) => !!t && (S.settings.remoteImages === true || remoteOK.has(t.path));
-async function remoteImage(src) { const t = activeTab(); if (!remoteAllowed(t)) return null; if (remoteCache.has(src)) return remoteCache.get(src); const g = remoteGen; try { const u = await folio.dataUrl(src, t.path); if (g === remoteGen) remoteCache.set(src, u); return u; } catch { return null; } }
-function resolveImg(src) { if (isRemote(src)) return remoteImage(src); const t = activeTab(); if (!t) return null; const rel = decodeURI(src).replace(/^\.\//, ''); const d = dirOf(t.path); return folio.absUrl(normalize(d ? `${d}/${rel}` : rel)).catch(() => null); }
+let remoteBytes = 0; const REMOTE_CACHE_MAX = 64 * 1024 * 1024; // fetched images kept for redraws, oldest dropped past this
+function resetRemote() { remoteOK.clear(); remoteCache.clear(); remoteJobs.clear(); remoteFailed.clear(); remoteBytes = 0; remoteGen++; }
+function cacheRemote(src, u) {
+  if (!u || u.length > REMOTE_CACHE_MAX) return;
+  remoteCache.set(src, u); remoteBytes += u.length;
+  for (const [k, v] of remoteCache) { if (remoteBytes <= REMOTE_CACHE_MAX) break; remoteCache.delete(k); remoteBytes -= v.length; }
+}
+// one download per address at a time; a failure is not retried until the folder changes or the person asks again
+function remoteImage(src) {
+  const t = activeTab(); if (!remoteAllowed(t)) return Promise.resolve(null);
+  if (remoteCache.has(src)) { const u = remoteCache.get(src); remoteCache.delete(src); remoteCache.set(src, u); return Promise.resolve(u); } // most recently used last
+  if (remoteFailed.has(src)) return Promise.resolve(null);
+  if (!remoteJobs.has(src)) {
+    const g = remoteGen;
+    remoteJobs.set(src, folio.dataUrl(src, t.path).then((u) => { if (g === remoteGen) cacheRemote(src, u); return u; }, () => { if (g === remoteGen) remoteFailed.add(src); return null; }).finally(() => { if (g === remoteGen) remoteJobs.delete(src); }));
+  }
+  return remoteJobs.get(src);
+}
+// a file: address written in a note is shown only when it points inside the open folder, and main checks the real path again
+function fileUrlRel(src) {
+  if (!S.workspace) return null;
+  let abs; try { abs = decodeURIComponent(new URL(src).pathname); } catch { return null; }
+  if (/^\/[a-z]:\//i.test(abs)) abs = abs.slice(1);
+  const win = /^[a-z]:/i.test(abs), ws = S.workspace.replace(/\\/g, '/').replace(/\/+$/, '');
+  const a = win ? abs.toLowerCase() : abs, w = win ? ws.toLowerCase() : ws;
+  return a.startsWith(w + '/') ? abs.slice(ws.length + 1) : null;
+}
+function resolveImg(src) {
+  if (isRemote(src)) return remoteImage(src);
+  if (/^file:/i.test(src)) { const rel = fileUrlRel(src); return rel ? folio.absUrl(rel).catch(() => null) : Promise.resolve(null); }
+  const t = activeTab(); if (!t) return Promise.resolve(null);
+  let rel; try { rel = decodeURI(src).replace(/^\.\//, ''); } catch { return Promise.resolve(null); } // a malformed %-escape is a missing image, not an exception
+  const d = dirOf(t.path); return folio.absUrl(normalize(d ? `${d}/${rel}` : rel)).catch(() => null);
+}
+// the person allowed this note's web images (or all of them): forget earlier failures and redraw every view that shows images
+function allowRemote(path) { if (path) remoteOK.add(path); remoteFailed.clear(); renderPreview(); if (curType() === 'md' && isRich()) rich?.refreshImages?.(); renderRemoteNotice(); } // the hidden editor may still hold another note: it reloads its pictures when it is shown
+// edit view: the same notice as the preview, above the editor, while the open note has blocked web images
+let remoteBlockedCount = 0; // web images the visual editor holds back in the open note
+function renderRemoteNotice() {
+  const t = activeTab(); let bar = $('#remote-edit-bar');
+  const show = t && !remoteAllowed(t) && remoteBlockedCount > 0 && curType() === 'md';
+  if (!show) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div'); bar.id = 'remote-edit-bar'; bar.className = 'remote-bar remote-bar-edit'; bar.setAttribute('role', 'status');
+    bar.innerHTML = '<span></span><button type="button" class="btn"></button>';
+    bar.querySelector('button').onclick = () => allowRemote(activeTab()?.path);
+    const scroll = $('#pane-rich .rich-scroll'); if (!scroll) return; scroll.parentElement.insertBefore(bar, scroll);
+  }
+  bar.querySelector('span').textContent = tr('app.remote-images-blocked', { n: remoteBlockedCount });
+  bar.querySelector('button').textContent = tr('app.load-remote-images');
+}
 async function saveSetting(patch) { S.settings = await folio.setSettings(patch); }
 
 /* ============ panes ============ */
@@ -344,6 +394,7 @@ function setView(v, { persist = true } = {}) {
 
 /* ============ workspace ============ */
 async function loadWorkspace(dir, { restore = false } = {}) {
+  if (dir !== S.workspace) resetRemote(); // grants and fetched web images never follow you into another folder, however the folder changed
   S.workspace = dir;
   folio.propTypes().then(setTypeOverrides).catch(() => setTypeOverrides({}));
   actions.clear(); nav.list = []; nav.i = -1; // file actions and history belong to one folder
@@ -431,7 +482,7 @@ function activate(p, { line } = {}) {
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
-  renderTabs(); renderTree(); renderPreview(); renderOutline(); renderStatus(); updateHistoryButtons();
+  renderTabs(); renderTree(); renderPreview(); renderOutline(); renderStatus(); updateHistoryButtons(); renderRemoteNotice();
   saveSetting({ lastFile: p });
   if (type !== 'md') { if (v === 'code') editor.focus(); else curSurface()?.focus?.(); }
   else if (isRich()) rich.focus('start'); else if (app.dataset.modeView !== 'preview') editor.focus();
@@ -525,32 +576,35 @@ async function renderPreview() {
   const t = activeTab();
   const el = $('#preview');
   if (!t || app.dataset.modeView === 'edit' || curType() !== 'md') return;
-  const html = render(t.text);
-  el.innerHTML = html;
-  const dir = dirOf(t.path);
+  // parsed in an inert template, so no picture is requested before its address has been checked
+  const tpl = document.createElement('template'); tpl.innerHTML = render(t.text);
   const blocked = [];
-  for (const img of el.querySelectorAll('img')) {
+  const block = (img) => { img.classList.add('remote-blocked'); img.alt = img.alt || tr('app.remote-image'); };
+  for (const el of tpl.content.querySelectorAll('[srcset]')) el.removeAttribute('srcset'); // a candidate list cannot be checked address by address
+  for (const img of tpl.content.querySelectorAll('img')) {
     const src = img.getAttribute('src') || '';
-    if (isRemote(src)) {
-      img.removeAttribute('src'); img.dataset.remoteSrc = src;
-      if (remoteAllowed(t)) remoteImage(src).then((u) => { if (u) img.src = u; else { img.classList.add('remote-blocked'); img.alt = img.alt || tr('app.remote-image'); } });
-      else { img.classList.add('remote-blocked'); img.alt = img.alt || tr('app.remote-image'); blocked.push(img); }
-    } else if (src && !/^(https?:|data:|file:)/.test(src)) {
-      const rel = decodeURI(src).replace(/^\.\//, '');
-      folio.absUrl(normalize(dir ? `${dir}/${rel}` : rel)).then((u) => (img.src = u)).catch(() => {});
+    if (src && !/^(data:|blob:)/.test(src)) {
+      img.removeAttribute('src');
+      if (isRemote(src)) {
+        img.dataset.remoteSrc = src;
+        if (remoteAllowed(t)) remoteImage(src).then((u) => { if (u) img.src = u; else block(img); });
+        else { block(img); blocked.push(img); }
+      } else resolveImg(src).then((u) => { if (u) img.src = u; });
     }
     img.loading = 'lazy'; img.decoding = 'async';
   }
+  for (const m of tpl.content.querySelectorAll('video[data-src], audio[data-src]')) {
+    const src = m.dataset.src;
+    if (/^(data:|blob:)/.test(src)) m.src = src;
+    else if (isRemote(src) && !remoteAllowed(t)) blocked.push(m);
+    else resolveImg(src).then((u) => { if (u) m.src = u; });
+  }
+  el.replaceChildren(tpl.content);
   if (blocked.length) {
     const bar = document.createElement('div'); bar.className = 'remote-bar'; bar.setAttribute('role', 'status');
     bar.innerHTML = `<span>${esc(tr('app.remote-images-blocked', { n: blocked.length }))}</span><button type="button" class="btn">${esc(tr('app.load-remote-images'))}</button>`;
-    bar.querySelector('button').onclick = () => { remoteOK.add(t.path); renderPreview(); };
+    bar.querySelector('button').onclick = () => allowRemote(t.path);
     el.prepend(bar);
-  }
-  for (const m of el.querySelectorAll('video[data-src], audio[data-src]')) {
-    const src = m.dataset.src;
-    if (/^(https?:|data:|file:)/.test(src)) m.src = src;
-    else folio.absUrl(normalize(dir ? `${dir}/${decodeURI(src).replace(/^\.\//, '')}` : decodeURI(src))).then((u) => (m.src = u)).catch(() => {});
   }
   for (const a of el.querySelectorAll('a[data-wikilink]')) {
     if (!resolveWiki(a.dataset.wikilink)) a.classList.add('missing');
@@ -1374,7 +1428,7 @@ async function chooseFolder() {
 async function switchWorkspace(dir, { saved = false } = {}) {
   if (!saved) { await actions.idle(); if (!(await saveAllOrAsk())) return false; } // let a file action still running finish in the folder it started in
   for (const t of S.tabs) t.dead = true; // the old tabs go now: nothing of theirs is written any more (not even a pending Retry)
-  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); remoteOK.clear(); remoteCache.clear(); remoteGen++;
+  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); resetRemote();
   S.writesFrozen = false;
   renderTabs();
   await folio.openWorkspace(dir);
@@ -2407,7 +2461,7 @@ function bindChrome() {
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
-    if (k === 'remoteImages') renderPreview();
+    if (k === 'remoteImages') allowRemote(null);
     if (k === 'language') { setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });

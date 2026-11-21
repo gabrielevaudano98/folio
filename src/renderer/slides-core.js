@@ -22,6 +22,9 @@ export const THEMES = [['folio', 'Folio'], ['graphite', 'Graphite'], ['paper', '
 import { parseAnim } from './slides-motion.js';
 export const SIZES = { '16:9': [1280, 720], '4:3': [960, 720], '1:1': [1080, 1080], '9:16': [720, 1280], '16:10': [1280, 800], A4: [1123, 794], 'A4-portrait': [794, 1123] };
 /** theme tokens a deck (or its template) may set in front matter, and the CSS variable each one drives */
+// pictures in slide text keep their address in data-src, so nothing is requested until the view checks it (workspace boundary, web-image setting)
+// srcset is dropped: a candidate list cannot be checked one address at a time, and Folio never writes one
+export const lazySrc = (h) => h.replace(/\ssrcset="[^"]*"/gi, '').replace(/<img\b([^>]*?)\ssrc="/gi, '<img$1 data-src="');
 export const TOKENS = { paper: '--sl-bg', ink: '--sl-ink', muted: '--sl-muted', accent: '--sl-accent', card: '--sl-card', 'heading-font': '--sl-face', 'body-font': '--sl-body' };
 const FONT_NAME = /^[\w \-'",.]{1,120}$/;
 const MARP_THEME = { default: 'folio', gaia: 'paper', uncover: 'graphite' };
@@ -168,7 +171,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
   const bgs = [...s.bgs, ...(bgImg ? [{ src: bgImg, fit: 'cover', side: null, filters: [] }] : [])];
   const full = bgs.filter((b) => !b.side), side = bgs.filter((b) => b.side);
   const sideW = side[0]?.size || 50;
-  const clean = (m) => DOMPurify.sanitize(md.render(m), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+  const clean = (m) => lazySrc(DOMPurify.sanitize(md.render(m), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] })); // body, placeholders: pictures wait for the resolver
   const ph = s.master ? {} : placeholdersFor(deck, s);
   let html, phHtml = '';
   if (ph.title || ph.body || ph.subtitle) {
@@ -249,7 +252,7 @@ function placedHtml(deck, s, { inert = String(s.index).startsWith('m') } = {}) {
     const ts = textStyle(a);
     if (a.fit === 'shrink') cls.push('is-fit');
     if (o.kind === 'box') st.push(...ts);
-    const inner = DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] });
+    const inner = lazySrc(DOMPurify.sanitize(md.render(o.body || ''), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] })); // text boxes too
     if (o.kind === 'icon') {
       return `<div class="${cls.join(' ')}"${ref} style="${st.join(';')}"><span class="sl-icon-svg" data-icon="${escape(a.name || 'circle')}" data-sw="${escape(a.weight || '2')}"></span></div>`;
     }
