@@ -19,6 +19,7 @@ import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
+import { writeAtomic, writeAtomicSync } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 
@@ -47,15 +48,34 @@ const defaults = {
 };
 let settings = { ...defaults };
 try { settings = { ...defaults, ...JSON.parse(fss.readFileSync(SETTINGS_FILE(), 'utf8')) }; } catch {}
+// settings change often (every tab switch records the last file), so writes are batched and done off the main thread;
+// quitting writes any pending change at once. It holds the MCP token (0600) and is atomic, so a crash cannot leave it half written.
+let settingsTimer = null, settingsWrite = Promise.resolve(), settingsInFlight = 0, settingsDirty = false;
 function saveSettings() {
-  fss.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true });
-  fss.writeFileSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); // it holds the MCP token
-  try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {}
-  writeBridge();
+  settingsDirty = true;
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(() => {
+    settingsTimer = null;
+    const text = JSON.stringify(settings, null, 2);
+    settingsInFlight++; settingsDirty = false; // a failed write marks it dirty again, so quit retries it
+    settingsWrite = settingsWrite.then(async () => {
+      await fs.mkdir(path.dirname(SETTINGS_FILE()), { recursive: true });
+      await writeAtomic(SETTINGS_FILE(), text, { mode: 0o600 });
+      writeBridge();
+    }).catch((e) => { settingsDirty = true; console.error('[folio] settings not saved:', e.message); }).finally(() => { settingsInFlight--; });
+  }, 200);
+}
+/** at quit: once any write already started has finished (so it cannot land after this one), writes the latest settings */
+function flushSettingsSync() {
+  clearTimeout(settingsTimer); settingsTimer = null;
+  if (!settingsDirty) return;
+  settingsDirty = false;
+  try { fss.mkdirSync(path.dirname(SETTINGS_FILE()), { recursive: true }); writeAtomicSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2), { mode: 0o600 }); writeBridge(); }
+  catch (e) { console.error('[folio] settings not saved:', e.message); }
 }
 function writeBridge() {
   const b = { port: mcpServerPort, token: settings.token, workspace: settings.workspace, allowWrite: settings.allowWrite, pid: process.pid };
-  try { fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); fss.chmodSync(BRIDGE_FILE(), 0o600); } catch {} // the mode only applies to a new file, so older installs are repaired here
+  try { writeAtomicSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {} // owner-only: it holds the token (an older, wider file is replaced with 0600)
 }
 
 const notes = createNotes(() => settings.workspace);
@@ -107,6 +127,19 @@ function createWindow() {
   const here = (u) => String(u).split(/[?#]/)[0];
   const lock = (e, url) => { if (here(url) === here(win.webContents.getURL())) return; e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); };
   win.webContents.on('will-navigate', lock);
+  // the page crashed (out of memory, a GPU or renderer fault): open it again rather than leave a blank window.
+  // Notes are autosaved shortly after typing stops, so the last second or so of typing can be lost; tabs come back from
+  // settings. A recording in progress is stopped and saved first, since its audio came from this page.
+  // Up to three reloads a minute; a fourth crash stops the loop.
+  const crashes = [];
+  win.webContents.on('render-process-gone', (_e, d) => {
+    if (d.reason === 'clean-exit' || win.isDestroyed()) return;
+    console.error('[folio] window process gone:', d.reason, d.exitCode);
+    if (features.active()) features.stop();
+    const now = Date.now(); crashes.push(now); while (crashes.length && now - crashes[0] > 60000) crashes.shift();
+    if (crashes.length <= 3) { win.webContents.reload(); return; }
+    dialog.showMessageBox(win, { type: 'error', message: 'Folio’s window keeps closing unexpectedly.', detail: `Reason: ${d.reason}. Your notes are saved on disk, apart from anything typed in the last moment before the crash. Restart Folio, and if it happens again, report it with this reason.`, buttons: ['Quit'] }).then(() => app.quit());
+  });
   win.webContents.on('will-redirect', lock);
   win.webContents.on('did-start-loading', () => { closeReady = false; }); // a reload: the new page says when it listens again
   win.on('close', (e) => {
@@ -209,7 +242,7 @@ h('fs:write', async (rel, content) => {
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   try { if (!(await history.list(rel)).length) { const was = await fs.readFile(abs, 'utf8').catch(() => null); if (was != null) await keep(rel, was, { reason: 'open', force: true }); } } catch {}
-  await fs.writeFile(abs, content, 'utf8');
+  await writeAtomic(abs, content);
   keep(rel, content, { reason: 'edit' });
   return true;
 });
@@ -218,7 +251,7 @@ h('fs:create', async (rel, content = '') => {
   if (fss.existsSync(abs)) throw new Error('A note with that name already exists.');
   ownWrites.set(abs, content);
   await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, content, 'utf8');
+  await writeAtomic(abs, content);
   keep(notes.relOf(abs), content, { reason: 'created', force: true });
   return notes.relOf(abs);
 });
@@ -235,7 +268,7 @@ h('fs:rename', async (from, to) => {
     if (path.dirname(a) === path.dirname(b)) continue;
     try {
       const text = await notes.read(b); const moved = await assets.relocate(a, b, text);
-      if (moved.text !== text) { await keep(b, text, { reason: 'move', force: true }); ownWrites.set(notes.resolve(b), moved.text); await fs.writeFile(notes.resolve(b), moved.text, 'utf8'); changed.add(b); }
+      if (moved.text !== text) { await keep(b, text, { reason: 'move', force: true }); ownWrites.set(notes.resolve(b), moved.text); await writeAtomic(notes.resolve(b), moved.text); changed.add(b); }
     } catch (e) { console.error('assets relocate', e.message); }
   }
   return { to: r.to, changed: [...changed] };
@@ -323,7 +356,7 @@ h('props:types', async () => { try { return JSON.parse(await fs.readFile(typesFi
 h('props:set-type', async (key, type) => {
   if (typeof key !== 'string' || !/^[A-Za-z_][\w .-]{0,40}$/.test(key) || !['text', 'number', 'checkbox', 'date', 'datetime', 'list', 'tags', 'link'].includes(type)) throw new Error('Not a property type.');
   let cur = {}; try { cur = JSON.parse(await fs.readFile(typesFile(), 'utf8')); } catch {}
-  cur[key.toLowerCase()] = type; await fs.mkdir(path.dirname(typesFile()), { recursive: true }); await fs.writeFile(typesFile(), JSON.stringify(cur, null, 1), 'utf8'); return cur;
+  cur[key.toLowerCase()] = type; await fs.mkdir(path.dirname(typesFile()), { recursive: true }); await writeAtomic(typesFile(), JSON.stringify(cur, null, 1)); return cur;
 });
 h('assets:sync', async (noteRel, before, after) => ({ ...(await assets.heal(noteRel, after)), orphans: await assets.orphans(noteRel, before, after), refs: [...assets.refsOf(noteRel, after)] }));
 h('assets:restore', async (paths) => { let n = 0; for (const p of paths.slice(0, 500)) if (await assets.restore(p).catch(() => false)) n++; return n; });
@@ -593,12 +626,12 @@ h('connections:install', async (id) => {
   if (fss.existsSync(t.file)) await fs.copyFile(t.file, t.file + '.folio-backup');
   cfg[t.key] = { ...(cfg[t.key] || {}), folio: t.shape(stdioEntry()) };
   await fs.mkdir(path.dirname(t.file), { recursive: true });
-  await fs.writeFile(t.file, JSON.stringify(cfg, null, 2));
+  await writeAtomic(t.file, JSON.stringify(cfg, null, 2));
   return { file: t.file, restart: t.restart };
 });
 h('connections:remove', async (id) => {
   const t = TARGETS[id]; const cfg = await readJson(t.file);
-  if (cfg[t.key]?.folio) { delete cfg[t.key].folio; await fs.writeFile(t.file, JSON.stringify(cfg, null, 2)); }
+  if (cfg[t.key]?.folio) { delete cfg[t.key].folio; await writeAtomic(t.file, JSON.stringify(cfg, null, 2)); }
   return true;
 });
 
@@ -724,7 +757,10 @@ app.on('before-quit', (e) => { // a recording is saved before the app quits; a n
   if (!features.active()) { features.abortNotes(); return; }
   e.preventDefault(); features.stop().finally(() => app.quit());
 });
-app.on('before-quit', () => { if (!quitAgreed()) return; fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
+app.on('before-quit', (e) => {
+  if (!quitAgreed()) return; // the page saves (or asks) first
+  if (settingsInFlight) { e.preventDefault(); settingsWrite.finally(() => app.quit()); return; } // let it land first, then flush
+  flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; writeAtomicSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
 let shotFailWrites = false; // the dev test runner can make every page write fail, to test what the app does then
@@ -733,6 +769,7 @@ async function devShot(w) {
   w.webContents.on('console-message', (e) => { const msg = e.message; if (/error|fail/i.test(String(msg))) console.log('console:', msg); });
   w.webContents.once('did-finish-load', async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    console.log('perf', JSON.stringify({ loadedMs: Math.round(process.uptime() * 1000) })); // process start to page loaded
     await wait(1500);
     for (const s of steps) {
       if (s.size) w.setContentSize(s.size[0], s.size[1]);
@@ -740,6 +777,10 @@ async function devShot(w) {
       if (s.quit) app.quit(); // the same path as ⌘Q or the Quit menu item
       if (s.dark !== undefined) nativeTheme.themeSource = s.dark ? 'dark' : 'light';
       if (s.js) { try { const v = await w.webContents.executeJavaScript(s.js); if (s.log) console.log('js', JSON.stringify(v)); } catch (e) { console.error('[folio-error] shot js', e.message); } }
+      if (s.metrics) { // memory of every process, in MB (private bytes on Windows and macOS, working set on Linux)
+        const m = app.getAppMetrics().map((x) => ({ type: x.type, mb: Math.round((x.memory.privateBytes ?? x.memory.workingSetSize) / 1024), cpu: Math.round(x.cpu.percentCPUUsage) }));
+        console.log('js', JSON.stringify({ metrics: m, totalMB: m.reduce((n, x) => n + x.mb, 0) }));
+      }
       if (s.tool) { try { await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); } catch (e) { console.error('shot tool', e.message); } }
       await wait(s.wait ?? 700);
       if (s.out) { const img = await w.webContents.capturePage(); fss.writeFileSync(s.out, img.toPNG()); console.log('shot', s.out); }

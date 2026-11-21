@@ -49,7 +49,7 @@ transcript saved at stop, notes added after it. Peak of the worker as Electron r
 
 ## What to measure on Windows (go/no-go, from the plan)
 
-Every meeting note records `worker_peak_mb`, `app_peak_mb` and `transcription_speed` in its front matter, so the gates are
+Meeting notes record `worker_peak_mb`, `app_peak_mb` and `transcription_speed` in their front matter when measured, so the gates are
 measured by recording real meetings with headphones:
 
 1. Capture: three one-hour calls (wired headset, USB headset unplugged and plugged back, Bluetooth). No gap in the

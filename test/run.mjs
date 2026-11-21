@@ -1,7 +1,7 @@
 // Runs every Folio test. Format tests are bundled because the cores import CSS-free browser modules.
 import * as esbuild from 'esbuild';
 import { execFileSync } from 'node:child_process';
-const run = (f) => execFileSync(process.execPath, [f], { stdio: 'inherit' });
+const run = (f, ...args) => execFileSync(process.execPath, [f, ...args], { stdio: 'inherit' });
 await esbuild.build({ entryPoints: ['test/formats.test.mjs'], bundle: true, platform: 'node', format: 'esm', outfile: 'dist/test/formats.test.mjs', logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
 run('dist/test/formats.test.mjs');
 run('test/pagetools.test.mjs');
@@ -11,6 +11,8 @@ run('test/assets.test.mjs');
 run('test/i18n.test.mjs');
 run('test/git-log.test.mjs');
 run('test/security.test.mjs');
+run('scripts/docs-reference.mjs', '--check');
+run('test/atomic.test.mjs');
 run('test/features.test.mjs');
 run('test/meeting.test.mjs'); // end to end; skips itself unless FOLIO_MEETING_E2E=1
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/stdio-binary.test.mjs');

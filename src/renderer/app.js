@@ -8,7 +8,6 @@ import { createRich } from './rich.js';
 import { fuzzy, highlight } from './fuzzy.js';
 import { INSERTS } from './inserts.js';
 import { portableMarkdown } from './page-syntax.js';
-import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
@@ -21,8 +20,6 @@ import { renameTag, setTypeOverrides } from './page-props.js';
 import { listTemplates, fillTemplate, askVars, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
 import { openGallery } from './template-gallery.js';
 import { popupMenu } from './page-table.js';
-import { mountBoard } from './board.js';
-import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
 import { icons } from './icons.js';
 import { mountHistory } from './history-view.js';
@@ -40,7 +37,10 @@ const base = (p) => p.split('/').pop();
 const stem = (p) => base(p).replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx|txt)$/i, '');
 
 /* ---------- document types: every type has a visual view and a code view ---------- */
-const SURFACES = { slides: mountSlides, board: mountBoard, sheet: mountSheet };
+// the visual editors are loaded the first time a document of their type is opened, so startup parses only what pages need
+const SURFACES = { slides: () => import('./slides.js').then((m) => m.mountSlides), board: () => import('./board.js').then((m) => m.mountBoard), sheet: () => import('./sheet.js').then((m) => m.mountSheet) };
+const surfaceMods = {};
+const loadSurface = (type) => (surfaceMods[type] ||= SURFACES[type]().then((mount) => { surfaceMods[type].mount = mount; return mount; }, (e) => { delete surfaceMods[type]; throw e; }));
 const NEW_BOARD = (t) => `# ${t}\n\nA board in board-md. Shapes: \`id: shape "Label" @x,y\`. Connectors: \`a -> b "label"\`.\n\n\`\`\`board\nstart: terminator "Start" @40,60\nidea: rect "Write the idea" @230,55\nok: diamond "Clear?" @430,45\ndone: terminator "Share" @620,60\nnote: note "Double-click to edit, drag from the dots to connect" @220,190 200x80\n\nstart -> idea\nidea -> ok\nok -> done "yes"\nok.bottom -> idea.bottom "no" {route: orthogonal}\n\`\`\`\n`;
 const NEW_SHEET = (t) => `# ${t}\n\n## Sheet1\n\n| Item | Quantity | Price | Total |\n| --- | --- | --- | --- |\n| Notebooks | 4 | 3.5 | =B2*C2 |\n| Pens | 12 | 1.2 | =B3*C3 |\n| Folders | 6 | 2.1 | =B4*C4 |\n| Total |  |  | =SUM(D2:D4) |\n\n<!-- sheet: {"cols":{"C":{"format":"currency"},"D":{"format":"currency"}}} -->\n`;
 const NEW_CONTENT = { md: (t) => `# ${t}\n\n`, slides: () => NEW_DECK, board: NEW_BOARD, sheet: NEW_SHEET };
@@ -63,10 +63,12 @@ const surfaces = {};
 function surfaceFor(type) {
   if (!SURFACES[type]) return null;
   if (!surfaces[type]) {
+    const mount = surfaceMods[type]?.mount;
+    if (!mount) return null; // not loaded yet: callers load it with loadSurface() and try again
     const host = document.createElement('div');
     host.className = `surface surface-${type}`; host.id = `surface-${type}`;
     $('#pane-surface').appendChild(host);
-    surfaces[type] = SURFACES[type](host, surfaceCtx(type));
+    surfaces[type] = mount(host, surfaceCtx(type));
     surfaces[type].host = host;
   }
   $$('#pane-surface > .surface').forEach((h) => (h.hidden = h !== surfaces[type].host));
@@ -316,6 +318,7 @@ function setView(v, { persist = true } = {}) {
   const t = activeTab();
   if (type !== 'md') {
     const s = surfaceFor(type);
+    if (!s) { loadSurface(type).then(() => { if (curType() === type) setView(v, { persist }); }, (e) => toast(e.message, { kind: 'error' })); return; }
     if (t && s) { if (v !== 'code' && prev === 'code') s.setText(t.text); if (v !== 'visual') editor.applyRemote(t.text); s.setMode?.(v); }
     $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
     layoutPanes();
@@ -413,7 +416,11 @@ function activate(p, { line } = {}) {
   layoutPanes();
   if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
   if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
-  else { const s = surfaceFor(type); s.setText(t.text); s.setMode?.(v); }
+  else {
+    const s = surfaceFor(type);
+    if (s) { s.setText(t.text); s.setMode?.(v); }
+    else { loadSurface(type).then(() => { if (S.active === p) activate(p, { line }); }, (e) => toast(e.message, { kind: 'error' })); return; }
+  }
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
@@ -641,6 +648,7 @@ async function openRef(path, part = '') {
   await openFile(path);
   if (!part) return;
   const type = docType(path);
+  if (SURFACES[type]) await loadSurface(type).catch(() => {}); // the first open of this type mounts its editor after loading it
   if (type === 'slides') curSurface()?.gotoSlide?.(parseInt(part, 10) - 1);
   else if (type === 'sheet') curSurface()?.gotoCell?.(part);
   else if (type === 'board') curSurface()?.gotoNode?.(part);
@@ -1753,7 +1761,10 @@ const COMMANDS = [
     curSurface()?.exportHandouts?.({ perPage: per });
   } },
   { id: 'export-notes', title: 'Export slide notes pages as PDF…', run: () => (curType() === 'slides' ? curSurface()?.exportHandouts?.({ notes: true }) : toast('Open a slides document first.')) },
-  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
+  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => {
+    if (curType() !== 'slides') return toast('Open a slides document to present it.');
+    loadSurface('slides').then(() => { if (curType() === 'slides') (curSurface() || surfaceFor('slides'))?.present(); }, (e) => toast(e.message, { kind: 'error' })); // the editor may still be loading
+  } },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
   { id: 'export-pdf', title: 'Export as PDF…', run: () => exportAs('pdf') },
   { id: 'reveal', title: 'Show in folder', run: () => folio.reveal(S.active || '') },
@@ -1938,6 +1949,7 @@ async function rasterUrl(url, w, h) {
 async function exportAs(kind, o = null) {
   const t = activeTab(); if (!t) return toast(tr('app.open-a-note-to-export-it'));
   if (!o && curType() === 'md' && (kind === 'pdf' || kind === 'docx')) o = exportPrefs();
+  if (SURFACES[curType()]) { try { await loadSurface(curType()); } catch (e) { return toast(e.message, { kind: 'error' }); } } // its editor may still be loading
   if (kind === 'docx') { if (curType() !== 'md') return toast(tr('app.word-export-is-for-pages')); try { return await exportWord(t, o); } catch (e) { return toast(tr('app.export-failed-message', { message: e.message }), { kind: 'error' }); } }
   const s = curSurface();
   if (kind === 'md') {
@@ -2463,7 +2475,7 @@ function bindIpc() {
 
 window.__folioErrors = [];
 /** tests and automation: run a command by id, as the menu would */
-window.__folioRun = (id) => COMMANDS.find((x) => x.id === id)?.run();
+window.__folioRun = (id) => (id === 'palette' ? openPalette('commands') : COMMANDS.find((x) => x.id === id)?.run()); // the palette is opened by the menu, not a command
 Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
 Object.defineProperty(window, '__folioEditor', { get: () => editor });
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });

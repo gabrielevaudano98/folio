@@ -28,6 +28,17 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
   const dl = path.join(root, '.downloads'), staging = path.join(root, '.staging');
   const live = new Map(); // id -> { state, done, total, error }
   let busy = null; // { ids, abort }
+  let cleaning = null; // installs wait for the start-up clean-up, so it never undoes a swap in progress
+  async function cleanupNow() {
+    await fs.rm(staging, { recursive: true, force: true }).catch((e) => console.error('[folio] components: staging not removed:', e.message));
+    for (const id of Object.keys(components)) { // an update stopped between its two renames: put the old version back
+      const dest = dirOf(id), old = dest + '.old';
+      try {
+        if (!(await exists(old))) continue;
+        if (await exists(dest)) await fs.rm(old, { recursive: true, force: true }); else await fs.rename(old, dest);
+      } catch (e) { console.error(`[folio] components: ${id} not restored:`, e.message); }
+    }
+  }
   let lastEmit = 0;
   const emit = (force = false) => {
     const now = Date.now();
@@ -117,7 +128,7 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
     for (const id of ids) if (!filesOf(id)) throw new Error(`${components[id]?.name || id} is not available on this computer.`);
     const ac = new AbortController();
     busy = { ids, abort: () => ac.abort() }; // taken before the first await, so two calls cannot both start
-    try { return await run(ids, ac); } finally { busy = null; }
+    try { await cleaning; return await run(ids, ac); } finally { busy = null; }
   }
   async function run(ids, ac) {
     const todo = [];
@@ -159,13 +170,15 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
     /** removes a component and any partial download of it; the caller makes sure nothing is using it */
     async uninstall(id) {
       if (busy?.ids.includes(id)) throw new Error('Cancel the download first.');
+      await cleaning; // the start-up clean-up could otherwise put back what this removes
       await fs.rm(dirOf(id), { recursive: true, force: true });
+      await fs.rm(dirOf(id) + '.old', { recursive: true, force: true }); // or the next start would put it back
       await fs.rm(path.join(dl, id), { recursive: true, force: true });
       live.delete(id);
     },
     pathOf: dirOf,
     /** leftovers of an install that was interrupted while placing files; partial downloads are kept to resume */
-    async cleanup() { await fs.rm(staging, { recursive: true, force: true }); for (const id of Object.keys(components)) await fs.rm(dirOf(id) + '.old', { recursive: true, force: true }); },
+    cleanup() { return (cleaning ||= cleanupNow()); },
   };
 }
 const gb = (n) => `${(n / 2 ** 30).toFixed(1)} GB`;
