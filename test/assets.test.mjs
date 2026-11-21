@@ -92,4 +92,47 @@ const used = (await a.save('Docs/page.md', 'Used.png', png(3))), gone = (await a
   assert(fs.readdirSync(path.join(ws, 'G/F/.asset')).some((f) => f.endsWith('-out.png')));
   ok('moving a folder: files that moved with it keep their references, files outside it are copied in'); }
 
+{ // a .asset (or its trash) that is a link out of the workspace is never written to, moved from or into
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-assets-out-'));
+  let linkable = true; try { fs.symlinkSync(outside, path.join(ws, 'probe-link')); fs.unlinkSync(path.join(ws, 'probe-link')); } catch (e) { if (e.code !== 'EPERM') throw e; linkable = false; }
+  if (!linkable) console.log('  - links are not allowed here: the linked .asset checks are skipped');
+  else {
+    w('Linked/p.md', '# L'); fs.symlinkSync(outside, path.join(ws, 'Linked', '.asset'));
+    await assert.rejects(a.save('Linked/p.md', 'x.png', png(7)), /outside the workspace/);
+    const srcFile = path.join(outside, 'src.png'); fs.writeFileSync(srcFile, 'x');
+    await assert.rejects(a.importFile('Linked/p.md', srcFile), /outside the workspace/);
+    assert.deepEqual(fs.readdirSync(outside), ['src.png']);
+    // a folder that sits under a link: nothing is created outside before the refusal
+    fs.mkdirSync(path.join(outside, 'deep')); fs.symlinkSync(path.join(outside, 'deep'), path.join(ws, 'Hop'));
+    await assert.rejects(a.save('Hop/p.md', 'x.png', png(5)), /outside the workspace|not found|ENOENT|link/i);
+    assert.deepEqual(fs.readdirSync(path.join(outside, 'deep')), []);
+    // a trash that is a link: remove refuses, and restore does not pull an outside file into the workspace
+    w('Trashy/p.md', '# T'); const kept = await a.save('Trashy/p.md', 'k.png', png(8)); fs.mkdirSync(path.join(outside, 'bin'));
+    fs.symlinkSync(path.join(outside, 'bin'), path.join(ws, 'Trashy', '.asset', '.trash'));
+    await assert.rejects(a.remove(`Trashy/${kept}`), /outside the workspace/);
+    assert.deepEqual(fs.readdirSync(path.join(outside, 'bin')), []); assert(fs.existsSync(path.join(ws, 'Trashy', kept)), 'the file stayed where it was');
+    fs.writeFileSync(path.join(outside, 'bin', `1~aaaaaaaa-gone.png`), 'outside');
+    await assert.rejects(a.restore('Trashy/.asset/aaaaaaaa-gone.png'), /outside the workspace/);
+    assert(!fs.existsSync(path.join(ws, 'Trashy', '.asset', 'aaaaaaaa-gone.png')), 'nothing came in from outside');
+    assert(fs.existsSync(path.join(outside, 'bin', '1~aaaaaaaa-gone.png')), 'the outside file stayed where it was');
+    ok('a .asset folder or trash that is a link out of the workspace (or under one) is refused for saving, importing, removing and restoring'); }
+}
+
+{ // import limits and the guards on remove and restore
+  w('Lim/p.md', '# L'); const bigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-big-')); const big = path.join(bigDir, 'big.bin');
+  fs.writeFileSync(big, '', { flag: 'wx' }); fs.truncateSync(big, 251 * 1024 * 1024);
+  await assert.rejects(a.importFile('Lim/p.md', big), /larger than 250 MB/); fs.rmSync(bigDir, { recursive: true, force: true });
+  await assert.rejects(a.importFile('Lim/p.md', os.tmpdir()), /not a file/);
+  await assert.rejects(a.save('Lim/p.md', 'e.png', Buffer.alloc(0)), /empty/);
+  const f = await a.save('Lim/p.md', 'g.png', png(9));
+  await assert.rejects(a.remove('Lim/p.md'), /not a file in an asset folder/);
+  fs.mkdirSync(path.join(ws, 'Lim', '.asset', 'sub')); fs.writeFileSync(path.join(ws, 'Lim', '.asset', 'sub', 'x.png'), 'x');
+  await assert.rejects(a.remove('Lim/.asset/sub/x.png'), /not a file in an asset folder/);
+  assert.equal(await a.remove('Lim/.asset/aaaaaaaa-none.png'), false, 'a file that is not there is not an error');
+  assert.equal(await a.restore(`Lim/${f}`), true, 'a file that is already in place stays put');
+  assert.equal(await a.restore('Lim/.asset/aaaaaaaa-never.png'), false, 'nothing in the trash, nothing to restore');
+  assert.equal(await a.remove(`Lim/${f}`, { permanent: true }), true); assert(!fs.existsSync(path.join(ws, 'Lim', f)));
+  assert.equal(await a.restore(`Lim/${f}`), false, 'a permanent removal leaves nothing to restore');
+  ok('imports refuse directories, empty and oversize files; remove and restore refuse anything outside an asset folder, and permanent removal leaves no copy'); }
+
 console.log(`\n${n} assets checks passed`);

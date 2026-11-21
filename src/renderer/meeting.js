@@ -3,6 +3,8 @@
 // Capture: the microphone ('me') and the computer's sound ('them', Windows loopback) go through one AudioContext at
 // 16 kHz into an AudioWorklet, which posts 100 ms Int16 blocks; they travel on a MessagePort straight to the worker.
 
+import { t as tr, tl } from './i18n.js';
+
 const GB = (n) => `${(n / 2 ** 30).toFixed(n >= 2 ** 30 ? 1 : 2)} GB`;
 const pct = (d, t) => (t ? Math.min(100, Math.floor((d / t) * 100)) : 0);
 const clock = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -19,42 +21,42 @@ export function createMeeting(ui) {
     const done = live.reduce((n, c) => n + (c.state === 'ready' ? c.total : c.done || 0), 0), total = live.reduce((n, c) => n + c.total, 0);
     const err = live.find((c) => c.error)?.error;
     const working = live.find((c) => ['queued', 'downloading', 'verifying', 'unpacking'].includes(c.state));
-    if (live.every((c) => c.state === 'ready')) return { ready: true, label: `Ready · ${GB(g.bytes)}` };
-    if (working) return { busy: true, done, total, label: working.state === 'verifying' ? 'Checking the download…' : working.state === 'unpacking' ? 'Installing…' : `Downloading ${pct(done, total)}% of ${GB(total)}` };
-    if (live.some((c) => c.state === 'corrupt' || c.state === 'outdated')) return { label: 'Needs to be downloaded again', repair: true };
+    if (live.every((c) => c.state === 'ready')) return { ready: true, label: tr('mtg.ready', { size: GB(g.bytes) }) };
+    if (working) return { busy: true, done, total, label: working.state === 'verifying' ? tr('mtg.checking') : working.state === 'unpacking' ? tr('mtg.installing') : tr('mtg.downloading', { pct: pct(done, total), size: GB(total) }) };
+    if (live.some((c) => c.state === 'corrupt' || c.state === 'outdated')) return { label: tr('mtg.redo'), repair: true };
     const partial = live.some((c) => c.state === 'partial');
-    return { label: err ? `Download stopped: ${err}` : partial ? `Paused at ${pct(done, total)}% · ${GB(total)}` : `Not downloaded · ${GB(total)}`, error: !!err, partial };
+    return { label: err ? tr('mtg.stopped', { err }) : partial ? tr('mtg.paused', { pct: pct(done, total), size: GB(total) }) : tr('mtg.not-downloaded', { size: GB(total) }), error: !!err, partial };
   }
   function partRow(part, title, sub) {
     const s = partState(part), id = `fp-${part}`;
-    const btn = s.ready ? `<button class="btn" type="button" data-feat="remove" data-part="${part}">Remove</button>`
-      : s.busy ? `<button class="btn" type="button" data-feat="cancel">Cancel</button>`
-        : `<button class="btn ${part === 'required' ? 'btn-primary' : ''}" type="button" data-feat="install" data-part="${part}" ${feature.busy ? 'disabled' : ''}>${s.partial ? 'Resume' : s.repair ? 'Download again' : 'Download'}</button>`;
+    const btn = s.ready ? `<button class="btn" type="button" data-feat="remove" data-part="${part}">${tr('mtg.remove')}</button>`
+      : s.busy ? `<button class="btn" type="button" data-feat="cancel">${tr('mtg.cancel')}</button>`
+        : `<button class="btn ${part === 'required' ? 'btn-primary' : ''}" type="button" data-feat="install" data-part="${part}" ${feature.busy ? 'disabled' : ''}>${s.partial ? tr('mtg.resume') : s.repair ? tr('mtg.download-again') : tr('mtg.download')}</button>`;
     return `<div class="row feature-part" data-part-row="${part}">
       <div class="row-main"><span class="row-title">${esc(title)}</span><span class="row-sub" id="${id}" ${s.error ? 'data-error="true"' : ''}>${esc(sub)} · ${esc(s.label)}</span>
         ${s.busy ? `<progress class="feature-progress" max="100" value="${pct(s.done, s.total)}" aria-labelledby="${id}"></progress>` : ''}</div>${btn}</div>`;
   }
   function sectionHtml() {
     const f = feature;
-    if (!f.supported) return `<h3>Optional features</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">${esc(f.name)}</span><span class="row-sub">Available on Windows for now.</span></div></div></div>`;
+    if (!f.supported) return `<h3>${tr('app.optional-features')}</h3><div class="rows"><div class="row"><div class="row-main"><span class="row-title">${esc(tl('mtg', f.name))}</span><span class="row-sub">${tr('mtg.windows-only')}</span></div></div></div>`;
     const req = partState('required');
-    const unsaved = f.unsaved.map((u) => `<div class="row"><div class="row-main"><span class="row-title">Unsaved recording: ${esc(u.title)}</span><span class="row-sub">${esc(new Date(u.started).toLocaleString())} · ${u.segments} lines. Folio closed before it was saved.</span></div>
-      <button class="btn" type="button" data-feat="discard" data-work="${esc(u.id)}">Discard</button><button class="btn btn-primary" type="button" data-feat="recover" data-work="${esc(u.id)}">Save transcript</button></div>`).join('');
-    const lic = [...f.required.components, ...f.notes.components].map((c) => `<li><strong>${esc(c.name)}</strong> · ${esc(c.license)} · ${esc(c.attribution)} <button class="btn btn-quiet" type="button" data-open-url="${esc(c.licenseUrl)}">License</button></li>`).join('');
-    return `<h3>Optional features</h3>
-      <p class="group-note">Downloaded only if you turn them on. While recording, the meeting recorder uses up to 3 GB of memory; when idle it uses none.</p>
+    const unsaved = f.unsaved.map((u) => `<div class="row"><div class="row-main"><span class="row-title">${tr('mtg.unsaved', { title: esc(u.title) })}</span><span class="row-sub">${tr('mtg.unsaved-sub', { n: u.segments, when: esc(new Date(u.started).toLocaleString()) })}</span></div>
+      <button class="btn" type="button" data-feat="discard" data-work="${esc(u.id)}">${tr('mtg.discard')}</button><button class="btn btn-primary" type="button" data-feat="recover" data-work="${esc(u.id)}">${tr('mtg.save-transcript')}</button></div>`).join('');
+    const lic = [...f.required.components, ...f.notes.components].map((c) => `<li><strong>${esc(c.name)}</strong> · ${esc(c.license)} · ${esc(c.attribution)} <button class="btn btn-quiet" type="button" data-open-url="${esc(c.licenseUrl)}">${tr('mtg.license')}</button></li>`).join('');
+    return `<h3>${tr('app.optional-features')}</h3>
+      <p class="group-note">${tr('mtg.group-note')}</p>
       <div class="rows">
-        <div class="row"><div class="row-main"><span class="row-title" id="feat-meeting-title">${esc(f.name)}</span><span class="row-sub">${esc(f.description)}</span></div>
+        <div class="row"><div class="row-main"><span class="row-title" id="feat-meeting-title">${esc(tl('mtg', f.name))}</span><span class="row-sub">${esc(tl('mtg', f.description))}</span></div>
           <label class="switch"><input type="checkbox" role="switch" data-feat="enable" aria-labelledby="feat-meeting-title" ${f.enabled ? 'checked' : ''}></label></div>
-        ${f.enabled ? partRow('required', 'Speech model', 'Needed to record') : ''}
-        ${f.enabled ? partRow('notes', 'Notes model', 'Optional: summary, decisions and action items') : ''}
-        ${f.enabled && f.notes.ready ? `<div class="row"><div class="row-main"><span class="row-title" id="feat-auto">Write notes after each meeting</span><span class="row-sub">Every point quotes a line of the transcript; check them before you share.</span></div><label class="switch"><input type="checkbox" role="switch" data-feat="auto" aria-labelledby="feat-auto" ${f.autoNotes ? 'checked' : ''}></label></div>` : ''}
-        ${f.enabled ? `<div class="row"><div class="row-main"><label class="row-title" for="feat-lang">Meeting language</label><span class="row-sub">Detect works for mixed Italian and English; a fixed language is a little more accurate.</span></div>
-          <select class="select" id="feat-lang" data-feat="lang">${[['', 'Detect'], ['it', 'Italiano'], ['en', 'English']].map(([v, l]) => `<option value="${v}" ${f.language === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
+        ${f.enabled ? partRow('required', tr('mtg.speech-model'), tr('mtg.needed')) : ''}
+        ${f.enabled ? partRow('notes', tr('mtg.notes-model'), tr('mtg.notes-optional')) : ''}
+        ${f.enabled && f.notes.ready ? `<div class="row"><div class="row-main"><span class="row-title" id="feat-auto">${tr('mtg.auto-notes')}</span><span class="row-sub">${tr('mtg.auto-notes-sub')}</span></div><label class="switch"><input type="checkbox" role="switch" data-feat="auto" aria-labelledby="feat-auto" ${f.autoNotes ? 'checked' : ''}></label></div>` : ''}
+        ${f.enabled ? `<div class="row"><div class="row-main"><label class="row-title" for="feat-lang">${tr('mtg.language')}</label><span class="row-sub">${tr('mtg.language-sub')}</span></div>
+          <select class="select" id="feat-lang" data-feat="lang">${[['', tr('mtg.detect')], ['it', 'Italiano'], ['en', 'English']].map(([v, l]) => `<option value="${v}" ${f.language === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
         ${unsaved}
-        ${f.enabled && req.ready ? `<div class="row"><div class="row-main"><span class="row-title">Record a meeting</span><span class="row-sub">Use headphones, and tell everyone you are recording.</span></div><button class="btn btn-primary" type="button" data-feat="start" ${f.session ? 'disabled' : ''}>${f.session ? 'Recording…' : 'Start recording'}</button></div>` : ''}
+        ${f.enabled && req.ready ? `<div class="row"><div class="row-main"><span class="row-title">${tr('mtg.record')}</span><span class="row-sub">${tr('mtg.record-sub')}</span></div><button class="btn btn-primary" type="button" data-feat="start" ${f.session ? 'disabled' : ''}>${f.session ? tr('mtg.recording-btn') : tr('mtg.start')}</button></div>` : ''}
       </div>
-      ${f.enabled ? `<details class="feature-licenses"><summary>Licenses of the downloaded parts</summary><ul>${lic}</ul></details>` : ''}`;
+      ${f.enabled ? `<details class="feature-licenses"><summary>${tr('mtg.licenses')}</summary><ul>${lic}</ul></details>` : ''}`;
   }
   const paint = () => { if (host?.isConnected && feature) { const focus = document.activeElement?.dataset?.feat; host.innerHTML = sectionHtml(); host.removeAttribute('aria-busy'); if (focus) host.querySelector(`[data-feat="${focus}"]`)?.focus(); } };
   async function refresh() { [feature] = await folio.features.list(); paint(); return feature; }
@@ -65,9 +67,9 @@ export function createMeeting(ui) {
     try {
       if (a === 'install') { b.disabled = true; progress = {}; const p = folio.features.install('meeting-recorder', b.dataset.part); setTimeout(refresh, 50); feature = (await p)[0]; progress = {}; paint(); }
       else if (a === 'cancel') await folio.features.cancel();
-      else if (a === 'remove') { if (await confirm({ title: 'Remove this download?', body: 'You can download it again later.', action: 'Remove', danger: true })) { await folio.features.uninstall('meeting-recorder', b.dataset.part); openSettings(); } }
-      else if (a === 'recover') { const p = await folio.meeting.recover(b.dataset.work); await refreshTree(); toast('Transcript saved.', { action: ['Open', () => openFile(p)] }); await refresh(); }
-      else if (a === 'discard') { if (await confirm({ title: 'Discard this recording?', body: 'Its transcript will be deleted.', action: 'Discard', danger: true })) { await folio.meeting.discard(b.dataset.work); } openSettings(); }
+      else if (a === 'remove') { if (await confirm({ title: tr('mtg.remove-title'), body: tr('mtg.remove-body'), action: tr('mtg.remove'), danger: true })) { await folio.features.uninstall('meeting-recorder', b.dataset.part); openSettings(); } }
+      else if (a === 'recover') { const p = await folio.meeting.recover(b.dataset.work); await refreshTree(); toast(tr('mtg.transcript-saved'), { action: [tr('mtg.open'), () => openFile(p)] }); await refresh(); }
+      else if (a === 'discard') { if (await confirm({ title: tr('mtg.discard-title'), body: tr('mtg.discard-body'), action: tr('mtg.discard'), danger: true })) { await folio.meeting.discard(b.dataset.work); } openSettings(); }
       else if (a === 'start') { b.closest('dialog')?.close(); start(); }
     } catch (er) { toast(er.message, { kind: 'error' }); refresh(); }
   }
@@ -84,7 +86,7 @@ export function createMeeting(ui) {
     const s = partState(part); const sub = row.querySelector('.row-sub'); const bar = row.querySelector('progress');
     if (s.busy && !bar) { paint(); return; }
     if (bar) bar.value = pct(s.done, s.total);
-    if (sub) sub.textContent = `${part === 'required' ? 'Needed to record' : 'Optional: summary, decisions and action items'} · ${s.label}`;
+    if (sub) sub.textContent = `${part === 'required' ? tr('mtg.needed') : tr('mtg.notes-optional')} · ${s.label}`;
   } });
 
   async function renderSettings(el) {
@@ -119,7 +121,7 @@ export function createMeeting(ui) {
   async function reacquire(track) {
     if (!rec || rec.busy[track]) return;
     rec.busy[track] = true;
-    try { disconnect(track); await connect(track, track === 'me' ? await getMic() : await getSystem()); rec.last[track] = performance.now(); toast(track === 'me' ? 'Microphone reconnected.' : 'Computer sound reconnected.'); }
+    try { disconnect(track); await connect(track, track === 'me' ? await getMic() : await getSystem()); rec.last[track] = performance.now(); toast(track === 'me' ? tr('mtg.mic-back') : tr('mtg.sound-back')); }
     catch { rec.lost[track] = true; } finally { if (rec) rec.busy[track] = false; }
   }
   function watchdog() {
@@ -131,11 +133,11 @@ export function createMeeting(ui) {
   /* ---------------- recording bar ---------------- */
   function paintBar() {
     if (!state || state.phase === 'idle') { bar?.remove(); bar = null; return; }
-    if (!bar) { bar = document.createElement('div'); bar.className = 'meeting-bar'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', 'Meeting recording'); document.body.appendChild(bar); bar.addEventListener('click', (e) => { if (e.target.closest('[data-meeting-stop]')) stop(); }); }
+    if (!bar) { bar = document.createElement('div'); bar.className = 'meeting-bar'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', tr('mtg.bar-label')); document.body.appendChild(bar); bar.addEventListener('click', (e) => { if (e.target.closest('[data-meeting-stop]')) stop(); }); }
     const p = state.phase, pr = state.progress;
-    const label = p === 'starting' ? 'Starting…' : p === 'recording' ? `Recording · ${clock(Date.now() - new Date(state.started).getTime())}` : p === 'transcribing' ? 'Finishing the transcript…'
-      : p === 'notes' ? (pr?.step === 'loading' ? 'Loading the notes model…' : pr?.total ? `Writing notes ${Math.min(pr.done + 1, pr.total)} of ${pr.total}…` : 'Writing notes…') : p === 'saved' ? 'Saved' : '';
-    const html = `<span class="meeting-dot" data-live="${p === 'recording'}" aria-hidden="true"></span><span class="meeting-label" aria-live="polite">${esc(label)}</span>${rec?.lost?.them ? '<span class="meeting-warn">No computer sound</span>' : ''}${p === 'recording' ? '<button class="btn" type="button" data-meeting-stop>Stop</button>' : ''}`;
+    const label = p === 'starting' ? tr('mtg.starting') : p === 'recording' ? tr('mtg.rec-clock', { time: clock(Date.now() - new Date(state.started).getTime()) }) : p === 'transcribing' ? tr('mtg.finishing')
+      : p === 'notes' ? (pr?.step === 'loading' ? tr('mtg.loading-notes') : pr?.total ? tr('mtg.writing-n', { n: Math.min(pr.done + 1, pr.total), total: pr.total }) : tr('mtg.writing')) : p === 'saved' ? tr('mtg.saved') : '';
+    const html = `<span class="meeting-dot" data-live="${p === 'recording'}" aria-hidden="true"></span><span class="meeting-label" aria-live="polite">${esc(label)}</span>${rec?.lost?.them ? `<span class="meeting-warn">${tr('mtg.no-sound')}</span>` : ''}${p === 'recording' ? `<button class="btn" type="button" data-meeting-stop>${tr('mtg.stop')}</button>` : ''}`;
     if (bar.innerHTML !== html) bar.innerHTML = html;
   }
   let lastError = null;
@@ -150,14 +152,14 @@ export function createMeeting(ui) {
     if (rec) return;
     try {
       const f = await refresh();
-      if (f.session) return toast('A recording is still being saved. Try again in a moment.');
-      if (!f.supported || !f.enabled || !f.required.ready) { toast('Turn on the meeting recorder and download its speech model in Settings first.'); return openSettings(); }
+      if (f.session) return toast(tr('mtg.still-saving'));
+      if (!f.supported || !f.enabled || !f.required.ready) { toast(tr('mtg.turn-on')); return openSettings(); }
       if (!f.noticeSeen) {
-        const ok = await confirm({ title: 'Before you record', body: 'Tell everyone on the call that you are recording, and check that your organisation allows it. Use headphones: without them your microphone also picks up the other people.', action: 'I understand' });
+        const ok = await confirm({ title: tr('mtg.notice-title'), body: tr('mtg.notice-body'), action: tr('mtg.understand') });
         if (!ok) return;
         await folio.features.set('meeting-recorder', { noticeSeen: true });
       }
-      const title = await prompt({ title: 'Record a meeting', label: 'Title', value: '', hint: 'Optional. Used for the note’s name.', action: 'Start recording', allowEmpty: true, validate: false });
+      const title = await prompt({ title: tr('mtg.record'), label: tr('mtg.title'), value: '', hint: tr('mtg.title-hint'), action: tr('mtg.start'), allowEmpty: true, validate: false });
       if (title === null) return;
       state = { phase: 'starting', started: new Date().toISOString() }; paintBar();
       await folio.meeting.start({ title });
@@ -166,8 +168,8 @@ export function createMeeting(ui) {
       await ctx.audioWorklet.addModule('./meeting-worklet.js');
       const sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination); // keeps the graph running without playing anything
       rec = { ctx, sink, inputs: {}, last: {}, busy: {}, tried: {}, lost: {}, t0: performance.now() };
-      try { await connect('me', await getMic()); } catch (e) { throw new Error(`The microphone is not available: ${e.message}`); }
-      try { await connect('them', await getSystem()); } catch { rec.lost.them = true; toast('The computer’s sound is not available, so only your microphone is recorded.', { kind: 'error' }); }
+      try { await connect('me', await getMic()); } catch (e) { throw new Error(tr('mtg.mic-unavailable', { err: e.message })); }
+      try { await connect('them', await getSystem()); } catch { rec.lost.them = true; toast(tr('mtg.sound-unavailable'), { kind: 'error' }); }
       rec.timer = setInterval(watchdog, 1000);
     } catch (e) {
       toast(e.message, { kind: 'error' });
@@ -189,7 +191,7 @@ export function createMeeting(ui) {
     try {
       const r = await folio.meeting.stop();
       await refreshTree();
-      if (r?.path) toast('Meeting saved.', { action: ['Open', () => openFile(r.path)] });
+      if (r?.path) toast(tr('mtg.meeting-saved'), { action: [tr('mtg.open'), () => openFile(r.path)] });
     } catch (e) { toast(e.message, { kind: 'error' }); }
   }
   return { renderSettings, start, stop, toggle: () => (rec ? stop() : start()), recording: () => !!rec };

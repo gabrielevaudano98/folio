@@ -28,6 +28,34 @@ for (const [code, { dict }] of Object.entries(LOCALES)) {
 }
 console.log('  ✓ every translation maps to a real key and keeps its {placeholders}');
 
+// the other direction: nothing is left behind in English, plurals come in pairs, and the main process is covered like the window
+{
+  const base = (k) => k.replace(/_(one|other)$/, '');
+  const itKeys = new Set(Object.keys(LOCALES.it.dict).map(base));
+  const notYet = [...new Set(Object.keys(en).map(base))].filter((k) => !itKeys.has(k));
+  assert.deepEqual(notYet, [], `keys with no Italian translation: ${notYet.slice(0, 20)}`);
+  for (const [code, { dict }] of Object.entries(LOCALES)) {
+    const lonely = Object.keys(dict).filter((k) => /_one$/.test(k) ? !(k.replace(/_one$/, '_other') in dict) : /_other$/.test(k) && !(k.replace(/_other$/, '_one') in dict));
+    assert.deepEqual(lonely, [], `${code}: plural forms without their pair: ${lonely}`);
+  }
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.js') ? [path.join(d, e.name)] : []);
+  const gaps = [];
+  for (const f of walk('src/main')) {
+    const src = fs.readFileSync(f, 'utf8');
+    for (const m of src.matchAll(/\btl\('(menu|dlg)', '((?:[^'\\]|\\.)*)'\)|\brestart:\s*'((?:[^'\\]|\\.)*)'/g)) {
+      const k = `${m[1] ?? 'dlg'}.${slugKey((m[2] ?? m[3]).replace(/\\'/g, "'"))}`;
+      if (!(k in en)) gaps.push(`${f}: ${k} (English)`); else if (!(k in LOCALES.it.dict)) gaps.push(`${f}: ${k} (Italian)`);
+    }
+    for (const m of src.matchAll(/\bt\('([a-z][\w-]*\.[\w.-]+)'/g)) if (!(m[1] in en) && !(`${m[1]}_other` in en)) gaps.push(`${f}: ${m[1]} (English)`);
+  }
+  assert.deepEqual(gaps, [], `menus, dialogs and messages of the main process without an entry: ${gaps.slice(0, 10)}`);
+  setLocale('it');
+  assert.equal(t('mtg.stop'), 'Interrompi'); assert.equal(t('mtg.err-nothing'), 'Non c’è nessuna registrazione in corso.');
+  assert.match(t('mtg.unsaved-sub', { n: 1, when: 'oggi' }), /1 riga\./); assert.match(t('mtg.unsaved-sub', { n: 3, when: 'oggi' }), /3 righe\./);
+  setLocale('en');
+  console.log('  ✓ every English key has an Italian one, plural forms come in pairs, and menus, dialogs and main-process messages are all translated');
+}
+
 // palette commands: the catalogue is the translation of the titles written in app.js, so a retitled command cannot drift
 const appSrc = fs.readFileSync('src/renderer/app.js', 'utf8');
 const cmdBlock = appSrc.slice(appSrc.indexOf('const COMMANDS = ['), appSrc.indexOf('\n];', appSrc.indexOf('const COMMANDS = [')));
