@@ -1596,6 +1596,7 @@ export default {
   'mtg.err-stop-first': 'Interrompi prima la registrazione.',
   'mtg.err-over-budget': 'Folio ha interrotto la registrazione perché usava {used} MB, oltre il limite di {limit} MB. La trascrizione fino a qui è salvata.',
   'mtg.err-running': 'Una registrazione è già in corso.',
+  'mtg.err-no-sound': 'A Folio non arriva nessun suono. Controlla il microfono nelle impostazioni di Windows, poi ferma e avvia di nuovo.',
   'mtg.err-enable': 'Prima attiva il registratore di riunioni nelle Impostazioni.',
   'mtg.err-unavailable': 'Il registratore di riunioni non è ancora disponibile su questo computer.',
   'mtg.err-download': 'Prima scarica il registratore di riunioni nelle Impostazioni.',

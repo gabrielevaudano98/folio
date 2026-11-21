@@ -143,6 +143,7 @@ export function createMeeting(ui) {
   let lastError = null;
   folio.meeting.onState((s) => {
     state = s; paintBar(); if (host?.isConnected) refresh();
+    if (!s || s.phase === 'idle' || s.phase === 'starting') lastError = null; // each recording shows its own errors
     if (s?.error && s.error !== lastError) { lastError = s.error; toast(s.error, { kind: 'error' }); }
     if (s?.phase === 'idle' && s.path && state?.progress !== undefined) refreshTree();
   });

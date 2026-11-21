@@ -12,6 +12,7 @@ const rssMB = () => Math.round(process.memoryUsage().rss / 2 ** 20);
 
 let sherpa = null, rec = null, cfg = null;
 const vads = {}, fed = { me: 0, them: 0 };
+let signal = 0; // samples with real sound (not digital silence, as from a muted or wrong input), both tracks
 const queue = []; let decoding = false, queuedSamples = 0, nextId = 1, stopping = false, decodeMs = 0;
 
 function vadFor(track) {
@@ -60,6 +61,7 @@ function accept(track, buf) {
   const v = vadFor(track);
   for (let i = 0; i < f.length; i += 1600) { v.acceptWaveform(f.subarray(i, i + 1600)); collect(track); }
   fed[track] += f.length;
+  for (let i = 0; i < f.length; i++) if (f[i] > 0.002 || f[i] < -0.002) { signal += f.length; break; }
 }
 
 let finished = false;
@@ -89,7 +91,7 @@ port.on('message', async (e) => {
       const audio = e.ports?.[0];
       if (audio) { audio.on('message', (a) => accept(a.data?.track, a.data?.pcm)); audio.start(); }
       send({ type: 'ready', loadMs: Date.now() - t0, rssMB: rssMB() });
-      setInterval(() => send({ type: 'stats', queueSec: queuedSamples / RATE, rssMB: rssMB(), audioSec: { me: fed.me / RATE, them: fed.them / RATE } }), 5000).unref();
+      setInterval(() => send({ type: 'stats', queueSec: queuedSamples / RATE, rssMB: rssMB(), audioSec: { me: fed.me / RATE, them: fed.them / RATE }, signalSec: signal / RATE }), 5000).unref();
     } else if (m.type === 'feed') accept(m.track, m.pcm);
     else if (m.type === 'stop') {
       stopping = true;

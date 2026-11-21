@@ -9,6 +9,8 @@ if (process.env.FOLIO_MEETING_E2E !== '1') { console.log('\nmeeting e2e skipped 
 const w = workspace('meeting', 47611);
 const settings = JSON.parse(fs.readFileSync(path.join(w.ud, 'settings.json'), 'utf8'));
 fs.writeFileSync(path.join(w.ud, 'settings.json'), JSON.stringify({ ...settings, features: { 'meeting-recorder': { enabled: true, noticeSeen: true, autoNotes: true } } }));
+// 16-bit PCM: duration from the byte rate in the header
+const wav = fs.readFileSync(process.env.FOLIO_MEETING_WAV); const wavMs = Math.ceil((wav.length - 44) / (wav.readUInt32LE(28) || 32000) * 1000);
 const waitFor = (expr, ms) => ({ js: `new Promise((r)=>{const t0=Date.now();const k=()=>{let v;try{v=(${expr})}catch{};if(v||Date.now()-t0>${ms})r(!!v);else setTimeout(k,300)};k()})`, log: true, wait: 100 });
 const steps = [
   { size: [1300, 900], wait: 800 },
@@ -20,7 +22,7 @@ const steps = [
   { js: "(()=>{const i=document.querySelector('#prompt-input');i.value='Weekly sync';document.querySelector('#sheet-prompt form').requestSubmit();return 1})()", wait: 500 },
   waitFor("document.querySelector('.meeting-bar [data-meeting-stop]')", 90000),
   log("document.querySelector('.meeting-bar').textContent"),
-  { js: '1', wait: 25000 }, // the fake microphone plays the wav through the page, as real audio would
+  { js: '1', wait: wavMs + 5000 }, // the fake microphone plays the whole wav through the page, as real audio would
   { js: "document.querySelector('.meeting-bar [data-meeting-stop]').click();1", wait: 500 },
   waitFor("(window.__folioToasts||[]).includes('Meeting saved.')", 120000),
   waitFor("!document.querySelector('.meeting-bar')", 600000), // notes are written after the transcript
