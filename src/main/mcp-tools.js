@@ -10,8 +10,9 @@ import { parseRef, resolveTarget, docKind } from '../renderer/refs-syntax.js';
 import { createPatch, diffWords } from 'diff';
 import { sections, findSection, findBlock, readSection, replaceSection, insertAfter, addComment, suggestEdit } from './page-tools.js';
 import { SLIDE_TOOLS, runSlideTool } from './mcp-slides.js';
+import { version as APP_VERSION } from '../../package.json'; // one source of truth: a release bump cannot leave the MCP server behind
 
-export const SERVER_INFO = { name: 'folio', version: '1.3.0' };
+export const SERVER_INFO = { name: 'folio', version: APP_VERSION };
 
 export const INSTRUCTIONS = `Folio is the user's Markdown workspace. Paths are relative to the open folder and use forward slashes.
 Read a note before editing it. Prefer edit_note (exact find-and-replace) over write_note for small changes so the user's formatting survives.
