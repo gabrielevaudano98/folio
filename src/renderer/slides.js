@@ -149,7 +149,7 @@ export function mountSlides(host, ctx) {
     if (root.querySelector('[data-ref]') && ctx.refEnv) import('./refs.js').then(({ hydrateRefs }) => hydrateRefs(root, ctx.refEnv()));
     for (const img of root.querySelectorAll('img[data-src]')) {
       const src = img.dataset.src;
-      if (/^(https?:|data:|file:)/.test(src)) img.src = src;
+      if (/^(data:|file:)/.test(src)) img.src = src;
       else Promise.resolve(ctx.resolveImage(src)).then((u) => { if (u) img.src = u; });
     }
     for (const img of root.querySelectorAll('.sl-body img')) {

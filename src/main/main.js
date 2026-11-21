@@ -41,7 +41,7 @@ const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 const BRIDGE_FILE = () => path.join(app.getPath('userData'), 'mcp-bridge.json');
 const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
-  lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true,
+  lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true, remoteImages: false,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
   language: 'en',
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
@@ -427,7 +427,7 @@ const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
 const MAX_REMOTE = 30 * 1024 * 1024;
 h('fs:data-url', async (src, noteRel) => {
   if (/^data:/.test(src)) return src;
-  if (/^https?:\/\//.test(src)) {
+  if (/^https?:\/\//i.test(src)) {
     // a note can name any address: no private network (checked by name and by what it resolves to), only images, audio, video and fonts, bounded in size and time
     const { net } = await import('electron');
     // follow redirects by hand so every hop is checked before it is requested
