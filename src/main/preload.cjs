@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('folio', {
   pathForFile: (f) => webUtils.getPathForFile(f),
   answer: (id, value) => ipcRenderer.send('ai:answer', { id, value }),
   closeOk: () => ipcRenderer.send('app:close-ok'),
+  closeCancel: () => ipcRenderer.send('app:close-cancel'),
   onTreeChanged: on('fs:tree-changed'),
   onFileChanged: on('fs:file-changed'),
   onAiEdit: on('ai:edit'),

@@ -476,6 +476,7 @@ function renderTabsDirty() {
 /** save a tab; resolves true when its text is on disk (or was already), false when the write failed (the tab keeps its text) */
 async function saveTab(t) {
   if (t.text === t.saved) return true;
+  if (S.writesFrozen || t.dead) return false; // a tab of a folder that was closed or left is never written again
   const text = t.text, before = t.saved;
   try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); return true; }
   catch (e) { toast(tr('app.could-not-save-path-message', { path: base(t.path), message: e.message }), { kind: 'error', action: [tr('app.retry'), () => saveTab(t)] }); setSaveState('failed'); return false; }
@@ -483,9 +484,15 @@ async function saveTab(t) {
 /** save every open tab before they go away (close folder, switch folder, reload, quit); when some write fails, ask before dropping the unsaved text */
 async function saveAllOrAsk() {
   const failed = [];
-  for (const t of [...S.tabs]) if (!(await saveTab(t).catch(() => false))) failed.push(t);
+  for (const t of S.tabs.filter((x) => !x.dead)) {
+    let ok = true;
+    while (ok && t.text !== t.saved) ok = await saveTab(t).catch(() => false); // text typed during a write is saved too
+    if (!ok) failed.push(t);
+  }
   if (!failed.length) return true;
-  return confirmSheet({ title: tl('app', 'Some pages could not be saved'), body: tr('app.unsaved-pages-lost', { names: failed.map((t) => stem(t.path)).join(', ') }), action: tl('app', 'Discard changes'), danger: true });
+  const discard = await confirmSheet({ title: tl('app', 'Some pages could not be saved'), body: tr('app.unsaved-pages-lost', { names: failed.map((t) => stem(t.path)).join(', ') }), action: tl('app', 'Discard changes'), danger: true });
+  if (discard) S.writesFrozen = true; // the pages are about to go: no later save (a Retry, an autosave) may write them, least of all into another folder
+  return discard;
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
 let saveStateTimer;
@@ -1334,14 +1341,15 @@ async function chooseFolder() {
     // save the open pages first: choosing a folder switches the main process to it at once, and a later save would land there
     await actions.idle(); if (!(await saveAllOrAsk())) return;
     const dir = await folio.chooseWorkspace();
-    if (!dir) return;
-    await switchWorkspace(dir);
-  } catch (e) { toast(e.message, { kind: 'error' }); }
+    if (!dir) { S.writesFrozen = false; return; } // nothing changed: the tabs (and any unsaved text) stay as they were
+    await switchWorkspace(dir, { saved: true }); // main already points at the new folder: saving again would write there
+  } catch (e) { S.writesFrozen = false; toast(e.message, { kind: 'error' }); }
 }
-async function switchWorkspace(dir) {
-  await actions.idle(); // let a file action that is still running finish in the folder it started in
-  if (!(await saveAllOrAsk())) return false;
+async function switchWorkspace(dir, { saved = false } = {}) {
+  if (!saved) { await actions.idle(); if (!(await saveAllOrAsk())) return false; } // let a file action still running finish in the folder it started in
+  for (const t of S.tabs) t.dead = true; // the old tabs go now: nothing of theirs is written any more (not even a pending Retry)
   S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear();
+  S.writesFrozen = false;
   renderTabs();
   await folio.openWorkspace(dir);
   S.settings.workspace = dir;
@@ -1398,12 +1406,15 @@ function onAiEdit({ path: p, before, after, client, created, orphans }) {
   const t = tabOf(p);
   if (t) {
     const userDirty = t.text !== t.saved;
-    if (userDirty && p !== S.active) { // a background tab has no undo: keep the draft as a version and say where it is
-      folio.historySnapshot(p, t.text, 'before-ai', true).catch(() => {});
-      toast(tr('app.ai-replaced-draft', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] });
-    }
     t.saved = after;
-    if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(tr('app.client-changed-this-note-while-you-had', { client, Z: keyLabel('Mod+Z') })); }
+    if (userDirty && p !== S.active) {
+      // a background tab has no undo: the draft is replaced only once it is safely kept as a version; until then (or if that fails) the tab keeps it
+      const draft = t.text;
+      folio.historySnapshot(p, draft, 'before-ai', true).catch(() => false).then((kept) => {
+        if (kept !== false && t.text === draft && S.active !== p && tabOf(p) === t) { t.text = after; renderTabs(); toast(tr('app.ai-replaced-draft', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] }); }
+        else if (kept === false) toast(tr('app.ai-draft-kept-in-tab', { client, name: stem(p) }), { kind: 'error', action: [tr('app.open'), () => openFile(p)] });
+      });
+    } else if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(tr('app.client-changed-this-note-while-you-had', { client, Z: keyLabel('Mod+Z') })); }
     else t.text = after;
   } else {
     toast(tr(created ? 'app.ai-created' : 'app.ai-edited', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] });
@@ -1778,7 +1789,7 @@ const COMMANDS = [
   { id: 'align-center', title: 'Centre', key: 'Mod+Alt+E', run: () => isRich() && rich.run('alignCenter') },
   { id: 'align-right', title: 'Align right', key: 'Mod+Shift+R', run: () => isRich() && rich.run('alignRight') },
   { id: 'align-justify', title: 'Justify', key: 'Mod+Shift+J', run: () => isRich() && rich.run('alignJustify') },
-  { id: 'close-folder', title: 'Close folder', run: async () => { if (!(await saveAllOrAsk())) return; await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
+  { id: 'close-folder', title: 'Close folder', run: async () => { if (!(await saveAllOrAsk())) return; for (const t of S.tabs) t.dead = true; S.writesFrozen = false; await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
 ];
 /* everything the / menu offers is in the palette too (the Write view inserts it, the source view types its Markdown) */
 for (const it of INSERTS) {
@@ -2360,10 +2371,11 @@ function bindChrome() {
   document.addEventListener('change', async (e) => {
     const el = e.target.closest('[data-setting]'); if (!el) return;
     const k = el.dataset.setting; const v = el.type === 'checkbox' ? el.checked : /fontSize|lineWidth/.test(k) ? Number(el.value) : el.value;
+    if (k === 'language' && !(await saveAllOrAsk())) { el.value = locale(); return; } // kept the old language: nothing saved, the menu shows it again
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
-    if (k === 'language') { if (!(await saveAllOrAsk())) return; setLocale(v); location.reload(); }
+    if (k === 'language') { setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });
   document.addEventListener('input', (e) => {
@@ -2445,7 +2457,7 @@ function bindIpc() {
     if (ws !== S.workspace) { S.tabs = []; S.active = null; renderTabs(); await loadWorkspace(ws); }
     if (file) { await refreshTree(); openFile(file); }
   });
-  folio.onBeforeClose(async () => { if (await saveAllOrAsk()) folio.closeOk(); });
+  folio.onBeforeClose(async () => { if (await saveAllOrAsk()) folio.closeOk(); else folio.closeCancel?.(); });
 }
 
 window.__folioErrors = [];

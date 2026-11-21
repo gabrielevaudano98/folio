@@ -64,7 +64,7 @@ const gitLog = createGitLog(() => settings.workspace);
 const assets = createAssets(notes);
 const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset folder belongs to Folio. Remove files from a page, or use Clean up unused files.'); };
 /* history must never get in the way of saving */
-const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); } return null; };
+const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); return false; } return null; }; // false: it could not be stored (null: nothing new to store)
 let win = null;
 
 /* ---------------- window ---------------- */
@@ -114,7 +114,11 @@ function createWindow() {
     win.webContents.send('app:before-close');
   });
 }
-ipcMain.on('app:close-ok', (e) => { if (fromApp(e) && win) { win.__forceClose = true; win.close(); } });
+ipcMain.on('app:close-ok', (e) => { if (fromApp(e) && win) { win.__forceClose = true; const q = quitPending; if (q) quitOk = true; win.close(); if (q) app.quit(); } });
+ipcMain.on('app:close-cancel', (e) => { if (fromApp(e)) quitPending = false; });
+/* Quit (⌘Q, the menu, the dock) first lets the page save its tabs, the same way closing the window does; the other quit steps run only once it agreed */
+let quitPending = false, quitOk = false;
+const quitAgreed = () => quitOk || !win || win.isDestroyed() || win.webContents.isCrashed(); // a crashed page cannot answer: quit anyway
 
 nativeTheme.on('updated', () => {
   if (win && !isMac) win.setTitleBarOverlay?.(themeColors());
@@ -712,11 +716,13 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (!isMac) app.quit(); });
+app.on('before-quit', (e) => { if (quitAgreed()) return; e.preventDefault(); quitPending = true; win.webContents.send('app:before-close'); });
 app.on('before-quit', (e) => { // a recording is saved before the app quits; a notes engine still running is stopped
+  if (!quitAgreed()) return;
   if (!features.active()) { features.abortNotes(); return; }
   e.preventDefault(); features.stop().finally(() => app.quit());
 });
-app.on('before-quit', () => { fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
+app.on('before-quit', () => { if (!quitAgreed()) return; fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; fss.writeFileSync(BRIDGE_FILE(), JSON.stringify(b, null, 2)); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
 let shotFailWrites = false; // the dev test runner can make every page write fail, to test what the app does then
@@ -729,6 +735,7 @@ async function devShot(w) {
     for (const s of steps) {
       if (s.size) w.setContentSize(s.size[0], s.size[1]);
       if ('failWrites' in s) shotFailWrites = !!s.failWrites;
+      if (s.quit) app.quit(); // the same path as ⌘Q or the Quit menu item
       if (s.dark !== undefined) nativeTheme.themeSource = s.dark ? 'dark' : 'light';
       if (s.js) { try { const v = await w.webContents.executeJavaScript(s.js); if (s.log) console.log('js', JSON.stringify(v)); } catch (e) { console.error('[folio-error] shot js', e.message); } }
       if (s.tool) { try { await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); } catch (e) { console.error('shot tool', e.message); } }
