@@ -73,9 +73,17 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
   const noteDir = (noteRel) => path.dirname(notes.resolve(noteRel));
   const assetDir = (noteRel) => path.join(noteDir(noteRel), ASSET_DIR);
 
+  /** a folder (or a trash) that is a link, or sits under one, must not lead out of the workspace */
+  async function assertInsideReal(p) {
+    let at = p; while (!(await exists(at))) { const up = path.dirname(at); if (up === at) break; at = up; }
+    const [real, realRoot] = await Promise.all([fs.realpath(at), fs.realpath(root())]);
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) throw new NotesError('That asset folder points outside the workspace.');
+  }
   async function ensureDir(dir) {
     const fresh = !(await exists(dir));
+    await assertInsideReal(dir); // before creating anything
     await fs.mkdir(dir, { recursive: true });
+    await assertInsideReal(dir);
     if (fresh) await hideFolder(dir);
   }
   /** write into the asset folder atomically: a temp file, then a rename, so a crash never leaves half a picture */
@@ -135,12 +143,13 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     const abs = notes.resolve(assetRel, { allowAsset: true }); assertAssetFile(abs);
     if (!(await exists(abs))) return false;
     if (permanent) { await fs.unlink(abs); return true; }
-    const dir = trashDirFor(abs); await ensureDir(path.dirname(dir)); await fs.mkdir(dir, { recursive: true });
+    const dir = trashDirFor(abs); await ensureDir(path.dirname(dir)); await ensureDir(dir);
     await fs.rename(abs, path.join(dir, `${now().toString(36)}~${path.basename(abs)}`));
     return true;
   }
   async function trashed(abs) {
     const dir = trashDirFor(abs); const name = path.basename(abs);
+    await assertInsideReal(dir);
     let entries; try { entries = await fs.readdir(dir); } catch { return null; }
     const hits = entries.filter((e) => e.endsWith('~' + name)).sort();
     return hits.length ? path.join(dir, hits[hits.length - 1]) : null;

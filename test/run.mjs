@@ -2,10 +2,11 @@
 import * as esbuild from 'esbuild';
 import { execFileSync } from 'node:child_process';
 const run = (f, ...args) => execFileSync(process.execPath, [f, ...args], { stdio: 'inherit' });
-await esbuild.build({ entryPoints: ['test/formats.test.mjs'], bundle: true, platform: 'node', format: 'esm', outfile: 'dist/test/formats.test.mjs', logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
+await esbuild.build({ entryPoints: ['test/formats.test.mjs', 'test/mcp-gating.test.mjs'], bundle: true, platform: 'node', format: 'esm', outdir: 'dist/test', outExtension: { '.js': '.mjs' }, logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
 run('dist/test/formats.test.mjs');
 run('test/pagetools.test.mjs');
 run('test/mcp.test.mjs');
+run('dist/test/mcp-gating.test.mjs');
 run('test/history.test.mjs');
 run('test/assets.test.mjs');
 run('test/i18n.test.mjs');
