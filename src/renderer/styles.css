@@ -1896,3 +1896,6 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 @media (prefers-reduced-motion: no-preference) {
   .meeting-dot[data-live="true"] { animation: pulse 1.4s var(--ease-in-out) infinite alternate; }
 }
+.remote-bar { display: flex; align-items: center; gap: 0.75em; margin: 0 0 1em; padding: 0.5em 0.75em; border: 1px solid var(--color-rule-strong); border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--color-muted); }
+.remote-bar .btn { margin-left: auto; }
+img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; outline: 1px dashed var(--color-rule-strong); outline-offset: -1px; }

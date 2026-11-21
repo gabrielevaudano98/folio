@@ -140,7 +140,7 @@ async function boot() {
     onScroll: () => syncFromEditor(),
     onPasteImage: pasteImage,
     onSave: () => saveActive(true),
-    resolveImage: (src) => { const t = activeTab(); if (!t) return null; const rel = decodeURI(src).replace(/^\.\//, ''); const d = dirOf(t.path); return folio.absUrl(normalize(d ? `${d}/${rel}` : rel)).catch(() => null); },
+    resolveImage: (src) => resolveImg(src),
   });
   editor.setSpellcheck(S.settings.spellcheck);
 
@@ -254,7 +254,14 @@ function applyLayoutSettings() {
   $('#btn-outline').setAttribute('aria-pressed', String(app.dataset.outline === 'open'));
   layoutPanes();
 }
-function resolveImg(src) { const t = activeTab(); if (!t) return null; const rel = decodeURI(src).replace(/^\.\//, ''); const d = dirOf(t.path); return folio.absUrl(normalize(d ? `${d}/${rel}` : rel)).catch(() => null); }
+// Remote images: the page's CSP blocks them, so a note you did not write cannot make your machine call out just by being opened.
+// On request (per note for this session, or always from Settings) the main process fetches them with its network guard and hands back a data: URL.
+let remoteGen = 0; // bumped when the folder changes, so a download still in flight cannot fill the new folder's cache
+const remoteOK = new Set(), remoteCache = new Map(); // grants and fetched images belong to the open folder
+const isRemote = (s) => /^https?:\/\//i.test(s || '');
+const remoteAllowed = (t) => !!t && (S.settings.remoteImages === true || remoteOK.has(t.path));
+async function remoteImage(src) { const t = activeTab(); if (!remoteAllowed(t)) return null; if (remoteCache.has(src)) return remoteCache.get(src); const g = remoteGen; try { const u = await folio.dataUrl(src, t.path); if (g === remoteGen) remoteCache.set(src, u); return u; } catch { return null; } }
+function resolveImg(src) { if (isRemote(src)) return remoteImage(src); const t = activeTab(); if (!t) return null; const rel = decodeURI(src).replace(/^\.\//, ''); const d = dirOf(t.path); return folio.absUrl(normalize(d ? `${d}/${rel}` : rel)).catch(() => null); }
 async function saveSetting(patch) { S.settings = await folio.setSettings(patch); }
 
 /* ============ panes ============ */
@@ -521,13 +528,24 @@ async function renderPreview() {
   const html = render(t.text);
   el.innerHTML = html;
   const dir = dirOf(t.path);
+  const blocked = [];
   for (const img of el.querySelectorAll('img')) {
     const src = img.getAttribute('src') || '';
-    if (src && !/^(https?:|data:|file:)/.test(src)) {
+    if (isRemote(src)) {
+      img.removeAttribute('src'); img.dataset.remoteSrc = src;
+      if (remoteAllowed(t)) remoteImage(src).then((u) => { if (u) img.src = u; else { img.classList.add('remote-blocked'); img.alt = img.alt || tr('app.remote-image'); } });
+      else { img.classList.add('remote-blocked'); img.alt = img.alt || tr('app.remote-image'); blocked.push(img); }
+    } else if (src && !/^(https?:|data:|file:)/.test(src)) {
       const rel = decodeURI(src).replace(/^\.\//, '');
       folio.absUrl(normalize(dir ? `${dir}/${rel}` : rel)).then((u) => (img.src = u)).catch(() => {});
     }
     img.loading = 'lazy'; img.decoding = 'async';
+  }
+  if (blocked.length) {
+    const bar = document.createElement('div'); bar.className = 'remote-bar'; bar.setAttribute('role', 'status');
+    bar.innerHTML = `<span>${esc(tr('app.remote-images-blocked', { n: blocked.length }))}</span><button type="button" class="btn">${esc(tr('app.load-remote-images'))}</button>`;
+    bar.querySelector('button').onclick = () => { remoteOK.add(t.path); renderPreview(); };
+    el.prepend(bar);
   }
   for (const m of el.querySelectorAll('video[data-src], audio[data-src]')) {
     const src = m.dataset.src;
@@ -1356,7 +1374,7 @@ async function chooseFolder() {
 async function switchWorkspace(dir, { saved = false } = {}) {
   if (!saved) { await actions.idle(); if (!(await saveAllOrAsk())) return false; } // let a file action still running finish in the folder it started in
   for (const t of S.tabs) t.dead = true; // the old tabs go now: nothing of theirs is written any more (not even a pending Retry)
-  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear();
+  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); remoteOK.clear(); remoteCache.clear(); remoteGen++;
   S.writesFrozen = false;
   renderTabs();
   await folio.openWorkspace(dir);
@@ -1578,6 +1596,7 @@ function openSettings() {
           <select class="select" id="set-width" data-setting="lineWidth">${[60, 66, 72, 80, 96, 120].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></div>
       </div></section>
       <section class="group"><h3>${tr('app.writing')}</h3><div class="rows">
+        <div class="row"><div class="row-main"><span class="row-title">${tr('app.load-remote-images-always')}</span><span class="row-sub">${tr('app.load-remote-images-always-help')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="remoteImages" ${s.remoteImages ? 'checked' : ''} aria-label="${tr('app.load-remote-images-always')}"></label></div>
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.check-spelling')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="spellcheck" ${s.spellcheck ? 'checked' : ''} aria-label="${tr('app.check-spelling')}"></label></div>
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.smart-quotes-and-dashes')}</span><span class="row-sub">${tr('app.typing-becomes-in-the-write-view')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="${tr('app.smart-quotes-and-dashes')}"></label></div>
       </div></section>
@@ -2388,6 +2407,7 @@ function bindChrome() {
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
+    if (k === 'remoteImages') renderPreview();
     if (k === 'language') { setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });
