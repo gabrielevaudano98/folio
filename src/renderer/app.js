@@ -8,7 +8,6 @@ import { createRich } from './rich.js';
 import { fuzzy, highlight } from './fuzzy.js';
 import { INSERTS } from './inserts.js';
 import { portableMarkdown } from './page-syntax.js';
-import { mountSlides } from './slides.js';
 import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
@@ -21,8 +20,6 @@ import { renameTag, setTypeOverrides } from './page-props.js';
 import { listTemplates, fillTemplate, askVars, splitTemplate, intoPage, mergeProps, buttonSource, TEMPLATE_DIR, DAILY, CURSOR, STARTERS, templateMeta, withoutMeta, setMeta, communityItems, templateFileName } from './page-templates.js';
 import { openGallery } from './template-gallery.js';
 import { popupMenu } from './page-table.js';
-import { mountBoard } from './board.js';
-import { mountSheet } from './sheet.js';
 import { render, headings, renderMermaid, exportDocument, slugify, hydrateCharts } from './markdown.js';
 import { icons } from './icons.js';
 import { mountHistory } from './history-view.js';
@@ -40,7 +37,10 @@ const base = (p) => p.split('/').pop();
 const stem = (p) => base(p).replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx|txt)$/i, '');
 
 /* ---------- document types: every type has a visual view and a code view ---------- */
-const SURFACES = { slides: mountSlides, board: mountBoard, sheet: mountSheet };
+// the visual editors are loaded the first time a document of their type is opened, so startup parses only what pages need
+const SURFACES = { slides: () => import('./slides.js').then((m) => m.mountSlides), board: () => import('./board.js').then((m) => m.mountBoard), sheet: () => import('./sheet.js').then((m) => m.mountSheet) };
+const surfaceMods = {};
+const loadSurface = (type) => (surfaceMods[type] ||= SURFACES[type]().then((mount) => { surfaceMods[type].mount = mount; return mount; }, (e) => { delete surfaceMods[type]; throw e; }));
 const NEW_BOARD = (t) => `# ${t}\n\nA board in board-md. Shapes: \`id: shape "Label" @x,y\`. Connectors: \`a -> b "label"\`.\n\n\`\`\`board\nstart: terminator "Start" @40,60\nidea: rect "Write the idea" @230,55\nok: diamond "Clear?" @430,45\ndone: terminator "Share" @620,60\nnote: note "Double-click to edit, drag from the dots to connect" @220,190 200x80\n\nstart -> idea\nidea -> ok\nok -> done "yes"\nok.bottom -> idea.bottom "no" {route: orthogonal}\n\`\`\`\n`;
 const NEW_SHEET = (t) => `# ${t}\n\n## Sheet1\n\n| Item | Quantity | Price | Total |\n| --- | --- | --- | --- |\n| Notebooks | 4 | 3.5 | =B2*C2 |\n| Pens | 12 | 1.2 | =B3*C3 |\n| Folders | 6 | 2.1 | =B4*C4 |\n| Total |  |  | =SUM(D2:D4) |\n\n<!-- sheet: {"cols":{"C":{"format":"currency"},"D":{"format":"currency"}}} -->\n`;
 const NEW_CONTENT = { md: (t) => `# ${t}\n\n`, slides: () => NEW_DECK, board: NEW_BOARD, sheet: NEW_SHEET };
@@ -63,10 +63,12 @@ const surfaces = {};
 function surfaceFor(type) {
   if (!SURFACES[type]) return null;
   if (!surfaces[type]) {
+    const mount = surfaceMods[type]?.mount;
+    if (!mount) return null; // not loaded yet: callers load it with loadSurface() and try again
     const host = document.createElement('div');
     host.className = `surface surface-${type}`; host.id = `surface-${type}`;
     $('#pane-surface').appendChild(host);
-    surfaces[type] = SURFACES[type](host, surfaceCtx(type));
+    surfaces[type] = mount(host, surfaceCtx(type));
     surfaces[type].host = host;
   }
   $$('#pane-surface > .surface').forEach((h) => (h.hidden = h !== surfaces[type].host));
@@ -316,6 +318,7 @@ function setView(v, { persist = true } = {}) {
   const t = activeTab();
   if (type !== 'md') {
     const s = surfaceFor(type);
+    if (!s) { loadSurface(type).then(() => { if (curType() === type) setView(v, { persist }); }, (e) => toast(e.message, { kind: 'error' })); return; }
     if (t && s) { if (v !== 'code' && prev === 'code') s.setText(t.text); if (v !== 'visual') editor.applyRemote(t.text); s.setMode?.(v); }
     $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
     layoutPanes();
@@ -413,7 +416,11 @@ function activate(p, { line } = {}) {
   layoutPanes();
   if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
   if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
-  else { const s = surfaceFor(type); s.setText(t.text); s.setMode?.(v); }
+  else {
+    const s = surfaceFor(type);
+    if (s) { s.setText(t.text); s.setMode?.(v); }
+    else { loadSurface(type).then(() => { if (S.active === p) activate(p, { line }); }, (e) => toast(e.message, { kind: 'error' })); return; }
+  }
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
@@ -432,7 +439,7 @@ function renderTabs() {
 }
 async function closeTab(p = S.active) {
   const t = tabOf(p); if (!t) return;
-  if (t.text !== t.saved) await saveTab(t);
+  while (t.text !== t.saved) if (!(await saveTab(t))) return; // typing during the write saves again; a failed write keeps the tab open with its text (the toast offers Retry)
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
@@ -473,11 +480,26 @@ function setActiveText(text) {
 function renderTabsDirty() {
   for (const el of $$('#tabs .tab')) { const t = tabOf(el.dataset.tab); if (t) el.dataset.dirty = String(t.text !== t.saved); }
 }
+/** save a tab; resolves true when its text is on disk (or was already), false when the write failed (the tab keeps its text) */
 async function saveTab(t) {
-  if (t.text === t.saved) return;
+  if (t.text === t.saved) return true;
+  if (S.writesFrozen || t.dead) return false; // a tab of a folder that was closed or left is never written again
   const text = t.text, before = t.saved;
-  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); }
-  catch (e) { toast(tr('app.could-not-save-path-message', { path: base(t.path), message: e.message }), { kind: 'error', action: [tr('app.retry'), () => saveTab(t)] }); setSaveState('failed'); }
+  try { await folio.write(t.path, text); t.saved = text; assetsAfterSave(t, before, text); if (app.dataset.dock === 'info') renderInfo(true); if (t.path === S.active) { setSaveState('saved'); if (/\[\[|\{\{/.test(text)) backlinksSoon(); if (/#|^tags?:/m.test(text)) tagsStale(); } renderTabsDirty(); return true; }
+  catch (e) { toast(tr('app.could-not-save-path-message', { path: base(t.path), message: e.message }), { kind: 'error', action: [tr('app.retry'), () => saveTab(t)] }); setSaveState('failed'); return false; }
+}
+/** save every open tab before they go away (close folder, switch folder, reload, quit); when some write fails, ask before dropping the unsaved text */
+async function saveAllOrAsk() {
+  const failed = [];
+  for (const t of S.tabs.filter((x) => !x.dead)) {
+    let ok = true;
+    while (ok && t.text !== t.saved) ok = await saveTab(t).catch(() => false); // text typed during a write is saved too
+    if (!ok) failed.push(t);
+  }
+  if (!failed.length) return true;
+  const discard = await confirmSheet({ title: tl('app', 'Some pages could not be saved'), body: tr('app.unsaved-pages-lost', { names: failed.map((t) => stem(t.path)).join(', ') }), action: tl('app', 'Discard changes'), danger: true });
+  if (discard) S.writesFrozen = true; // the pages are about to go: no later save (a Retry, an autosave) may write them, least of all into another folder
+  return discard;
 }
 async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
 let saveStateTimer;
@@ -626,6 +648,7 @@ async function openRef(path, part = '') {
   await openFile(path);
   if (!part) return;
   const type = docType(path);
+  if (SURFACES[type]) await loadSurface(type).catch(() => {}); // the first open of this type mounts its editor after loading it
   if (type === 'slides') curSurface()?.gotoSlide?.(parseInt(part, 10) - 1);
   else if (type === 'sheet') curSurface()?.gotoCell?.(part);
   else if (type === 'board') curSurface()?.gotoNode?.(part);
@@ -1323,15 +1346,18 @@ async function trashPath(p, isDir) {
 }
 async function chooseFolder() {
   try {
+    // save the open pages first: choosing a folder switches the main process to it at once, and a later save would land there
+    await actions.idle(); if (!(await saveAllOrAsk())) return;
     const dir = await folio.chooseWorkspace();
-    if (!dir) return;
-    await switchWorkspace(dir);
-  } catch (e) { toast(e.message, { kind: 'error' }); }
+    if (!dir) { S.writesFrozen = false; return; } // nothing changed: the tabs (and any unsaved text) stay as they were
+    await switchWorkspace(dir, { saved: true }); // main already points at the new folder: saving again would write there
+  } catch (e) { S.writesFrozen = false; toast(e.message, { kind: 'error' }); }
 }
-async function switchWorkspace(dir) {
-  await actions.idle(); // let a file action that is still running finish in the folder it started in
-  for (const t of S.tabs) await saveTab(t);
+async function switchWorkspace(dir, { saved = false } = {}) {
+  if (!saved) { await actions.idle(); if (!(await saveAllOrAsk())) return false; } // let a file action still running finish in the folder it started in
+  for (const t of S.tabs) t.dead = true; // the old tabs go now: nothing of theirs is written any more (not even a pending Retry)
   S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear();
+  S.writesFrozen = false;
   renderTabs();
   await folio.openWorkspace(dir);
   S.settings.workspace = dir;
@@ -1379,7 +1405,7 @@ function lineChanges(before, after) {
   }
   return { changed: [...new Set(changed)], added, removed, parts };
 }
-function onAiEdit({ path: p, before, after, client, created, orphans }) {
+function onAiEdit({ path: p, before, after, client, created, orphans, aiKept = true }) {
   if (orphans?.length) { const pend = pendingAssets.get(p) || new Map(); for (const o of orphans) pend.set(o.path, o.bytes); pendingAssets.set(p, pend); clearTimeout(assetTimer); assetTimer = setTimeout(askAssetRemoval, 4000); }
   const prior = S.aiEdits.get(p);
   const rec = { before: prior && Date.now() - prior.at < 10 * 60e3 ? prior.before : before, after, client, at: Date.now(), created };
@@ -1389,7 +1415,15 @@ function onAiEdit({ path: p, before, after, client, created, orphans }) {
   if (t) {
     const userDirty = t.text !== t.saved;
     t.saved = after;
-    if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(tr('app.client-changed-this-note-while-you-had', { client, Z: keyLabel('Mod+Z') })); }
+    if (userDirty && p !== S.active) {
+      // a background tab has no undo: the draft is replaced only once it is safely kept as a version; until then (or if that fails) the tab keeps it
+      const draft = t.text;
+      folio.historySnapshot(p, draft, 'before-ai', true).catch(() => false).then((kept) => {
+        // only the latest AI edit replaces the draft
+        if (kept !== false && S.aiEdits.get(p)?.after === after && t.text === draft && S.active !== p && tabOf(p) === t) { t.text = after; renderTabs(); toast(tr('app.ai-replaced-draft', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] }); }
+        else if (kept === false) toast(tr(aiKept ? 'app.ai-draft-kept-in-tab' : 'app.ai-draft-kept-in-tab-file', { client, name: stem(p) }), { kind: 'error', action: [tr('app.open'), () => openFile(p)] });
+      });
+    } else if (p === S.active) { setActiveText(after); highlightAi(p, { fresh: true }); showAiBanner(p); renderPreview(); renderOutline(); if (userDirty) toast(tr('app.client-changed-this-note-while-you-had', { client, Z: keyLabel('Mod+Z') })); }
     else t.text = after;
   } else {
     toast(tr(created ? 'app.ai-created' : 'app.ai-edited', { client, name: stem(p) }), { action: [tr('app.open'), () => openFile(p)] });
@@ -1727,7 +1761,10 @@ const COMMANDS = [
     curSurface()?.exportHandouts?.({ perPage: per });
   } },
   { id: 'export-notes', title: 'Export slide notes pages as PDF…', run: () => (curType() === 'slides' ? curSurface()?.exportHandouts?.({ notes: true }) : toast('Open a slides document first.')) },
-  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => (curType() === 'slides' ? curSurface().present() : toast('Open a slides document to present it.')) },
+  { id: 'present', title: 'Present slides', key: 'Mod+Enter', run: () => {
+    if (curType() !== 'slides') return toast('Open a slides document to present it.');
+    loadSurface('slides').then(() => { if (curType() === 'slides') (curSurface() || surfaceFor('slides'))?.present(); }, (e) => toast(e.message, { kind: 'error' })); // the editor may still be loading
+  } },
   { id: 'new-slides', title: 'New slides…', run: () => newNote(undefined, 'slides') },
   { id: 'export-pdf', title: 'Export as PDF…', run: () => exportAs('pdf') },
   { id: 'reveal', title: 'Show in folder', run: () => folio.reveal(S.active || '') },
@@ -1764,7 +1801,7 @@ const COMMANDS = [
   { id: 'align-center', title: 'Centre', key: 'Mod+Alt+E', run: () => isRich() && rich.run('alignCenter') },
   { id: 'align-right', title: 'Align right', key: 'Mod+Shift+R', run: () => isRich() && rich.run('alignRight') },
   { id: 'align-justify', title: 'Justify', key: 'Mod+Shift+J', run: () => isRich() && rich.run('alignJustify') },
-  { id: 'close-folder', title: 'Close folder', run: async () => { for (const t of S.tabs) await saveTab(t); await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
+  { id: 'close-folder', title: 'Close folder', run: async () => { if (!(await saveAllOrAsk())) return; for (const t of S.tabs) t.dead = true; S.writesFrozen = false; await folio.closeWorkspace(); S.settings.workspace = null; actions.clear(); nav.list = []; nav.i = -1; showWelcome(); } },
 ];
 /* everything the / menu offers is in the palette too (the Write view inserts it, the source view types its Markdown) */
 for (const it of INSERTS) {
@@ -1912,6 +1949,7 @@ async function rasterUrl(url, w, h) {
 async function exportAs(kind, o = null) {
   const t = activeTab(); if (!t) return toast(tr('app.open-a-note-to-export-it'));
   if (!o && curType() === 'md' && (kind === 'pdf' || kind === 'docx')) o = exportPrefs();
+  if (SURFACES[curType()]) { try { await loadSurface(curType()); } catch (e) { return toast(e.message, { kind: 'error' }); } } // its editor may still be loading
   if (kind === 'docx') { if (curType() !== 'md') return toast(tr('app.word-export-is-for-pages')); try { return await exportWord(t, o); } catch (e) { return toast(tr('app.export-failed-message', { message: e.message }), { kind: 'error' }); } }
   const s = curSurface();
   if (kind === 'md') {
@@ -2346,10 +2384,11 @@ function bindChrome() {
   document.addEventListener('change', async (e) => {
     const el = e.target.closest('[data-setting]'); if (!el) return;
     const k = el.dataset.setting; const v = el.type === 'checkbox' ? el.checked : /fontSize|lineWidth/.test(k) ? Number(el.value) : el.value;
+    if (k === 'language' && !(await saveAllOrAsk())) { el.value = locale(); return; } // kept the old language: nothing saved, the menu shows it again
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
-    if (k === 'language') { for (const t of S.tabs) await saveTab(t); setLocale(v); location.reload(); }
+    if (k === 'language') { setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });
   document.addEventListener('input', (e) => {
@@ -2431,12 +2470,12 @@ function bindIpc() {
     if (ws !== S.workspace) { S.tabs = []; S.active = null; renderTabs(); await loadWorkspace(ws); }
     if (file) { await refreshTree(); openFile(file); }
   });
-  folio.onBeforeClose(async () => { for (const t of S.tabs) await saveTab(t).catch(() => {}); folio.closeOk(); });
+  folio.onBeforeClose(async () => { if (await saveAllOrAsk()) folio.closeOk(); else folio.closeCancel?.(); });
 }
 
 window.__folioErrors = [];
 /** tests and automation: run a command by id, as the menu would */
-window.__folioRun = (id) => COMMANDS.find((x) => x.id === id)?.run();
+window.__folioRun = (id) => (id === 'palette' ? openPalette('commands') : COMMANDS.find((x) => x.id === id)?.run()); // the palette is opened by the menu, not a command
 Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
 Object.defineProperty(window, '__folioEditor', { get: () => editor });
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });

@@ -112,15 +112,19 @@ export function mountHistory(host, api) {
     return other ? { old: await textOf(other), new: await textOf(v), mode: 'other', other } : null;
   };
 
+  let showSeq = 0;
   async function showVersion() {
+    const seq = ++showSeq;
     const bar = host.querySelector('[data-bar]'), doc = host.querySelector('[data-doc]'); if (!bar || !doc) return;
     const v = selVersion();
-    if (st.sel === 'current' || !v) { bar.innerHTML = `<span class="hv-bar-text">${tr('hist.this-is-the-current-text-pick-an-earli')}</span>`; doc.innerHTML = st.view === 'version' || true ? body(st.live) : ''; return; }
+    if (st.sel === 'current' || !v) { bar.innerHTML = `<span class="hv-bar-text">${tr('hist.this-is-the-current-text-pick-an-earli')}</span>`; doc.innerHTML = body(st.live); return; }
     const text = await textOf(v);
+    if (seq !== showSeq) return; // another version was picked while this one was loading
     const opts = [['current', tl('hist', 'Current version')], ['previous', tl('hist', 'Previous version')], ...st.versions.filter((x) => x.id !== v.id).map((x) => [x.id, `${x.name || dayLabel(x.t) + ', ' + timeOf(x.t)}`])];
     const cmp = `<label class="hv-cmp">${tr('hist.compare-with')} <select data-compare>${opts.map(([id, l]) => `<option value="${esc(id)}" ${st.compare === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     if (st.view === 'version') { bar.innerHTML = `<span class="hv-bar-text">${esc(dayLabel(v.t))}, ${esc(timeOf(v.t))} · ${esc(who(v))}</span>`; doc.innerHTML = body(text); return; }
     const b = await baseFor();
+    if (seq !== showSeq) return;
     if (b.old === b.new) { bar.innerHTML = `<span class="hv-bar-text">${tr('hist.no-differences')}</span>${cmp}`; doc.innerHTML = body(b.new); return; }
     st.parts = wordParts(b.old, b.new, diffWords); st.hunks = countHunks(st.parts); st.hunk = Math.min(st.hunk, Math.max(0, st.hunks - 1));
     const canPut = b.mode === 'current';
@@ -149,19 +153,19 @@ export function mountHistory(host, api) {
   async function select(id) { st.sel = id; st.hunk = 0; if (id === 'current') st.view = 'changes'; renderList(); host.querySelectorAll('[data-act=name],[data-act=copy],[data-act=restore]').forEach((b) => (b.disabled = id === 'current')); host.querySelectorAll('[data-act=name]').forEach((b) => { if (st.versions.find((x) => x.id === id)?.git) b.disabled = true; }); await showVersion(); }
 
   async function restoreWhole() {
-    const v = selVersion(); if (!v) return; const text = await textOf(v);
-    if (text === st.live) return api.toast(tr('hist.that-is-already-the-current-text'));
-    await folio.historySnapshot(st.path, st.live, 'before-restore', true);
-    await api.setText(text); await folio.historySnapshot(st.path, text, 'restore', true);
-    api.toast(tr('hist.restored-the-version-from-tolowercase', { toLowerCase: dayLabel(v.t).toLowerCase(), t: timeOf(v.t) }), { action: [tr('hist.undo'), async () => { await api.setText(st.live); await folio.historySnapshot(st.path, st.live, 'edit', true); }] });
+    const v = selVersion(); if (!v) return; const text = await textOf(v); const path = st.path; const before = st.live;
+    if (text === before) return api.toast(tr('hist.that-is-already-the-current-text'));
+    await folio.historySnapshot(path, before, 'before-restore', true);
+    await api.setText(text); await folio.historySnapshot(path, text, 'restore', true);
+    api.toast(tr('hist.restored-the-version-from-tolowercase', { toLowerCase: dayLabel(v.t).toLowerCase(), t: timeOf(v.t) }), { action: [tr('hist.undo'), async () => { if (api.getPath() !== path) return api.toast(tl('hist', 'Open that page again to undo.')); await api.setText(before); await folio.historySnapshot(path, before, 'edit', true); }] });
     close();
   }
   async function putBack(i) {
-    const next = revertHunk(st.parts, i);
-    await folio.historySnapshot(st.path, st.live, 'before-restore', true);
-    await api.setText(next); st.live = next; await folio.historySnapshot(st.path, next, 'restore', true);
+    const next = revertHunk(st.parts, i); const before = st.live; const path = st.path;
+    await folio.historySnapshot(path, before, 'before-restore', true);
+    await api.setText(next); st.live = next; await folio.historySnapshot(path, next, 'restore', true);
     st.versions = await loadVersions(); renderList(); await showVersion();
-    api.toast(tr('hist.put-that-change-back'), { action: [tr('hist.undo'), async () => { await api.setText(st.live = st.parts.filter((p) => p.kind !== 'del').map((p) => p.text).join('')); st.versions = await loadVersions(); renderList(); await showVersion(); }] });
+    api.toast(tr('hist.put-that-change-back'), { action: [tr('hist.undo'), async () => { if (api.getPath() !== path) return api.toast(tl('hist', 'Open that page again to undo.')); await api.setText(before); st.live = before; await folio.historySnapshot(path, before, 'edit', true); st.versions = await loadVersions(); renderList(); await showVersion(); }] });
   }
   async function nameIt() {
     const v = selVersion(); if (!v || v.git) return;

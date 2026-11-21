@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('folio', {
   pathForFile: (f) => webUtils.getPathForFile(f),
   answer: (id, value) => ipcRenderer.send('ai:answer', { id, value }),
   closeOk: () => ipcRenderer.send('app:close-ok'),
+  closeCancel: () => ipcRenderer.send('app:close-cancel'),
   onTreeChanged: on('fs:tree-changed'),
   onFileChanged: on('fs:file-changed'),
   onAiEdit: on('ai:edit'),
@@ -89,7 +90,7 @@ contextBridge.exposeInMainWorld('folio', {
   onMenu: on('menu:command'),
   onTheme: on('theme:changed'),
   onSwitched: on('workspace:switched'),
-  onBeforeClose: on('app:before-close'),
+  onBeforeClose: (fn) => { const off = on('app:before-close')(fn); ipcRenderer.send('app:close-ready'); return off; },
   features: {
     list: () => call('features:list'),
     set: (id, patch) => call('features:set', id, patch),

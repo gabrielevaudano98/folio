@@ -8,6 +8,7 @@
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
+import { writeAtomic } from './atomic.js';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -23,7 +24,7 @@ const SKIP = new Set(['node_modules', '.git', '.folio', '.obsidian', 'dist', 'bu
 
 /* a reference to an asset inside any text: `.asset/x.png`, `../.asset/x.png`, `sub/assets/x.png`.
    Works for images, links, slide `src=`, `poster=`, front matter fonts and wiki embeds, because it only looks at the path. */
-const REF = /(?<![\w.%/:-])((?:(?:\.\.?|[\w%~-][\w%.~-]*)\/)*)(\.asset|assets)\/([^\s()"'<>[\]|,{}\\]+)/g;
+const REF = /(?<![\w.%/:-])((?:(?:\.\.?|[\w%~-][\w%.~-]*)\/)*)(\.asset|assets)\/((?:[^\s()"'<>[\]|,{}\\]|\([^\s()"'<>[\]|,{}\\]*\))+)/g; // balanced (1) in a name, as CommonMark allows
 export function refsIn(text) {
   const out = [];
   for (const m of String(text).matchAll(REF)) {
@@ -58,8 +59,8 @@ async function hideFolder(dir) {
 async function sameContent(a, b) {
   const [sa, sb] = await Promise.all([fs.stat(a), fs.stat(b)]);
   if (sa.size !== sb.size) return false;
-  const [ba, bb] = await Promise.all([fs.readFile(a), fs.readFile(b)]);
-  return ba.equals(bb);
+  const [ha, hb] = await Promise.all([hashFile(a), hashFile(b)]); // streamed: two big files are never held in memory together
+  return ha === hb;
 }
 async function hashFile(file) {
   return new Promise((res, rej) => { const h = crypto.createHash('sha256'); fss.createReadStream(file).on('data', (d) => h.update(d)).on('end', () => res(h.digest('hex'))).on('error', rej); });
@@ -88,6 +89,9 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
   /** write into the asset folder atomically: a temp file, then a rename, so a crash never leaves half a picture */
   async function place(dir, name, { buf, src }) {
     await ensureDir(dir);
+    // the folder may be a link: what it really leads to must still be inside the workspace
+    const [realDir, realRoot] = await Promise.all([fs.realpath(dir), fs.realpath(root())]);
+    if (realDir !== realRoot && !realDir.startsWith(realRoot + path.sep)) throw new NotesError('The asset folder leads outside the workspace through a link.');
     name = name.replace(/^[0-9a-f]{8}-(?=.)/, '');
     const full = buf ? sha(buf) : await hashFile(src);
     for (let i = 0; i < 4; i++) {
@@ -287,7 +291,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
       if (changed) edits.set(files[i], out + texts[i].slice(last));
     }
     for (const [src, dest] of plan) { if (!(await exists(dest))) { await ensureDir(path.dirname(dest)); await fs.copyFile(src, dest); } }
-    for (const [f, text] of edits) { await onBefore?.(f, texts[files.indexOf(f)]); await fs.writeFile(notes.resolve(f), text, 'utf8'); }
+    for (const [f, text] of edits) { await onBefore?.(f, texts[files.indexOf(f)]); await writeAtomic(notes.resolve(f), text); }
     for (const src of plan.keys()) await remove(rel(src)).catch(() => {});
     for (const dir of await assetFolders()) if (path.basename(dir) === LEGACY_DIR) await fs.rmdir(dir).catch(() => {});
     return { notes: edits.size, files: plan.size, changed: [...edits.keys()] };

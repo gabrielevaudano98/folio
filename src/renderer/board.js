@@ -426,7 +426,7 @@ export function mountBoard(host, ctx) {
   }
   function copy() {
     const ids = new Set([...sel].filter((s) => !s.startsWith('e:')));
-    if (!ids.size) return;
+    if (!ids.size) { if (sel.size) clipboard = null; return false; } // only edges selected: nothing to copy, and neither Duplicate nor a later paste may bring back an older clipboard
     clipboard = { nodes: model.nodes.filter((n) => ids.has(n.id)).map((n) => structuredClone(n)), edges: model.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map((e) => structuredClone(e)) };
   }
   function paste(at) {
@@ -438,7 +438,7 @@ export function mountBoard(host, ctx) {
     clipboard = { nodes: add.map((n) => structuredClone(n)), edges: clipboard.edges.map((e) => ({ ...e, from: map[e.from], to: map[e.to] })) };
     sel = new Set(add.map((n) => n.id)); commit();
   }
-  function duplicate() { copy(); paste(); }
+  function duplicate() { if (copy() !== false) paste(); }
   function zorder(dir) {
     const ids = new Set(sel);
     const picked = model.nodes.filter((n) => ids.has(n.id)), rest = model.nodes.filter((n) => !ids.has(n.id));
