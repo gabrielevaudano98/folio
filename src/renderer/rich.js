@@ -432,7 +432,7 @@ const FolioImage = PageImage.extend({
         body = document.createElement(kind); body.controls = true; body.preload = 'metadata'; body.className = 'rich-media-el'; setSrc(body, node.attrs.src || '');
       } else if (kind === 'image') {
         body = document.createElement('div'); body.className = 'rich-img-wrap';
-        const img = document.createElement('img'); img.alt = node.attrs.alt || ''; img.decoding = 'async'; setSrc(img, node.attrs.src || '', () => { img.classList.add('remote-blocked'); img.alt = img.alt || `${tl('rich', 'Image not loaded')}: ${node.attrs.src || ''}`; });
+        const img = document.createElement('img'); img.alt = node.attrs.alt || ''; img.decoding = 'async'; setSrc(img, node.attrs.src || '', () => { img.classList.add('remote-blocked'); img.alt = img.alt || tl('rich', 'Image not loaded'); });
         const w = parseInt(node.attrs.size, 10); if (w) img.style.width = `${w}px`;
         const grip = document.createElement('span'); grip.className = 'rich-img-resize'; grip.setAttribute('aria-hidden', 'true'); grip.title = tl('rich', 'Drag to resize');
         grip.addEventListener('pointerdown', (e) => {
