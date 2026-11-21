@@ -22,6 +22,8 @@ export const THEMES = [['folio', 'Folio'], ['graphite', 'Graphite'], ['paper', '
 import { parseAnim } from './slides-motion.js';
 export const SIZES = { '16:9': [1280, 720], '4:3': [960, 720], '1:1': [1080, 1080], '9:16': [720, 1280], '16:10': [1280, 800], A4: [1123, 794], 'A4-portrait': [794, 1123] };
 /** theme tokens a deck (or its template) may set in front matter, and the CSS variable each one drives */
+// pictures in slide text keep their address in data-src, so nothing is requested until the view checks it (workspace boundary, web-image setting)
+export const lazySrc = (h) => h.replace(/<img\b([^>]*?)\ssrc="/g, '<img$1 data-src="');
 export const TOKENS = { paper: '--sl-bg', ink: '--sl-ink', muted: '--sl-muted', accent: '--sl-accent', card: '--sl-card', 'heading-font': '--sl-face', 'body-font': '--sl-body' };
 const FONT_NAME = /^[\w \-'",.]{1,120}$/;
 const MARP_THEME = { default: 'folio', gaia: 'paper', uncover: 'graphite' };
@@ -192,7 +194,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
     ${full.length ? `<div class="sl-bg">${full.map(img).join('')}</div>` : ''}
     ${side.length ? `<div class="sl-side">${side.map(img).join('')}</div>` : ''}
     ${masterLayer(deck, s)}
-    <div class="sl-body${phHtml ? ' has-ph' : ''}">${html}</div>
+    <div class="sl-body${phHtml ? ' has-ph' : ''}">${lazySrc(html)}</div>
     ${phHtml ? `<div class="sl-phs">${phHtml}</div>` : ''}
     ${placed ? `<div class="sl-placed">${placed}</div>` : ''}
     ${e.header ? `<header class="sl-header">${escape(e.header)}</header>` : ''}

@@ -418,18 +418,28 @@ const MarkdownLinkInput = Extension.create({
 /* images keep their relative src in Markdown, the view resolves it to a file URL */
 /* images and media (page-syntax.js): an image you can resize and caption; video and audio players; PDF, file and web cards */
 const FolioImage = PageImage.extend({
-  addOptions() { return { ...this.parent?.(), resolve: null, openFile: null, openUrl: null }; },
+  addOptions() { return { ...this.parent?.(), resolve: null, openFile: null, openUrl: null, blocked: null }; },
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const opts = this.options;
       const kind = mediaKind(node.attrs.src || '');
       const dom = document.createElement('figure'); dom.className = `rich-figure rich-media-${kind}`; dom.contentEditable = 'false';
-      const setSrc = (el, src, miss) => { if (/^(data:|file:|blob:)/.test(src)) el.src = src; else Promise.resolve(opts.resolve?.(src)).then((u) => { if (u) el.src = u; else miss?.(); }); };
+      // every address goes through the app's resolver (workspace boundary, web-image consent); a web image or media it holds back registers a retry
+      let retry = null; const isWeb = (src) => /^https?:\/\//i.test(src);
+      const setSrc = (el, src, miss) => {
+        if (/^(data:|blob:)/.test(src)) { el.src = src; return; }
+        let r; try { r = opts.resolve?.(src); } catch { r = null; }
+        Promise.resolve(r).then((u) => {
+          if (u) { el.src = u; if (retry) { opts.blocked?.delete(retry); retry = null; } el.classList.remove('remote-blocked'); return; }
+          miss?.();
+          if (isWeb(src) && !retry) { retry = () => setSrc(el, src, miss); opts.blocked?.add(retry); }
+        });
+      };
       const commit = (attrs) => { const pos = typeof getPos === 'function' ? getPos() : null; if (pos != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs })); };
       const name = (node.attrs.src || '').split(/[/?#]/).filter(Boolean).pop()?.replace(/^(?=[a-z]*\d)[a-z0-9]{8}-/, '') || 'file';
       let body;
       if (kind === 'video' || kind === 'audio') {
-        body = document.createElement(kind); body.controls = true; body.preload = 'metadata'; body.className = 'rich-media-el'; setSrc(body, node.attrs.src || '');
+        body = document.createElement(kind); body.controls = true; body.preload = 'metadata'; body.className = 'rich-media-el'; setSrc(body, node.attrs.src || '', () => body.classList.add('remote-blocked'));
       } else if (kind === 'image') {
         body = document.createElement('div'); body.className = 'rich-img-wrap';
         const img = document.createElement('img'); img.alt = node.attrs.alt || ''; img.decoding = 'async'; setSrc(img, node.attrs.src || '', () => { img.classList.add('remote-blocked'); img.alt = img.alt || tl('rich', 'Image not loaded'); });
@@ -472,6 +482,7 @@ const FolioImage = PageImage.extend({
         selectNode() { dom.classList.add('media-selected'); }, deselectNode() { dom.classList.remove('media-selected'); },
         stopEvent: (e) => !!e.target.closest?.('.rich-img-resize, .rich-caption input, video, audio'),
         ignoreMutation: () => true,
+        destroy() { if (retry) opts.blocked?.delete(retry); },
       };
     };
   },
@@ -672,7 +683,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -702,13 +713,16 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   const page = host.querySelector('.rich-page');
   const bubble = host.querySelector('.bubble');
 
+  // web images and media held back until the person allows them; the app shows a notice with their count
+  const blockedViews = new Set();
+  const blocked = { add(fn) { blockedViews.add(fn); onRemoteBlocked?.(blockedViews.size); }, delete(fn) { if (blockedViews.delete(fn)) onRemoteBlocked?.(blockedViews.size); } };
   const insertCtx = () => ({ appCommand: (id) => onCommand?.(id), addProperty: () => props.add(), pickImage: onPickImage, pickRef, createDoc, pickMedia, askUrl, footnote: (e) => pageCmd.footnote(e) });
   const editor = new Editor({
     element: page,
     extensions: [
       ...pageExtensions({
         codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
-        image: FolioImage.configure({ resolve: resolveImage, inline: false, allowBase64: true, openFile: (src) => openMedia?.(src), openUrl: (u) => openMedia?.(u) }),
+        image: FolioImage.configure({ resolve: resolveImage, blocked, inline: false, allowBase64: true, openFile: (src) => openMedia?.(src), openUrl: (u) => openMedia?.(u) }),
         raw: RawBlock,
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
       }),
@@ -1102,6 +1116,8 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
 
   ready = true;
   const api = {
+    /** the person allowed web images: try again every one that was held back */
+    refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,
     /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
     setMarkdown(md, { keepHistory = false } = {}) {
