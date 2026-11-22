@@ -43,7 +43,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Footnote | `Claim[^1]` and, anywhere, `[^1]: Source text.` | Labels can be words: `[^source]`. |
 | Inline footnote | `Claim^[Source text.]` | |
 | Hidden comment | `%%only in the file%%` | Not shown in Read view or exports. |
-| Callout | `> [!tip] Title` then `> body` | GitHub and Obsidian types: note, abstract (summary, tldr), info, todo, tip (hint), success (check, done), question (help, faq), warning (attention), important, failure (fail, missing), danger (error), caution, bug, example, quote (cite). Unknown types are notes. `[!tip]-` starts folded, `[!tip]+` can fold. |
+| Callout | `> [!tip] Title` then `> body` | GitHub and Obsidian types: note, abstract (summary, tldr), info, todo, tip (hint), success (check, done), question (help, faq), warning (attention), important, failure (fail, missing), danger (error), caution, bug, example, quote (cite). Unknown types are notes. `[!tip]-` starts folded, `[!tip]+` can fold. Without a title only the type's icon is drawn, beside the text (Notion); `[!note\|💡 yellow]` sets an emoji and a colour. |
 | Notion callout (icon, colour) | `> [!callout|💡 yellow] Title` | Obsidian metadata after `|`: an emoji and/or a colour from the list below. Works on any type. |
 | Toggle | `<details>`, `<summary>Title</summary>`, a blank line, the content, `</details>` | `<details open>` starts open. Toggles can nest. |
 | Toggle heading | `<summary><h2>Title</h2></summary>` inside a toggle | h1 to h3. |
@@ -59,13 +59,14 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen from the block's menu. |
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
 | Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
-| Link to a day | `[[2026-11-21]]` | The daily note, `Journal/2026-11-21.md`, made when you first open it. `@tomorrow`, `@next friday` and `@domani` write it. |
+| Link to a day | `[[2026-11-21]]`, `[[2026-11-21 09:30]]` | The daily note, `Journal/2026-11-21.md`, made when you first open it. `@tomorrow`, `@next friday`, `@domani` and their first letters (`@tod`, `@ven`) write it. The file always keeps the ISO day; the page shows it as a date mention in the user's format (Settings → Date format: relative “Today”, “Friday”, “3 Dec”; full; short; D/M/Y; M/D/Y; ISO). A day link is never a broken link. |
 | Link to a person | `[[Ada Lovelace]]` | A note in a `People/` folder; shown as a person chip. |
 | Tag | `#project`, `#project/alpha` | Starts after a space, has a letter, may contain `-`, `_`, `/`. Also read from front matter `tags:`. Not in code. |
 | Status chip, inline field | `[status:: In progress]`, `[owner:: Ada]` | Dataview inline field. `status` is a coloured chip (Not started, In progress, Blocked, Done; other words are grey). Click the chip to change it. A page can offer its own words in the front matter: `folio:` then `  status: [Idea, Design, Shipped]` (or a `- Idea` list); the `@` picker offers the same words. |
 | Emoji | `😄` | The character itself. `:smile` in the Write view looks it up. |
 | Table column alignment | `\| :--- \| :---: \| ---: \|` | GFM. Set from a column's menu or the Table tab; sorting, moving rows and columns (menu or dragging a grip) rewrite only the table. **Header row** off leaves the header cells empty (`\|  \|  \|`, valid GFM, hidden in Folio); on removes an empty header again. |
 | Properties | YAML front matter: `title: Text`, `count: 3`, `done: true`, `due: 2026-12-01`, `tags: [a, b/c]`, `owner: "[[Ada]]"` | Edited as fields above the title (a type chosen from a field's menu is remembered per property name in `.folio/property-types.json`; it only applies when the value fits); only the changed property's lines are rewritten. Nested maps are kept and shown read-only. |
+| Page icon | front matter `icon: 🚀` | One emoji shown large above the title (Notion). Not listed with the properties; other editors see an ordinary property. |
 | Template button (Folio) | ```` ```template-button ```` with `label: New meeting`, `template: Meeting notes`, optional `where: above` | Drawn as a button; inserts the template from `Templates/` (or a starter). Other editors show a code block. |
 | Suggested insertion, deletion, replacement | `{++new text++}`, `{--old text--}`, `{~~old~>new~~}` | CriticMarkup. Accept or reject in the review pane; Suggesting mode writes them as you type. |
 | Comment | `{==quoted text==}{>>Ada, 2026-11-20 14:05: Comment<<}` | CriticMarkup. The `Author, date time:` prefix is optional; comments that follow each other are replies. |

@@ -1209,6 +1209,7 @@ audio.rich-media-el { height: 40px; }
 .callout-sw[aria-pressed="true"] { box-shadow: 0 0 0 1.5px var(--color-paper), 0 0 0 3px var(--color-ink); }
 .callout-sw:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .block-mi[aria-checked="true"] { box-shadow: inset 0 0 0 1px var(--color-rule-strong); }
+.block-foot { margin-top: var(--space-2xs); padding: var(--space-2xs) var(--space-xs) var(--space-3xs); border-top: 0.5px solid var(--color-rule); font-size: var(--text-xs); color: var(--color-faint); font-variant-numeric: tabular-nums; }
 /* toggles (<details>), toggle headings */
 .rich-details { display: flex; gap: 2px; margin: 0 0 0.6em; }
 .rich-details > button { flex-shrink: 0; width: 22px; height: 22px; margin-top: 0.2em; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; cursor: pointer; color: var(--color-muted); display: grid; place-items: center; }
