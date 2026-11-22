@@ -1731,5 +1731,4 @@ export default {
   "icon.colour-default": "Colore del tipo",
   "icon.emoji": "Emoji…",
   "icon.use-type-icon": "Usa l'icona del tipo",
-  'blk.counts': "{w} parole · {c} caratteri",
 };

@@ -45,7 +45,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   };
 
   function render() {
-    const all = parseProps(get()); const iconProp = all.props.find((x) => x.key === ICON_KEY && typeof x.value === 'string' && x.value.trim());
+    const all = parseProps(get()); const iconProp = all.props.find((x) => x.key === ICON_KEY && !x.readOnly && typeof x.value === 'string' && x.value.trim());
     const p = { ...all, props: all.props.filter((x) => x !== iconProp) };
     box.classList.toggle('is-empty', !p.props.length && !adding);
     box.classList.toggle('has-icon', !!iconProp);
@@ -84,7 +84,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   box.addEventListener('click', (e) => {
     if (e.target.closest('.props-head')) { open = !open; render(); return; }
     const pi = e.target.closest('.page-icon, .props-icon-add');
-    if (pi) { const had = !!e.target.closest('.page-icon'); openEmojiPicker(pi, { onPick: (em) => commit((t) => setProp(t, ICON_KEY, em, 'text')), onRemove: had ? () => commit((t) => removeProp(t, ICON_KEY)) : null }); return; }
+    if (pi) { const had = !!e.target.closest('.page-icon'); const back = () => box.querySelector('.page-icon, .props-icon-add')?.focus(); openEmojiPicker(pi, { onPick: (em) => { commit((t) => setProp(t, ICON_KEY, em, 'text')); back(); }, onRemove: had ? () => { commit((t) => removeProp(t, ICON_KEY)); back(); } : null }); return; }
     if (e.target.closest('.props-add')) { open = true; adding = newKey(get()); render(); return; }
     const rm = e.target.closest('[data-remove]');
     if (rm) { const key = keyOf(rm); const p = propOf(key); const list = p.value.filter((_, i) => i !== +rm.dataset.remove); commit((t) => setProp(t, key, list, p.type)); return; }

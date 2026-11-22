@@ -182,10 +182,10 @@ export const BlockHandles = Extension.create({
             <button type="button" role="menuitem" class="block-mi" data-act="link"><span>${tr('blk.copy-link-to-block')}</span>${key('Mod+Alt+L')}</button>
             <div class="block-sep" role="separator"></div>
             <button type="button" role="menuitem" class="block-mi is-danger" data-act="delete"><span>${tr('blk.delete')}</span>${key('Delete')}</button>
-            <div class="block-foot" aria-hidden="true">${counts()}</div>`;
+            <div class="block-foot">${counts()}</div>`;
         };
         /* the footer of the menu (Notion): how long this block is */
-        const counts = () => { const t = (menuFor || target)?.node.textContent || ''; const w = (t.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length; return tr('blk.counts', { w, c: t.length }); };
+        const counts = () => { const t = (menuFor || target)?.node.textContent || ''; const w = (t.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length; return `${tr('app.words', { n: w })} · ${tr('app.chars', { n: [...t].length })}`; };
         const closeMenu = (refocus = true) => { if (menu.hidden) return; menu.hidden = true; grip.setAttribute('aria-expanded', 'false'); menuFor = null; if (refocus) view.focus(); };
         const openMenu = (b, { focusTurn = false } = {}) => {
           if (!b) return;

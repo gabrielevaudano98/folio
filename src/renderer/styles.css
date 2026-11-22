@@ -1243,6 +1243,7 @@ audio.rich-media-el { height: 40px; }
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 16'%3E%3Cpath d='M2.5 1h6l3.5 3.5V14a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Cpath d='M8.5 1v3.5H12' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 16'%3E%3Cpath d='M2.5 1h6l3.5 3.5V14a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Cpath d='M8.5 1v3.5H12' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3C/svg%3E") center / contain no-repeat; }
 .rich-chip.rich-wikilink:hover { text-decoration-color: currentColor; background: transparent; }
+.rich-chip.rich-wikilink:not(.is-date):not(.is-person), .rich-chip.rich-field:not(.rich-status) { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .rich-chip.rich-wikilink.is-missing { color: var(--color-muted); text-decoration-style: wavy; text-decoration-color: var(--content-red); }
 /* people and days: "@Ada", "@Tomorrow" — a quiet grey mention, the @ fainter (Notion) */
 .rich-chip.rich-wikilink.is-person, .rich-chip.rich-wikilink.is-date { padding: 0 0.15em; font-weight: var(--weight-regular); text-decoration: none; color: var(--color-ink-2); }

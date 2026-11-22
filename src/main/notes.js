@@ -253,7 +253,7 @@ export function createNotes(getRoot) {
     files.forEach((f, i) => { if (f === want || !/\.(md|markdown|mdx|txt)$/i.test(f)) return; for (const m of findMentions(texts[i], name)) if (out.length < 300) out.push({ path: f, name, ...m }); });
     return out;
   }
-  const isDayRef = (t) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(t).split('#')[0].trim()); if (!m) return false; const d = new Date(Date.UTC(2000, +m[2] - 1, +m[3])); return +m[2] >= 1 && +m[2] <= 12 && d.getUTCMonth() === +m[2] - 1; };
+  const isDayRef = (t) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(t).split('#')[0].trim()); if (!m) return false; const d = new Date(0); d.setUTCFullYear(+m[1], +m[2] - 1, +m[3]); return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]; };
   async function brokenLinks(only) {
     const { files, texts } = await allTexts(); const out = [];
     files.forEach((f, i) => {

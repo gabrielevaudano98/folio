@@ -146,7 +146,8 @@ const CHIP_RE = /!?\[\[[^\]\n]+\]\]|\[[A-Za-z][\w ]{0,29}?::[ \t]*[^\]\n]{0,80}?
 /** chips of the textblock around `pos`: [{from, to}] in document positions */
 function chipsNear(doc, pos) {
   const $p = doc.resolve(pos); const parent = $p.parent; if (!parent.isTextblock || parent.type.spec.code) return { list: [], off: 0, start: 0 };
-  const start = $p.start(); const text = parent.textBetween(0, parent.content.size, '\0', '\0');
+  const start = $p.start(); let text = '';
+  parent.forEach((ch) => { text += ch.isText ? (ch.marks.some((m) => m.type.name === 'code') ? '\0'.repeat(ch.text.length) : ch.text) : '\0'.repeat(ch.nodeSize); }); // inline code is literal text, never a chip
   const list = []; CHIP_RE.lastIndex = 0; let m;
   while ((m = CHIP_RE.exec(text))) if (m[0][0] !== '!') list.push({ from: start + m.index, to: start + m.index + m[0].length });
   return { list, off: $p.parentOffset, start };
@@ -156,7 +157,7 @@ function chipUnderCaret(state) {
   const head = state.selection.head; const { list } = chipsNear(state.doc, head);
   return list.find((c) => head > c.from && head < c.to) || null;
 }
-const DAY_ONLY = /^\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?$/;
+const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/; // the same days linkKind() and link health accept
 /** what a [[link]] reads as: its alias, else "Name" or "Name › Heading" (folders and .md dropped) */
 function linkLabel(inner) {
   const [target, alias] = inner.split('|'); if (alias && alias.trim()) return alias.trim().replace(/^@/, '');
@@ -196,7 +197,7 @@ const Decorate = Extension.create({
           }
         }
         if (n.isText) {
-          const code = n.marks.some((mk) => mk.type.name === 'code');
+          const code = n.marks.some((mk) => mk.type.name === 'code') || doc.resolve(pos).parent.type.spec.code; // inline code and code blocks stay literal
           const bid = /\s\^[A-Za-z0-9-]+\s*$/.exec(n.text);
           if (bid && pos + n.nodeSize === doc.resolve(pos).end()) deco.push(Decoration.inline(pos + bid.index, pos + n.text.length, { class: 'rich-block-id', title: tr('rich.block-id-links-like-note-id-point-here') }));
           const re = /\[\[([^\]\n]+)\]\]/g; let m;
@@ -237,16 +238,20 @@ const Decorate = Extension.create({
     const KEY = new PluginKey('folioDecorate');
     /* a chip's text, from its document range */
     const chipText = (state, from, to) => state.doc.textBetween(from, to, '\0', '\0');
-    const replaceChip = (view, from, to, text) => { const tr = text ? view.state.tr.insertText(text, from, to) : view.state.tr.delete(from, to); view.dispatch(tr); view.focus(); };
+    /* a menu or the date popover can stay open while the page changes (typing, an AI edit, a reload): only write if the chip is still there */
+    const replaceChip = (view, from, to, text, was) => {
+      const doc = view.state.doc; if (to > doc.content.size || (was != null && doc.textBetween(from, to, '\0', '\0') !== was)) return;
+      const tr = text ? view.state.tr.insertText(text, from, to) : view.state.tr.delete(from, to); view.dispatch(tr); view.focus();
+    };
     /* what clicking a chip (or Alt+Enter beside it) does */
     const activate = (view, from, to, el, { modifier = false } = {}) => {
       const src = chipText(view.state, from, to);
-      const st = /^\[status::[ \t]*([^\]\n]*?)[ \t]*\]$/.exec(src);
-      if (st && opts.onStatus) { opts.onStatus(el, st[1], (v) => replaceChip(view, from, to, `[status:: ${v}]`)); return true; }
+      const st = /^\[(status)::[ \t]*([^\]\n]*?)[ \t]*\]$/i.exec(src);
+      if (st && opts.onStatus) { opts.onStatus(el, st[2], (v) => replaceChip(view, from, to, `[${st[1]}:: ${v}]`, src)); return true; }
       if (/^\[[A-Za-z][\w ]{0,29}?::/.test(src)) { view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + src.indexOf('::') + 2)).scrollIntoView()); view.focus(); return true; }
       const lk = /^\[\[([^\]\n]+)\]\]$/.exec(src); if (!lk) return false;
       const target = lk[1].replace(/\|.*$/, '').trim();
-      if (DAY_ONLY.test(target) && !lk[1].includes('|') && opts.onDate && !modifier) { opts.onDate(el, target, (v) => replaceChip(view, from, to, v ? `[[${v}]]` : ''), () => opts.onWikiLink?.(target)); return true; }
+      if (DAY_ONLY.test(target) && !lk[1].includes('|') && opts.onDate && !modifier) { opts.onDate(el, target, (v) => replaceChip(view, from, to, v ? `[[${v}]]` : '', src), () => opts.onWikiLink?.(target)); return true; }
       opts.onWikiLink?.(target); return true;
     };
     return [new Plugin({

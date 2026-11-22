@@ -25,7 +25,7 @@ ok('a time is kept after the day');
 assert.equal(it('2026-11-23', 'full'), 'Lunedì 23 novembre 2026');
 assert.equal(en('2026-11-23', 'dmy'), '23/11/2026'); assert.equal(en('2026-11-23', 'mdy'), '11/23/2026'); assert.equal(en('2026-11-23', 'iso'), '2026-11-23');
 ok('the other formats of Settings → Date format');
-assert.equal(parseDay('2026-02-31'), null); assert.equal(en('2026-02-31'), '2026-02-31'); assert.equal(parseDay('2026-11-23 25:00'), null);
+assert.equal(parseDay('2026-02-31'), null); assert.equal(parseDay('0099-03-04').date.getFullYear(), 99); assert.equal(en('2026-02-31'), '2026-02-31'); assert.equal(parseDay('2026-11-23 25:00'), null);
 ok('an impossible day is left as written');
 assert.deepEqual(['2026-11-22', '2026-11-21', '2026-12-01'].map((d) => dayTense(d, now)), ['today', 'past', 'future']);
 const grid = monthGrid(2026, 10, 'it'); assert.equal(grid.length, 6); assert.equal(isoDay(grid[0][0]), '2026-10-26'); assert.equal(grid[0][0].getDay(), 1);
@@ -44,8 +44,8 @@ ok('“@tod”, “@dom”, “@ven” offer the day before the word is finished
 
 /* link health: [[2026-11-23]] is a date, [[Nowhere]] is a missing page */
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-dates-'));
-fs.writeFileSync(path.join(ws, 'a.md'), '# A\n\nDue [[2026-11-23]] and [[2026-11-23#Notes]], see [[Nowhere]].\n');
+fs.writeFileSync(path.join(ws, 'a.md'), '# A\n\nDue [[2026-11-23]] and [[2028-02-29#Notes]], see [[Nowhere]] and [[2025-02-29]] and `[[Code]]`.\n');
 const notes = createNotes(() => ws);
 const broken = await notes.brokenLinks('a.md');
-assert.deepEqual(broken.map((b) => b.ref), ['[[Nowhere]]']);
-ok('a day link is never reported as broken; a missing page still is');
+assert.deepEqual(broken.map((b) => b.ref).filter((r) => r !== '[[Code]]'), ['[[Nowhere]]', '[[2025-02-29]]']);
+ok('a real day link is never reported as broken; a missing page or an impossible day (2025-02-29) still is');

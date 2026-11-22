@@ -43,7 +43,7 @@ export const CalloutUI = Extension.create({
         deco.push(Decoration.inline(start, start + c.markerLength, { class: 'rich-callout-marker', 'data-label': '', 'data-pos': String(pos), 'aria-label': `${c.label} callout` }));
         deco.push(Decoration.widget(start, () => {
           const s = document.createElement('span'); s.className = 'rich-callout-icon'; s.contentEditable = 'false';
-          s.dataset.pos = String(pos); s.setAttribute('role', 'button'); s.setAttribute('aria-label', `${c.label}. ${tr('pui.change-the-callout-type')}`); s.title = `${c.label} · ${tr('pui.change-the-callout-type')}`;
+          s.dataset.pos = String(pos); s.setAttribute('role', 'button'); s.setAttribute('aria-keyshortcuts', 'Alt+Enter'); s.setAttribute('aria-label', `${c.label}. ${tr('pui.change-the-callout-type')}`); s.title = `${c.label} · ${tr('pui.change-the-callout-type')}`;
           s.innerHTML = c.emoji ? `<span class="rich-callout-emoji">${esc(c.emoji)}</span>` : (opts.icons[CALLOUT_TYPES[c.type].icon] || '');
           return s;
         }, { side: -1, key: `ci:${pos}:${c.type}:${c.emoji}` }));
@@ -88,7 +88,8 @@ export const CalloutUI = Extension.create({
       const apply = (patch) => {
         const cur = view.state.doc.nodeAt(pos); const f = cur?.firstChild; if (!f) return closeMenu();
         const now = parseCallout(f.textContent.split('\n')[0]); if (!now) return closeMenu();
-        const marker = calloutMarker({ kind: patch.kind ?? now.kind, emoji: patch.emoji !== undefined ? patch.emoji : now.emoji, color: patch.color !== undefined ? patch.color : now.metaColor, fold: patch.fold ?? now.fold });
+        const rawKind = /^\[!([A-Za-z][\w-]*)/.exec(f.textContent)?.[1] || now.kind; // a colour or emoji edit keeps the type as written ([!TIP] stays [!TIP])
+        const marker = calloutMarker({ kind: patch.kind ?? rawKind, emoji: patch.emoji !== undefined ? patch.emoji : now.emoji, color: patch.color !== undefined ? patch.color : now.metaColor, fold: patch.fold ?? now.fold });
         const tail = /[ \t]+$/.exec(f.textContent.slice(0, now.markerLength))?.[0] || '';
         view.dispatch(view.state.tr.insertText(marker + tail, pos + 2, pos + 2 + now.markerLength));
         closeMenu(); view.focus();
@@ -132,6 +133,17 @@ export const CalloutUI = Extension.create({
             if (marker && editor.isEditable) { e.preventDefault(); openMenu(view, +marker.dataset.pos, marker); return true; }
             return false;
           },
+        },
+        /* from the keyboard: Alt+Enter with the caret in a callout opens the same menu as its icon */
+        handleKeyDown(view, e) {
+          if (e.key !== 'Enter' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !editor.isEditable) return false;
+          const $f = view.state.selection.$from;
+          for (let d = $f.depth; d > 0; d--) {
+            if ($f.node(d).type.name !== 'blockquote') continue;
+            const pos = $f.before(d); const icon = view.dom.querySelector(`.rich-callout-icon[data-pos="${pos}"]`); if (!icon) return false;
+            e.preventDefault(); openMenu(view, pos, icon); return true;
+          }
+          return false;
         },
       },
       view: () => ({ destroy: closeMenu }),

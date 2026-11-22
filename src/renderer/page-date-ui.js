@@ -68,8 +68,9 @@ export function openDatePicker(anchor, day, { onPick, onOpenNote } = {}) {
     pop.style.top = `${innerHeight - r.bottom - 8 >= h ? r.bottom + 6 : Math.max(8, r.top - h - 6)}px`;
   };
   place();
-  const pick = (k) => { close(); onPick?.(k); };
-  const close = () => { pop.remove(); document.removeEventListener('mousedown', outside, true); open = null; anchor.focus?.(); };
+  let closed = false;
+  const pick = (k) => { if (closed) return; close(); onPick?.(k); }; // a slow parse finishing after Esc does nothing
+  const close = () => { closed = true; pop.remove(); document.removeEventListener('mousedown', outside, true); open = null; anchor.focus?.(); };
   const outside = (e) => { if (!pop.contains(e.target)) close(); };
   document.addEventListener('mousedown', outside, true);
   open = { close };
@@ -92,14 +93,15 @@ export function openDatePicker(anchor, day, { onPick, onOpenNote } = {}) {
   pop.addEventListener('keydown', async (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return close(); }
     if (e.target === input) {
-      if (e.key === 'Enter') { e.preventDefault(); const k = await parseTyped(input.value, now, lang); if (k) pick(k); else hint.textContent = tr('date.not-a-date'); }
+      if (e.key === 'Enter') { e.preventDefault(); const k = await parseTyped(input.value, now, lang); if (closed) return; if (k) pick(k); else hint.textContent = tr('date.not-a-date'); }
       if (e.key === 'ArrowDown') { e.preventDefault(); draw(true); }
       return;
     }
     const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
     if (step || e.key === 'PageUp' || e.key === 'PageDown') {
       e.preventDefault();
-      focus = step ? new Date(focus.getFullYear(), focus.getMonth(), focus.getDate() + step, 12) : new Date(focus.getFullYear(), focus.getMonth() + (e.key === 'PageUp' ? -1 : 1), focus.getDate(), 12);
+      if (step) focus = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate() + step, 12);
+      else { const m = focus.getMonth() + (e.key === 'PageUp' ? -1 : 1); const last = new Date(focus.getFullYear(), m + 1, 0).getDate(); focus = new Date(focus.getFullYear(), m, Math.min(focus.getDate(), last), 12); } // 31 March → 28 February, not 3 March
       if (focus.getMonth() !== view.getMonth() || focus.getFullYear() !== view.getFullYear()) view = new Date(focus.getFullYear(), focus.getMonth(), 1, 12);
       draw(true);
     }

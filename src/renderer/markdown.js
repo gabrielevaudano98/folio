@@ -187,7 +187,7 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
     const t = state.push('html_inline', '', 0);
     const target = m[1].trim();
     const day = DAY.test(target) && !m[2];
-    t.content = `<a class="wikilink${DAY.test(target) ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim())}</a>`;
+    t.content = `<a class="wikilink${day ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim())}</a>`;
   }
   state.pos += m[0].length;
   return true;

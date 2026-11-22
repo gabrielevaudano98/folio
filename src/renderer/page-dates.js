@@ -7,7 +7,7 @@ const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?$/;
 /** "2026-11-23" or "2026-11-23 09:30" → a local Date (noon when there is no time), or null */
 export function parseDay(s) {
   const m = DAY_RE.exec(String(s).trim()); if (!m) return null;
-  const d = new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 12, m[5] ? +m[5] : 0);
+  const d = new Date(2000, 0, 1, m[4] ? +m[4] : 12, m[5] ? +m[5] : 0); d.setFullYear(+m[1], +m[2] - 1, +m[3]); // setFullYear: years 0-99 stay as written
   if (d.getFullYear() !== +m[1] || d.getMonth() !== +m[2] - 1 || d.getDate() !== +m[3]) return null;
   if (m[4] && (+m[4] > 23 || +m[5] > 59)) return null;
   return { date: d, time: !!m[4] };
