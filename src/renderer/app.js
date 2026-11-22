@@ -289,6 +289,7 @@ function fileUrlRel(src) {
   return a.startsWith(w + '/') ? abs.slice(ws.length + 1) : null;
 }
 function resolveImg(src) {
+  if (/^(data:|blob:)/i.test(src || '')) return Promise.resolve(src); // already the picture itself (presenter and embedded slides hand data-src straight here)
   if (isRemote(src)) return remoteImage(src);
   if (/^file:/i.test(src)) { const rel = fileUrlRel(src); return rel ? folio.absUrl(rel).catch(() => null) : Promise.resolve(null); }
   const t = activeTab(); if (!t) return Promise.resolve(null);

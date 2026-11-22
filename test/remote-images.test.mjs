@@ -27,19 +27,24 @@ console.log('\nremote images');
 {
   const w = workspace('remote-images', 47602);
   fs.writeFileSync(path.join(w.ws, 'Remote.md'), `# Remote\n\n![tracker](${base}/pixel.png)\n\n![inline](DATA:image/png;base64,${PNG.toString('base64')})\n`);
+  fs.writeFileSync(path.join(w.ws, 'Deck.slides.md'), `---\nmarp: true\ntheme: folio\n---\n\n# Picture\n\n![dot](data:image/png;base64,${PNG.toString('base64')})\n`);
+  fs.writeFileSync(path.join(w.ws, 'Embed.md'), '# Embed\n\n![[Deck.slides#1]]\n');
   const r = await runApp(w, [
     { size: [1300, 800], wait: 1200 },
     open('Remote.md'), preview,
     log("[!!document.querySelector('#preview .remote-bar'), document.querySelector('#preview img')?.hasAttribute('src'), !!document.querySelector('#preview img.remote-blocked'), (document.querySelector('#preview img[alt=\"inline\"]')?.getAttribute('src') || '').slice(0, 5)]", 300),
     step("document.querySelector('#preview .remote-bar button').click()", 1500),
     log("[!!document.querySelector('#preview img.remote-blocked'), document.querySelector('#preview img')?.getAttribute('src')]", 300),
-    edit,
+    open('Embed.md'), preview, { js: '1', wait: 800 },
+    log("(document.querySelector('#preview .ref-embed img[data-src]')?.getAttribute('src') || '').slice(0, 15)", 300),
+    open('Remote.md'), edit,
     log("[document.querySelectorAll('img[src^=\"http\"]').length, !!document.querySelector('.cm-live-img-missing, .rich-img-wrap img.remote-blocked')]", 300),
     errors,
   ]);
-  const [before, after, ed, errs] = r.js.slice(-4);
+  const [before, after, embed, ed, errs] = r.js.slice(-5);
   assert.deepEqual(before, [true, false, true, 'data:']); console.log('  ✓ opening a note shows a notice and loads no web image; an embedded picture still shows, whatever the case of its scheme');
   assert.deepEqual(after, [true, null]); console.log('  ✓ choosing to load goes through the main process, which refuses the local network');
+  assert.equal(embed, 'data:image/png;', 'a picture in a slide embedded in a page'); console.log('  ✓ a picture written into a slide shows when the slide is embedded in a page');
   assert.deepEqual(ed, [0, true]); console.log('  ✓ the editor view loads no web image either and shows a placeholder');
   assert.equal([...hits.values()].reduce((a, b) => a + b, 0), 0, `the page itself contacted the image server: ${JSON.stringify([...hits])}`); console.log('  ✓ the page never contacted the image server itself');
   assert.deepEqual(errs, [], JSON.stringify(errs));
