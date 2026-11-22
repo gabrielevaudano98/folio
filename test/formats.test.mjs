@@ -794,4 +794,12 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   ok('pasted tables: past 500 rows or 50 columns the paste stays text, and parsing stops early');
 }
 
+{
+  const { lazySrc } = await import('../src/renderer/slides-core.js');
+  const html = lazySrc('<p><img src="https://example.com/a.png" alt="web"> <img alt="disk" src="file:///etc/a.png"> <img class="x" src="pics/a.png"> <img src="a.png" srcset="https://example.com/b.png 2x"></p>');
+  assert.ok(!/<img\b[^>]*\ssrc="/.test(html) && !/srcset/.test(html), html);
+  assert.ok(html.includes('data-src="https://example.com/a.png"') && html.includes('data-src="file:///etc/a.png"') && html.includes('data-src="pics/a.png"'), html);
+  ok('slide text pictures keep their address in data-src, so the view checks it before anything is requested');
+}
+
 console.log(`\n${n} format checks passed`);

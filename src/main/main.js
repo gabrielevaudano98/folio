@@ -22,6 +22,7 @@ import { createFeatures } from './meeting/service.js';
 import { writeAtomic, writeAtomicSync } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
+if (process.env.FOLIO_FAKE_AUDIO_FILE) app.commandLine.appendSwitch('use-file-for-fake-audio-capture', process.env.FOLIO_FAKE_AUDIO_FILE); // tests: the fake microphone speaks this wav
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isMac = process.platform === 'darwin';
@@ -425,6 +426,18 @@ h('export:binary', async (rel, ext, bytes) => {
 });
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.aac': 'audio/aac', '.flac': 'audio/flac', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf' };
 const MAX_REMOTE = 30 * 1024 * 1024;
+const TEST_LOOPBACK = !app.isPackaged && process.env.FOLIO_TEST_LOOPBACK === '1'; // tests only: lets the allowed path be checked against a local server; never in a packaged app
+async function readCapped(res, max) {
+  const reader = res.body?.getReader(); if (!reader) return Buffer.alloc(0);
+  const parts = []; let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    size += value.byteLength;
+    if (size > max) { await reader.cancel().catch(() => {}); throw new Error('That file is too large to embed.'); }
+    parts.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+  }
+  return Buffer.concat(parts, size);
+}
 h('fs:data-url', async (src, noteRel) => {
   if (/^data:/.test(src)) return src;
   if (/^https?:\/\//i.test(src)) {
@@ -434,7 +447,8 @@ h('fs:data-url', async (src, noteRel) => {
     let url = src, res; const signal = AbortSignal.timeout(20000); // one deadline for the whole download, redirects included
     for (let hop = 0; ; hop++) {
       if (hop > 5) throw new Error('Too many redirects.');
-      await assertPublicHost(new URL(url).hostname);
+      const host = new URL(url).hostname;
+      if (!(TEST_LOOPBACK && host === '127.0.0.1')) await assertPublicHost(host);
       res = await net.fetch(url, { redirect: 'manual', signal });
       const next = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
       if (!next) break;
@@ -444,8 +458,7 @@ h('fs:data-url', async (src, noteRel) => {
     const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (!/^(image|audio|video|font)\//.test(type)) throw new Error('That address is not an image or media file.');
     if (Number(res.headers.get('content-length')) > MAX_REMOTE) throw new Error('That file is too large to embed.');
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > MAX_REMOTE) throw new Error('That file is too large to embed.');
+    const buf = await readCapped(res, MAX_REMOTE); // read in pieces: a server that sends no length cannot make Folio hold more than the limit
     return `data:${type};base64,${buf.toString('base64')}`;
   }
   // local files: only inside the open folder, and only media types, so a note cannot pull in files like ~/.ssh/id_rsa
