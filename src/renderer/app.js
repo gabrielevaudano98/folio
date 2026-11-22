@@ -11,6 +11,8 @@ import { portableMarkdown } from './page-syntax.js';
 import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
+import { openDatePicker } from './page-date-ui.js';
+import { DATE_STYLES, formatDay, datePrefs } from './page-dates.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { docInfo, infoRows } from './page-info.js';
@@ -126,7 +128,7 @@ async function boot() {
   const init = await folio.init();
   { const before = locale(); setLocale(init.settings.language); if (locale() !== before) { location.reload(); return; } } // menus and tables are built at load: start again in the new language
   localizeCommands();
-  S.platform = init.platform; S.settings = init.settings; S.mcp = init.mcp; S.version = init.version;
+  S.platform = init.platform; S.settings = init.settings; datePrefs.style = init.settings.dateStyle || 'relative'; datePrefs.lang = locale(); S.mcp = init.mcp; S.version = init.version;
   folio.userName().then((n) => { S.userName = n || ''; }).catch(() => {});
   document.documentElement.dataset.platform = init.platform;
   if (init.platform === 'darwin') document.documentElement.classList.add('vibrant');
@@ -172,6 +174,8 @@ async function boot() {
     onPropType: (k, t) => folio.setPropType(k, t).then(setTypeOverrides).catch(() => {}),
     onStatus: (el, cur, apply) => showMenu(el, statusOptions(activeTab()?.text).map((v) => ({ label: (v.toLowerCase() === cur.toLowerCase() ? '✓ ' : '') + v, run: () => apply(v) }))),
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
+    onDate: (el, day, apply, openNote) => openDatePicker(el, day, { onPick: apply, onOpenNote: openNote }),
+    dateStyle: () => datePrefs.style,
     preview: previewHtml,
     saveImage: async (src) => {
       const t = activeTab(); if (!t) return null;
@@ -192,6 +196,10 @@ async function boot() {
     catch (er) { toast(tr('app.could-not-save-the-image-message', { message: er.message }), { kind: 'error' }); }
   }, true);
   $('.rich-scroll').addEventListener('scroll', () => { if (isRich()) markOutlineCurrent(); }, { passive: true });
+  /* quiet chrome while writing (Notion, iA Writer): typing fades the ribbon and the side panels; the pointer brings them back */
+  let lastXY = null;
+  $('#pane-rich').addEventListener('keydown', (e) => { if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace') && e.target.closest?.('.rich-prose')) app.classList.add('is-typing'); });
+  document.addEventListener('mousemove', (e) => { if (!app.classList.contains('is-typing')) return; const d = lastXY ? Math.abs(e.clientX - lastXY[0]) + Math.abs(e.clientY - lastXY[1]) : 0; lastXY = [e.clientX, e.clientY]; if (d > 6) { app.classList.remove('is-typing'); lastXY = null; } }, { passive: true });
 
   initHistory();
   bindChrome();
@@ -756,6 +764,8 @@ function mentionCtx() {
     tags: tagIndex,
     statuses: statusOptions(activeTab()?.text),
     createDoc: createDocHere,
+    lang: () => locale(),
+    dayLabel: (d) => formatDay(d, { style: 'relative', lang: locale() }),
   };
 }
 /* a day link ([[2026-11-21]]) opens that daily note in Journal/, made on first use */
@@ -1594,6 +1604,8 @@ function openSettings() {
           <select class="select" id="set-size" data-setting="fontSize">${[14, 15, 16, 17, 18, 20, 22].map((n) => `<option value="${n}">${n} pt</option>`).join('')}</select></div>
         <div class="row"><div class="row-main"><label class="row-title" for="set-width">${tr('app.line-length')}</label><span class="row-sub">${tr('app.characters-per-line')}</span></div>
           <select class="select" id="set-width" data-setting="lineWidth">${[60, 66, 72, 80, 96, 120].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></div>
+        <div class="row"><div class="row-main"><label class="row-title" for="set-date">${esc(tr('date.setting'))}</label><span class="row-sub">${esc(tr('date.setting-hint'))}</span></div>
+          <select class="select" id="set-date" data-setting="dateStyle">${DATE_STYLES.map((k) => `<option value="${k}">${esc({ relative: tr('date.style-relative'), full: tr('date.style-full'), short: tr('date.style-short'), dmy: tr('date.style-dmy'), mdy: tr('date.style-mdy'), iso: tr('date.style-iso') }[k])} · ${esc(formatDay(todayKey(), { style: k, lang: locale() }))}</option>`).join('')}</select></div>
       </div></section>
       <section class="group"><h3>${tr('app.writing')}</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.load-remote-images-always')}</span><span class="row-sub">${tr('app.load-remote-images-always-help')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="remoteImages" ${s.remoteImages ? 'checked' : ''} aria-label="${tr('app.load-remote-images-always')}"></label></div>
@@ -1610,7 +1622,7 @@ function openSettings() {
           <input class="input" id="set-port" type="text" inputmode="numeric" name="port" autocomplete="off" value="${s.mcpPort}" style="width:7rem" aria-describedby="port-help"></div>
       </div></section>
     </div>`;
-  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth;
+  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth; $('#set-date', d).value = s.dateStyle || 'relative';
   if (!d.open) d.showModal();
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
   meeting().then((m) => m.renderSettings($('#set-features', d))).catch((e) => toast(e.message, { kind: 'error' }));
@@ -2408,6 +2420,7 @@ function bindChrome() {
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
     if (k === 'spellcheck') editor.setSpellcheck(v);
     if (k === 'remoteImages') renderPreview();
+    if (k === 'dateStyle') { datePrefs.style = v; rich.refreshDecorations?.(); renderPreview(); }
     if (k === 'language') { setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });

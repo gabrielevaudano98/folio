@@ -133,7 +133,7 @@ const steps = [
   { js: drag('First paragraph.', 'Last paragraph.'), log: true, wait: 2500 },
   // D4: structure
   { js: "document.querySelector('[data-file=\"pages/d4.md\"]').click()", wait: 1200 },
-  { js: "(() => { const m = [...document.querySelectorAll('.rich-callout-marker')].find((x) => x.dataset.label === 'Success'); m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return !!document.querySelector('.callout-menu'); })()", log: true, wait: 300 },
+  { js: "(() => { const m = document.querySelector('.rich-callout.callout-success .rich-callout-icon'); m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return !!document.querySelector('.callout-menu'); })()", log: true, wait: 300 },
   { js: "document.querySelector('.callout-menu [data-kind=warning]').click(); true", wait: 300 },
   { js: "(() => { const n = document.querySelectorAll('.rich-callout.is-folded').length; document.querySelector('.rich-callout-fold[aria-expanded=false]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return n + ':' + document.querySelectorAll('.rich-callout.is-folded').length; })()", log: true, wait: 300 },
   { js: "(() => { const h = [...document.querySelectorAll('.rich-prose h2')].find((x) => x.textContent.includes('Appendix')); h.querySelector('.rich-hfold').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return [...document.querySelectorAll('.rich-prose > p')].filter((p) => p.textContent === 'Last paragraph.' && p.classList.contains('rich-fold-hidden')).length; })()", log: true, wait: 300 },

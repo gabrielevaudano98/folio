@@ -31,7 +31,7 @@ child.on('exit', () => {
   assert.equal(logs.length, 3, out.slice(-1500));
   const [menu, chip, errors] = logs; assert.deepEqual(errors, []);
   assert.deepEqual(menu.map((m) => m.replace('✓ ', '')), ['Idea', 'Design', 'Shipped']); assert(menu[0].startsWith('✓'));
-  assert.equal(chip, '[status:: Shipped]');
+  assert.equal(chip, 'Shipped'); // the chip reads as its value; the file keeps the field (checked below)
   assert.equal(fs.readFileSync(path.join(pages, 'a.md'), 'utf8'), original.replace('[status:: Idea]', '[status:: Shipped]'));
   console.log('  ✓ clicking a status chip offers the words of the page’s front matter; the choice rewrites only that field');
 });

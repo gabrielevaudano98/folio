@@ -1,6 +1,7 @@
 // Folio — Markdown to safe HTML, with source-line anchors for scroll sync and AI-edit marks.
 import MarkdownIt from 'markdown-it';
 import { FIELD, statusClass, DAY } from './page-mentions.js';
+import { formatDay, fullDay, datePrefs } from './page-dates.js';
 import { parseButton } from './page-templates.js';
 import { parseComment } from './page-critic.js';
 import { refsPlugin } from './refs-syntax.js';
@@ -72,15 +73,17 @@ md.core.ruler.after('block', 'callouts', (state) => {
     if (inline.children) { const k = inline.children.findIndex((t) => t.type === 'softbreak' || t.type === 'hardbreak'); inline.children = k >= 0 ? inline.children.slice(k + 1) : []; }
     if (!inline.content.trim()) { tk[i + 1].hidden = true; tk[i + 3].hidden = true; }
     const icon = c.emoji ? `<span class="callout-emoji" aria-hidden="true">${escape(c.emoji)}</span>` : (icons[CALLOUT_TYPES[c.type].icon] || '');
-    const head = `${icon}<span>${escape(c.title || c.label)}</span>`;
-    const cls = `callout callout-${c.type} callout-c-${c.color}`;
+    // Notion: an untitled callout shows only its icon, beside the text; the type's name stays for screen readers
+    const iconOnly = !c.title && !c.fold;
+    const head = iconOnly ? `${icon}<span class="visually-hidden">${escape(c.label)}</span>` : `${icon}<span>${escape(c.title || c.label)}</span>`;
+    const cls = `callout callout-${c.type} callout-c-${c.color}${iconOnly ? ' callout-iconic' : ''}`;
     const html = (content) => { const t = new state.Token('html_block', '', 0); t.content = content; return t; };
     if (c.fold) {
       tk[j] = html('</details>\n');
       tk[i] = html(`<details class="${cls}"${c.fold === '+' ? ' open' : ''}><summary class="callout-title">${head}</summary>\n`);
     } else {
       tk[i].attrJoin('class', cls);
-      tk.splice(i + 1, 0, html(`<div class="callout-title">${head}</div>`));
+      tk.splice(i + 1, 0, html(`<div class="callout-title${iconOnly ? ' callout-icon-only' : ''}">${head}</div>`));
     }
   }
 });
@@ -174,7 +177,8 @@ md.core.ruler.after('inline', 'folio_align', (state) => {
   }
 });
 
-// [[Wiki links]] and [[Note|label]]
+// [[Wiki links]] and [[Note|label]]: a link reads as its label, else the page's name ("Plan › Goals"), never the path
+const linkText = (target) => { const [doc, part] = target.split('#'); const name = doc.trim().split('/').pop().replace(/\.(md|markdown|mdx|txt)$/i, ''); return part && !part.startsWith('^') ? (name ? `${name} › ${part.trim()}` : part.trim()) : name || target; };
 md.inline.ruler.before('link', 'wikilink', (state, silent) => {
   const src = state.src.slice(state.pos);
   const m = src.match(/^\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/);
@@ -182,7 +186,8 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
   if (!silent) {
     const t = state.push('html_inline', '', 0);
     const target = m[1].trim();
-    t.content = `<a class="wikilink${DAY.test(target) ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}">${escape((m[2] || target).trim())}</a>`;
+    const day = DAY.test(target) && !m[2];
+    t.content = `<a class="wikilink${DAY.test(target) ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim())}</a>`;
   }
   state.pos += m[0].length;
   return true;

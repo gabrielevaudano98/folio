@@ -6,6 +6,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { parseCallout, calloutMarker, CALLOUT_TYPES } from './callouts.js';
 import { Toc, Breadcrumb, PageBreak } from './page-syntax.js';
+import { openEmojiPicker } from './page-icon.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -37,14 +38,19 @@ export const CalloutUI = Extension.create({
         const folded = c.fold === '-' ? !toggled.has(pos) : c.fold === '+' ? toggled.has(pos) : false;
         deco.push(Decoration.node(pos, pos + n.nodeSize, { class: `rich-callout callout-${c.type} callout-c-${c.color}${folded ? ' is-folded' : ''}`, 'data-fold': c.fold || '' }));
         const start = pos + 2;
-        deco.push(Decoration.inline(start, start + c.markerLength, { class: 'rich-callout-marker', 'data-label': c.type === 'callout' && c.emoji ? '' : c.label, 'data-pos': String(pos), role: 'button', 'aria-label': `${c.label} callout. Click to change the type`, title: tr('pui.change-the-callout-type') }));
+        /* Notion: only the icon, beside the text. The type's name is not written on the page (it stays in the
+           marker, for screen readers and the menu); a title the author wrote is shown. */
+        deco.push(Decoration.inline(start, start + c.markerLength, { class: 'rich-callout-marker', 'data-label': '', 'data-pos': String(pos), 'aria-label': `${c.label} callout` }));
         deco.push(Decoration.widget(start, () => {
-          const s = document.createElement('span'); s.className = 'rich-callout-icon'; s.contentEditable = 'false'; s.setAttribute('aria-hidden', 'true');
-          s.innerHTML = c.emoji ? esc(c.emoji) : (opts.icons[CALLOUT_TYPES[c.type].icon] || '');
+          const s = document.createElement('span'); s.className = 'rich-callout-icon'; s.contentEditable = 'false';
+          s.dataset.pos = String(pos); s.setAttribute('role', 'button'); s.setAttribute('aria-label', `${c.label}. ${tr('pui.change-the-callout-type')}`); s.title = `${c.label} · ${tr('pui.change-the-callout-type')}`;
+          s.innerHTML = c.emoji ? `<span class="rich-callout-emoji">${esc(c.emoji)}</span>` : (opts.icons[CALLOUT_TYPES[c.type].icon] || '');
           return s;
         }, { side: -1, key: `ci:${pos}:${c.type}:${c.emoji}` }));
         const lineEnd = firstLineEnd(first);
         if (c.title) deco.push(Decoration.inline(start + c.markerLength, lineEnd >= 0 ? start + lineEnd : start + first.content.size, { class: 'rich-callout-title' }));
+        /* no title: the line break after the marker is not drawn, so the text starts beside the icon */
+        else if (lineEnd >= 0 && !folded && first.textBetween(c.markerLength, lineEnd, '', '').trim() === '') deco.push(Decoration.inline(start + lineEnd, start + lineEnd + 1, { class: 'rich-callout-joint' }));
         if (c.fold) {
           deco.push(Decoration.widget(start, () => {
             const b = document.createElement('button'); b.type = 'button'; b.className = 'rich-callout-fold'; b.contentEditable = 'false';
@@ -70,7 +76,10 @@ export const CalloutUI = Extension.create({
       menu = document.createElement('div'); menu.className = 'block-menu callout-menu'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', tl('pui', 'Callout'));
       const types = Object.entries(CALLOUT_TYPES).map(([k, t]) => `<button type="button" role="menuitemradio" aria-checked="${k === c.type}" class="block-mi block-turn callout-c-${t.color}" data-kind="${k}"><span class="block-mi-ic callout-ic" aria-hidden="true">${opts.icons[t.icon] || ''}</span>${t.label}</button>`).join('');
       const folds = [['', tl('pui', 'Not foldable')], ['+', tl('pui', 'Foldable, open')], ['-', 'Folded']].map(([f, l]) => `<button type="button" role="menuitemradio" aria-checked="${c.fold === f}" class="block-mi" data-fold="${f}"><span>${l}</span></button>`).join('');
-      menu.innerHTML = `<div class="block-mh">${tr('pui.type')}</div><div class="block-turns" role="group" aria-label="${tr('pui.type')}">${types}</div><div class="block-sep" role="separator"></div><div class="block-mh">${tr('pui.fold')}</div>${folds}`;
+      const PAL = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
+      const swatches = `<div class="callout-swatches" role="group" aria-label="${tr('icon.colour')}"><button type="button" class="callout-sw is-default" data-color="" aria-pressed="${!c.metaColor}" aria-label="${tr('icon.colour-default')}"></button>${PAL.map((k) => `<button type="button" class="callout-sw callout-c-${k}" data-color="${k}" aria-pressed="${c.metaColor === k}" aria-label="${k}"></button>`).join('')}</div>`;
+      const emo = `<button type="button" class="block-mi" data-emoji="pick"><span class="block-mi-ic" aria-hidden="true">${c.emoji ? esc(c.emoji) : (opts.icons.smile || '')}</span><span>${tr('icon.emoji')}</span></button>${c.emoji ? `<button type="button" class="block-mi" data-emoji="none"><span class="block-mi-ic" aria-hidden="true"></span><span>${tr('icon.use-type-icon')}</span></button>` : ''}`;
+      menu.innerHTML = `<div class="block-mh">${tr('pui.type')}</div><div class="block-turns" role="group" aria-label="${tr('pui.type')}">${types}</div><div class="block-sep" role="separator"></div>${emo}<div class="block-mh">${tr('icon.colour')}</div>${swatches}<div class="block-sep" role="separator"></div><div class="block-mh">${tr('pui.fold')}</div>${folds}`;
       document.body.append(menu);
       const r = anchor.getBoundingClientRect();
       menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8))}px`;
@@ -79,13 +88,20 @@ export const CalloutUI = Extension.create({
       const apply = (patch) => {
         const cur = view.state.doc.nodeAt(pos); const f = cur?.firstChild; if (!f) return closeMenu();
         const now = parseCallout(f.textContent.split('\n')[0]); if (!now) return closeMenu();
-        const marker = calloutMarker({ kind: patch.kind ?? now.kind, emoji: now.emoji, color: now.metaColor, fold: patch.fold ?? now.fold });
+        const marker = calloutMarker({ kind: patch.kind ?? now.kind, emoji: patch.emoji !== undefined ? patch.emoji : now.emoji, color: patch.color !== undefined ? patch.color : now.metaColor, fold: patch.fold ?? now.fold });
         const tail = /[ \t]+$/.exec(f.textContent.slice(0, now.markerLength))?.[0] || '';
         view.dispatch(view.state.tr.insertText(marker + tail, pos + 2, pos + 2 + now.markerLength));
         closeMenu(); view.focus();
       };
       menu.addEventListener('mousedown', (e) => e.preventDefault());
-      menu.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.kind) apply({ kind: b.dataset.kind }); else apply({ fold: b.dataset.fold }); });
+      menu.addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.kind) return apply({ kind: b.dataset.kind });
+        if (b.dataset.color != null) return apply({ color: b.dataset.color || null });
+        if (b.dataset.emoji === 'none') return apply({ emoji: null });
+        if (b.dataset.emoji === 'pick') { const at = anchor; closeMenu(); openEmojiPicker(at, { onPick: (em) => apply({ emoji: em }) }); return; }
+        apply({ fold: b.dataset.fold });
+      });
       menu.addEventListener('keydown', (e) => {
         const all = [...menu.querySelectorAll('button')]; const i = all.indexOf(document.activeElement);
         if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); closeMenu(); view.focus(); }
@@ -112,7 +128,7 @@ export const CalloutUI = Extension.create({
           mousedown(view, e) {
             const fold = e.target.closest?.('.rich-callout-fold');
             if (fold) { e.preventDefault(); view.dispatch(view.state.tr.setMeta(CALLOUTS, +fold.dataset.pos)); return true; }
-            const marker = e.target.closest?.('.rich-callout-marker');
+            const marker = e.target.closest?.('.rich-callout-icon, .rich-callout-marker');
             if (marker && editor.isEditable) { e.preventDefault(); openMenu(view, +marker.dataset.pos, marker); return true; }
             return false;
           },

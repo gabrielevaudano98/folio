@@ -3,6 +3,9 @@
 import { t as tr, tl } from './i18n.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, TYPES } from './page-props.js';
 import { popupMenu } from './page-table.js';
+import { openEmojiPicker } from './page-icon.js';
+/* the page icon (Notion): front matter `icon:`, drawn above the title, not listed with the properties */
+const ICON_KEY = 'icon';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TYPE_LABEL = { text: tr('props.text'), number: 'Number', checkbox: 'Checkbox', date: 'Date', datetime: tl('props', 'Date and time'), list: 'List', tags: 'Tags', link: tl('props', 'Link to a page'), object: tl('props', 'Nested (edit in source)') };
@@ -42,9 +45,13 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   };
 
   function render() {
-    const p = parseProps(get());
+    const all = parseProps(get()); const iconProp = all.props.find((x) => x.key === ICON_KEY && typeof x.value === 'string' && x.value.trim());
+    const p = { ...all, props: all.props.filter((x) => x !== iconProp) };
     box.classList.toggle('is-empty', !p.props.length && !adding);
-    box.innerHTML = `${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
+    box.classList.toggle('has-icon', !!iconProp);
+    box.innerHTML = `${iconProp ? `<button type="button" class="page-icon" aria-label="${esc(tr('icon.change'))}" title="${esc(tr('icon.change'))}">${esc(iconProp.value.trim())}</button>` : ''}
+      <div class="page-head-actions">${iconProp ? '' : `<button type="button" class="props-icon-add">${ic('smile') || ic('plus')}<span>${esc(tr('icon.add'))}</span></button>`}</div>
+      ${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
       <div class="props-rows"${open ? '' : ' hidden'}>${p.props.map((x) => `<div class="prop-row" data-key="${esc(x.key)}" data-type="${x.type}">
         <button type="button" class="prop-key" aria-haspopup="menu" aria-label="${esc(x.key)}: ${TYPE_LABEL[x.type]}. Change type, rename or remove" data-tip="${TYPE_LABEL[x.type]}">${ic(TYPE_ICON[x.type])}<span>${esc(x.key)}</span></button>
         <div class="prop-value">${valueHtml(x)}</div></div>`).join('')}
@@ -76,6 +83,8 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   box.addEventListener('click', (e) => {
     if (e.target.closest('.props-head')) { open = !open; render(); return; }
+    const pi = e.target.closest('.page-icon, .props-icon-add');
+    if (pi) { const had = !!e.target.closest('.page-icon'); openEmojiPicker(pi, { onPick: (em) => commit((t) => setProp(t, ICON_KEY, em, 'text')), onRemove: had ? () => commit((t) => removeProp(t, ICON_KEY)) : null }); return; }
     if (e.target.closest('.props-add')) { open = true; adding = newKey(get()); render(); return; }
     const rm = e.target.closest('[data-remove]');
     if (rm) { const key = keyOf(rm); const p = propOf(key); const list = p.value.filter((_, i) => i !== +rm.dataset.remove); commit((t) => setProp(t, key, list, p.type)); return; }
@@ -134,5 +143,5 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   }
 
   render();
-  return { render, add() { open = true; adding = newKey(get()); render(); }, el: box };
+  return { render, pickIcon() { const b = box.querySelector('.page-icon, .props-icon-add'); if (b) b.click(); }, add() { open = true; adding = newKey(get()); render(); }, el: box };
 }
