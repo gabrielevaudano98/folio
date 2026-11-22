@@ -43,6 +43,8 @@ const md = new MarkdownIt({
   },
 }).use(taskLists).use(mark).use(katex.default || katex, { throwOnError: false });
 md.use(refsPlugin, { escape });
+// URI schemes are case-insensitive: DATA:/HTTPS: become data:/https:, so the sanitizer and the image checks see one spelling
+{ const base = md.normalizeLink.bind(md); md.normalizeLink = (url) => base(url.replace(/^([a-z][a-z0-9+.-]+):/i, (m) => m.toLowerCase())); }
 for (const name of ['left', 'right', 'columns', 'column', 'card', 'center', 'note', 'small', 'big', 'box', 'shape']) {
   md.use(container.default || container, name, { render: (t, i) => (t[i].nesting === 1 ? `<div class="sx-${name}">\n` : '</div>\n') });
 }

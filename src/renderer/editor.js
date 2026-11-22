@@ -76,7 +76,7 @@ class ImageWidget extends WidgetType {
   toDOM() {
     const img = document.createElement('img'); img.className = 'cm-live-img'; img.alt = this.alt; img.decoding = 'async';
     img.onerror = () => { const s = document.createElement('span'); s.className = 'cm-live-img-missing'; s.textContent = /^https?:/i.test(this.src) ? `Remote image not loaded: ${this.alt || this.src}` : `Image not found: ${this.alt || this.src}`; img.replaceWith(s); };
-    if (/^(data:|blob:)/.test(this.src)) img.src = this.src;
+    if (/^(data:|blob:)/i.test(this.src)) img.src = this.src;
     else Promise.resolve(this.resolve?.(this.src)).then((u) => { if (u) img.src = u; else img.onerror(); });
     return img;
   }

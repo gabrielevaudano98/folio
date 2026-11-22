@@ -36,6 +36,9 @@ const md = new MarkdownIt({
   .use(anchor, { slugify, tabIndex: false })
   .use(katex.default || katex, { throwOnError: false });
 
+// URI schemes are case-insensitive: DATA:/HTTPS: become data:/https:, so the sanitizer and the image checks see one spelling
+{ const base = md.normalizeLink.bind(md); md.normalizeLink = (url) => base(url.replace(/^([a-z][a-z0-9+.-]+):/i, (m) => m.toLowerCase())); }
+
 // source line on every block opener -> scroll sync, AI marks, task toggles
 for (const rule of ['paragraph_open', 'heading_open', 'blockquote_open', 'bullet_list_open', 'ordered_list_open', 'list_item_open', 'table_open', 'hr', 'tr_open']) {
   const prev = md.renderer.rules[rule];

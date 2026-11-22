@@ -127,7 +127,7 @@ export function gradientPng(css, w, h, radius = 0) {
 async function canvasData(img) {
   // a picture that is already on the page, as a data URL the presentation can embed
   const src = img.currentSrc || img.src || '';
-  if (src.startsWith('data:')) return src;
+  if (/^data:/i.test(src)) return src;
   try { await img.decode(); } catch {}
   const cv = document.createElement('canvas'); cv.width = img.naturalWidth || 1; cv.height = img.naturalHeight || 1;
   cv.getContext('2d').drawImage(img, 0, 0); return cv.toDataURL('image/png');

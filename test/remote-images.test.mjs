@@ -26,11 +26,11 @@ console.log('\nremote images');
 // 1. nothing allowed: the page never calls out, and the main process refuses the local network
 {
   const w = workspace('remote-images', 47602);
-  fs.writeFileSync(path.join(w.ws, 'Remote.md'), `# Remote\n\n![tracker](${base}/pixel.png)\n`);
+  fs.writeFileSync(path.join(w.ws, 'Remote.md'), `# Remote\n\n![tracker](${base}/pixel.png)\n\n![inline](DATA:image/png;base64,${PNG.toString('base64')})\n`);
   const r = await runApp(w, [
     { size: [1300, 800], wait: 1200 },
     open('Remote.md'), preview,
-    log("[!!document.querySelector('#preview .remote-bar'), document.querySelector('#preview img')?.hasAttribute('src'), !!document.querySelector('#preview img.remote-blocked')]", 300),
+    log("[!!document.querySelector('#preview .remote-bar'), document.querySelector('#preview img')?.hasAttribute('src'), !!document.querySelector('#preview img.remote-blocked'), (document.querySelector('#preview img[alt=\"inline\"]')?.getAttribute('src') || '').slice(0, 5)]", 300),
     step("document.querySelector('#preview .remote-bar button').click()", 1500),
     log("[!!document.querySelector('#preview img.remote-blocked'), document.querySelector('#preview img')?.getAttribute('src')]", 300),
     edit,
@@ -38,7 +38,7 @@ console.log('\nremote images');
     errors,
   ]);
   const [before, after, ed, errs] = r.js.slice(-4);
-  assert.deepEqual(before, [true, false, true]); console.log('  ✓ opening a note shows a notice and loads no web image');
+  assert.deepEqual(before, [true, false, true, 'data:']); console.log('  ✓ opening a note shows a notice and loads no web image; an embedded picture still shows, whatever the case of its scheme');
   assert.deepEqual(after, [true, null]); console.log('  ✓ choosing to load goes through the main process, which refuses the local network');
   assert.deepEqual(ed, [0, true]); console.log('  ✓ the editor view loads no web image either and shows a placeholder');
   assert.equal([...hits.values()].reduce((a, b) => a + b, 0), 0, `the page itself contacted the image server: ${JSON.stringify([...hits])}`); console.log('  ✓ the page never contacted the image server itself');
@@ -56,7 +56,7 @@ console.log('\nremote images');
     step("document.querySelector('#preview .remote-bar button').click()", 4000),
     log("[...document.querySelectorAll('#preview img')].map((i) => [(i.getAttribute('src') || '').slice(0, 15), i.classList.contains('remote-blocked')])", 300),
     open('Edit.md'), edit,
-    log("[!!document.querySelector('#remote-edit-bar'), document.querySelector('.rich-img-wrap img')?.hasAttribute('src')]", 300),
+    log("[!!document.querySelector('#remote-edit-bar'), document.querySelector('.rich-img-wrap img')?.hasAttribute('src'), !document.querySelector('#remote-edit-bar')?.closest('.rich-main'), document.querySelector('#remote-edit-bar')?.nextElementSibling?.matches('.rich-main, .rich-scroll')]", 300),
     step("document.querySelector('#remote-edit-bar button').click()", 2000),
     log("[!!document.querySelector('#remote-edit-bar'), (document.querySelector('.rich-img-wrap img')?.getAttribute('src') || '').slice(0, 15)]", 300),
     errors,
@@ -64,7 +64,7 @@ console.log('\nremote images');
   const [imgs, editBefore, editAfter, errs] = r.js.slice(-4);
   assert.deepEqual(imgs, [['data:image/png;', false], ['data:image/png;', false], ['', true]], JSON.stringify(imgs)); console.log('  ✓ allowed images arrive as data: URLs; one that streams past 30 MB without a length is refused');
   assert.equal(hit('/pixel.png'), 1, JSON.stringify([...hits])); console.log('  ✓ the same address shown twice is downloaded once');
-  assert.deepEqual(editBefore, [true, false]); console.log('  ✓ the visual editor shows the same notice and holds the image back');
+  assert.deepEqual(editBefore, [true, false, true, true]); console.log('  ✓ the visual editor shows the same notice above the editor column (not beside it) and holds the image back');
   assert.deepEqual(editAfter, [false, 'data:image/png;']); console.log('  ✓ allowing from the editor loads its images without reopening the note');
   assert.equal(hit('/edit.png'), 1, JSON.stringify([...hits]));
   assert.deepEqual(errs, [], JSON.stringify(errs));

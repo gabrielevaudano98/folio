@@ -427,7 +427,7 @@ const FolioImage = PageImage.extend({
       // every address goes through the app's resolver (workspace boundary, web-image consent); a web image or media it holds back registers a retry
       let retry = null, gone = false; const isWeb = (src) => /^https?:\/\//i.test(src);
       const setSrc = (el, src, miss) => {
-        if (/^(data:|blob:)/.test(src)) { el.src = src; return; }
+        if (/^(data:|blob:)/i.test(src)) { el.src = src; return; }
         let r; try { r = opts.resolve?.(src); } catch { r = null; }
         Promise.resolve(r).then((u) => {
           if (gone) return; // the view was destroyed while the address was being checked

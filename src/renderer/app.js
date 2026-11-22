@@ -176,7 +176,7 @@ async function boot() {
     preview: previewHtml,
     saveImage: async (src) => {
       const t = activeTab(); if (!t) return null;
-      let data = src; if (!/^data:/.test(src)) data = await folio.dataUrl(src, t.path);
+      let data = src; if (!/^data:/i.test(src)) data = await folio.dataUrl(src, t.path);
       const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(data); if (!m) return null;
       const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return folio.saveImage(t.path, `pasted.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
@@ -307,8 +307,11 @@ function renderRemoteNotice() {
     bar = document.createElement('div'); bar.id = 'remote-edit-bar'; bar.className = 'remote-bar remote-bar-edit'; bar.setAttribute('role', 'status');
     bar.innerHTML = '<span></span><button type="button" class="btn"></button>';
     bar.querySelector('button').onclick = () => allowRemote(activeTab()?.path);
-    const scroll = $('#pane-rich .rich-scroll'); if (!scroll) return; scroll.parentElement.insertBefore(bar, scroll);
   }
+  // above the editor column: with the review pane open the scroller sits in a row (.rich-main), and the notice must not become a side column
+  const scroll = $('#pane-rich .rich-scroll'); if (!scroll) return;
+  const anchor = scroll.closest('.rich-main') || scroll;
+  if (bar.nextElementSibling !== anchor) anchor.parentElement.insertBefore(bar, anchor);
   bar.querySelector('span').textContent = tr('app.remote-images-blocked', { n: remoteBlockedCount });
   bar.querySelector('button').textContent = tr('app.load-remote-images');
 }
@@ -583,7 +586,7 @@ async function renderPreview() {
   for (const el of tpl.content.querySelectorAll('[srcset]')) el.removeAttribute('srcset'); // a candidate list cannot be checked address by address
   for (const img of tpl.content.querySelectorAll('img')) {
     const src = img.getAttribute('src') || '';
-    if (src && !/^(data:|blob:)/.test(src)) {
+    if (src && !/^(data:|blob:)/i.test(src)) {
       img.removeAttribute('src');
       if (isRemote(src)) {
         img.dataset.remoteSrc = src;
@@ -595,7 +598,7 @@ async function renderPreview() {
   }
   for (const m of tpl.content.querySelectorAll('video[data-src], audio[data-src]')) {
     const src = m.dataset.src;
-    if (/^(data:|blob:)/.test(src)) m.src = src;
+    if (/^(data:|blob:)/i.test(src)) m.src = src;
     else if (isRemote(src) && !remoteAllowed(t)) blocked.push(m);
     else resolveImg(src).then((u) => { if (u) m.src = u; });
   }
