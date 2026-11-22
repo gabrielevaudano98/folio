@@ -176,10 +176,10 @@ async function boot() {
     preview: previewHtml,
     saveImage: async (src) => {
       const t = activeTab(); if (!t) return null;
-      let data = src; if (!/^data:/i.test(src)) data = await folio.dataUrl(src, t.path);
-      const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(data); if (!m) return null;
+      const data = /^data:/i.test(src) ? src : await folio.dataUrl(src, t.path);
+      const m = /^data:image\/([\w+.-]+);base64,(.*)$/is.exec(data || ''); if (!m) return null; // any case: DATA:IMAGE/PNG is the same picture
       const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      return folio.saveImage(t.path, `pasted.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
+      return folio.saveImage(t.path, `pasted.${m[1].toLowerCase().replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
     },
     onError: (e) => toast(tr('app.paste-failed-message', { message: e.message }), { kind: 'error' }),
     onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(tr('app.copied-t-paste-it-anywhere-to-link-to', { t })); },
@@ -1984,7 +1984,7 @@ async function importDocument() {
     const rel = `${r.name}.md`; let md = markdown;
     const target = await folio.create(rel, `# ${r.name}\n\n`).catch(() => null);
     if (!target) return toast(tr('app.could-not-create-the-page'), { kind: 'error' });
-    for (const src of images) { try { const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(src); if (!m) continue; const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); const saved = await folio.saveImage(target, `image.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes); md = md.split(src).join(encodeURI(saved)); } catch {} }
+    for (const src of images) { try { const m = /^data:image\/([\w+.-]+);base64,(.*)$/is.exec(src); if (!m) continue; const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); const saved = await folio.saveImage(target, `image.${m[1].toLowerCase().replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes); md = md.split(src).join(encodeURI(saved)); } catch {} }
     md = md.replace(/^# .*\n+/, (h) => h); // keep the document's own title if it has one
     const body = /^#\s/.test(md) ? md : `# ${r.name}\n\n${md}`;
     await folio.write(target, body + '\n');
