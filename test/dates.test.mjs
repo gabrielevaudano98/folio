@@ -44,8 +44,8 @@ ok('“@tod”, “@dom”, “@ven” offer the day before the word is finished
 
 /* link health: [[2026-11-23]] is a date, [[Nowhere]] is a missing page */
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-dates-'));
-fs.writeFileSync(path.join(ws, 'a.md'), '# A\n\nDue [[2026-11-23]] and [[2028-02-29#Notes]], see [[Nowhere]] and [[2025-02-29]] and `[[Code]]`.\n');
+fs.writeFileSync(path.join(ws, 'a.md'), '# A\n\nDue [[2026-11-23]] and [[2028-02-29#Notes]], see [[Nowhere]] and [[2025-02-29]].\n');
 const notes = createNotes(() => ws);
 const broken = await notes.brokenLinks('a.md');
-assert.deepEqual(broken.map((b) => b.ref).filter((r) => r !== '[[Code]]'), ['[[Nowhere]]', '[[2025-02-29]]']);
+assert.deepEqual(broken.map((b) => b.ref), ['[[Nowhere]]', '[[2025-02-29]]']);
 ok('a real day link is never reported as broken; a missing page or an impossible day (2025-02-29) still is');
