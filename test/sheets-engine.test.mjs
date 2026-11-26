@@ -6,6 +6,7 @@ import path from 'node:path';
 import * as XLSX from 'xlsx';
 import { Window } from 'happy-dom';
 import { importFile, exportXlsx, exportCsv } from '../src/sheets/engine/io.js';
+import { readDoc as readDocCf, sheetsOf as sheetsOfCf } from '../src/sheets/core/sheetmd.js';
 import { runScript, callFunction, describe, scriptWorkbook } from '../src/sheets/engine/script.js';
 import * as crypto from '../src/sheets/engine/crypto.js';
 import * as whatif from '../src/sheets/engine/whatif.js';
@@ -125,6 +126,46 @@ const rich = fx('sheets/Rich.sheet.md');
   assert.deepEqual(series(1, { step: 2, count: 4 }), [1, 3, 5, 7]); assert.deepEqual(series(2, { kind: 'growth', step: 3, stop: 60, count: 99 }), [2, 6, 18, 54]);
   assert.deepEqual(series(46022, { kind: 'month', count: 3 }), [46022, 46053, 46081]);
   assert.deepEqual(splitText(['a, 1', 'b,2,x', null], ','), [['a', 1], ['b', 2, 'x'], ['']]); ok('fill series (linear, growth, months) and text to columns');
+}
+
+{
+  // shared formulas never leak into what Folio reads itself: export, scripts and version compare see every formula
+  const { toUniver: tu, expandSharedFormulas: ex } = await import('../src/sheets/core/convert.js');
+  const text = '## S\n\n| A | B |\n| --- | --- |\n| 1 | =A2*2 |\n| 2 | =A3*2 |\n| 3 | =A4*2 |\n';
+  const xl = XLSX.read(Buffer.from(await exportXlsx(text)), { type: 'buffer', cellFormula: true, sheetStubs: true });
+  assert.deepEqual(['B2', 'B3', 'B4'].map((a) => xl.Sheets.S[a]?.f), ['A2*2', 'A3*2', 'A4*2']);
+  const snap = ex(tu(text, { share: true }).data);
+  assert.deepEqual([1, 2, 3].map((r) => snap.sheets['sheet-1'].cellData[r][1].f), ['=A2*2', '=A3*2', '=A4*2']);
+  ok('shared formulas are written out for export and scripts');
+}
+{
+  // conditional formatting goes to .xlsx as Excel rules with their formats, and comes back as the same rules
+  const S = (bg) => ({ bg: { rgb: bg } });
+  const cf = [
+    { range: 'B2:B9', rule: { type: 'highlightCell', subType: 'number', operator: 'greaterThan', value: 10, style: { bg: { rgb: '#e6e6e6' }, bl: 1 } } },
+    { range: 'B2:B9', rule: { type: 'highlightCell', subType: 'number', operator: 'between', value: [2, 5], style: { cl: { rgb: '#aa0000' } } } },
+    { range: 'A2:A9', rule: { type: 'highlightCell', subType: 'text', operator: 'containsText', value: 'pen', style: S('#ffeeee') } },
+    { range: 'A2:A9', rule: { type: 'highlightCell', subType: 'text', operator: 'equal', value: 'Book', style: S('#eeffee') } },
+    { range: 'A2:A9', rule: { type: 'highlightCell', subType: 'text', operator: 'beginsWith', value: 'P', style: S('#eeeeff') } },
+    { range: 'A2:A9', rule: { type: 'highlightCell', subType: 'text', operator: 'containsBlanks', style: S('#dddddd') } },
+    { range: 'C2:C9', rule: { type: 'highlightCell', subType: 'timePeriod', operator: 'last7Days', style: S('#ffffcc') } },
+    { range: 'B2:B9', rule: { type: 'highlightCell', subType: 'average', operator: 'greaterThanOrEqual', style: S('#ccffcc') } },
+    { range: 'B2:B9', rule: { type: 'highlightCell', subType: 'rank', isBottom: true, isPercent: false, value: 3, style: S('#ffcccc') } },
+    { range: 'A2:A9', rule: { type: 'highlightCell', subType: 'duplicateValues', style: S('#f0f0f0') } },
+    { range: 'B2:B9', rule: { type: 'highlightCell', subType: 'formula', value: '=MOD(B2,2)=0', style: { it: 1, st: { s: 1 } } } },
+    { range: 'D2:D9', rule: { type: 'colorScale', config: [{ index: 0, color: '#f8696b', value: { type: 'min' } }, { index: 1, color: '#ffeb84', value: { type: 'percentile', value: 50 } }, { index: 2, color: '#63be7b', value: { type: 'max' } }] } },
+    { range: 'D2:D9', rule: { type: 'dataBar', isShowValue: true, config: { min: { type: 'min' }, max: { type: 'max' }, isGradient: false, positiveColor: '#638ec6', nativeColor: '#ff0000' } } },
+    { range: 'B2:B9', rule: { type: 'iconSet', isShowValue: true, config: [{ operator: 'greaterThanOrEqual', value: { type: 'percent', value: 67 }, iconType: '3Arrows', iconId: '0' }, { operator: 'greaterThanOrEqual', value: { type: 'percent', value: 33 }, iconType: '3Arrows', iconId: '1' }, { operator: 'lessThan', value: { type: 'percent', value: 33 }, iconType: '3Arrows', iconId: '2' }] } },
+    { range: 'B2:B9', rule: { type: 'highlightCell', subType: 'average', operator: 'equal', style: S('#000000') } },
+  ];
+  const rows = ['| Item | Qty | Date | Score |', '| --- | --- | --- | --- |'];
+  for (let i = 2; i <= 9; i++) rows.push(`| ${['Pen', 'Book', 'Pencil', 'Paper'][i % 4]} | ${i} | ${46000 + i} | ${i * 3} |`);
+  const text = `## S\n\n${rows.join('\n')}\n\n<!-- sheet: ${JSON.stringify({ cf })} -->\n`;
+  const bytes = await exportXlsx(text);
+  const back = sheetsOfCf(readDocCf((await importFile(bytes, 'S.xlsx')).text))[0].meta.cf || [];
+  const want = cf.filter((x) => !(x.rule.subType === 'average' && x.rule.operator === 'equal'));
+  assert.deepEqual(back.map(({ range, rule }) => ({ range, rule })), want);
+  ok(`conditional formatting: ${want.length} kinds of rule (values, text, dates, average, top/bottom, duplicates, formula, colour scale, data bar, icons) go to .xlsx and back`);
 }
 /* ---------- collaboration-ready: operations, order, conflicts, replay ---------- */
 {

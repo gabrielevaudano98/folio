@@ -17,6 +17,7 @@
 import { newQuickJSWASMModuleFromVariant, newVariant } from 'quickjs-emscripten-core';
 import releaseSync from '@jitl/quickjs-wasmfile-release-sync';
 import { describe } from './script-describe.js';
+import { expandSharedFormulas } from '../core/convert.js';
 export { describe };
 
 const LIMITS = { memory: 64 * 1024 * 1024, stack: 512 * 1024, ms: 5000 };
@@ -168,7 +169,8 @@ export async function callFunction(code, name, args) {
 }
 
 /** a workbook copy for a script, from a Univer snapshot (values computed by the engine when given) */
-export function scriptWorkbook(snap, { active, selection, values = {} } = {}) {
+export function scriptWorkbook(snap0, { active, selection, values = {} } = {}) {
+  const snap = expandSharedFormulas(snap0); // a cell of a shared formula has its own formula text in a script
   const sheets = {};
   for (const id of snap.sheetOrder) {
     const ws = snap.sheets[id]; const cells = {};

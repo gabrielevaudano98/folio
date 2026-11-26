@@ -206,7 +206,7 @@ export function mountSheet(host, ctx) {
     try {
       const prevSheet = ws()?.getSheetName();
       if (unitId) { charts.clear(); floats.clear(); api.disposeUnit(unitId); unitId = null; }
-      loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook' });
+      loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook', share: true });
       dirty = new Set(['*']); saveCache.clear();
       sheetMeta = {};
       const sheets = loaded.doc.blocks.filter((b) => b.type === 'sheet');

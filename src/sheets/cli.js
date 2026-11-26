@@ -65,7 +65,7 @@ const COMMANDS = {
   },
   async goal() {
     const [set, to, by] = rest; if (!by) die('folio-sheets goal <file> "Sheet!F9" 1000 "Sheet!B2"');
-    const H = await createHeadless(); const r = await goalSeek(H, toUniver(await fs.readFile(file, 'utf8')).data, { set, to: Number(to), by });
+    const H = await createHeadless(); const r = await goalSeek(H, toUniver(await fs.readFile(file, 'utf8'), { share: true }).data, { set, to: Number(to), by });
     console.log(JSON.stringify(r)); H.dispose(); process.exitCode = r.found ? 0 : 1;
   },
   async check() {

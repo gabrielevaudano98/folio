@@ -1,6 +1,6 @@
 // Folio Sheets — files in and out (areas 9 and 25). Runs in the data engine, never in the window.
 //
-//   import: .xlsx/.xlsm (xlsx-kit: values, formulas, styles, merges, widths, freeze, validation, notes, names)
+//   import: .xlsx/.xlsm (xlsx-kit: values, formulas, styles, merges, widths, freeze, validation, conditional formatting, notes, names)
 //           .xls/.xlsb/.ods/.csv/.tsv (SheetJS: values, formulas, number formats, merges, widths)
 //           → a Univer snapshot → sheet-md v2 text through convert.js, the same path the grid uses to save.
 //   export: sheet-md text → Univer model → .xlsx (xlsx-kit) or .csv (SheetJS).
@@ -16,6 +16,7 @@ import * as S from 'xlsx-kit/styles';
 import { toUniver, fromUniver } from '../core/convert.js';
 import { addr, colName, toRange, fromRange, parseAddr } from '../core/a1.js';
 import { BORDER } from '../core/style.js';
+import { writeConditionalFormatting, readConditionalFormatting } from './xlsx-cf.js';
 
 const PX_PER_CHAR = 7, PT_TO_PX = 4 / 3;
 const isZip = (b) => b[0] === 0x50 && b[1] === 0x4b;
@@ -92,7 +93,7 @@ const excelDate = (d) => d.getTime() / 864e5 + 25569;
 async function snapshotFromXlsx(bytes, name) {
   const wb = await loadWorkbook(fromBuffer(Buffer.from(bytes)));
   const snap = emptySnapshot(name); styleIds.clear();
-  const dv = {}, notes = {};
+  const dv = {}, notes = {}, cf = {};
   for (const ref of wb.sheets) {
     if (ref.kind !== 'worksheet') continue;
     const ws = ref.sheet, u = addSheet(snap, ws.title);
@@ -121,11 +122,12 @@ async function snapshotFromXlsx(bytes, name) {
       ranges: (x.sqref?.ranges || []).map((g) => ({ startRow: g.minRow - 1, endRow: g.maxRow - 1, startColumn: g.minCol - 1, endColumn: g.maxCol - 1, rangeType: 0 })),
     })).filter((x) => x.ranges.length);
     if (rules.length) dv[u.id] = rules;
+    const cfRules = readConditionalFormatting(wb, ws, u.id); if (cfRules.length) cf[u.id] = cfRules;
     for (const n of W.listComments(ws)) { const q = parseAddr(n.ref); if (q) ((notes[u.id] ||= {})[q[0]] ||= {})[q[1]] = { id: `note-${n.ref}`, row: q[0], col: q[1], width: 160, height: 72, note: n.text }; }
     u.rowCount = Math.max(1000, maxR + 100); u.columnCount = Math.max(26, maxC + 10);
   }
   const names = Object.fromEntries(listDefinedNames(wb).filter((n) => !n.name.startsWith('_xlnm')).map((n, k) => [`name-${k + 1}`, { id: `name-${k + 1}`, name: n.name, formulaOrRefString: '=' + String(n.value).replace(/^=/, ''), localSheetId: 'AllDefaultWorkbook' }]));
-  snap.resources = [['SHEET_DATA_VALIDATION_PLUGIN', dv], ['SHEET_NOTE_PLUGIN', notes], ['SHEET_DEFINED_NAME_PLUGIN', names]].filter(([, v]) => Object.keys(v).length).map(([n, v]) => ({ name: n, data: JSON.stringify(v) }));
+  snap.resources = [['SHEET_DATA_VALIDATION_PLUGIN', dv], ['SHEET_CONDITIONAL_FORMATTING_PLUGIN', cf], ['SHEET_NOTE_PLUGIN', notes], ['SHEET_DEFINED_NAME_PLUGIN', names]].filter(([, v]) => Object.keys(v).length).map(([n, v]) => ({ name: n, data: JSON.stringify(v) }));
   return snap;
 }
 
@@ -200,7 +202,7 @@ export async function exportXlsx(text, { source = null, values = null } = {}) {
     const u = data.sheets[id];
     let ws = source ? getSheet(wb, u.name) : null;
     if (ws && ws.kind !== undefined) ws = ws.sheet;
-    if (ws) { W.clearAllCells(ws); W.removeAllMergedRanges(ws); W.removeAllDataValidations(ws); }
+    if (ws) { W.clearAllCells(ws); W.removeAllMergedRanges(ws); W.removeAllDataValidations(ws); W.removeAllConditionalFormatting(ws); }
     else ws = addWorksheet(wb, u.name);
     const computed = values?.[u.name];
     const styleOf = (s) => (typeof s === 'string' ? data.styles?.[s] : s) || null;
@@ -237,6 +239,7 @@ export async function exportXlsx(text, { source = null, values = null } = {}) {
         W.addDataValidation(ws, W.makeDataValidation({ type: rule.type, sqref: (rule.ranges || []).map(fromRange).join(' '), ...(rule.operator ? { operator: rule.operator } : {}), formula1: rule.type === 'list' && !/^=/.test(rule.formula1 || '') ? `"${rule.formula1}"` : String(rule.formula1 || '').replace(/^=/, ''), ...(rule.formula2 ? { formula2: String(rule.formula2).replace(/^=/, '') } : {}), allowBlank: rule.allowBlank !== false }));
       } catch { /* a rule Excel cannot express is left out of the export */ }
     }
+    writeConditionalFormatting(wb, ws, res.SHEET_CONDITIONAL_FORMATTING_PLUGIN?.[id] || []);
     for (const row of Object.values(res.SHEET_NOTE_PLUGIN?.[id] || {})) for (const n of Object.values(row || {})) if (n?.note) W.setComment(ws, { ref: addr(n.row, n.col), author: 'Folio', text: n.note });
   }
   if (!source) {

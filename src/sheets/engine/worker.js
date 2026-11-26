@@ -112,10 +112,10 @@ const METHODS = {
   'crypto.verify': async ({ text }) => crypto.verify(text, crypto.readSignature(text), { myPublicPem: (await signingKeys()).publicPem }),
 
   /* what-if */
-  'whatif.goalSeek': async ({ text, ...o }) => whatif.goalSeek(await headless(), toUniver(text).data, o),
-  'whatif.dataTable': async ({ text, ...o }) => whatif.dataTable(await headless(), toUniver(text).data, o),
-  'whatif.scenarios': async ({ text, ...o }) => whatif.scenarios(await headless(), toUniver(text).data, o),
-  'whatif.simulate': async ({ text, ...o }, progress) => whatif.simulate(await headless(), toUniver(text).data, { ...o, onProgress: progress }),
+  'whatif.goalSeek': async ({ text, ...o }) => whatif.goalSeek(await headless(), toUniver(text, { share: true }).data, o),
+  'whatif.dataTable': async ({ text, ...o }) => whatif.dataTable(await headless(), toUniver(text, { share: true }).data, o),
+  'whatif.scenarios': async ({ text, ...o }) => whatif.scenarios(await headless(), toUniver(text, { share: true }).data, o),
+  'whatif.simulate': async ({ text, ...o }, progress) => whatif.simulate(await headless(), toUniver(text, { share: true }).data, { ...o, onProgress: progress }),
 
   /* batch: computed values for MCP, the command line and exports */
   'calc.grids': ({ text }) => grids(text),

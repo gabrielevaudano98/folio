@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T16:18:41Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T16:24:21Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: large sheets: 6x faster open, per-sheet save cache, shared formulas, fresh unit ids in the headless engine
+- Last checkpoint: xlsx: conditional formatting exported and imported (14 rule kinds); shared formulas kept out of export and scripts
 
 ## Resume in a new session
 
@@ -26,12 +26,13 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    dependency tree on every edit (~1 s at 50k formulas, on the window's thread). Next: formula engine in a Web Worker
    (`@univerjs/rpc` is installed: UniverRPCMainThreadPlugin + worker with UniverRemoteSheetsFormulaPlugin); custom
    functions (async, call the data engine) and the audit panel (getCellDependencyTree) must then go through the worker.
-4. **.xlsx** — export (and import) conditional formatting, data validation, freeze panes (documented gap in docs/sheets/README.md §8).
+4. ~~**.xlsx**~~ DONE: conditional formatting both ways (`src/sheets/engine/xlsx-cf.js`, 14 rule kinds, checked in LibreOffice too); validation and freeze were already exported. Shared formulas never reach code that reads cellData itself (`toUniver` shares only with `share: true`; `expandSharedFormulas` for snapshots).
 5. **Languages** — FQL: `replace`, `index`, `top`, `case when`; Folio Script: setFontSize/Family, setBorder, merge, sort, insert/delete rows, find.
 6. Final: full test suite, screenshots, docs, Project doc `claude/SHEETS-PLAN.md`.
 
 ## Commits since main
-- 9793b80 wip: large sheets: 6x faster open, per-sheet save cache, shared formulas, fresh unit ids in the headless engine
+- a7e3549 wip: xlsx: conditional formatting exported and imported (14 rule kinds); shared formulas kept out of export and scripts
+- 34fcb3c wip: large sheets: 6x faster open, per-sheet save cache, shared formulas, fresh unit ids in the headless engine
 - 4abfa4b wip: ribbon: Excel-style combo boxes (font, size, number format with previews), same height on every tab
 - 6b505ff wip: cell values lossless: apostrophe rule and entities, fuzz test through Univer
 - 75254bf wip: handoff next steps

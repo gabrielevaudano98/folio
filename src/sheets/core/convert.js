@@ -65,7 +65,11 @@ function shareFormulas(cellData, prefix) {
 const sheetId = (i) => `sheet-${i + 1}`;
 
 /** sheet-md text → { data: IWorkbookData, doc, baseline } */
-export function toUniver(text, { id = 'folio-wb', name = 'Workbook', share = true } = {}) {
+/**
+ * `share`: hand runs of the same formula to Univer as shared formulas (faster recalculation). Only for data that goes
+ * into a Univer instance: cells of a shared run carry `si` and no `f`, so code that reads cellData itself leaves it off.
+ */
+export function toUniver(text, { id = 'folio-wb', name = 'Workbook', share = false } = {}) {
   const doc = readDoc(text);
   const sheets = sheetsOf(doc);
   const data = { id, name, appVersion: '1', locale: 'enUS', styles: {}, sheetOrder: [], sheets: {}, resources: [] };
@@ -151,6 +155,17 @@ function parseRes(snapshot) {
 }
 const styleOf = (snap, s) => (s == null ? null : typeof s === 'string' ? snap.styles?.[s] : s);
 
+/** a snapshot whose shared formulas (si, from Univer or from toUniver's `share`) are written out on every cell */
+export function expandSharedFormulas(snap) {
+  const out = { ...snap, sheets: {} };
+  for (const [id, ws] of Object.entries(snap.sheets || {})) {
+    const shared = expandShared(ws.cellData);
+    const cd = {};
+    for (const [r, row] of Object.entries(ws.cellData || {})) { cd[r] = {}; for (const [c, cell] of Object.entries(row || {})) cd[r][c] = shared(+r, +c, cell); }
+    out.sheets[id] = { ...ws, cellData: cd };
+  }
+  return out;
+}
 /** formulas shared by Univer (si) written out as ordinary formulas */
 function expandShared(cellData) {
   const roots = new Map();

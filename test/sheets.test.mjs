@@ -134,9 +134,9 @@ ok('a real Univer instance hands every file back byte-identical');
   ];
   const run = async (share) => { const l = toUniver(text, { share }); const w = await H.open(l.data); const outs = []; for (const op of ops) { op(w); await w.settle(); outs.push([fromUniver(w.save(), l), JSON.stringify(w.usedValues())]); } H.close(w); return outs; };
   const [a, b] = [await run(true), await run(false)];
-  const firstShared = toUniver(text).data.sheets['sheet-1'].cellData[2][2];
+  const firstShared = toUniver(text, { share: true }).data.sheets['sheet-1'].cellData[2][2];
   assert(firstShared.si && !firstShared.f, 'C3 is part of a shared formula');
-  assert.equal(toUniver(text).data.sheets['sheet-1'].cellData[12][3].si, undefined, '=1E2+A2 is never shared');
+  assert.equal(toUniver(text, { share: true }).data.sheets['sheet-1'].cellData[12][3].si, undefined, '=1E2+A2 is never shared');
   for (let k = 0; k < ops.length; k++) { assert.equal(a[k][0], b[k][0], `file after step ${k + 1}`); assert.equal(a[k][1], b[k][1], `values after step ${k + 1}`); }
   ok('shared formulas: edits, row inserts and deletes give the same file and values as formulas kept one by one');
 }
