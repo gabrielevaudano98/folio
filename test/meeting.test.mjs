@@ -29,7 +29,7 @@ const steps = [
   log("document.querySelector('#set-features [data-feat=enable]').getAttribute('role')+'|'+document.querySelector('#set-features [data-feat=enable]').checked"),
   log("!document.querySelector('#btn-record').hidden"), // the one-click button is there once the recorder is on and its model is downloaded
   { js: "document.querySelector('dialog[open]')?.close();1", wait: 300 },
-  { js: "document.querySelector('#btn-record').click();1", wait: 800 }, // one click: no question about the title
+  { js: "const b=document.querySelector('#btn-record');b.click();b.click();1", wait: 800 }, // one click starts (no question about the title); a second at once changes nothing
   waitFor("document.querySelector('.meeting-bar [data-meeting-stop]')", 90000),
   log("document.querySelector('.meeting-bar').textContent"),
   log("document.querySelector('#btn-record').dataset.recording + '|' + !!document.querySelector('#sheet-prompt[open]')"),
@@ -50,6 +50,7 @@ assert.equal(sw, 'switch|true');
 assert.equal(visible, true); assert.match(bar, /Recording/); assert.equal(btn, 'true|false', 'the button shows the recording and no title question was asked');
 assert.equal(saved, true, r.log.slice(-3000)); assert.equal(gone, true);
 assert.deepEqual(errs, []);
+assert.deepEqual(toasts, ['Meeting saved.'], 'a double click started one recording and no message about a second one');
 const dir = path.join(w.ws, 'Meetings'); const files = fs.readdirSync(dir);
 assert.equal(files.length, 1, files.join()); assert.match(files[0], /^\d{4}-\d\d-\d\d \d\d-\d\d Meeting\.md$/, files[0]); // the default title, renamed later by the person
 const md = fs.readFileSync(path.join(dir, files[0]), 'utf8');

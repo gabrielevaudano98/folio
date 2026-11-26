@@ -277,6 +277,12 @@ await t('nothing is offered while no folder is open', async () => {
   await nap(300); assert.equal(toasts.length, 0);
   await handlers['features:set']('meeting-recorder', { detectCalls: false });
 });
+await t('a notification is not shown if the folder was closed while it was being prepared', async () => {
+  let release, open = true; const gate = new Promise((r) => { release = r; });
+  const { handlers, toasts } = callService({ svc: { notes: { resolve: (r) => r, root: () => { if (!open) throw new Error('Open a folder first.'); return '/x'; } } }, detect: { ready: async () => { await gate; return true; } } });
+  await nap(200); open = false; release(); await nap(100);
+  assert.equal(toasts.length, 0); await handlers['features:set']('meeting-recorder', { detectCalls: false });
+});
 await t('nothing is offered while the speech model is not downloaded', async () => {
   const { toasts, handlers } = callService({ detect: { ready: async () => false } });
   await nap(300); assert.equal(toasts.length, 0);

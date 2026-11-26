@@ -152,9 +152,14 @@ export function createMeeting(ui) {
   });
   folio.meeting.onStopRequest(({ reason }) => { toast(reason, { kind: 'error' }); stop(); });
 
+  let starting = false; // set before the first await: two quick clicks (or a click and a notification) must not start two sessions, the second would stop the first
+  async function start(o = {}) {
+    if (rec || starting) return;
+    starting = true;
+    try { await startNow(o); } finally { starting = false; }
+  }
   /** `title` given (a call the app noticed) or `quick` (the sidebar button): no question about the title, the note can be renamed after */
-  async function start({ title: given, quick } = {}) {
-    if (rec) return;
+  async function startNow({ title: given, quick } = {}) {
     try {
       const f = await refresh();
       if (f.session) return toast(tr('mtg.still-saving'));
