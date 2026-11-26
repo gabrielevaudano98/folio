@@ -1657,6 +1657,7 @@ function openSettings() {
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.smart-quotes-and-dashes')}</span><span class="row-sub">${tr('app.typing-becomes-in-the-write-view')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="${tr('app.smart-quotes-and-dashes')}"></label></div>
       </div></section>
       <section class="group" id="set-features" aria-busy="true"><h3>${tr('app.optional-features')}</h3></section>
+      <section class="group" id="set-sheets-components" aria-busy="true"><h3>${tr('sc.title')}</h3></section>
       <section class="group"><h3>${tr('app.about')}</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">${tr('app.based-on-folio-by-gabriele-vaudano-fre')}</span></div>
           <button class="btn" type="button" data-open-url="https://github.com/gabrielevaudano98/folio">${tr('app.source-code')}</button></div>
@@ -1670,6 +1671,7 @@ function openSettings() {
   if (!d.open) d.showModal();
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
   meeting().then((m) => m.renderSettings($('#set-features', d))).catch((e) => toast(e.message, { kind: 'error' }));
+  import('./sheets-components.js').then((m) => m.renderSheetsComponents($('#set-sheets-components', d), { esc, toast, confirm: confirmSheet })).catch((e) => toast(e.message, { kind: 'error' }));
 }
 
 /* ============ meeting recorder (optional feature, loaded on demand) ============ */

@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T20:53:56Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T21:16:34Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: MCP: values from Univer, run_sheet_query, sheet_goal_seek, refresh_sheet, run_sheet_macro; workbook jobs in the data engine; jquery-lite (no DOM for pivots)
+- Last checkpoint: Sheets: Settings section for data components (DuckDB, Pyodide) with status, licences, download/cancel/remove; docs
 
 ## Resume in a new session
 
@@ -49,7 +49,8 @@ Open next (in order): visual baselines if the fixed 93px ribbon height
 changes them on macOS/Windows; MCP tools for queries, pivots and scripts; area 28 (AI) when decided.
 
 ## Commits since main
-- c82f5da wip: MCP: values from Univer, run_sheet_query, sheet_goal_seek, refresh_sheet, run_sheet_macro; workbook jobs in the data engine; jquery-lite (no DOM for pivots)
+- 0e61091 wip: Sheets: Settings section for data components (DuckDB, Pyodide) with status, licences, download/cancel/remove; docs
+- 1c44d31 wip: MCP: values from Univer, run_sheet_query, sheet_goal_seek, refresh_sheet, run_sheet_macro; workbook jobs in the data engine; jquery-lite (no DOM for pivots)
 - 917f9f5 wip: large exports: no stack overflow past 120k rows (loops everywhere), 200k-row xlsx export 8.9 s -> 5.9 s
 - e245040 wip: save in slices that yield to typing; writer and converter as steps; 200k rows without stack overflow; full suite green
 - 292882b wip: formulas in a Web Worker: custom functions through the window, save baseline in the worker, saves from the live model; full suite green

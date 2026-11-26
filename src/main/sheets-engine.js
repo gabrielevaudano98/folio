@@ -5,6 +5,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { createInstaller } from './features/installer.js';
+import { COMPONENTS } from './features/catalog.js';
 import { componentsRoot } from './meeting/service.js';
 
 const IMPORT_EXT = ['xlsx', 'xlsm', 'xltx', 'xltm', 'xls', 'xlsb', 'ods', 'csv', 'tsv', 'txt'];
@@ -86,7 +87,10 @@ export function createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin
 
   /* optional components */
   const COMP = ['duckdb', 'pyodide'];
-  h('sheets:components', async () => { const s = await installer.statuses(COMP); return COMP.map((id) => ({ id, ...s[id] })); });
+  h('sheets:components', async () => {
+    const s = await installer.statuses(COMP);
+    return COMP.map((id) => { const c = COMPONENTS[id] || {}; return { id, name: c.name, version: c.version, license: c.license, licenseUrl: c.licenseUrl, attribution: c.attribution, ...s[id] }; });
+  });
   h('sheets:install', async (id) => {
     if (!COMP.includes(id)) throw new Error('Unknown component.');
     try { await installer.install([id]); } catch (e) { if (!e.cancelled) throw e; }

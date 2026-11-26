@@ -143,7 +143,8 @@ The contracts are in `src/sheets/core/collab.js` and tested with two headless re
 | 4b. Robustness (Nov 2026) | Lossless cell text (apostrophe rule, entities; fuzz through Univer), Excel-style combo boxes and fixed ribbon height, 6× faster open of large sheets, per-sheet save cache, shared formulas for runs like `=D2*E2`, fresh unit ids in the headless engine, conditional formatting in .xlsx, FQL and Folio Script extended | Done |
 | 4c. Formula worker | Univer's formula engine in a Web Worker; custom functions through the window; save baseline in the worker; save from the live model | Done |
 | 4d. Sliced save | Save in ~8 ms slices that give up on an edit; writer and converter as steps; no stack overflow past 120k rows | Done |
-| 5. Next | Live sync service and presence; AI assistant (area 28); MCP tools for queries, pivots and scripts; Settings view listing the data components; virtualised export for very large sheets | Planned |
+| 4e. Assistant tools and Settings | MCP tools on the running app: `get_sheet_values` with computed values, `run_sheet_query`, `sheet_goal_seek`, `refresh_sheet`, `run_sheet_macro` (`engine/book.js`); Settings → Spreadsheet data components (status, size, what each enables, licence, Download / Cancel / Remove with confirmation, live progress; `renderer/sheets-components.js`, test/sheets-components-ui.test.mjs) | Done |
+| 5. Next | Live sync service and presence; AI assistant (area 28); streaming xlsx export for sheets over ~200k rows | Planned |
 
 Tests: `test/sheets.test.mjs` (15 checks: round trips, fuzz, shared formulas, 20k rows, save in slices), `test/fql.test.mjs` (11),
 `test/sheets-engine.test.mjs` (25), `test/sheets-i18n.test.mjs`, `test/sheets-ui.test.mjs` (19 checks in Electron).
