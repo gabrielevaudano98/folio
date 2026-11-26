@@ -176,10 +176,10 @@ async function boot() {
     preview: previewHtml,
     saveImage: async (src) => {
       const t = activeTab(); if (!t) return null;
-      let data = src; if (!/^data:/.test(src)) data = await folio.dataUrl(src, t.path);
-      const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(data); if (!m) return null;
+      const data = /^data:/i.test(src) ? src : await folio.dataUrl(src, t.path);
+      const m = /^data:image\/([\w+.-]+);base64,(.*)$/is.exec(data || ''); if (!m) return null; // any case: DATA:IMAGE/PNG is the same picture
       const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      return folio.saveImage(t.path, `pasted.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
+      return folio.saveImage(t.path, `pasted.${m[1].toLowerCase().replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
     },
     onError: (e) => toast(tr('app.paste-failed-message', { message: e.message }), { kind: 'error' }),
     onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(tr('app.copied-t-paste-it-anywhere-to-link-to', { t })); },
@@ -289,6 +289,7 @@ function fileUrlRel(src) {
   return a.startsWith(w + '/') ? abs.slice(ws.length + 1) : null;
 }
 function resolveImg(src) {
+  if (/^(data:|blob:)/i.test(src || '')) return Promise.resolve(src); // already the picture itself (presenter and embedded slides hand data-src straight here)
   if (isRemote(src)) return remoteImage(src);
   if (/^file:/i.test(src)) { const rel = fileUrlRel(src); return rel ? folio.absUrl(rel).catch(() => null) : Promise.resolve(null); }
   const t = activeTab(); if (!t) return Promise.resolve(null);
@@ -307,8 +308,11 @@ function renderRemoteNotice() {
     bar = document.createElement('div'); bar.id = 'remote-edit-bar'; bar.className = 'remote-bar remote-bar-edit'; bar.setAttribute('role', 'status');
     bar.innerHTML = '<span></span><button type="button" class="btn"></button>';
     bar.querySelector('button').onclick = () => allowRemote(activeTab()?.path);
-    const scroll = $('#pane-rich .rich-scroll'); if (!scroll) return; scroll.parentElement.insertBefore(bar, scroll);
   }
+  // above the editor column: with the review pane open the scroller sits in a row (.rich-main), and the notice must not become a side column
+  const scroll = $('#pane-rich .rich-scroll'); if (!scroll) return;
+  const anchor = scroll.closest('.rich-main') || scroll;
+  if (bar.nextElementSibling !== anchor) anchor.parentElement.insertBefore(bar, anchor);
   bar.querySelector('span').textContent = tr('app.remote-images-blocked', { n: remoteBlockedCount });
   bar.querySelector('button').textContent = tr('app.load-remote-images');
 }
@@ -583,7 +587,7 @@ async function renderPreview() {
   for (const el of tpl.content.querySelectorAll('[srcset]')) el.removeAttribute('srcset'); // a candidate list cannot be checked address by address
   for (const img of tpl.content.querySelectorAll('img')) {
     const src = img.getAttribute('src') || '';
-    if (src && !/^(data:|blob:)/.test(src)) {
+    if (src && !/^(data:|blob:)/i.test(src)) {
       img.removeAttribute('src');
       if (isRemote(src)) {
         img.dataset.remoteSrc = src;
@@ -595,7 +599,7 @@ async function renderPreview() {
   }
   for (const m of tpl.content.querySelectorAll('video[data-src], audio[data-src]')) {
     const src = m.dataset.src;
-    if (/^(data:|blob:)/.test(src)) m.src = src;
+    if (/^(data:|blob:)/i.test(src)) m.src = src;
     else if (isRemote(src) && !remoteAllowed(t)) blocked.push(m);
     else resolveImg(src).then((u) => { if (u) m.src = u; });
   }
@@ -1981,7 +1985,7 @@ async function importDocument() {
     const rel = `${r.name}.md`; let md = markdown;
     const target = await folio.create(rel, `# ${r.name}\n\n`).catch(() => null);
     if (!target) return toast(tr('app.could-not-create-the-page'), { kind: 'error' });
-    for (const src of images) { try { const m = /^data:image\/([\w+.-]+);base64,(.*)$/s.exec(src); if (!m) continue; const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); const saved = await folio.saveImage(target, `image.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes); md = md.split(src).join(encodeURI(saved)); } catch {} }
+    for (const src of images) { try { const m = /^data:image\/([\w+.-]+);base64,(.*)$/is.exec(src); if (!m) continue; const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); const saved = await folio.saveImage(target, `image.${m[1].toLowerCase().replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes); md = md.split(src).join(encodeURI(saved)); } catch {} }
     md = md.replace(/^# .*\n+/, (h) => h); // keep the document's own title if it has one
     const body = /^#\s/.test(md) ? md : `# ${r.name}\n\n${md}`;
     await folio.write(target, body + '\n');

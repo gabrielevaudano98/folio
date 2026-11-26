@@ -439,7 +439,7 @@ async function readCapped(res, max) {
   return Buffer.concat(parts, size);
 }
 h('fs:data-url', async (src, noteRel) => {
-  if (/^data:/.test(src)) return src;
+  if (/^data:/i.test(src)) return 'data:' + src.slice(5); // schemes are case-insensitive; hand back one spelling
   if (/^https?:\/\//i.test(src)) {
     // a note can name any address: no private network (checked by name and by what it resolves to), only images, audio, video and fonts, bounded in size and time
     const { net } = await import('electron');
