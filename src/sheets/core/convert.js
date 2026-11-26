@@ -7,6 +7,7 @@ import { addr, colName, colIndex, parseAddr, toRange, fromRange, toRanges, fromR
 import { toUniverStyle, fromUniverStyle, styleDiff, isEmpty } from './style.js';
 import { readDoc, sheetsOf, setWorkbook, serializeDoc } from './sheetmd.js';
 import { shiftFormula } from '../../renderer/sheet-core.js';
+import { readCell, writeText } from './cell-text.js';
 
 export const RES = { dv: 'SHEET_DATA_VALIDATION_PLUGIN', cf: 'SHEET_CONDITIONAL_FORMATTING_PLUGIN', notes: 'SHEET_NOTE_PLUGIN', filter: 'SHEET_FILTER_PLUGIN', names: 'SHEET_DEFINED_NAME_PLUGIN' };
 /** meta keys that live in Univer's model; every other key (charts, slicers, print, protect, view…) is Folio's own */
@@ -14,16 +15,9 @@ export const UNIVER_KEYS = new Set(['cols', 'cells', 'rows', 'merges', 'freeze',
 const ALIGN = { left: 1, center: 2, right: 3 };
 
 /* ---------- values ---------- */
-const BR = /<br\s*\/?>/gi;
+// how a value is written in a table cell lives in cell-text.js (apostrophe rule, entities for edge blanks and <br>)
 /** markdown cell text → Univer cell (value part only) */
-export function cellFromRaw(raw) {
-  const s = String(raw ?? '');
-  if (s === '') return null;
-  if (s.length > 1 && s.startsWith('=')) return { f: s };
-  if (/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s) && String(Number(s)) === s) return { v: Number(s), t: 2 };
-  if (s === 'TRUE' || s === 'FALSE') return { v: s === 'TRUE' ? 1 : 0, t: 3 };
-  return { v: s.replace(BR, '\n'), t: 1 };
-}
+export const cellFromRaw = (raw) => readCell(raw);
 /** Univer cell → markdown cell text (formulas stay formulas; values of formulas are never stored) */
 export function rawFromCell(cell) {
   if (!cell) return '';
@@ -32,8 +26,8 @@ export function rawFromCell(cell) {
   if ((v == null || v === '') && cell.p?.body?.dataStream) v = cell.p.body.dataStream.replace(/\r?\n$/, '').replace(/\r\n?/g, '\n');
   if (v == null) return '';
   if (cell.t === 3 || typeof v === 'boolean') return v === true || v === 1 || v === '1' || v === 'TRUE' ? 'TRUE' : 'FALSE';
-  if (cell.t === 2 || typeof v === 'number') { const n = Number(v); return Number.isFinite(n) ? String(n) : String(v); }
-  return String(v).replace(/\r?\n/g, '<br>');
+  if (cell.t === 2 || typeof v === 'number') { const n = Number(v); if (Number.isFinite(n)) return String(n); }
+  return writeText(String(v));
 }
 
 /* ---------- md → Univer ---------- */

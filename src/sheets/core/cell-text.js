@@ -22,8 +22,9 @@ function plain(s) {
   if (s.length > 1 && s.startsWith('=')) return { f: s };
   if (NUM.test(s) && String(Number(s)) === s) return { v: Number(s), t: 2 };
   if (s === 'TRUE' || s === 'FALSE') return { v: s === 'TRUE' ? 1 : 0, t: 3 };
-  return { v: s.split(BR).map((p) => p.replace(ENT, decode)).join('\n'), t: 1 };
+  return { v: textOf(s), t: 1 };
 }
+const textOf = (s) => s.split(BR).map((p) => p.replace(ENT, decode)).join('\n');
 
 /** does this text need an apostrophe to stay text? */
 const needsQuote = (s) => { const p = plain(s); return !p || p.t !== 1 || (s.startsWith("'") && needsQuote(s.slice(1))); };
@@ -31,7 +32,7 @@ const needsQuote = (s) => { const p = plain(s); return !p || p.t !== 1 || (s.sta
 /** markdown cell text → Univer-shaped cell (value part only), or null for an empty cell */
 export function readCell(raw) {
   const s = String(raw ?? '');
-  if (s.length > 1 && s.startsWith("'")) { const rest = s.slice(1); if (needsQuote(rest)) return { v: plain(rest)?.v ?? rest, t: 1 }; }
+  if (s.length > 1 && s.startsWith("'")) { const rest = s.slice(1); if (needsQuote(rest)) return { v: textOf(rest), t: 1 }; }
   return plain(s);
 }
 

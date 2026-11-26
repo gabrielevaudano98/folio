@@ -61,5 +61,38 @@ ok('a real Univer instance hands every file back byte-identical');
   const t = serializeDoc(doc); assert(t.endsWith('```script Macros\nfunction DOUBLE(x) { return x * 2; }\n```\n'));
   setFence(doc, 'fql', 'Summary', null); assert(!serializeDoc(doc).includes('```fql')); ok('workbook blocks (fql, script…) are added, replaced and removed by name');
 }
+{
+  // fuzz: any value a cell can hold (text that looks like a number, TRUE or a formula, pipes, backslashes, blanks at the
+  // edges, a literal <br>, entities, unicode) survives save → reload with its type, through a real Univer instance
+  let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const alphabet = ['a', 'Z', '0', '7', '.', '-', '+', 'e', '=', "'", '|', '\\', ' ', '\t', '\n', '<br>', '&', '#32;', 'lt;', 'amp;', '&#169;', ':', '-', '`', '*', '#', '<!--', '漢', '🎉', 'TRUE', 'FALSE', '\u00a0'];
+  const fixed = ['42', '007', 'TRUE', 'FALSE', '=abc', '=', "'", "'42", "''x", "'hello", 'a|b', 'C:\\', ' lead', 'trail ', ' ', '  ', 'x<br>y', 'R&amp;D', '&#32;', '1e5', '-0', '3.0', '---', '| x |', 'two\nlines'];
+  const norm = (x) => (x ? (x.f ? 'f:' + x.f : `${x.t}:${x.t === 3 ? !!x.v : x.v}`) : 'empty');
+  const fails = [];
+  for (let iter = 0; iter < 60; iter++) {
+    const loaded = toUniver('## S\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+    const cd = loaded.data.sheets['sheet-1'].cellData; const want = {};
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 4; c++) {
+      const k = rnd(); let cell;
+      if (k < 0.35) cell = { v: pick(fixed), t: 1 };
+      else if (k < 0.65) cell = { v: Array.from({ length: 1 + Math.floor(rnd() * 5) }, () => pick(alphabet)).join(''), t: 1 };
+      else if (k < 0.85) cell = { v: pick([0, 1, -1, 0.1, 1.5, 1e21, 1e-7, 123456789.123, 0.30000000000000004]), t: 2 };
+      else cell = { v: rnd() < 0.5 ? 1 : 0, t: 3 };
+      (cd[r] ||= {})[c] = cell; want[`${r},${c}`] = cell;
+    }
+    const wb = await H.open(loaded.data);
+    const text = fromUniver(wb.save(), loaded); H.close(wb);
+    const back = toUniver(text).data.sheets['sheet-1'].cellData;
+    for (const [k, cell] of Object.entries(want)) {
+      const [r, c] = k.split(',').map(Number);
+      const exp = cell.t === 1 && cell.v === '' ? 'empty' : norm({ ...cell, v: cell.t === 1 ? String(cell.v).replace(/\r\n?/g, '\n') : cell.v });
+      const got = norm(back[r]?.[c]);
+      if (exp !== got) fails.push(`${JSON.stringify(exp)} → ${JSON.stringify(got)}`);
+    }
+    assert.equal(roundTrip(text), text, 'a saved file is stable on the next read');
+  }
+  assert.deepEqual([...new Set(fails)], []); ok('fuzz: 1,200 cells of hostile text, numbers and booleans keep value and type through save and reload');
+}
 H.dispose();
 console.log(`\n${n} sheet checks passed`);

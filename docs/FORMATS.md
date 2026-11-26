@@ -348,6 +348,11 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 - A cell that starts with `=` is a formula, Excel syntax: `SUM`, `AVERAGE`, `IF`, `IFS`, `IFERROR`, `COUNTIF`, `SUMIF`, `VLOOKUP`, `HLOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `ROUND`, `TEXTJOIN`, dates, finance and about 380 more. `$` locks a reference. Write a pipe inside a cell as `\|`.
 - The optional `<!-- sheet: {...} -->` comment right after a table holds formatting: `cols` and `cells` with `format` (`number`, `integer`, `currency`, `usd`, `percent`, `date`, `text`), `bold`, `italic`, `align`, `width`; `view: "kanban"` and `kanbanBy` (column index) for the Kanban view.
 - Values are not stored, only formulas. Through MCP, `get_sheet_values` returns the computed values.
+- Text that would otherwise read as something else keeps one apostrophe in front, as in Excel and Google Sheets:
+  `'42` is the text "42", `'TRUE` the text "TRUE", `'=A1` the text "=A1" (an apostrophe before plain text is just
+  text: `'hello`). A line break inside a cell is `<br>`; a literal `<br>` is written `&lt;br>`; blanks at either end of
+  a cell, which a Markdown table trims, are written as `&#32;` (or `&#9;` for a tab); `&lt;`, `&amp;` and `&#n;` are
+  read as their characters, so an `&` that would start one is written `&amp;`.
 
 #### sheet-md v2 (Folio Sheets)
 

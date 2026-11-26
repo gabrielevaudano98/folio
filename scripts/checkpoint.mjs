@@ -9,7 +9,7 @@
 //   2. <out>/folio-<branch>.bundle: every commit of the branch that is not on origin/main, in one file that
 //      `git fetch` reads (default <out> = /mnt/user-data/outputs, else ./release);
 //   3. docs/HANDOFF.md, refreshed: branch, last commits, what to run to resume. Edit its "Next" section by hand.
-// Nothing is pushed: publishing stays a deliberate step.
+//   4. the branch pushed to origin (never main), unless --no-push or there is no access; a failed push is reported, not fatal.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -34,7 +34,8 @@ if (process.argv[2] === '--restore') {
 
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
 if (branch === 'main') { console.error('On main: create a branch first (git checkout -b feat/…).'); process.exit(1); }
-const msg = process.argv.slice(2).join(' ').trim() || 'checkpoint';
+const args = process.argv.slice(2); const noPush = args.includes('--no-push');
+const msg = args.filter((a) => a !== '--no-push').join(' ').trim() || 'checkpoint';
 
 // 1. handoff note (written first, so it is part of the commit)
 const base = (() => { try { return git('merge-base', 'HEAD', 'origin/main'); } catch { return git('rev-list', '--max-parents=0', 'HEAD').split('\n')[0]; } })();
@@ -51,7 +52,8 @@ Written by \`node scripts/checkpoint.mjs\` (${now}). Read this first when resumi
 
 ## Resume in a new session
 
-1. Get the code: a clone of the repository plus the bundle \`folio-${branch.replace(/\//g, '-')}.bundle\`
+1. Get the code: \`git fetch origin ${branch} && git checkout ${branch}\` (pushed at every checkpoint); without access to
+   GitHub, a clone plus the bundle \`folio-${branch.replace(/\//g, '-')}.bundle\`
    (sent in the chat, or saved in the Project / your folder), then \`node scripts/checkpoint.mjs --restore <bundle>\`.
 2. \`git checkout ${branch} && npm ci && npm run build\`
 3. Check that everything is green: \`npm test\` (or the Sheets tests alone: \`node dist/test/sheets.test.mjs\` and the others in \`test/run.mjs\`).
@@ -79,4 +81,6 @@ const file = path.join(outDir, `folio-${branch.replace(/\//g, '-')}.bundle`);
 git('bundle', 'create', file, `${base}..${branch}`, branch);
 git('bundle', 'verify', file);
 const mb = (fs.statSync(file).size / 1048576).toFixed(1);
-console.log(JSON.stringify({ branch, commit: git('rev-parse', '--short', 'HEAD'), bundle: file, size: `${mb} MB`, handoff: 'docs/HANDOFF.md' }));
+let pushed = 'skipped';
+if (!noPush) { try { execFileSync('git', ['-c', 'push.negotiate=true', 'push', '-u', 'origin', branch], { stdio: 'pipe' }); pushed = `origin/${branch}`; } catch (e) { pushed = 'failed: ' + String(e.stderr || e.message).split('\n').filter(Boolean).slice(-1)[0]; } }
+console.log(JSON.stringify({ branch, commit: git('rev-parse', '--short', 'HEAD'), bundle: file, size: `${mb} MB`, handoff: 'docs/HANDOFF.md', pushed }));

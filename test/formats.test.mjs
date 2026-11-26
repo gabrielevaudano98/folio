@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, applyEdgeStyle, autoLayout } from '../src/renderer/board-core.js';
 import { parseWorkbook, serializeWorkbook, evaluator, shiftFormula } from '../src/renderer/sheet-core.js';
+import { readCell, writeText, cellValue } from '../src/sheets/core/cell-text.js';
 import { findRefs, resolveTarget, rewriteRefs } from '../src/renderer/refs-syntax.js';
 import { resolveRef } from '../src/renderer/refs.js';
 import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter, zoomTarget } from '../src/renderer/slides-core.js';
@@ -60,6 +61,13 @@ assert.equal(ev.value(5, 7), 28050); assert.equal(ev.value(6, 7), 'Over budget')
 const rates = evaluator(wb.filter((b) => b.type === 'sheet')[1]); assert.equal(rates.value(1, 2), 600); ok('sheet-md VLOOKUP');
 assert.equal(shiftFormula('=SUM(A1:B2)+$C$3', 2, 1), '=SUM(B3:C4)+$C$3'); ok('formula references shift, locked ones stay');
 const cyc = evaluator({ rows: [['=B1', '=A1']] }); assert.equal(cyc.value(0, 0), '#CYCLE!'); ok('circular references are caught');
+{
+  const cases = [['42', 42], ["'42", '42'], ['TRUE', true], ["'TRUE", 'TRUE'], ["'=A1", '=A1'], ["'hello", "'hello"], ["''42", "'42"], ['&#32;x&#32;', ' x '], ['a&lt;br>b', 'a<br>b'], ['a<br>b', 'a\nb'], ['R&amp;amp;D', 'R&amp;D']];
+  for (const [raw, want] of cases) assert.deepEqual(cellValue(raw), want, raw);
+  for (const t of ['42', 'TRUE', '=A1', ' x ', '\ttab', 'a<br>b', 'a\nb', "'42", "'hello", 'R&amp;D', '&#169;', '']) { const w = writeText(t); assert.equal(t === '' ? '' : readCell(w).v, t, JSON.stringify(t)); assert.equal(w.trim(), w); }
+  const ev2 = evaluator({ rows: [["'42", '=A1&"x"', '&#32;pad']] }); assert.equal(ev2.value(0, 0), '42'); assert.equal(ev2.value(0, 2), ' pad');
+  ok('sheet-md cell text: apostrophe keeps text as text, entities keep blanks and a literal <br>');
+}
 
 // slides
 const deckText = fx('Pitch.slides.md');

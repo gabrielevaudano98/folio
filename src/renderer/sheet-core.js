@@ -3,6 +3,7 @@
 //   | Item | Qty | Price | Total |       row 1 is the header row, cell A1 is "Item"
 //   | Pens | 3   | 2.5   | =B2*C2 |      formulas start with "=", pipes inside are written \|
 //   <!-- sheet: {"cols":{"D":{"format":"currency"}}} -->   optional formatting, invisible in other viewers
+import { readCell } from '../sheets/core/cell-text.js';
 import { Parser } from 'hot-formula-parser';
 
 export const colName = (c) => { let s = ''; c++; while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; };
@@ -156,7 +157,11 @@ export function evaluator(sheet, { external = null } = {}) {
     const k = r * 10000 + c;
     if (cache.has(k)) { const v = cache.get(k); return v && v.error ? v.error : v; }
     const raw = rows[r]?.[c] ?? '';
-    if (typeof raw !== 'string' || !raw.startsWith('=') || raw.length < 2) { const v = num(raw); cache.set(k, v); return v; }
+    if (typeof raw !== 'string' || !raw.startsWith('=') || raw.length < 2) {
+      // text kept as text by the apostrophe rule, or with entities (cell-text.js), is read as that text
+      const t = typeof raw === 'string' && /^'|&|<br/i.test(raw) ? readCell(raw) : null;
+      const v = t && t.t === 1 ? t.v : num(raw); cache.set(k, v); return v;
+    }
     if (busy.has(k) || depth > 60) return '#CYCLE!';
     busy.add(k);
     let v;

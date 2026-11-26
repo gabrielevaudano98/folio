@@ -1,13 +1,14 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T15:44:04Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T15:59:05Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: handoff next steps
+- Last checkpoint: cell values lossless: apostrophe rule and entities, fuzz test through Univer
 
 ## Resume in a new session
 
-1. Get the code: a clone of the repository plus the bundle `folio-feat-sheets-univer.bundle`
+1. Get the code: `git fetch origin feat/sheets-univer && git checkout feat/sheets-univer` (pushed at every checkpoint); without access to
+   GitHub, a clone plus the bundle `folio-feat-sheets-univer.bundle`
    (sent in the chat, or saved in the Project / your folder), then `node scripts/checkpoint.mjs --restore <bundle>`.
 2. `git checkout feat/sheets-univer && npm ci && npm run build`
 3. Check that everything is green: `npm test` (or the Sheets tests alone: `node dist/test/sheets.test.mjs` and the others in `test/run.mjs`).
@@ -15,7 +16,7 @@ Written by `node scripts/checkpoint.mjs` (2026-11-26T15:44:04Z). Read this first
 
 ## Next
 Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 28, AI, is out of scope):
-1. **Cell values lossless** — `src/sheets/core/cell-text.js` written (apostrophe rule for text that reads as number/TRUE/formula, `&#32;` for edge blanks, `&lt;br>` for a literal tag). Wire it into `convert.js` (`cellFromRaw`/`rawFromCell`) and `renderer/sheet-core.js` (`evaluator` → `cellValue`), add the fuzz test (`/tmp/fz/fuzz.mjs` idea: 400 random grids, value + type must survive save/reload, second save identical) to `test/sheets.test.mjs`, document in `docs/FORMATS.md`.
+1. ~~**Cell values lossless**~~ DONE (fuzz in test/sheets.test.mjs, rule in FORMATS.md) — `src/sheets/core/cell-text.js` written (apostrophe rule for text that reads as number/TRUE/formula, `&#32;` for edge blanks, `&lt;br>` for a literal tag). Wire it into `convert.js` (`cellFromRaw`/`rawFromCell`) and `renderer/sheet-core.js` (`evaluator` → `cellValue`), add the fuzz test (`/tmp/fz/fuzz.mjs` idea: 400 random grids, value + type must survive save/reload, second save identical) to `test/sheets.test.mjs`, document in `docs/FORMATS.md`.
 2. **Ribbon** — `.rb-select` has `min-width: 9.5rem` that beats `width: 58px` (font size box 152 px) and 28 px selects make the Home ribbon 18 px taller than other tabs. Replace Font / Size / Number format with typeable comboboxes in `renderer/page-ribbon.js`, fixed ribbon height, re-check collapse with screenshots.
 3. **Large sheets** — time convert / headless / export at 50k rows, fix hot spots.
 4. **.xlsx** — export (and import) conditional formatting, data validation, freeze panes (documented gap in docs/sheets/README.md §8).
@@ -23,5 +24,6 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
 6. Final: full test suite, screenshots, docs, Project doc `claude/SHEETS-PLAN.md`.
 
 ## Commits since main
-- 59cfda6 wip: handoff next steps
+- 7fe4ffe wip: cell values lossless: apostrophe rule and entities, fuzz test through Univer
+- 75254bf wip: handoff next steps
 - 574e3ee wip: Sheets on Univer: 27 areas, tests green; started robustness pass
