@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T15:43:51Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T15:44:04Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: Sheets on Univer: 27 areas, tests green; started robustness pass (cell-text codec, checkpoint script)
+- Last checkpoint: handoff next steps
 
 ## Resume in a new session
 
@@ -23,4 +23,5 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
 6. Final: full test suite, screenshots, docs, Project doc `claude/SHEETS-PLAN.md`.
 
 ## Commits since main
-- 294bb4a wip: Sheets on Univer: 27 areas, tests green; started robustness pass (cell-text codec, checkpoint script)
+- 59cfda6 wip: handoff next steps
+- 574e3ee wip: Sheets on Univer: 27 areas, tests green; started robustness pass
