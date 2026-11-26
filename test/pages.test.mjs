@@ -168,7 +168,7 @@ const steps = [
   ...pick('[[Brand New Idea', 'Create', 700),
   { js: 'true', wait: 2500 },
   { js: "['.rich-wikilink.is-person', '.rich-wikilink.is-date', '.rich-tag', '.rich-status.is-green'].map((q) => document.querySelectorAll(q).length).join(':')", log: true, wait: 100 },
-  { js: "(() => { const el = [...document.querySelectorAll('.rich-wikilink')].find((x) => x.dataset.target === 'Atlas Plan'); el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return true; })()", wait: 900 },
+  { js: "(() => { const el = [...document.querySelectorAll('.rich-wikilink')].find((x) => x.dataset.target === 'Atlas Plan'); el.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return true; })()", wait: 900 },
   { js: "(() => { const c = document.querySelector('.rich-hover'); return !!c && c.textContent.includes('Atlas Plan'); })()", log: true, wait: 100 },
   { js: "(() => { const el = document.querySelector('.rich-wikilink.is-date'); const r = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, ctrlKey: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new MouseEvent('mousedown', o)); el.dispatchEvent(new MouseEvent('mouseup', o)); return true; })()", wait: 2000 },
   // D6: sort, centre and move a column from the Table tab; paste cells from a spreadsheet

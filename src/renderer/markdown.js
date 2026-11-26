@@ -262,7 +262,10 @@ export function render(text) {
   const { body, meta, offset } = splitFrontmatter(text);
   let html = md.render(body);
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
-  if (meta?.length) html = `<dl class="frontmatter" data-line="0">${meta.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
+  // the page icon (front matter `icon:`) is drawn large above the page, as in the Write view, not listed with the properties
+  const icon = meta?.find(([k, v]) => k === 'icon' && /^\s*\S{1,8}\s*$/u.test(v)); const rest = (meta || []).filter((x) => x !== icon);
+  if (rest.length) html = `<dl class="frontmatter" data-line="0">${rest.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
+  if (icon) html = `<div class="page-icon-read" aria-hidden="true">${escape(icon[1].trim())}</div>` + html;
   return DOMPurify.sanitize(html, {
     ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align', 'data-host', 'controls', 'preload', 'data-author', 'data-date', 'data-text'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],

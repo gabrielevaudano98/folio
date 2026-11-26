@@ -522,8 +522,24 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert(INSERTS.every((i) => CATEGORIES.includes(i.cat) && (i.turn || i.run) && i.label && (i.icon || i.badge)));
   assert.equal(new Set(INSERTS.map((i) => i.id)).size, INSERTS.length); ok('every insert has a category, an action and an icon, and a unique id');
   const all = filterInserts('', { recent: ['math', 'h2'] });
-  assert.deepEqual(all.slice(0, 2).map((x) => [x.group, x.item.id]), [['Recent', 'math'], ['Recent', 'h2']]); assert.equal(all.filter((x) => x.group !== 'Recent').length, INSERTS.length);
-  ok('with no query the menu shows recent items, then every category');
+  assert.deepEqual(all.slice(0, 2).map((x) => [x.group, x.item.id]), [['Recent', 'math'], ['Recent', 'h2']]); assert.equal(all.filter((x) => x.group !== 'Recent' && !x.item.block).length, INSERTS.length);
+  assert.deepEqual([...new Set(all.slice(2 + INSERTS.length).map((x) => x.group))], ['Actions', 'Colour']);
+  ok('with no query the menu shows recent items, then every category, then the actions and colours of the block (Notion)');
+  {
+    const h2 = filterInserts('h2', { recent: [], hasText: true }).slice(0, 2);
+    assert.deepEqual(h2.map((x) => [x.item.id, x.mode]), [['h2', 'insert'], ['h2', 'turn']]);
+    assert.equal(filterInserts('h2', { recent: [] })[0].mode, undefined);
+    const full = filterInserts('', { recent: [], hasText: true });
+    assert(full.some((x) => x.group === 'Turn into' && x.item.id === 'h1') && full.filter((x) => x.group === 'Basic' && x.item.turn).every((x) => x.mode === 'insert'));
+    ok('on a line with text, a block is offered twice: insert below, or turn this line into it');
+    assert.deepEqual(filterInserts('red', { recent: [] }).slice(0, 2).map((x) => x.item.id), ['colour-red', 'bg-red']);
+    assert.equal(filterInserts('delete', { recent: [] })[0].item.id, 'act-delete'); assert(filterInserts('delete', { recent: [] })[0].item.danger);
+    assert.equal(filterInserts('dup', { recent: [] })[0].item.id, 'act-duplicate'); assert.equal(filterInserts('move up', { recent: [] })[0].item.id, 'act-up');
+    assert.equal(filterInserts('2 col', { recent: [] })[0].item.id, 'columns-2'); assert.equal(filterInserts('tdl', { recent: [] })[0].item.id, 'task');
+    assert.deepEqual([...new Set(filterInserts('turn', { recent: [], hasText: true }).map((x) => x.mode))], ['turn']); assert(filterInserts('turn', { recent: [], hasText: true }).length >= 9);
+    ok('/turn lists every block the line can become');
+    ok('/red, /delete, /dup, /move up, /2 col and initials (/tdl) find colours, actions and blocks');
+  }
   assert.equal(filterInserts('h2', { recent: [] })[0].item.id, 'h2'); assert.equal(filterInserts('todo', { recent: [] })[0].item.id, 'task');
   assert.equal(filterInserts('equation', { recent: [] })[0].item.id, 'math'); assert.equal(filterInserts('[[', { recent: [] })[0].item.id, 'link');
   assert(filterInserts('cal', { recent: [] }).slice(0, 6).every((x) => x.item.id.startsWith('callout'))); assert.equal(filterInserts('columns', { recent: [] })[0].item.id, 'columns-2'); assert.equal(filterInserts('toggle', { recent: [] })[0].item.id, 'toggle'); assert.equal(filterInserts('toc', { recent: [] })[0].item.id, 'toc');

@@ -8,7 +8,7 @@ import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
 import { filterInserts, runInsert, INSERTS } from './inserts.js';
 import { mentionEntries, TAG, FIELD, statusClass } from './page-mentions.js';
 import { highlight } from './fuzzy.js';
-import { BlockHandles } from './page-blocks.js';
+import { BlockHandles, blockCmd, currentBlock } from './page-blocks.js';
 import { CalloutUI, HeadingFold, HFOLD, TocView, BreadcrumbView, PageBreakView } from './page-ui.js';
 import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
 import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
@@ -265,10 +265,14 @@ const Decorate = Extension.create({
           return old;
         },
       },
+      /* the link preview card belongs to a chip: when the page changes and the chip is redrawn, the card goes with it */
+      view: () => ({ update(v, prev) { if (v.state.doc !== prev.doc) { hover.hide(); hover.typing = true; } else if (hover.el && !hover.el.isConnected) hover.hide(); }, destroy() { hover.hide(); } }), // while typing no card opens until the pointer really moves (Notion)
       props: {
         decorations(state) { return KEY.getState(state).set; },
         handleDOMEvents: {
+          mousemove() { hover.typing = false; return false; },
           mouseover(view, e) {
+            if (hover.typing) return false;
             const el = e.target.closest?.('.rich-wikilink:not(.is-missing):not(.is-date)');
             if (!el || !opts.preview || el === hover.el) return false;
             hover.hide(); hover.el = el;
@@ -622,24 +626,49 @@ export const pageCmd = {
   },
   hiddenComment(editor) { return editor.chain().focus().toggleMark('hiddenComment').run(); },
 };
+/* the block actions of the / menu (inserts.js BLOCK_ITEMS), on the block the caret is in */
+function blockAction(editor, a, arg, opts) {
+  const b = currentBlock(editor.state); if (!b) return false;
+  switch (a) {
+    case 'duplicate': return blockCmd.duplicate(editor, b);
+    case 'up': return blockCmd.move(editor, -1, b);
+    case 'down': return blockCmd.move(editor, 1, b);
+    case 'delete': return blockCmd.remove(editor, b);
+    case 'link': { const id = blockCmd.ensureId(editor, b); if (id) opts.onCopyLink?.(id); return true; }
+    case 'colour': return blockCmd.colour(editor, arg, b);
+    case 'below': { const end = b.pos + b.node.nodeSize; const tr = editor.state.tr.insert(end, editor.state.schema.nodes.paragraph.create()); tr.setSelection(TextSelection.create(tr.doc, end + 1)); editor.view.dispatch(tr); return true; }
+    default: return false;
+  }
+}
 /* The / menu: everything you can insert or turn a block into (inserts.js), Notion style */
 const SLASH = new PluginKey('slashMenu');
 const SlashMenu = Extension.create({
   name: 'slashMenu',
-  addOptions() { return { ctx: () => ({}), keyLabel: (k) => k }; },
+  addOptions() { return { ctx: () => ({}), keyLabel: (k) => k, onCopyLink: null }; },
   addProseMirrorPlugins() {
     const opts = this.options;
     return [Suggestion({
-      editor: this.editor, char: '/', pluginKey: SLASH, allowSpaces: false, startOfLine: false,
+      editor: this.editor, char: '/', pluginKey: SLASH, allowSpaces: true, startOfLine: false,
       allow: ({ state, range }) => {
         const $f = state.doc.resolve(range.from);
         if ($f.parent.type.spec.code || $f.parent.type.name === 'detailsSummary') return false;
-        return !state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code);
+        if (state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code)) return false;
+        /* a space may be part of the query ("2 col", "move up"), but a space with nothing matching ends it, as in Notion */
+        const q = state.doc.textBetween(range.from + 1, range.to, ' ', ' ');
+        return !/\s/.test(q) || (!/^\s|\s{2}/.test(q) && filterInserts(q, { recent: [] }).length > 0);
       },
-      items: ({ query }) => (query.length > 24 ? [] : filterInserts(query)),
+      items: ({ query, editor }) => {
+        if (query.length > 24) return [];
+        const $f = editor.state.selection.$from;
+        const hasText = $f.parent.isTextblock && $f.parent.textContent.length > query.length + 1;
+        return filterInserts(query, { hasText });
+      },
       command: ({ editor, range, props }) => {
-        editor.chain().focus().deleteRange(range).run();
-        Promise.resolve(runInsert(editor, props, opts.ctx())).catch((e) => console.error(e));
+        // "Alpha /h2": the space typed to open the menu goes too, when nothing follows it
+        const $to = editor.state.doc.resolve(range.to);
+        const from = range.from > $to.start() && $to.parentOffset === $to.parent.content.size && editor.state.doc.textBetween(range.from - 1, range.from) === ' ' ? range.from - 1 : range.from;
+        editor.chain().focus().deleteRange({ from, to: range.to }).run();
+        Promise.resolve(runInsert(editor, props, { ...opts.ctx(), block: (a, arg) => blockAction(editor, a, arg, opts) })).catch((e) => console.error(e));
       },
       render: () => slashRenderer(opts),
     })];
@@ -647,7 +676,7 @@ const SlashMenu = Extension.create({
 });
 function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   let el, list, items = [], sel = 0, props = null, view = null; const insertMenu = key === SLASH;
-  const iconOf = (it) => (it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
+  const iconOf = (it) => (it.swatch !== undefined ? `<span class="slash-swatch${it.bg ? ' is-bg' : ''}" data-c="${it.swatch}">A</span>` : it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
   const paint = () => {
     let html = '', group = null;
     items.forEach((x, i) => {
@@ -655,13 +684,27 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
       /* the hint on the right: the Markdown you could type instead (Notion: "#", "##", "-", "[]"), else the shortcut */
       const mdh = typeof x.item.md === 'string' && /^(#{1,6}|-|1\.|>|- \[ \]|\$\$|```) ?$/.test(x.item.md) ? x.item.md.trim().replace('- [ ]', '[]') : '';
       const k = mdh ? `<kbd class="slash-md">${mdh.replace(/</g, '&lt;')}</kbd>` : x.item.key ? `<kbd>${opts.keyLabel(x.item.key)}</kbd>` : '';
-      html += `<div class="slash-item" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${k}</div>`;
+      const turnTag = x.mode === 'turn' && x.group !== 'Turn into' ? `<span class="slash-turn"> · ${tr('blk.turn-into')}</span>` : '';
+      html += `<div class="slash-item${x.item.danger ? ' is-danger' : ''}" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}${turnTag}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${k}</div>`;
     });
     if (group !== null) html += '</div>';
     list.innerHTML = html || (props?.loading ? '' : '<div class="slash-empty">' + tr('rich.no-matches-keep-typing-or-press-esc') + '</div>');
     view?.dom.setAttribute('aria-activedescendant', items.length ? `slash-${sel}` : '');
     const foot = el?.querySelector('.slash-foot'); if (foot) foot.textContent = (insertMenu && items[sel]?.item.desc) || tr('rich.to-move-enter-to-choose-esc-to-close');
     list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+    ghostPaint();
+  };
+  /* @dom → "ani" in faint text after the caret, as Notion does; Tab or Enter takes it */
+  let ghost = null;
+  const ghostPaint = () => {
+    const q = props?.query || '', label = items[sel]?.item.label || '';
+    const show = key === MENTION_KEYS.at && q.length >= 2 && label.length > q.length && label.toLowerCase().startsWith(q.toLowerCase());
+    if (!show) { ghost?.remove(); ghost = null; return; }
+    const r = props.clientRect?.(); if (!r) return;
+    if (!ghost) { ghost = document.createElement('span'); ghost.className = 'mention-ghost'; ghost.setAttribute('aria-hidden', 'true'); document.body.append(ghost); }
+    const at = view.domAtPos(view.state.selection.from).node; const cs = getComputedStyle(at.nodeType === 1 ? at : at.parentElement);
+    Object.assign(ghost.style, { left: `${r.right}px`, top: `${r.top}px`, height: `${r.height}px`, lineHeight: `${r.height}px`, font: cs.font });
+    ghost.textContent = label.slice(q.length);
   };
   const place = () => {
     const r = props?.clientRect?.(); if (!r || !el) return;
@@ -681,7 +724,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
       list.addEventListener('mousemove', (e) => { const it = e.target.closest('.slash-item'); if (it && +it.dataset.i !== sel) { sel = +it.dataset.i; list.querySelectorAll('.slash-item').forEach((n) => n.setAttribute('aria-selected', String(+n.dataset.i === sel))); view.dom.setAttribute('aria-activedescendant', `slash-${sel}`); const foot = el.querySelector('.slash-foot'); if (foot && insertMenu) foot.textContent = items[sel]?.item.desc || ''; } });
       paint(); place();
     },
-    onUpdate(p) { props = p; items = p.items; sel = Math.min(sel, Math.max(0, items.length - 1)); if (!p.query) sel = Math.min(sel, items.length - 1); paint(); place(); },
+    onUpdate(p) { const typed = p.query !== props?.query; props = p; items = p.items; sel = typed ? 0 : Math.max(0, Math.min(sel, items.length - 1)); paint(); place(); }, // a new query starts at its best match
     onKeyDown({ event }) {
       if (event.key === 'Escape') { exitSuggestion(view, key); return true; }
       if (!items.length) return false;
@@ -692,7 +735,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
       return false;
     },
     onExit() {
-      el?.remove(); el = null;
+      el?.remove(); el = null; ghost?.remove(); ghost = null;
       view?.dom.removeAttribute('aria-controls'); view?.dom.removeAttribute('aria-activedescendant'); view?.dom.removeAttribute('aria-expanded');
     },
   };
@@ -783,7 +826,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative' }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-scroll"><div class="rich-page"></div></div>
@@ -827,7 +870,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
       }),
       SmartTypography.configure({ enabled: smartTypography }),
-      SlashMenu.configure({ keyLabel, ctx: insertCtx }),
+      SlashMenu.configure({ keyLabel, ctx: insertCtx, onCopyLink: (id) => onCopyBlockLink?.(id) }),
       TableHandles.configure({ icons, toSheet: (e) => tableToSheet(e) }),
       FindReplace,
       SuggestMode,
@@ -836,7 +879,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       CodeHighlight,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
-      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
+      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply), onDate: onDate ? (el, day, apply, open) => onDate(el, day, apply, open) : null, dayLabel: (d) => formatDay(d, { style: dateStyle(), lang: locale() }), dayTitle: (d) => fullDay(d, locale()), dayTense: (d) => dayTense(d) }),
       Markdown.configure({ markedOptions: { gfm: true } }),

@@ -186,6 +186,7 @@ async function boot() {
       return folio.saveImage(t.path, `pasted.${m[1].replace('jpeg', 'jpg').replace(/\+.*/, '')}`, bytes);
     },
     onError: (e) => toast(tr('app.paste-failed-message', { message: e.message }), { kind: 'error' }),
+    onBlockDeleted: (undo, n = 1) => toast(tr('app.blocks-deleted', { n }), { action: [tr('app.undo'), undo] }),
     onCopyBlockLink: (id) => { if (!S.active) return; const t = `[[${refName(S.active)}#^${id}]]`; folio.copy(t); toast(tr('app.copied-t-paste-it-anywhere-to-link-to', { t })); },
     onLink: (prev) => prompt({ title: tr(prev ? 'app.edit-link' : 'app.add-link'), label: tr('app.address'), value: prev || 'https://', hint: tr('app.leave-empty-to-remove-the-link'), action: tr('app.apply'), allowEmpty: true, validate: false }),
   });
