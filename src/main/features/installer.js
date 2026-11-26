@@ -95,7 +95,7 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
   }
 
   /** move verified downloads into a staging folder, unpacking archives, then swap it in */
-  async function place(id, parts) {
+  async function place(id, parts, signal) {
     const files = filesOf(id);
     const stage = path.join(staging, id);
     await fs.rm(stage, { recursive: true, force: true }); await fs.mkdir(stage, { recursive: true });
@@ -111,8 +111,8 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
         await fs.mkdir(path.dirname(dest), { recursive: true });
         await fs.writeFile(dest, o.data, { mode: o.mode }); diskBytes += o.data.length;
       }
-      await fs.rm(parts[i], { force: true });
     }
+    if (signal?.aborted) { await fs.rm(stage, { recursive: true, force: true }); throw new CancelledError(); } // nothing swapped in yet
     await fs.writeFile(path.join(stage, MARK), JSON.stringify({ id, version: components[id].version, platform: platformKey, diskBytes, files: files.map((f) => ({ name: f.name, sha256: f.sha256 })) }, null, 2));
     const dest = dirOf(id), old = dest + '.old';
     await fs.rm(old, { recursive: true, force: true });
@@ -148,8 +148,9 @@ export function createInstaller({ root, platformKey, fetch, onProgress = () => {
         const s = live.get(id); s.state = 'downloading'; s.error = undefined; emit(true);
         const parts = [];
         for (const f of filesOf(id)) parts.push(await download(id, f, ac.signal));
+        if (ac.signal.aborted) throw new CancelledError(); // Cancel pressed while the last file was being checked
         s.state = 'unpacking'; emit(true);
-        await place(id, parts);
+        await place(id, parts, ac.signal);
         live.delete(id); emit(true);
       }
     } catch (e) {

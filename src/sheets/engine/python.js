@@ -1,6 +1,6 @@
 // Folio Sheets — Python (area 24) with Pyodide: CPython compiled to WebAssembly, so Python code from a workbook runs
 // in a sandbox with no access to the file system or the computer. Pyodide is an optional component (Settings →
-// Optional features). numpy, pandas, scipy, statsmodels and scikit-learn load on first use; Pyodide checks each
+// Spreadsheet data components). numpy, pandas, scipy, statsmodels and scikit-learn load on first use; Pyodide checks each
 // package against the SHA-256 in its lock file.
 //
 //   ```python Forecast
@@ -19,7 +19,7 @@ export const available = (dir) => !!dir && fs.existsSync(path.join(dir, 'pyodide
 
 async function py(dir, cacheDir) {
   if (pyP) return pyP;
-  if (!available(dir)) throw new Error('Python needs Pyodide. Install it in Settings → Optional features.');
+  if (!available(dir)) throw new Error('Python needs Pyodide. Install it in Settings → Spreadsheet data components.');
   const { loadPyodide } = createRequire(path.join(dir, 'pyodide', 'package.json'))('./pyodide.js');
   pyP = loadPyodide({ indexURL: path.join(dir, 'pyodide') + path.sep, packageCacheDir: cacheDir, stdout: (s) => out.push(s), stderr: (s) => out.push(s), checkAPIVersion: true });
   const p = await pyP;

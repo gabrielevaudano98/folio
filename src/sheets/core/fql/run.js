@@ -152,8 +152,8 @@ export async function run(src, env = {}, { only = null, maxRows = 1_000_000, fla
       case 'csv': { const f = file(s); return aq.fromCSV(f.text ?? new TextDecoder().decode(f.bytes), { delimiter: s.options?.delimiter, header: s.options?.header !== false, autoType: s.options?.types !== false }); }
       case 'json': { const f = file(s); const v = JSON.parse(f.text ?? new TextDecoder().decode(f.bytes)); return Array.isArray(v) ? aq.from(v) : aq.from(v.data || v.rows || Object.values(v)[0] || []); }
       case 'xlsx': { const f = file(s); if (!env.readers?.xlsx) throw new FqlError('Reading Excel files needs the data engine', s.at); return tableFromGrid(await env.readers.xlsx(f.bytes, s.sheet)); }
-      case 'parquet': if (!env.readers?.sql) throw new FqlError('Parquet files are read by DuckDB: install it in Settings → Optional features', s.at); return tableFromGrid(await env.readers.sql(`SELECT * FROM read_parquet(${sqlStr(s.path)})`, null, [s.path]));
-      case 'sql': if (!env.readers?.sql) throw new FqlError('SQL needs DuckDB: install it in Settings → Optional features', s.at); return tableFromGrid(await env.readers.sql(s.sql, s.db || null));
+      case 'parquet': if (!env.readers?.sql) throw new FqlError('Parquet files are read by DuckDB: install it in Settings → Spreadsheet data components', s.at); return tableFromGrid(await env.readers.sql(`SELECT * FROM read_parquet(${sqlStr(s.path)})`, null, [s.path]));
+      case 'sql': if (!env.readers?.sql) throw new FqlError('SQL needs DuckDB: install it in Settings → Spreadsheet data components', s.at); return tableFromGrid(await env.readers.sql(s.sql, s.db || null));
       case 'query': return queryTable(s.name, s.at);
       case 'model': return evaluateModel(s);
       case 'values': return tableFromGrid([s.header, ...s.rows]);

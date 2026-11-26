@@ -1,6 +1,13 @@
 // Folio Sheets — Italian interface text, keyed by the English text in the code (i18n.js). Names that read the same
 // in both languages (fonts, paper sizes, products) are listed too, so test/i18n-sheets checks find every label here.
 export default {
+  "SQL and Parquet need DuckDB. Install it in Settings → Spreadsheet data components.": "SQL e Parquet richiedono DuckDB. Installalo in Impostazioni → Componenti dati dei fogli.",
+  "Python needs Pyodide. Install it in Settings → Spreadsheet data components.": "Python richiede Pyodide. Installalo in Impostazioni → Componenti dati dei fogli.",
+  "The data engine stopped. Try again.": "Il motore dei dati si è fermato. Riprova.",
+  "The data engine took too long and was stopped.": "Il motore dei dati ci ha messo troppo ed è stato fermato.",
+  "The data engine is not available in this window.": "Il motore dei dati non è disponibile in questa finestra.",
+  "Another download is running. Wait for it or cancel it.": "È in corso un altro download. Aspetta che finisca o annullalo.",
+  "Cancel the download first.": "Prima annulla il download.",
   "Formulas could not be computed in the background. Close and reopen the workbook to compute them here.": "Non è stato possibile calcolare le formule in background. Chiudi e riapri la cartella di lavoro per calcolarle qui.",
   "Custom": "Personalizzato",
   "$ US dollar": "$ Dollaro USA",

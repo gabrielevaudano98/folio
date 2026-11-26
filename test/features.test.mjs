@@ -137,6 +137,16 @@ await t('cancel keeps the partial file; install resumes with a Range request', a
   assert.equal((await inst.status('model')).state, 'ready');
   assert.deepEqual(fs.readFileSync(path.join(inst.pathOf('model'), 'model.bin')), big);
 });
+await t('cancel while checking or unpacking installs nothing and keeps the downloaded files', async () => {
+  await inst.uninstall('rt'); requests = [];
+  let stop = false; // cancel at the first progress event after the download: the checksum or unpacking step
+  const i2 = createInstaller({ root: path.join(tmp, 'c'), platformKey: 'test-x64', fetch, components: catalog, freeBytes: async () => 10e9,
+    onProgress: (p) => { if (!stop && ['verifying', 'unpacking'].includes(p.rt?.state)) { stop = true; i2.cancel(); } } });
+  await assert.rejects(i2.install(['rt']), (e) => e.cancelled);
+  assert.notEqual((await i2.status('rt')).state, 'ready'); assert.ok(!fs.existsSync(i2.pathOf('rt')));
+  requests = []; await i2.install(['rt']);
+  assert.equal(requests.length, 0, 'the verified download was reused'); assert.equal((await i2.status('rt')).state, 'ready');
+});
 await t('a wrong checksum deletes the download and installs nothing', async () => {
   await assert.rejects(inst.install(['bad']), /checksum/);
   assert.equal((await inst.status('bad')).state, 'not-installed');

@@ -14,7 +14,7 @@ export function available(dir) {
 }
 function load(dir) {
   if (mod) return mod;
-  if (!available(dir)) throw new Error('SQL and Parquet need DuckDB. Install it in Settings → Optional features.');
+  if (!available(dir)) throw new Error('SQL and Parquet need DuckDB. Install it in Settings → Spreadsheet data components.');
   mod = createRequire(path.join(dir, 'package.json'))('@duckdb/node-api');
   return mod;
 }

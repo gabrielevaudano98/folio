@@ -2,6 +2,8 @@
 // src/main/sheets-engine.js). Heavy or risky work never runs in the window: file import and export, queries (FQL,
 // DuckDB), scripts (QuickJS), Python (Pyodide), encryption and signatures (node-forge), what-if runs on a headless
 // copy of the workbook.
+import { L } from './i18n.js';
+
 let callN = 0;
 const listeners = new Map();
 let wired = false;
@@ -18,6 +20,7 @@ export async function engine(method, payload = {}, { note = null, onProgress = n
   const call = onProgress ? `c${++callN}` : null;
   if (call) listeners.set(call, onProgress);
   try { return await bridge.sheets(method, payload, { note, call }); }
+  catch (e) { throw Object.assign(new Error(L(e.message)), { cause: e }); } // the engine writes English; known messages are translated
   finally { if (call) listeners.delete(call); }
 }
 /** optional components (DuckDB, Pyodide): status, install with progress, remove */
