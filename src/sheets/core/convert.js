@@ -6,7 +6,7 @@
 import { addr, colName, colIndex, parseAddr, toRange, fromRange, toRanges, fromRanges } from './a1.js';
 import { toUniverStyle, fromUniverStyle, styleDiff, isEmpty } from './style.js';
 import { readDoc, sheetsOf, setWorkbook, serializeDoc } from './sheetmd.js';
-import { shiftFormula } from '../../renderer/sheet-core.js';
+import { shiftFormula, drain, serializeWorkbookSteps } from '../../renderer/sheet-core.js';
 import { readCell, writeText } from './cell-text.js';
 
 export const RES = { dv: 'SHEET_DATA_VALIDATION_PLUGIN', cf: 'SHEET_CONDITIONAL_FORMATTING_PLUGIN', notes: 'SHEET_NOTE_PLUGIN', filter: 'SHEET_FILTER_PLUGIN', names: 'SHEET_DEFINED_NAME_PLUGIN' };
@@ -184,12 +184,15 @@ function expandShared(cellData) {
 }
 
 /** one Univer worksheet → { name, rows, align, meta } */
-export function sheetFromUniver(snap, ws, res) {
+export const sheetFromUniver = (snap, ws, res) => drain(sheetSteps(snap, ws, res));
+/** sheetFromUniver as steps: yields every `every` rows (fromUniverAsync gives the window back between slices) */
+function* sheetSteps(snap, ws, res, every = 2000) {
   const cd = ws.cellData || {};
   const shared = expandShared(cd);
   // one pass: each cell's text is computed once (a 50k-row sheet has 350k of them)
-  let maxR = -1, maxC = -1; const raws = [];
+  let maxR = -1, maxC = -1; const raws = []; let n = 0;
   for (const r in cd) {
+    if (++n % every === 0) yield;
     const row = cd[r]; if (!row) continue; const R = +r;
     for (const c in row) {
       const cell = row[c]; const C = +c; const raw = rawFromCell(shared(R, C, cell));
@@ -198,7 +201,7 @@ export function sheetFromUniver(snap, ws, res) {
     }
   }
   const rows = new Array(Math.max(maxR, 0) + 1);
-  for (let r = 0; r < rows.length; r++) { const row = new Array(Math.max(maxC, 0) + 1).fill(''); const src = raws[r]; if (src) for (const c in src) if (+c < row.length) row[c] = src[c]; rows[r] = row; }
+  for (let r = 0; r < rows.length; r++) { const row = new Array(Math.max(maxC, 0) + 1).fill(''); const src = raws[r]; if (src) for (const c in src) if (+c < row.length) row[c] = src[c]; rows[r] = row; if (r % (every * 4) === every * 4 - 1) yield; }
   // trailing empty rows/columns that only carried a style stay in the table: the style needs a cell to live on
   const meta = {};
   const cols = {}, align = [];
@@ -233,8 +236,10 @@ export function sheetFromUniver(snap, ws, res) {
     if (key) ownMemo.set(key, own);
     return own;
   };
-  for (const [r, row] of Object.entries(cd)) for (const [c, cell] of Object.entries(row || {})) {
+  for (const r in cd) for (const c in cd[r] || {}) {
+    const cell = cd[r][c];
     if (!cell) continue;
+    if (++n % (every * 4) === 0) yield;
     let own = cell.s ? ownStyle(cell.s, r, c) : null;
     if (cell.custom?.folio) own = { ...own, data: cell.custom.folio };
     if (own && !isEmpty(own)) cells[addr(+r, +c)] = own;
@@ -300,28 +305,47 @@ export function canonicalOf(snap) {
  * Write a Univer snapshot back into the document it came from. Untouched sheets keep their exact text.
  * `loaded` is what toUniver() returned for that document.
  */
-export function fromUniver(snap, loaded, { sheetMeta = {}, workbook = null, dirty = null, cache = null } = {}) {
+export const fromUniver = (snap, loaded, opts) => drain(fromUniverSteps(snap, loaded, opts));
+/**
+ * fromUniver in slices of about `sliceMs`, giving the window back in between (a 50k-row sheet takes ~0.35 s in one
+ * piece). `stale()` is asked after each pause: when the workbook changed meanwhile the save gives up and returns null,
+ * since the live model it reads has moved on (the caller saves again later).
+ */
+export async function fromUniverAsync(snap, loaded, opts, { sliceMs = 8, stale = () => false, pause = () => new Promise((r) => setTimeout(r, 0)) } = {}) {
+  const g = fromUniverSteps(snap, loaded, opts);
+  let t = performance.now();
+  for (;;) {
+    const r = g.next(); if (r.done) return r.value;
+    if (performance.now() - t < sliceMs) continue;
+    await pause();
+    if (stale()) { g.return(); return null; }
+    t = performance.now();
+  }
+}
+/** the steps of fromUniver */
+export function* fromUniverSteps(snap, loaded, { sheetMeta = {}, workbook = null, dirty = null, cache = null } = {}) {
   // `dirty` (Set of sheet ids, '*' for all) and `cache` (Map kept by the caller) let the window skip sheets nothing
   // changed since its last save: their block from that save is reused as is.
-  const { doc, baseline } = loaded;
+  const { doc } = loaded;
   const res = parseRes(snap);
   const oldSheets = sheetsOf(doc);
   const byId = new Map(oldSheets.map((b, i) => [sheetId(i), b]));
   const reuse = cache && dirty && !dirty.has('*');
-  const next = snap.sheetOrder.map((id) => {
+  const next = [];
+  for (const id of snap.sheetOrder) {
     const old = byId.get(id);
     const own = { ...folioMeta(old?.meta), ...(sheetMeta[id] || {}) };
     const ownKey = cache ? JSON.stringify(own) : '';
-    if (reuse && !dirty.has(id) && cache.get(id)?.own === ownKey && cache.get(id).name === snap.sheets[id].name) return cache.get(id).block;
-    const block = sheetBlock(id, old, own);
+    if (reuse && !dirty.has(id) && cache.get(id)?.own === ownKey && cache.get(id).name === snap.sheets[id].name) { next.push(cache.get(id).block); continue; }
+    const block = yield* sheetBlock(id, old, own);
     cache?.set(id, { own: ownKey, name: snap.sheets[id].name, block });
-    return block;
-  });
-  function sheetBlock(id, old, own) {
-    const cur = JSON.stringify(sheetFromUniver(snap, snap.sheets[id], res));
+    next.push(block);
+  }
+  function* sheetBlock(id, old, own) {
+    const s = yield* sheetSteps(snap, snap.sheets[id], res);
+    const cur = JSON.stringify(s);
     const ownSame = JSON.stringify(dropEmpty(own)) === JSON.stringify(dropEmpty(folioMeta(old?.meta)));
-    if (old && baseline.sheets[id] === cur && ownSame) return old;
-    const s = JSON.parse(cur);
+    if (old && loaded.baseline.sheets[id] === cur && ownSame) return old;
     const meta = { ...s.meta, ...dropEmpty(own) };
     return { type: 'sheet', name: s.name, named: old ? old.named || old.name !== s.name : true, headingLines: old && old.name === s.name ? old.headingLines : [], rows: s.rows.length ? s.rows : [['']], align: s.align, meta };
   }
@@ -337,8 +361,8 @@ export function fromUniver(snap, loaded, { sheetMeta = {}, workbook = null, dirt
   const out = { ...doc, blocks };
   const wbNow = workbookFromUniver(snap, res);
   const wbOwn = workbook ? dropEmpty(workbook) : stripUniverKeys(doc.workbook);
-  if (JSON.stringify(wbNow) !== baseline.workbook || JSON.stringify(wbOwn) !== JSON.stringify(stripUniverKeys(doc.workbook))) setWorkbook(out, { ...wbOwn, ...wbNow });
-  return serializeDoc(out);
+  if (JSON.stringify(wbNow) !== loaded.baseline.workbook || JSON.stringify(wbOwn) !== JSON.stringify(stripUniverKeys(doc.workbook))) setWorkbook(out, { ...wbOwn, ...wbNow });
+  return yield* serializeWorkbookSteps(out.blocks);
 }
 /** meta keys sheet-md v2 does not know (written by a newer Folio or by hand) survive edits */
 export const folioMeta = (m) => Object.fromEntries(Object.entries(m || {}).filter(([k]) => !UNIVER_KEYS.has(k)));

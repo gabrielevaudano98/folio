@@ -60,24 +60,34 @@ export function parseWorkbook(text) {
 
 const signature = (b) => JSON.stringify([b.name, b.rows, b.align, b.meta]);
 const escCell = (v) => String(v ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
-export function serializeWorkbook(blocks) {
-  const out = [];
+/** run a generator of steps to its end (the synchronous form of a sliced job) */
+export const drain = (g) => { let r = g.next(); while (!r.done) r = g.next(); return r.value; };
+export const serializeWorkbook = (blocks) => drain(serializeWorkbookSteps(blocks));
+/**
+ * The same, as steps: it yields every few thousand rows, so a caller can give the window back between slices
+ * (Folio Sheets saves 50k-row workbooks this way). Loops, not spreads: Math.max(...rows) overflows past ~120k rows.
+ */
+export function* serializeWorkbookSteps(blocks, every = 4000) {
+  const out = []; let n = 0;
+  const add = (lines) => { for (const l of lines) out.push(l); };
   for (const b of blocks) {
-    if (b.type === 'text') { out.push(...b.lines); continue; }
-    if (b.raw && b.sig === signature(b)) { out.push(...b.raw); continue; } // untouched: keep the author's formatting
+    if (b.type === 'text') { add(b.lines); continue; }
+    if (b.raw && b.sig === signature(b)) { add(b.raw); continue; } // untouched: keep the author's formatting
     if (b.named) {
       const prevBlank = out.length && out.at(-1).trim() === '';
       if (out.length && !prevBlank) out.push('');
       out.push(`## ${b.name}`, '');
-    } else out.push(...b.headingLines);
+    } else add(b.headingLines);
     const rows = trim(b.rows);
-    const ncol = Math.max(1, ...rows.map((r) => r.length));
-    const width = Array.from({ length: ncol }, (_, c) => Math.min(40, Math.max(3, ...rows.map((r) => escCell(r[c]).length))));
+    let ncol = 1; for (const r of rows) if (r.length > ncol) ncol = r.length;
+    const width = new Array(ncol).fill(3);
+    for (const r of rows) { for (let c = 0; c < ncol; c++) { const w = escCell(r[c]).length; if (w > width[c]) width[c] = w; } if (++n % every === 0) yield; }
+    for (let c = 0; c < ncol; c++) width[c] = Math.min(40, width[c]);
     const pad = (s, c) => s + ' '.repeat(Math.max(0, width[c] - s.length));
-    const line = (r) => `| ${Array.from({ length: ncol }, (_, c) => pad(escCell(r[c]), c)).join(' | ')} |`;
+    const line = (r) => { const cells = new Array(ncol); for (let c = 0; c < ncol; c++) cells[c] = pad(escCell(r[c]), c); return `| ${cells.join(' | ')} |`; };
     out.push(line(rows[0] || []));
     out.push(`| ${width.map((w, c) => { const a = b.align?.[c] || ''; const d = '-'.repeat(Math.max(3, w - (a === 'center' ? 2 : a ? 1 : 0))); return a === 'center' ? `:${d}:` : a === 'right' ? `${d}:` : a === 'left' ? `:${d}` : d; }).join(' | ')} |`);
-    for (const r of rows.slice(1)) out.push(line(r));
+    for (let i = 1; i < rows.length; i++) { out.push(line(rows[i])); if (++n % every === 0) yield; }
     const meta = cleanMeta(b.meta);
     if (meta) out.push('', `<!-- sheet: ${JSON.stringify(meta)} -->`);
     out.push('');

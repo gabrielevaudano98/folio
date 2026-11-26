@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T18:13:55Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T19:38:00Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: formulas in a Web Worker: custom functions through the window, save baseline in the worker, saves from the live model; full suite green
+- Last checkpoint: save in slices that yield to typing; writer and converter as steps; 200k rows without stack overflow; full suite green
 
 ## Resume in a new session
 
@@ -40,11 +40,17 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    after a pause ~0.35 s. Test step 14 in test/sheets-ui.test.mjs (UDF, audit, validation formula, SUBTOTAL+filter);
    the same suite passes with `localStorage['folio.sheets.worker'] = 'off'`.
 
-Open next (in order): save in slices that yields to typing (very large sheets); visual baselines if the fixed 93px ribbon height
+8. ~~**Save in slices**~~ DONE: `serializeWorkbookSteps` (renderer/sheet-core.js) and `sheetSteps`/`fromUniverSteps`
+   (convert.js) are generators; `fromUniver` drains them, `fromUniverAsync` runs ~8 ms slices and gives up when the
+   workbook changes. The window uses it when the last save took > 40 ms (surface.js `save()`); `saveNow()` cancels a
+   sliced save in progress. 50k rows: no main-thread pause from saving; 200k rows work (spreads removed).
+
+Open next (in order): visual baselines if the fixed 93px ribbon height
 changes them on macOS/Windows; MCP tools for queries, pivots and scripts; area 28 (AI) when decided.
 
 ## Commits since main
-- 945b542 wip: formulas in a Web Worker: custom functions through the window, save baseline in the worker, saves from the live model; full suite green
+- 71d1ed3 wip: save in slices that yield to typing; writer and converter as steps; 200k rows without stack overflow; full suite green
+- 292882b wip: formulas in a Web Worker: custom functions through the window, save baseline in the worker, saves from the live model; full suite green
 - f995079 wip: full suite green; opening a sheet with a chart no longer rewrites it; docs updated
 - f5351dd wip: languages: FQL case/replace/index/top/merge/split rows/transpose/transform + functions; Folio Script formats, borders, sort, find, rows, freeze, rename; shared replay
 - 7ee70ab wip: xlsx: conditional formatting exported and imported (14 rule kinds); shared formulas kept out of export and scripts

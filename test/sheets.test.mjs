@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { toUniver, fromUniver, roundTrip } from '../src/sheets/core/convert.js';
+import { toUniver, fromUniver, fromUniverAsync, roundTrip } from '../src/sheets/core/convert.js';
 import { readDoc, setFence, serializeDoc } from '../src/sheets/core/sheetmd.js';
 import { toRange, fromRange } from '../src/sheets/core/a1.js';
 import { toUniverStyle, fromUniverStyle } from '../src/sheets/core/style.js';
@@ -118,6 +118,17 @@ ok('a real Univer instance hands every file back byte-identical');
   t = performance.now(); const back = fromUniver(JSON.parse(JSON.stringify(l.data)), l); const save = performance.now() - t;
   assert.equal(back, big); assert(open < 1500 && save < 3000, `open ${open | 0} ms, save ${save | 0} ms`);
   ok(`20,000 rows: converted in ${Math.round(open)} ms, saved unchanged in ${Math.round(save)} ms`);
+  // the window's save in slices: the same text, no slice longer than a few frames, and it gives up when the workbook
+  // changes under it
+  const snap = JSON.parse(JSON.stringify(l.data)); snap.sheets['sheet-1'].cellData[5][1] = { v: 'edited', t: 1 };
+  const want = fromUniver(snap, l);
+  let longest = 0, last = performance.now(), pauses = 0;
+  const got = await fromUniverAsync(snap, l, {}, { sliceMs: 8, pause: async () => { longest = Math.max(longest, performance.now() - last); pauses++; await new Promise((r) => setTimeout(r, 0)); last = performance.now(); } });
+  longest = Math.max(longest, performance.now() - last);
+  assert.equal(got, want); assert(pauses > 5 && longest < 60, `pauses ${pauses}, longest slice ${longest | 0} ms`);
+  let k = 0; const gaveUp = await fromUniverAsync(snap, l, {}, { sliceMs: 1, stale: () => ++k > 2 });
+  assert.equal(gaveUp, null);
+  ok(`a save in slices writes the same file (${pauses} pauses, longest slice ${Math.round(longest)} ms) and gives up when the workbook changes`);
 }
 {
   // shared formulas: a run like =D2*E2, =D3*E3… is opened as one Univer shared formula; whatever is done to it

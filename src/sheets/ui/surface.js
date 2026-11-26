@@ -7,7 +7,7 @@
 // read and write ranges, call the data engine, keep Folio's own settings (charts, slicers, print, protection…),
 // replay script operations, and the hooks an extension can attach to.
 import { buildRibbon, wireRibbon, setComboValue } from '../../renderer/page-ribbon.js';
-import { toUniver, fromUniver, folioMeta } from '../core/convert.js';
+import { toUniver, fromUniver, fromUniverAsync, folioMeta } from '../core/convert.js';
 import { replayOps } from '../core/replay.js';
 import { setFence, readDoc } from '../core/sheetmd.js';
 import { splitRef, toRange, addr, quoteSheet, parseAddr, fromRange } from '../core/a1.js';
@@ -236,23 +236,37 @@ export function mountSheet(host, ctx) {
   // sheets changed since the last save (by their mutations' subUnitId; '*' when a change is not tied to one sheet);
   // the others reuse the block of the last save (fromUniver's cache), so a big workbook saves only what changed
   let dirty = new Set(['*']); const saveCache = new Map();
+  // a large workbook saves in slices (fromUniverAsync) so typing never waits for it; an edit during the save makes it
+  // give up (it reads Univer's live model), and saveNow() takes over from one in progress
+  let changes = 0, sliced = null;
+  const SLICE_ABOVE_MS = 40;
   function save(now = false) {
     clearTimeout(saveTimer);
+    const begin = () => { charts.sync(); floats.sync(); const changed = dirty; dirty = new Set(); return changed; };
     const run = () => {
       if (!loaded || !unitId) return;
-      const t0 = performance.now();
-      charts.sync(); floats.sync();
-      const changed = dirty; dirty = new Set();
+      if (sliced) { sliced.cancelled = true; for (const id of sliced.changed) dirty.add(id); sliced = null; }
+      const t0 = performance.now(); const changed = begin();
       writeText(fromUniver(surface.liveSnapshot(), loaded, { sheetMeta, workbook: workbookMeta, dirty: changed, cache: saveCache }));
       saveMs = performance.now() - t0;
     };
-    // a save that takes long (a sheet of 50k rows) waits for a longer pause in typing, so typing never stutters
-    if (now === true) run(); else saveTimer = setTimeout(run, Math.min(2000, Math.max(250, saveMs * 4)));
+    const runSliced = async () => {
+      if (!loaded || !unitId || sliced) return;
+      const job = { cancelled: false, changed: begin(), at: changes }; sliced = job;
+      const mine = loaded; const t0 = performance.now();
+      const out = await fromUniverAsync(surface.liveSnapshot(), loaded, { sheetMeta, workbook: workbookMeta, dirty: job.changed, cache: saveCache }, { stale: () => job.cancelled || changes !== job.at || loaded !== mine });
+      if (sliced === job) sliced = null;
+      if (out == null || job.cancelled || loaded !== mine) { if (!job.cancelled) for (const id of job.changed) dirty.add(id); return; } // the next save redoes it
+      writeText(out); saveMs = Math.min(saveMs, performance.now() - t0);
+    };
+    if (now === true) run();
+    else if (saveMs > SLICE_ABOVE_MS) saveTimer = setTimeout(runSliced, 500); // it yields to typing, so it need not wait long
+    else saveTimer = setTimeout(run, Math.max(250, saveMs * 4));
   }
   U.commands.onCommandExecuted((c, options) => {
     if (c.type !== 2 || loading || NOT_A_CHANGE.test(c.id)) return;
     oplog.record(c, options);
-    dirty.add(c.params?.subUnitId || '*');
+    dirty.add(c.params?.subUnitId || '*'); changes++;
     save();
     charts.refreshSoon();
     extensions.edited(c);

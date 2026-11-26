@@ -142,9 +142,10 @@ The contracts are in `src/sheets/core/collab.js` and tested with two headless re
 | 4. Collaboration-ready | Operation, OpLog, Transport contract, replay, conflict footprint; two replicas converge in tests | Done (no server, by design) |
 | 4b. Robustness (Nov 2026) | Lossless cell text (apostrophe rule, entities; fuzz through Univer), Excel-style combo boxes and fixed ribbon height, 6× faster open of large sheets, per-sheet save cache, shared formulas for runs like `=D2*E2`, fresh unit ids in the headless engine, conditional formatting in .xlsx, FQL and Folio Script extended | Done |
 | 4c. Formula worker | Univer's formula engine in a Web Worker; custom functions through the window; save baseline in the worker; save from the live model | Done |
-| 5. Next | Save in slices for very large sheets; live sync service and presence; AI assistant (area 28); MCP tools for queries, pivots and scripts; Settings view listing the data components; virtualised export for very large sheets | Planned |
+| 4d. Sliced save | Save in ~8 ms slices that give up on an edit; writer and converter as steps; no stack overflow past 120k rows | Done |
+| 5. Next | Live sync service and presence; AI assistant (area 28); MCP tools for queries, pivots and scripts; Settings view listing the data components; virtualised export for very large sheets | Planned |
 
-Tests: `test/sheets.test.mjs` (14 checks: round trips, fuzz, shared formulas, 20k rows), `test/fql.test.mjs` (11),
+Tests: `test/sheets.test.mjs` (15 checks: round trips, fuzz, shared formulas, 20k rows, save in slices), `test/fql.test.mjs` (11),
 `test/sheets-engine.test.mjs` (25), `test/sheets-i18n.test.mjs`, `test/sheets-ui.test.mjs` (19 checks in Electron).
 
 ## 8. Decisions and limits
@@ -165,9 +166,11 @@ Tests: `test/sheets.test.mjs` (14 checks: round trips, fuzz, shared formulas, 20
   for each value (which asks the data engine). Validation and formatting formulas, SUBTOTAL under filters and the
   formula audit work there (tested). If the worker cannot start, Folio says so and computes on the window's thread
   from the next open (`folio.sheets.worker` = `off`). The worker holds a second copy of the workbook in memory.
-- **Large sheets.** Measured in the app at 50,000 rows × 7 columns: the file converts in 0.24 s; an edit blocks the
-  grid for 0–130 ms (the worker recalculates); the save that follows a pause in typing takes ~0.35 s on the window's
-  thread (read from Univer's live model, no copy; formula shifts cached; untouched sheets reused). Next: a save in
-  slices that yields to typing.
+- **Large sheets.** Measured in the app at 50,000 rows × 7 columns: the file converts in 0.24 s; an edit holds the
+  grid for 60–140 ms (Univer's own handling and redraw; the worker recalculates). Saving never blocks typing: a
+  workbook whose save takes more than 40 ms is saved in slices of ~8 ms (`fromUniverAsync`, the same steps as
+  `fromUniver`), reading Univer's live model; an edit during the save makes it give up and start again, and
+  `saveNow()` takes over from it. 200,000 rows open, save and come back byte for byte (no argument spreads that
+  overflow the stack).
 - **Shared formulas** are only how Univer holds a run of formulas in memory: the file always lists each formula, and
   code that reads Univer data itself (export, scripts, version compare) never sees `si` cells (`expandSharedFormulas`).
