@@ -263,7 +263,8 @@ export function render(text) {
   let html = md.render(body);
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
   // the page icon (front matter `icon:`) is drawn large above the page, as in the Write view, not listed with the properties
-  const icon = meta?.find(([k, v]) => k === 'icon' && /^\s*\S{1,8}\s*$/u.test(v)); const rest = (meta || []).filter((x) => x !== icon);
+  const oneEmoji = (v) => { const s = String(v).trim(); return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].length === 1 && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s); };
+  const icon = meta?.find(([k, v]) => k === 'icon' && oneEmoji(v)); const rest = (meta || []).filter((x) => x !== icon);
   if (rest.length) html = `<dl class="frontmatter" data-line="0">${rest.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
   if (icon) html = `<div class="page-icon-read" aria-hidden="true">${escape(icon[1].trim())}</div>` + html;
   return DOMPurify.sanitize(html, {

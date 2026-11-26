@@ -176,6 +176,22 @@ const Decorate = Extension.create({
   addProseMirrorPlugins() {
     const opts = this.options;
     const hover = { el: null, card: null, timer: 0, seq: 0, hide() { clearTimeout(this.timer); this.seq++; this.card?.remove(); this.card = null; this.el = null; } };
+    /* open a page preview after a short rest on a link */
+    const onOver = (view, e) => {
+          const el = e.target.closest?.('.rich-wikilink:not(.is-missing):not(.is-date)');
+          if (!el || !opts.preview || el === hover.el) return false;
+          hover.hide(); hover.el = el;
+          hover.timer = setTimeout(async () => {
+            const n = ++hover.seq; const html = await Promise.resolve(opts.preview(el.dataset.target)).catch(() => null);
+            if (!html || n !== hover.seq || hover.el !== el || !el.isConnected) return;
+            const card = document.createElement('div'); card.className = 'rich-hover prose'; card.setAttribute('role', 'tooltip'); card.innerHTML = html;
+            document.body.append(card); hover.card = card;
+            const r = el.getBoundingClientRect(), h = card.offsetHeight;
+            card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px';
+            card.style.top = (innerHeight - r.bottom - 8 >= h ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+          }, 450);
+          return false;
+        };
     const build = (doc, reveal) => {
       const deco = [];
       const chip = (from, to, cls, label, data) => {
@@ -270,23 +286,8 @@ const Decorate = Extension.create({
       props: {
         decorations(state) { return KEY.getState(state).set; },
         handleDOMEvents: {
-          mousemove() { hover.typing = false; return false; },
-          mouseover(view, e) {
-            if (hover.typing) return false;
-            const el = e.target.closest?.('.rich-wikilink:not(.is-missing):not(.is-date)');
-            if (!el || !opts.preview || el === hover.el) return false;
-            hover.hide(); hover.el = el;
-            hover.timer = setTimeout(async () => {
-              const n = ++hover.seq; const html = await Promise.resolve(opts.preview(el.dataset.target)).catch(() => null);
-              if (!html || n !== hover.seq || hover.el !== el || !el.isConnected) return;
-              const card = document.createElement('div'); card.className = 'rich-hover prose'; card.setAttribute('role', 'tooltip'); card.innerHTML = html;
-              document.body.append(card); hover.card = card;
-              const r = el.getBoundingClientRect(), h = card.offsetHeight;
-              card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px';
-              card.style.top = (innerHeight - r.bottom - 8 >= h ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
-            }, 450);
-            return false;
-          },
+          mousemove(view, e) { if (!hover.typing) return false; hover.typing = false; return onOver(view, e); }, // the first real move counts as the hover
+          mouseover(view, e) { return hover.typing ? false : onOver(view, e); },
           mouseout(view, e) { const el = e.target.closest?.('.rich-wikilink'); if (el && el === hover.el && !el.contains(e.relatedTarget)) hover.hide(); return false; },
           keydown() { hover.hide(); return false; },
           scroll() { hover.hide(); return false; },
@@ -636,7 +637,10 @@ function blockAction(editor, a, arg, opts) {
     case 'delete': return blockCmd.remove(editor, b);
     case 'link': { const id = blockCmd.ensureId(editor, b); if (id) opts.onCopyLink?.(id); return true; }
     case 'colour': return blockCmd.colour(editor, arg, b);
-    case 'below': { const end = b.pos + b.node.nodeSize; const tr = editor.state.tr.insert(end, editor.state.schema.nodes.paragraph.create()); tr.setSelection(TextSelection.create(tr.doc, end + 1)); editor.view.dispatch(tr); return true; }
+    case 'below': { // under a list item, the new block goes below the whole list (a paragraph cannot sit in a list)
+      let blk = b; const $b = editor.state.doc.resolve(b.pos + 1);
+      if (/^(listItem|taskItem)$/.test(b.node.type.name)) { const top = $b.before(1); blk = { pos: top, node: editor.state.doc.nodeAt(top) }; }
+      const end = blk.pos + blk.node.nodeSize; const tr = editor.state.tr.insert(end, editor.state.schema.nodes.paragraph.create()); tr.setSelection(TextSelection.create(tr.doc, end + 1)); editor.view.dispatch(tr); return true; }
     default: return false;
   }
 }
@@ -655,7 +659,8 @@ const SlashMenu = Extension.create({
         if (state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code)) return false;
         /* a space may be part of the query ("2 col", "move up"), but a space with nothing matching ends it, as in Notion */
         const q = state.doc.textBetween(range.from + 1, range.to, ' ', ' ');
-        return !/\s/.test(q) || (!/^\s|\s{2}/.test(q) && filterInserts(q, { recent: [] }).length > 0);
+        const hasText = $f.parent.isTextblock && $f.parent.textContent.length > q.length + 1;
+        return !/\s/.test(q) || (!/^\s|\s{2}/.test(q) && filterInserts(q, { recent: [], hasText }).length > 0);
       },
       items: ({ query, editor }) => {
         if (query.length > 24) return [];

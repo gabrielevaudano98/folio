@@ -1066,11 +1066,11 @@ a.md-card:hover { box-shadow: inset 0 0 0 0.5px var(--color-rule-strong); }
 .is-block-selected { background: var(--color-accent-soft); border-radius: var(--radius-sm); box-shadow: 0 0 0 2px var(--color-accent-soft); }
 .is-block-selected ::selection, .is-block-selected::selection { background: transparent; }
 .block-mh-count { color: var(--color-text); font-weight: 600; }
-.block-drop { position: absolute; z-index: 6; border-radius: 2px; background: var(--color-accent); pointer-events: none; box-shadow: 0 0 0 1px var(--color-bg); }
+.block-drop { position: absolute; z-index: 6; border-radius: 2px; background: var(--color-accent); pointer-events: none; box-shadow: 0 0 0 1px var(--color-paper); }
 .block-drop.is-vertical { border-radius: 2px; }
 .rich-scroll:has(.is-dragging-block) ~ .bubble { visibility: hidden; }
 .is-dragging-block .is-drop-target { background: var(--color-hover); border-radius: var(--radius-sm); }
-.block-ghost { position: fixed; top: -10000px; left: 0; opacity: 0.4; pointer-events: none; background: var(--color-bg); }
+.block-ghost { position: fixed; top: -10000px; left: 0; opacity: 0.4; pointer-events: none; background: var(--color-paper); }
 
 .block-menu { position: fixed; z-index: var(--z-dropdown); width: 300px; padding: var(--space-3xs); border-radius: var(--radius-lg); background: var(--color-paper); box-shadow: var(--shadow-pop); }
 .block-menu[hidden] { display: none; }
@@ -1128,7 +1128,7 @@ audio.rich-media-el { height: 40px; }
 .mention-ghost { position: fixed; z-index: 40; color: var(--color-faint); pointer-events: none; white-space: pre; }
 .slash-turn { color: var(--color-faint); font-weight: 400; }
 .slash-item.is-danger[aria-selected="true"] { background: var(--color-accent); color: var(--color-accent-ink); }
-.slash-item.is-danger[aria-selected="true"] kbd, .slash-item.is-danger[aria-selected="true"] .slash-desc { color: inherit; }
+.slash-item.is-danger[aria-selected="true"] :is(.slash-label, .slash-ic, .slash-badge, kbd, .slash-desc) { color: inherit; }
 .slash-swatch { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); font: 600 12px/1 var(--font-ui, inherit); color: var(--color-text); }
 .slash-swatch[data-c="gray"] { color: var(--content-gray); }
 .slash-swatch.is-bg[data-c="gray"] { color: var(--color-text); background: var(--content-gray-bg); border-color: transparent; }

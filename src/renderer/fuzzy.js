@@ -8,8 +8,9 @@ export function fuzzy(q, s) {
   const idx = sl.indexOf(ql);
   if (idx >= 0) return { score: 100 - idx + (idx === 0 ? 50 : 0), marks: [[idx, idx + q.length]] };
   /* the initials of the words: "tdl" finds "To-do list", "nl" "Numbered list" (Notion has no such match) */
-  const starts = [...sl.matchAll(/(?:^|[\s/_-])([\p{L}\p{N}])/gu)].map((m) => m.index + m[0].length - 1);
-  if (ql.length >= 2 && ql.length <= starts.length && [...ql].every((c, k) => sl[starts[k]] === c)) return { score: 80 - (starts.length - ql.length), marks: [...ql].map((_, k) => [starts[k], starts[k] + 1]) };
+  const ini = [...ql]; // offsets come from the original label, so the highlight lands on the right letter
+  const starts = [...s.matchAll(/(?:^|[\s/_-])([\p{L}\p{N}])/gu)].map((m) => [m.index + m[0].length - m[1].length, m[1]]);
+  if (ini.length >= 2 && ini.length <= starts.length && ini.every((c, k) => starts[k][1].toLowerCase() === c)) return { score: 80 - (starts.length - ini.length), marks: ini.map((_, k) => [starts[k][0], starts[k][0] + starts[k][1].length]) };
   let i = 0, score = 0; const marks = [];
   for (let j = 0; j < sl.length && i < ql.length; j++) if (sl[j] === ql[i]) { marks.push([j, j + 1]); score += j > 0 && /[\s/_-]/.test(sl[j - 1]) ? 6 : 1; i++; }
   return i === ql.length ? { score, marks } : null;

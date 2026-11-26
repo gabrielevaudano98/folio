@@ -126,7 +126,10 @@ export const blockCmd = {
       tr.removeMark(a, z, type);
       if (next.color || next.bg) tr.addMark(a, z, type.create({ color: next.color, bg: next.bg }));
     });
-    if (!tr.docChanged) return true;
+    if (!tr.docChanged) { // an empty line: what is typed next takes the colour
+      const cur = type.isInSet(state.storedMarks || state.selection.$from.marks())?.attrs || {}; const next = { color: null, bg: null, ...cur, ...patch };
+      tr.removeStoredMark(type); if (next.color || next.bg) tr.addStoredMark(type.create(next));
+    }
     editor.view.dispatch(tr); editor.view.focus(); return true;
   },
   /* give the block an Obsidian block id (^abc123) if it has none, and return it */
@@ -188,7 +191,7 @@ export const BlockHandles = Extension.create({
           const decos = []; R.parent.forEach((n, off, i) => { if (i >= R.lo && i <= R.hi) decos.push(Decoration.node(R.start + off, R.start + off + n.nodeSize, { class: 'is-block-selected' })); });
           return DecorationSet.create(state.doc, decos);
         },
-        handleTextInput: (view) => !!RANGE.getState(view.state), // typing does not wipe a block selection
+        handleTextInput: () => false, // typing replaces the selected blocks, like any selection
       },
     });
     return [rangePlugin, new Plugin({
@@ -244,6 +247,7 @@ export const BlockHandles = Extension.create({
           const from = dnd.from; if (!from) return false;
           let b = fromPoint(ev.clientX, ev.clientY); if (!b) return true;
           const item = ITEM.has(from.node.type.name);
+          if (item && b.node.type !== from.node.type) { clearDrop(); return true; } // a list item only lands among items of its own kind
           if (!item || !ITEM.has(b.node.type.name)) { const $b = view.state.doc.resolve(Math.min(b.pos + 1, view.state.doc.content.size)); if ($b.depth >= 1) { const p = $b.before(1); b = { pos: p, node: view.state.doc.nodeAt(p), depth: 1 }; } }
           if (!b.node || (b.pos >= from.pos && b.pos < from.pos + from.node.nodeSize)) { clearDrop(); return true; }
           const dom = view.nodeDOM(b.pos); if (!(dom instanceof HTMLElement)) return true;
