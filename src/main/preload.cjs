@@ -112,5 +112,6 @@ contextBridge.exposeInMainWorld('folio', {
     onState: on('meeting:state'),
     onSegment: on('meeting:segment'),
     onStopRequest: on('meeting:stop-request'),
+    onAutoStart: on('meeting:auto-start'),
   },
 });

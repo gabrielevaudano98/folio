@@ -1,11 +1,12 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer, Notification } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -220,7 +221,10 @@ h('settings:set', async (patch) => {
   return { ...settings, token: undefined };
 });
 // optional features (meeting recorder): downloads, the recording session and its worker
-const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs') });
+const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs'),
+  // Windows only: a notification when another app starts using the microphone, and the registry query that finds it
+  notify: ({ title, body, onClick }) => { if (!Notification.isSupported()) return; const n = new Notification({ title, body, silent: true }); n.on('click', onClick); n.show(); },
+  execReg: process.platform === 'win32' ? (args) => new Promise((res, rej) => execFile('reg', args, { windowsHide: true, timeout: 5000, maxBuffer: 1 << 20 }, (e, out) => (e ? rej(e) : res(out)))) : null });
 h('workspace:choose', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;
@@ -749,6 +753,7 @@ function lockDownSession() {
   });
 }
 app.whenReady().then(async () => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.folio.markdown'); // notifications carry the app's name
   lockDownSession();
   try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {} // settings from before 1.2.2 were readable by other users
   fss.rmSync(undoRoot(), { recursive: true, force: true }); // leftovers from a crashed session
