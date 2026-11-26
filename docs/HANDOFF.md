@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T15:59:05Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T16:07:56Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: cell values lossless: apostrophe rule and entities, fuzz test through Univer
+- Last checkpoint: ribbon: Excel-style combo boxes (font, size, number format with previews), same height on every tab
 
 ## Resume in a new session
 
@@ -17,13 +17,14 @@ Written by `node scripts/checkpoint.mjs` (2026-11-26T15:59:05Z). Read this first
 ## Next
 Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 28, AI, is out of scope):
 1. ~~**Cell values lossless**~~ DONE (fuzz in test/sheets.test.mjs, rule in FORMATS.md) — `src/sheets/core/cell-text.js` written (apostrophe rule for text that reads as number/TRUE/formula, `&#32;` for edge blanks, `&lt;br>` for a literal tag). Wire it into `convert.js` (`cellFromRaw`/`rawFromCell`) and `renderer/sheet-core.js` (`evaluator` → `cellValue`), add the fuzz test (`/tmp/fz/fuzz.mjs` idea: 400 random grids, value + type must survive save/reload, second save identical) to `test/sheets.test.mjs`, document in `docs/FORMATS.md`.
-2. **Ribbon** — `.rb-select` has `min-width: 9.5rem` that beats `width: 58px` (font size box 152 px) and 28 px selects make the Home ribbon 18 px taller than other tabs. Replace Font / Size / Number format with typeable comboboxes in `renderer/page-ribbon.js`, fixed ribbon height, re-check collapse with screenshots.
+2. ~~**Ribbon**~~ DONE (combos in page-ribbon.js, fixed height, 4 new checks in test/sheets-ui.test.mjs; run test/visual.test.mjs: baselines may need refreshing because the ribbon is now a fixed 93px) — `.rb-select` has `min-width: 9.5rem` that beats `width: 58px` (font size box 152 px) and 28 px selects make the Home ribbon 18 px taller than other tabs. Replace Font / Size / Number format with typeable comboboxes in `renderer/page-ribbon.js`, fixed ribbon height, re-check collapse with screenshots.
 3. **Large sheets** — time convert / headless / export at 50k rows, fix hot spots.
 4. **.xlsx** — export (and import) conditional formatting, data validation, freeze panes (documented gap in docs/sheets/README.md §8).
 5. **Languages** — FQL: `replace`, `index`, `top`, `case when`; Folio Script: setFontSize/Family, setBorder, merge, sort, insert/delete rows, find.
 6. Final: full test suite, screenshots, docs, Project doc `claude/SHEETS-PLAN.md`.
 
 ## Commits since main
-- 7fe4ffe wip: cell values lossless: apostrophe rule and entities, fuzz test through Univer
+- 3478642 wip: ribbon: Excel-style combo boxes (font, size, number format with previews), same height on every tab
+- 6b505ff wip: cell values lossless: apostrophe rule and entities, fuzz test through Univer
 - 75254bf wip: handoff next steps
 - 574e3ee wip: Sheets on Univer: 27 areas, tests green; started robustness pass

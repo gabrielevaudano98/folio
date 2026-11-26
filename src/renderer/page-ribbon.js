@@ -97,6 +97,7 @@ export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions, tabs: TA
   const ic = (n) => (n && icons[n]) || '';
   const tip = (b) => `${L(b.tip || b.label)}${b.key ? ` (${keyLabel(b.key)})` : ''}`;
   const button = (b, cls = '') => {
+    if (b.combo) return combo(b);
     if (b.select) return `<label class="visually-hidden" for="rb-${b.cmd}">${esc(L(b.label))}</label><select class="rb-select${b.wide ? ' rb-select-wide' : ''}" id="rb-${b.cmd}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${b.width ? ` style="width:${b.width}px"` : ''}>${b.select.map(([v, l]) => `<option value="${esc(v)}">${esc(L(l ?? v))}</option>`).join('')}</select>`;
     const pressed = b.pressable ? ' aria-pressed="false"' : '';
     const menu = b.menu ? ' aria-haspopup="menu" aria-expanded="false"' : '';
@@ -104,6 +105,12 @@ export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions, tabs: TA
     if (b.text) return `<button type="button" class="rb rb-wide${cls}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}<span>${esc(L(b.label))}</span>${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
     if (b.label100) return `<button type="button" class="rb rb-zoom" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}" aria-label="${tr('rib.reset-zoom')}"><span class="rb-zoom-val">100%</span></button>`;
     return `<button type="button" class="rb${cls}" data-cmd="${b.cmd}" aria-label="${esc(L(b.label))}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
+  };
+  /* Excel's combo boxes (font, size, number format): a text field with a list. `editable` lets the person type a value
+     that is not in the list (a size of 13, a font the list does not name); `font` draws each name in its own face */
+  const combo = (b) => {
+    const opts = b.combo.map(([v, l]) => [v, L(l ?? v)]);
+    return `<span class="rb-combo${b.editable ? ' is-editable' : ''}" style="width:${b.width || 120}px" data-tip="${esc(tip(b))}"><input class="rb-combo-input" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-label="${esc(L(b.label))}" data-cmd="${b.cmd}" data-value="${esc(opts[0]?.[0] ?? '')}" value="${esc(opts[0]?.[1] ?? '')}" data-options="${esc(JSON.stringify(opts))}"${b.font ? ' data-font="1"' : ''}${b.editable ? '' : ' readonly'}${b.numeric ? ` data-min="${b.numeric[0]}" data-max="${b.numeric[1]}" inputmode="decimal"` : ''} spellcheck="false" autocomplete="off"><button type="button" class="rb-combo-btn" tabindex="-1" aria-label="${esc(L(b.label))}"><i class="rb-caret" aria-hidden="true"></i></button></span>`;
   };
   const styles = `<div class="rb-styles" role="listbox" aria-label="${tr('rib.styles')}">${STYLE_TILES.map(([v, l]) => `<button type="button" class="rb-style-tile" role="option" aria-selected="false" data-style="${v}"><span class="rb-style-sample" data-s="${v}">${v === 'code' ? 'code()' : 'AaBb'}</span><span class="rb-style-name">${L(l)}</span></button>`).join('')}</div>`;
   const groupIcon = (g) => (g.styles ? 'heading' : g.items.map((c) => (Array.isArray(c) ? c.flat()[0] : c)).find(Boolean)?.icon || 'more');
@@ -128,7 +135,7 @@ export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions, tabs: TA
 }
 
 /* tabs, layout switch and contextual tab; `run(cmd, button)` executes a command */
-export function wireRibbon(ribbon, { run, onModeChange, modeKey = MODE_KEY, defaultMode = 'compact' }) {
+export function wireRibbon(ribbon, { run, onModeChange, modeKey = MODE_KEY, defaultMode = 'compact', describe = null }) {
   const tabs = [...ribbon.querySelectorAll('.rb-tab')];
   let current = 'home', inTable = false;
   let select = (id, { focus = false } = {}) => {
@@ -154,7 +161,7 @@ export function wireRibbon(ribbon, { run, onModeChange, modeKey = MODE_KEY, defa
     if (b?.dataset.cmd === 'ribbonMode') return setMode(ribbon.dataset.mode === 'full' ? 'compact' : 'full');
     const tile = e.target.closest('.rb-style-tile');
     if (tile) return run('style:' + tile.dataset.style, tile);
-    if (b && b.tagName !== 'SELECT') run(b.dataset.cmd, b);
+    if (b && b.tagName !== 'SELECT' && b.tagName !== 'INPUT') run(b.dataset.cmd, b);
   });
   /* narrow windows: groups fold from the right into one button that opens them, as in Word */
   const fit = () => {
@@ -179,12 +186,14 @@ export function wireRibbon(ribbon, { run, onModeChange, modeKey = MODE_KEY, defa
     const r = more.getBoundingClientRect(); el.style.top = `${r.bottom + 4}px`; el.style.left = `${Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8))}px`;
     more.setAttribute('aria-expanded', 'true'); fly = { el, body, group };
     el.addEventListener('mousedown', (ev) => { if (ev.target.closest('.rb, .rb-style-tile')) ev.preventDefault(); });
-    el.addEventListener('click', (ev) => { const tile = ev.target.closest('.rb-style-tile'); const b = ev.target.closest('[data-cmd]'); if (!tile && !b) return; if (b?.tagName === 'SELECT') return; closeFly(); if (tile) run('style:' + tile.dataset.style, tile); else run(b.dataset.cmd, more); });
+    el.addEventListener('click', (ev) => { const tile = ev.target.closest('.rb-style-tile'); const b = ev.target.closest('[data-cmd]'); if (!tile && !b) return; if (b?.tagName === 'SELECT' || b?.tagName === 'INPUT') return; closeFly(); if (tile) run('style:' + tile.dataset.style, tile); else run(b.dataset.cmd, more); });
     el.addEventListener('change', (ev) => { const sel = ev.target.closest('select[data-cmd]'); if (sel) run(sel.dataset.cmd, sel); });
-    el.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeFly(); more.focus(); } });
+    wireCombos(el, { run, describe });
+    el.addEventListener('keydown', (ev) => { if (ev.defaultPrevented) return; if (ev.key === 'Escape') { ev.preventDefault(); closeFly(); more.focus(); } });
     document.addEventListener('mousedown', outsideFly, true);
     el.querySelector('button')?.focus({ preventScroll: true });
   }, true);
+  wireCombos(ribbon, { run, describe });
   const origSelect = select;
   select = (id, o) => { closeFly(); origSelect(id, o); requestAnimationFrame(fit); };
   const origMode = setMode;
@@ -201,4 +210,121 @@ export function wireRibbon(ribbon, { run, onModeChange, modeKey = MODE_KEY, defa
       if (!on && current === 'table') select('home');
     },
   };
+}
+
+
+/* ---------- combo boxes ---------- */
+const comboOptions = (input) => { try { return JSON.parse(input.dataset.options || '[]'); } catch { return []; } };
+/** show a value in every combo of a command (the ribbon's full and one-row layouts, and an open flyout) */
+export function setComboValue(root, cmd, value) {
+  const all = new Set([...root.querySelectorAll(`.rb-combo-input[data-cmd="${cmd}"]`), ...document.querySelectorAll(`.rb-flyout .rb-combo-input[data-cmd="${cmd}"]`)]);
+  for (const input of all) {
+    if (document.activeElement === input && input.getAttribute('aria-expanded') === 'true') continue; // the person is typing
+    const v = String(value ?? '');
+    const o = comboOptions(input).find(([ov]) => ov === v);
+    input.dataset.value = v;
+    input.value = input.dataset.label = o ? o[1] : v;
+    if (input.dataset.font) input.style.fontFamily = v ? `"${v.replace(/"/g, '')}", var(--font-sans)` : '';
+  }
+}
+let comboSeq = 0;
+function wireCombos(root, { run, describe }) {
+  let open = null; // { input, list, items, active, before }
+  const close = (restore) => {
+    if (!open) return;
+    const { input, list, before } = open;
+    if (restore) { input.value = before.label; input.dataset.value = before.value; }
+    if (restore && input.dataset.font) input.style.fontFamily = before.value ? `"${before.value.replace(/"/g, '')}", var(--font-sans)` : '';
+    input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); input.removeAttribute('aria-controls');
+    list.remove(); open = null; document.removeEventListener('mousedown', outside, true); removeEventListener('blur', blurWin);
+  };
+  const outside = (e) => { if (open && !open.list.contains(e.target) && !open.input.parentElement.contains(e.target)) commitTyped(); };
+  const blurWin = () => close(true);
+  const commit = (value, label) => {
+    if (!open) return;
+    const { input } = open;
+    input.dataset.value = value; input.dataset.label = label; input.value = label;
+    close(false);
+    run(input.dataset.cmd, { value, element: input, dataset: input.dataset, getBoundingClientRect: () => input.getBoundingClientRect() });
+    if (input.dataset.font) input.style.fontFamily = value ? `"${value.replace(/"/g, '')}", var(--font-sans)` : '';
+  };
+  /** what was typed: an option it names, or (editable combos) the text itself, checked against data-min/max */
+  const commitTyped = () => {
+    if (!open) return;
+    const { input, items, active } = open;
+    const text = input.value.trim();
+    if (input.readOnly) { if (active >= 0) return commit(items[active][0], items[active][1]); return close(true); }
+    if (!text) return close(true);
+    const exact = items.find(([v, l]) => l.toLowerCase() === text.toLowerCase() || v.toLowerCase() === text.toLowerCase());
+    if (exact) return commit(exact[0], exact[1]);
+    if (input.dataset.min) {
+      const n = Number(text.replace(',', '.'));
+      if (!Number.isFinite(n) || n < +input.dataset.min || n > +input.dataset.max) { input.classList.add('is-invalid'); setTimeout(() => input.classList.remove('is-invalid'), 600); return close(true); }
+      const r = String(Math.round(n * 2) / 2); return commit(r, r); // Excel keeps sizes to half points
+    }
+    return commit(text, text);
+  };
+  const paint = () => {
+    const { list, items, active, input } = open;
+    list.replaceChildren(...items.map(([v, l], i) => {
+      const li = document.createElement('div');
+      li.className = 'rb-option'; li.id = `${list.id}-${i}`; li.setAttribute('role', 'option'); li.setAttribute('aria-selected', String(i === active)); li.dataset.i = i;
+      const name = document.createElement('span'); name.className = 'rb-option-label'; name.textContent = l;
+      if (input.dataset.font && v) name.style.fontFamily = `"${v.replace(/"/g, '')}", var(--font-sans)`;
+      li.append(name);
+      const hint = describe?.(input.dataset.cmd, v);
+      if (hint) { const h = document.createElement('span'); h.className = 'rb-option-hint'; h.textContent = hint; li.append(h); }
+      return li;
+    }));
+    if (active >= 0) { input.setAttribute('aria-activedescendant', `${list.id}-${active}`); list.children[active]?.scrollIntoView({ block: 'nearest' }); } else input.removeAttribute('aria-activedescendant');
+  };
+  const show = (input, filter = '') => {
+    if (open && open.input !== input) commitTyped();
+    const all = comboOptions(input);
+    const f = filter.trim().toLowerCase();
+    const items = f && !input.readOnly ? all.filter(([v, l]) => l.toLowerCase().includes(f) || v.toLowerCase().startsWith(f)) : all;
+    if (!open) {
+      const list = document.createElement('div');
+      list.className = 'rb-listbox'; list.id = `rb-list-${++comboSeq}`; list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', input.getAttribute('aria-label'));
+      list.addEventListener('mousedown', (e) => e.preventDefault());
+      list.addEventListener('click', (e) => { const o = e.target.closest('.rb-option'); if (o) { const [v, l] = open.items[+o.dataset.i]; commit(v, l); } });
+      document.body.append(list);
+      // what to go back to on Escape: the last value set or chosen, not what is being typed
+      open = { input, list, items, active: -1, before: { value: input.dataset.value, label: input.dataset.label ?? input.value } };
+      input.setAttribute('aria-expanded', 'true'); input.setAttribute('aria-controls', list.id);
+      document.addEventListener('mousedown', outside, true); addEventListener('blur', blurWin);
+      const r = input.parentElement.getBoundingClientRect();
+      list.style.minWidth = `${Math.max(r.width, input.dataset.font ? 200 : 0)}px`;
+      list.style.left = `${Math.max(8, Math.min(r.left, innerWidth - Math.max(r.width, 200) - 8))}px`;
+      const below = innerHeight - r.bottom - 12;
+      list.style.maxHeight = `${Math.max(160, Math.min(360, below))}px`; list.style.top = `${r.bottom + 2}px`;
+    }
+    open.items = items;
+    const cur = f ? 0 : items.findIndex(([v]) => v === input.dataset.value);
+    open.active = items.length ? Math.max(0, cur) : -1;
+    if (f && input.readOnly) open.active = -1;
+    paint();
+  };
+  root.addEventListener('mousedown', (e) => {
+    const btn = e.target.closest('.rb-combo-btn'); const input = e.target.closest('.rb-combo-input');
+    if (btn) { e.preventDefault(); const i = btn.parentElement.querySelector('input'); if (open?.input === i) close(true); else { i.focus(); show(i); } }
+    else if (input?.readOnly) { e.preventDefault(); input.focus(); if (open?.input === input) close(true); else show(input); }
+  }, true);
+  root.addEventListener('focusin', (e) => { const i = e.target.closest('.rb-combo-input'); if (i && !i.readOnly) requestAnimationFrame(() => i.select()); });
+  root.addEventListener('input', (e) => { const i = e.target.closest('.rb-combo-input'); if (i) show(i, i.value); });
+  root.addEventListener('keydown', (e) => {
+    const input = e.target.closest('.rb-combo-input'); if (!input) return;
+    const isOpen = open?.input === input;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isOpen || e.altKey) { if (!isOpen) show(input); return; }
+      const n = open.items.length; if (!n) return;
+      open.active = (open.active + (e.key === 'ArrowDown' ? 1 : -1) + n) % n; paint();
+      if (!input.readOnly) input.value = open.items[open.active][1];
+    } else if (e.key === 'Enter') { e.preventDefault(); if (isOpen) { if (input.readOnly && open.active >= 0) { const [v, l] = open.items[open.active]; commit(v, l); } else commitTyped(); } else if (input.readOnly) show(input); else { show(input, input.value); commitTyped(); } }
+    else if (e.key === 'Escape') { if (isOpen) { e.preventDefault(); e.stopPropagation(); close(true); } }
+    else if (e.key === 'Tab') { if (isOpen) commitTyped(); }
+    else if (e.key === ' ' && input.readOnly) { e.preventDefault(); if (!isOpen) show(input); }
+  });
+  root.addEventListener('focusout', (e) => { const i = e.target.closest('.rb-combo-input'); if (i && open?.input === i && !open.list.contains(e.relatedTarget)) commitTyped(); });
 }

@@ -41,10 +41,27 @@ const steps = [
   // 12 import an .xlsx as a new workbook
   ev(`document.querySelector('[data-tab="data"]').click(); document.querySelector('[data-cmd="x:importFile"]').click(); return 1`, 5000),
   ev(`return [...document.querySelectorAll('[data-file]')].map(e=>e.dataset.file).filter(f=>/Stock/.test(f))`),
+  // 13 the ribbon: every tab the same height; a size typed in the box applies; Escape gives back what was there; the
+  //    Number format list previews the active cell
+  open('sheets/Rich.sheet.md'),
+  ev(`const R = document.querySelector('.surface-sheet .ribbon'); const h = new Set();
+    for (const t of R.querySelectorAll('.rb-tab:not([hidden])')) { t.click(); await new Promise(r=>setTimeout(r,120)); h.add(Math.round(R.querySelector('.rb-panels').getBoundingClientRect().height)); }
+    R.querySelector('[data-tab="home"]').click(); await new Promise(r=>setTimeout(r,200));
+    ${S}.wb().getSheetByName('Orders').activate(); ${S}.ws().getRange('E3').activate(); await new Promise(r=>setTimeout(r,200));
+    const q = (c) => R.querySelector('#rb-panel-home .rb-combo-input[data-cmd="' + c + '"]');
+    const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    const size = q('x:size'); size.focus(); size.value = '13'; size.dispatchEvent(new Event('input', { bubbles: true })); key(size, 'Enter'); await new Promise(r=>setTimeout(r,200));
+    const fs = ${S}.range().getCellStyleData().fs;
+    size.focus(); size.value = '999'; size.dispatchEvent(new Event('input', { bubbles: true })); key(size, 'Enter'); await new Promise(r=>setTimeout(r,200));
+    const fs2 = ${S}.range().getCellStyleData().fs;
+    const font = q('x:font'); font.focus(); font.value = 'Verd'; font.dispatchEvent(new Event('input', { bubbles: true })); const matches = document.querySelectorAll('.rb-listbox .rb-option').length; key(font, 'Escape');
+    const nf = q('x:numfmt'); nf.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); await new Promise(r=>setTimeout(r,100));
+    const cur = [...document.querySelectorAll('.rb-listbox .rb-option')].find((o) => o.textContent.startsWith('Currency'))?.textContent; key(nf, 'Escape');
+    return { heights: [...h], fs, fs2, sizeBox: size.value, matches, font: font.value, cur }`, 2500),
   errors,
 ];
 const r = await runApp(w, steps, { FOLIO_IMPORT_SHEET: xlsxPath }, 240000);
-const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, errs] = r.js;
+const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, ribbon, errs] = r.js;
 let n = 0; const ok = (m) => { n++; console.log('  ✓ ' + m); };
 console.log('sheets in the app');
 assert.equal(ping, 1); ok('the data engine starts as a separate process');
@@ -63,5 +80,9 @@ assert.deepEqual(xl.SheetNames.slice(0, 2), ['Orders', 'Regions']); assert.equal
 assert(fs.readdirSync(w.out).some((f) => f.endsWith('.pdf') && fs.statSync(path.join(w.out, f)).size > 1000)); ok('the sheet exports to PDF');
 assert.deepEqual(imported, ['sheets/Stock.sheet.md']); const st = w.read('sheets/Stock.sheet.md');
 assert(st.includes('## Stock') && st.includes('| Book | 2   | 12    |') && /"source":"\.asset\/[0-9a-f]{8}-Stock\.xlsx"/.test(st)); ok('an .xlsx imports as a new workbook that keeps the original package for export');
+assert.equal(ribbon.heights.length, 1, `ribbon heights ${ribbon.heights}`); ok('every ribbon tab has the same height');
+assert.deepEqual([ribbon.fs, ribbon.fs2, ribbon.sizeBox], [13, 13, '13']); ok('a font size typed in the box applies; one out of range (999) is refused');
+assert.deepEqual([ribbon.matches, ribbon.font], [1, 'System']); ok('the font box filters as you type and Escape gives back the font in use');
+assert.equal(ribbon.cur, 'Currency€1.20'); ok('the Number format list previews the active cell in each format');
 assert.deepEqual(errs, []); ok('no errors in the window');
 console.log(`\n${n} sheets app checks passed`);

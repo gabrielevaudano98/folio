@@ -1,6 +1,7 @@
 // Folio Sheets — Italian interface text, keyed by the English text in the code (i18n.js). Names that read the same
 // in both languages (fonts, paper sizes, products) are listed too, so test/i18n-sheets checks find every label here.
 export default {
+  "Custom": "Personalizzato",
   "$ US dollar": "$ Dollaro USA",
   "% of total": "% del totale",
   "(empty)": "(vuota)",

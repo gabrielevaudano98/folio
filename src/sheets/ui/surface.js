@@ -6,13 +6,14 @@
 // `surface` below is the API every panel and command uses (docs/sheets/README.md, "Renderer API"):
 // read and write ranges, call the data engine, keep Folio's own settings (charts, slicers, print, protection…),
 // replay script operations, and the hooks an extension can attach to.
-import { buildRibbon, wireRibbon } from '../../renderer/page-ribbon.js';
+import { buildRibbon, wireRibbon, setComboValue } from '../../renderer/page-ribbon.js';
 import { toUniver, fromUniver, folioMeta } from '../core/convert.js';
 import { setFence, readDoc } from '../core/sheetmd.js';
 import { splitRef, toRange, addr, quoteSheet, parseAddr, fromRange } from '../core/a1.js';
 import { startUniver } from './univer.js';
 import { createCommands } from './commands.js';
-import { TABS, COMPACT } from './ribbon.js';
+import { TABS, COMPACT, NUMBER_FORMATS } from './ribbon.js';
+import { numfmt } from '@univerjs/core';
 import { icons as xsIcons } from './icons.js';
 import { L } from './i18n.js';
 import { createPanels } from './panels/index.js';
@@ -196,7 +197,7 @@ export function mountSheet(host, ctx) {
   const extensions = createExtensions({ api, U, surface, ctx });
   surface.extensions = extensions;
   const cmds = createCommands({ api, commands: U.commands, host, ctx, panels, surface });
-  const ribbon = wireRibbon(ribbonEl, { run: (cmd, el) => { if (!cmds.run(cmd, el)) ctx.toast(L('Not available yet.')); setTimeout(syncRibbon, 0); }, modeKey: 'folio.ribbon.sheet', defaultMode: 'full' });
+  const ribbon = wireRibbon(ribbonEl, { run: (cmd, el) => { if (!cmds.run(cmd, el)) ctx.toast(L('Not available yet.')); setTimeout(syncRibbon, 0); }, modeKey: 'folio.ribbon.sheet', defaultMode: 'full', describe: numberPreview });
   void ribbon;
 
   /* ---------- load and save ---------- */
@@ -242,6 +243,15 @@ export function mountSheet(host, ctx) {
   });
   api.addEvent?.(api.Event.SelectionChanged, () => { syncRibbon(); extensions.selected(); panels.selectionChanged(); });
 
+  /* the Number format list shows the active cell in each format, as Excel does */
+  function numberPreview(cmd, id) {
+    if (cmd !== 'x:numfmt') return null;
+    const f = NUMBER_FORMATS.find(([x]) => x === id); if (!f) return null;
+    const v = surface.range()?.getRawValue?.(); // getValue() gives the displayed text
+    if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+    try { return f[2] === 'General' ? String(v) : numfmt.format(f[2], v); } catch { return null; }
+  }
+
   /* ---------- ribbon state follows the selection ---------- */
   function syncRibbon() {
     const r = surface.range(); if (!r) return;
@@ -255,10 +265,13 @@ export function mountSheet(host, ctx) {
     press('x:formulaBar', !host.classList.contains('xs-no-fbar'));
     press('x:showFormulas', host.classList.contains('xs-show-formulas'));
     press('x:printGrid', !!workbookMeta.print?.gridlines); press('x:printHeadings', !!workbookMeta.print?.headings);
-    const set = (cmd, v) => ribbonEl.querySelectorAll(`select[data-cmd="${cmd}"]`).forEach((s) => { if ([...s.options].some((o) => o.value === v)) s.value = v; });
+    const set = (cmd, v) => setComboValue(ribbonEl, cmd, v);
     set('x:font', st.ff || ''); set('x:size', String(st.fs || 11));
     const p = r.getNumberFormat?.() || 'General';
-    import('./ribbon.js').then(({ NUMBER_FORMATS }) => set('x:numfmt', (NUMBER_FORMATS.find((f) => f[2] === p) || ['general'])[0]));
+    const nf = NUMBER_FORMATS.find((f) => f[2] === p);
+    set('x:numfmt', nf ? nf[0] : 'general');
+    if (!nf && p !== 'General') ribbonEl.querySelectorAll('.rb-combo-input[data-cmd="x:numfmt"]').forEach((i) => { i.value = i.dataset.label = L('Custom'); }); // a pattern the list does not name
+    set('x:fit', String(workbookMeta.print?.fit ?? '1'));
   }
 
   /* ---------- helpers used by commands ---------- */

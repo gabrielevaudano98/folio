@@ -6,7 +6,8 @@ const big = (cmd, label, icon, key, opts) => ({ ...B(cmd, label, icon, key, opts
 const txt = (cmd, label, icon, key, opts) => B(cmd, label, icon, key, { ...opts, text: true });
 const menu = { menu: true };
 
-export const FONTS = [['', 'System'], ['Inter', 'Inter'], ['Arial', 'Arial'], ['Calibri', 'Calibri'], ['Aptos', 'Aptos'], ['Georgia', 'Georgia'], ['Times New Roman', 'Times New Roman'], ['Courier New', 'Courier New'], ['Verdana', 'Verdana']];
+/** the font list (any other installed font can be typed in the box) */
+export const FONTS = [['', 'System'], ...['Aptos', 'Aptos Narrow', 'Arial', 'Calibri', 'Cambria', 'Consolas', 'Courier New', 'Georgia', 'Helvetica', 'Inter', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana'].map((f) => [f, f])];
 export const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72].map((n) => [String(n), String(n)]);
 /** number formats of the Number group: [id, label, pattern] */
 export const NUMBER_FORMATS = [
@@ -19,7 +20,7 @@ export const TABS = [
   { id: 'home', label: 'Home', groups: [
     { label: 'Clipboard', rank: 2, items: [big('x:paste', 'Paste', 'paste', 'Mod+V', menu), [[B('x:cut', 'Cut', 'cut', 'Mod+X')], [B('x:copy', 'Copy', 'copy', 'Mod+C')], [B('x:painter', 'Format painter', 'painter', null, { pressable: true })]]] },
     { label: 'Font', items: [[
-      [B('x:font', 'Font', null, null, { select: FONTS, width: 132 }), B('x:size', 'Font size', null, null, { select: SIZES, width: 58 }), B('x:grow', 'Increase font size', 'grow'), B('x:shrink', 'Decrease font size', 'shrink')],
+      [B('x:font', 'Font', null, null, { combo: FONTS, editable: true, font: true, width: 136 }), B('x:size', 'Font size', null, null, { combo: SIZES, editable: true, numeric: [1, 409], width: 46 }), B('x:grow', 'Increase font size', 'grow'), B('x:shrink', 'Decrease font size', 'shrink')],
       [B('x:bold', 'Bold', 'bold', 'Mod+B', { pressable: true }), B('x:italic', 'Italic', 'italic', 'Mod+I', { pressable: true }), B('x:underline', 'Underline', 'underline', 'Mod+U', { pressable: true }), B('x:strike', 'Strikethrough', 'strike', null, { pressable: true }), B('x:borders', 'Borders', 'borders', null, menu), B('x:fill', 'Fill colour', 'fill', null, menu), B('x:fontColor', 'Font colour', 'fontColor', null, menu)],
     ]] },
     { label: 'Alignment', items: [[
@@ -27,7 +28,7 @@ export const TABS = [
       [B('x:left', 'Align left', 'left', null, { pressable: true }), B('x:center', 'Centre', 'center', null, { pressable: true }), B('x:right', 'Align right', 'right', null, { pressable: true }), B('x:indentLess', 'Decrease indent', 'indentLess'), B('x:indentMore', 'Increase indent', 'indentMore'), txt('x:merge', 'Merge and centre', 'merge', null, menu)],
     ]] },
     { label: 'Number', items: [[
-      [B('x:numfmt', 'Number format', null, null, { select: NUMBER_FORMATS.map(([id, l]) => [id, l]).concat([['more', 'More formats…']]), width: 150 })],
+      [B('x:numfmt', 'Number format', null, null, { combo: NUMBER_FORMATS.map(([id, l]) => [id, l]).concat([['more', 'More formats…']]), width: 140 })],
       [B('x:currency', 'Currency', 'euro', null, menu), B('x:percent', 'Percent style', 'percent'), B('x:comma', 'Thousands separator', 'hash'), B('x:decMore', 'Increase decimals', 'decMore'), B('x:decLess', 'Decrease decimals', 'decLess')],
     ]] },
     { label: 'Styles', rank: 3, items: [big('x:cf', 'Conditional formatting', 'props', null, menu), big('x:asTable', 'Format as table', 'table'), big('x:cellStyles', 'Cell styles', 'layers', null, menu)] },
@@ -44,7 +45,7 @@ export const TABS = [
   ] },
   { id: 'layout', label: 'Page Layout', groups: [
     { label: 'Page setup', items: [big('x:margins', 'Margins', 'ruler', null, menu), big('x:orientation', 'Orientation', 'rotate', null, menu), big('x:paper', 'Size', 'fileSheet', null, menu), big('x:printArea', 'Print area', 'grid', null, menu), big('x:printTitles', 'Print titles', 'rows')] },
-    { label: 'Scale to fit', items: [[[B('x:fit', 'Scale', null, null, { select: [['1', 'Actual size'], ['width', 'Fit all columns'], ['page', 'Fit sheet on one page'], ['0.75', '75%'], ['0.5', '50%']], width: 150 })]]] },
+    { label: 'Scale to fit', items: [[[B('x:fit', 'Scale', null, null, { combo: [['1', 'Actual size'], ['width', 'Fit all columns'], ['page', 'Fit sheet on one page'], ['0.75', '75%'], ['0.5', '50%']], width: 160 })]]] },
     { label: 'Sheet options', items: [[[txt('x:printGrid', 'Print gridlines', 'grid', null, { pressable: true })], [txt('x:printHeadings', 'Print headings', 'cols', null, { pressable: true })]]] },
     { label: 'Output', items: [big('x:pageSetup', 'Page setup', 'ruler'), big('x:pdf', 'Export PDF', 'fileDown'), big('x:print', 'Print', 'print', 'Mod+P')] },
   ] },
@@ -84,17 +85,17 @@ export const TABS = [
 /** the one-row layout */
 export const COMPACT = [
   [B('undo', 'Undo', 'undo', 'Mod+Z'), B('redo', 'Redo', 'redo', 'Mod+Shift+Z')],
-  [B('x:font', 'Font', null, null, { select: FONTS, width: 112 }), B('x:size', 'Font size', null, null, { select: SIZES, width: 56 })],
+  [B('x:font', 'Font', null, null, { combo: FONTS, editable: true, font: true, width: 120 }), B('x:size', 'Font size', null, null, { combo: SIZES, editable: true, numeric: [1, 409], width: 52 })],
   [B('x:bold', 'Bold', 'bold', 'Mod+B', { pressable: true }), B('x:italic', 'Italic', 'italic', 'Mod+I', { pressable: true }), B('x:underline', 'Underline', 'underline', 'Mod+U', { pressable: true }), B('x:fill', 'Fill colour', 'fill', null, menu), B('x:fontColor', 'Font colour', 'fontColor', null, menu), B('x:borders', 'Borders', 'borders', null, menu)],
   [B('x:left', 'Align left', 'left', null, { pressable: true }), B('x:center', 'Centre', 'center', null, { pressable: true }), B('x:right', 'Align right', 'right', null, { pressable: true }), B('x:wrap', 'Wrap text', 'wrap', null, { pressable: true }), B('x:merge', 'Merge and centre', 'merge', null, menu)],
-  [B('x:numfmt', 'Number format', null, null, { select: NUMBER_FORMATS.map(([id, l]) => [id, l]), width: 120 }), B('x:percent', 'Percent style', 'percent'), B('x:decMore', 'Increase decimals', 'decMore'), B('x:decLess', 'Decrease decimals', 'decLess')],
+  [B('x:numfmt', 'Number format', null, null, { combo: NUMBER_FORMATS.map(([id, l]) => [id, l]), width: 124 }), B('x:percent', 'Percent style', 'percent'), B('x:decMore', 'Increase decimals', 'decMore'), B('x:decLess', 'Decrease decimals', 'decLess')],
   [B('x:autosum', 'AutoSum', 'sum', 'Alt+=', menu), B('x:filter', 'Filter', 'filter', null, { pressable: true }), B('x:sortAz', 'Sort A to Z', 'sortAz'), txt('x:insertQuick', 'Insert', 'plus', null, menu)],
 ];
 
 /** every English label the ribbon shows (tests check each has a translation) */
 export function ribbonLabels() {
   const out = new Set();
-  const walk = (x) => { if (Array.isArray(x)) return x.forEach(walk); if (!x || typeof x !== 'object') return; if (x.label) out.add(x.label); if (x.tip) out.add(x.tip); if (x.select) for (const [v, l] of x.select) if (l && !/^\d+$/.test(l) && v !== '') out.add(l); if (x.groups) walk(x.groups); if (x.items) walk(x.items); };
+  const walk = (x) => { if (Array.isArray(x)) return x.forEach(walk); if (!x || typeof x !== 'object') return; if (x.label) out.add(x.label); if (x.tip) out.add(x.tip); for (const [v, l] of (x.font ? [['', 'System']] : x.select || x.combo || [])) if (l && !/^\d+$/.test(l) && v !== '') out.add(l); if (x.groups) walk(x.groups); if (x.items) walk(x.items); };
   walk(TABS); walk(COMPACT);
   for (const [, l] of NUMBER_FORMATS) out.add(l);
   return [...out];
