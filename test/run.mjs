@@ -2,14 +2,16 @@
 import * as esbuild from 'esbuild';
 import { execFileSync } from 'node:child_process';
 const run = (f, ...args) => execFileSync(process.execPath, [f, ...args], { stdio: 'inherit' });
-await esbuild.build({ entryPoints: ['test/formats.test.mjs', 'test/mcp-gating.test.mjs'], bundle: true, platform: 'node', format: 'esm', outdir: 'dist/test', outExtension: { '.js': '.mjs' }, logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
+await esbuild.build({ entryPoints: ['test/formats.test.mjs', 'test/mcp-gating.test.mjs', 'test/sheets.test.mjs', 'test/fql.test.mjs', 'test/sheets-engine.test.mjs'], bundle: true, platform: 'node', format: 'esm', outdir: 'dist/test', outExtension: { '.js': '.mjs' }, logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
 run('dist/test/formats.test.mjs');
+run('dist/test/sheets.test.mjs'); run('dist/test/fql.test.mjs'); run('dist/test/sheets-engine.test.mjs'); // Folio Sheets (docs/sheets)
 run('test/pagetools.test.mjs');
 run('test/mcp.test.mjs');
 run('dist/test/mcp-gating.test.mjs');
 run('test/history.test.mjs');
 run('test/assets.test.mjs');
 run('test/i18n.test.mjs');
+run('test/sheets-i18n.test.mjs');
 run('test/git-log.test.mjs');
 run('test/security.test.mjs');
 run('scripts/docs-reference.mjs', '--check');
@@ -26,6 +28,7 @@ if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || proces
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/perf.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && process.platform === 'linux' && process.env.DISPLAY) run('test/visual.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/sync.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/sheets-ui.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/insert.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/format.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/design.test.mjs');

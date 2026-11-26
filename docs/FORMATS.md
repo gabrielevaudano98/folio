@@ -349,6 +349,27 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 - The optional `<!-- sheet: {...} -->` comment right after a table holds formatting: `cols` and `cells` with `format` (`number`, `integer`, `currency`, `usd`, `percent`, `date`, `text`), `bold`, `italic`, `align`, `width`; `view: "kanban"` and `kanbanBy` (column index) for the Kanban view.
 - Values are not stored, only formulas. Through MCP, `get_sheet_values` returns the computed values.
 
+#### sheet-md v2 (Folio Sheets)
+
+The same file carries everything Folio Sheets edits; a file written by hand in the v1 style stays valid, and opening
+it never rewrites it. Full reference: [docs/sheets/README.md](sheets/README.md).
+
+- In the sheet comment, besides `cols`, `cells` and `rows`: `merges` (`["A5:C5"]`), `freeze` (`{"rows":1,"cols":0}`),
+  `tab` (colour), `hidden`, `gridlines`, `zoom`, `validation` (`[{"range":"B2:B9","type":"list","formula1":"EU,US"}]`),
+  `cf` (conditional formatting rules), `notes` (`{"F5":"Grand total"}`), `filter` (`{"range":"A1:F9"}`), `charts`
+  (`[{"type":"column","range":"C1:D9","title":"…","at":{"x":420,"y":40,"w":480,"h":300}}]`), `slicers`, `buttons`,
+  `protect` (`{"allow":["B2:B9"],"password":{…}}`), `encrypted` (AES-GCM boxes of encrypted ranges).
+- Cell keys add `font`, `size`, `color`, `fill`, `underline`, `strike`, `valign`, `wrap`, `rotate`, `border`
+  (`{"top":"thin #1f1f1f"}`), `numfmt` (any Excel pattern) and `data` (a rich data type: `{"type":"place","name":"Turin"}`).
+- One `<!-- workbook: {…} -->` comment holds workbook settings: `names` (defined names), `scenarios`, `print`
+  (page setup), `loads` (where query and pivot results were written), `scripts` (`{"hooks":true}`), `source` (the
+  original .xlsx/.xlsm kept as an asset for export).
+- Fenced blocks are part of the workbook: ```` ```fql Name ```` (queries and data models, [FQL](sheets/FQL.md)),
+  ```` ```pivot Name ```` (`source:`, `rows:`, `columns:`, `values: sum(Total)`, `filter:`, `place:`),
+  ```` ```script Name ```` ([Folio Script](sheets/SCRIPT.md)) and ```` ```python Name ````.
+- A signed workbook ends with `<!-- signature: {…} -->`: RSA-SHA256 over the rest of the file, with the public key.
+- Unknown keys and blocks are kept as written.
+
 ### Templates
 
 A template is a page in `Templates/` (folders are categories). It can describe itself in a `template:` map at the top of its front matter (`description`, `category`, `icon`, `source`); that map is removed from pages made from it. When used, these variables are filled: `{{title}}` (the new page's name), `{{date}}`, `{{time}}`, `{{datetime}}`, `{{yesterday}}`, `{{tomorrow}}`, `{{weekday}}`, each with an optional moment.js format (`{{date:dddd D MMMM YYYY}}`), and `{{cursor}}` (where the caret goes). Other `{{…}}` text is left as written. The template's properties are merged into the page's.

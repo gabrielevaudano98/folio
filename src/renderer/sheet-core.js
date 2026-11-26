@@ -91,11 +91,12 @@ function trim(rows) {
   return r;
 }
 function cleanMeta(m) {
+  // v1 keys keep their order first; sheet-md v2 keys (styles, merges, validation, cf, notes, filter…) follow as written
   const out = {};
+  const empty = (v) => v === undefined || v === null || (typeof v === 'object' && (Array.isArray(v) ? !v.length : !Object.keys(v).length));
   for (const k of ['cols', 'cells', 'rows']) if (m?.[k] && Object.keys(m[k]).length) out[k] = Object.fromEntries(Object.entries(m[k]).filter(([, v]) => v && Object.keys(v).length));
-  for (const k of ['freeze', 'view', 'kanbanBy', 'header']) if (m?.[k] !== undefined) out[k] = m[k];
-  if (m?.charts?.length) out.charts = m.charts;
-  return Object.keys(out).filter((k) => typeof out[k] !== 'object' || (Array.isArray(out[k]) ? out[k].length : Object.keys(out[k]).length)).length ? out : null;
+  for (const [k, v] of Object.entries(m || {})) if (!['cols', 'cells', 'rows'].includes(k) && !empty(v)) out[k] = v;
+  return Object.keys(out).filter((k) => !empty(out[k])).length ? Object.fromEntries(Object.entries(out).filter(([, v]) => !empty(v))) : null;
 }
 
 /* ---------- evaluation ---------- */

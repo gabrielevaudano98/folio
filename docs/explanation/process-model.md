@@ -10,6 +10,7 @@ page). Anything that can take long runs somewhere else, or asynchronously.
 | Window | Always | The interface and the editors | Sandboxed, no Node.js: a malicious document cannot reach the disk. |
 | GPU, network | Always | Chromium's own helpers | Part of Electron. |
 | Meeting worker | While recording and finishing the transcript | Voice detection, transcription | Uses 1–2 GB and CPU in bursts; a crash or a slow segment never freezes the app ([ADR 0006](../adr/0006-utility-process-for-transcription.md)). |
+| Sheets data engine | From the first import, query, script, Python, what-if or export until 60 s idle | Files, FQL, DuckDB, QuickJS, Pyodide, node-forge, headless Univer | Heap capped at 3 GB; one call at a time, a call that runs away is stopped and the engine restarts ([ADR 0011](../adr/0011-sheets-on-univer-with-a-data-engine.md)). |
 | Notes engine | After a recording | Drafts meeting notes | Frees all its memory when it exits ([ADR 0007](../adr/0007-llama-server-for-notes.md)). |
 | stdio bridge | While an AI app uses it | MCP over stdio | Started by the AI app, not by Folio ([ADR 0004](../adr/0004-mcp-over-http-and-stdio.md)). |
 

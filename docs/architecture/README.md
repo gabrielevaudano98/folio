@@ -105,7 +105,7 @@ C4Container
 | Pages | `rich.js` (TipTap), `editor.js` (CodeMirror), `markdown.js` (preview) | Visual and code editing of `.md`. |
 | Slides | `slides-core.js` (pure) + `slides*.js` (surface, present, import/export) | `name.slides.md`. |
 | Boards | `board-core.js` (pure) + `board.js` | `name.board.md`. |
-| Sheets | `sheet-core.js` (pure) + `sheet.js`, `sheet-xlsx.js` | `name.sheet.md`. |
+| Sheets | `sheet-core.js` (pure parser) + `src/sheets/` (Univer surface, panels, data engine process) | `name.sheet.md` ([Folio Sheets](../sheets/README.md)). |
 | References | `refs-syntax.js` (pure), `refs.js` | `[[Doc#part]]`, `{{Doc#part}}`, embeds across documents. |
 
 Rule: a **core** (`*-core.js`, `refs-syntax.js`, `notes-core.js`, `transcript.js`, `catalog.js`) is pure, has no DOM or

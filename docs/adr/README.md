@@ -14,3 +14,4 @@ Decisions in the [MADR](https://adr.github.io/madr/) format, one per file, numbe
 | 0008 | [Write files atomically](0008-atomic-writes.md) | Accepted |
 | 0009 | [Load the slides, board and sheet editors on first use](0009-lazy-visual-editors.md) | Accepted |
 | 0010 | [Ship only the esbuild bundle in the installer](0010-ship-the-bundle-only.md) | Accepted |
+| 0011 | [Sheets on Univer, with a separate data engine process](0011-sheets-on-univer-with-a-data-engine.md) | Accepted |

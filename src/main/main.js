@@ -19,6 +19,7 @@ import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
+import { createSheetsEngine } from './sheets-engine.js';
 import { writeAtomic, writeAtomicSync } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
@@ -221,6 +222,8 @@ h('settings:set', async (patch) => {
 });
 // optional features (meeting recorder): downloads, the recording session and its worker
 const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs') });
+// Folio Sheets' data engine: imports, exports, queries, scripts, Python, what-if (src/sheets/engine/worker.js)
+const sheetsEngine = createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin: () => win, notes, enginePath: path.join(__dirname, 'sheets-engine.cjs'), wasmPath: path.join(__dirname, 'quickjs.wasm') });
 h('workspace:choose', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;

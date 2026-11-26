@@ -11,8 +11,8 @@ import { t as tr, tl } from './i18n.js';
 const L = (s) => tl('rib', s);
 
 const MODE_KEY = 'folio.ribbon';
-export const ribbonMode = () => { try { return localStorage.getItem(MODE_KEY) === 'full' ? 'full' : 'compact'; } catch { return 'compact'; } };
-const saveMode = (m) => { try { localStorage.setItem(MODE_KEY, m); } catch { /* storage unavailable */ } };
+export const ribbonMode = (key = MODE_KEY, dflt = 'compact') => { try { const v = localStorage.getItem(key); return v === 'full' || v === 'compact' ? v : dflt; } catch { return dflt; } };
+const saveMode = (m, key = MODE_KEY) => { try { localStorage.setItem(key, m); } catch { /* storage unavailable */ } };
 
 /* style gallery (Word's Styles group): a tile shows the style itself */
 export const STYLE_TILES = [['p', 'Normal'], ['h1', 'Heading 1'], ['h2', 'Heading 2'], ['h3', 'Heading 3'], ['quote', 'Quote']];
@@ -91,10 +91,13 @@ export const COMPACT_INSERTS = ['table', 'image', 'callout', 'toggle', 'columns-
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions }) {
+/* other surfaces (sheets) pass their own `tabs`, `compact` row and `label` translator; a button may also be a `select` */
+export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions, tabs: TABS_ = TABS, compact: COMPACT_ = COMPACT, label: L_ = L, trailing = null }) {
+  const L = L_;
   const ic = (n) => (n && icons[n]) || '';
   const tip = (b) => `${L(b.tip || b.label)}${b.key ? ` (${keyLabel(b.key)})` : ''}`;
   const button = (b, cls = '') => {
+    if (b.select) return `<label class="visually-hidden" for="rb-${b.cmd}">${esc(L(b.label))}</label><select class="rb-select${b.wide ? ' rb-select-wide' : ''}" id="rb-${b.cmd}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${b.width ? ` style="width:${b.width}px"` : ''}>${b.select.map(([v, l]) => `<option value="${esc(v)}">${esc(L(l ?? v))}</option>`).join('')}</select>`;
     const pressed = b.pressable ? ' aria-pressed="false"' : '';
     const menu = b.menu ? ' aria-haspopup="menu" aria-expanded="false"' : '';
     if (b.big) return `<button type="button" class="rb rb-big${cls}" data-cmd="${b.cmd}" data-tip="${esc(tip(b))}"${pressed}${menu}>${ic(b.icon)}<span>${esc(L(b.label))}</span>${b.menu ? '<i class="rb-caret" aria-hidden="true"></i>' : ''}</button>`;
@@ -106,17 +109,17 @@ export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions }) {
   const groupIcon = (g) => (g.styles ? 'heading' : g.items.map((c) => (Array.isArray(c) ? c.flat()[0] : c)).find(Boolean)?.icon || 'more');
   const group = (g, i, all) => `<div class="rb-g" role="group" aria-label="${esc(L(g.label))}" data-rank="${g.rank ?? all.length - i}"><button type="button" class="rb rb-big rb-g-more" aria-haspopup="true" aria-expanded="false" data-tip="${esc(L(g.label))}">${ic(groupIcon(g))}<span>${esc(L(g.label))}</span><i class="rb-caret" aria-hidden="true"></i></button><div class="rb-g-body">${g.styles ? styles : g.items.map((col) => (Array.isArray(col)
     ? `<div class="rb-col">${col.map((row) => `<div class="rb-row">${row.map((b) => button(b)).join('')}</div>`).join('')}</div>`
-    : button(col))).join('')}</div><div class="rb-g-label" aria-hidden="true">${esc(g.label)}</div></div>`;
-  const tabs = TABS.map((t) => `<button type="button" role="tab" class="rb-tab${t.contextual ? ' rb-tab-ctx' : ''}" id="rb-tab-${t.id}" data-tab="${t.id}" aria-controls="rb-panel-${t.id}" aria-selected="false" tabindex="-1"${t.contextual ? ' hidden' : ''}>${esc(L(t.label))}</button>`).join('');
-  const panels = TABS.map((t) => `<div class="rb-panel" role="tabpanel" id="rb-panel-${t.id}" aria-labelledby="rb-tab-${t.id}" data-panel="${t.id}" hidden>${t.groups.map(group).join('')}</div>`).join('');
-  const compact = COMPACT.map((g) => {
+    : button(col))).join('')}</div><div class="rb-g-label" aria-hidden="true">${esc(L(g.label))}</div></div>`;
+  const tabs = TABS_.map((t) => `<button type="button" role="tab" class="rb-tab${t.contextual ? ' rb-tab-ctx' : ''}" id="rb-tab-${t.id}" data-tab="${t.id}" aria-controls="rb-panel-${t.id}" aria-selected="false" tabindex="-1"${t.contextual ? ' hidden' : ''}>${esc(L(t.label))}</button>`).join('');
+  const panels = TABS_.map((t) => `<div class="rb-panel" role="tabpanel" id="rb-panel-${t.id}" aria-labelledby="rb-tab-${t.id}" data-panel="${t.id}" hidden>${t.groups.map(group).join('')}</div>`).join('');
+  const compact = COMPACT_.map((g) => {
     if (g === 'style') return `<div class="rb-group"><label class="visually-hidden" for="rb-style">${tr('rib.paragraph-style')}</label><select class="rb-select" id="rb-style" data-tip="${tr('rib.paragraph-style')}">${styleOptions}</select></div>`;
     if (g === 'table') return `<div class="rb-group rb-table" role="group" aria-label="${tr('rib.table')}" hidden><span class="rb-label">${tr('rib.table')}</span>${[B('rowAfter', 'Row below', 'rowBelow'), B('colAfter', 'Column right', 'colRight'), B('delRow', 'Delete row', 'rowDelete'), B('delCol', 'Delete column', 'colDelete'), B('tableMenu', 'More table commands', 'more', null, { menu: true })].map((b) => button(b)).join('')}</div>`;
     return `<div class="rb-group">${g.map((b) => button(b)).join('')}</div>`;
   }).join('');
   const modeBtn = (to) => `<button type="button" class="rb rb-mode" data-cmd="ribbonMode" aria-label="${tr(to === 'full' ? 'rib.show-full' : 'rib.show-simple')}" data-tip="${tr(to === 'full' ? 'rib.tip-full' : 'rib.tip-simple')}">${ic(to === 'full' ? 'chevronDown' : 'chevronUp')}</button>`;
   return `<div class="ribbon" role="toolbar" aria-label="${tr('rib.formatting')}" data-mode="compact">
-    <div class="rb-compact">${compact}<span class="rb-spacer"></span><div class="rb-group">${button(B('find', 'Find and replace', 'find', 'Mod+F'))}${modeBtn('full')}</div></div>
+    <div class="rb-compact">${compact}<span class="rb-spacer"></span><div class="rb-group">${trailing ?? button(B('find', 'Find and replace', 'find', 'Mod+F'))}${modeBtn('full')}</div></div>
     <div class="rb-full">
       <div class="rb-tabs"><div class="rb-quick" role="group" aria-label="${tr('rib.quick-access')}">${button(B('undo', 'Undo', 'undo', 'Mod+Z'))}${button(B('redo', 'Redo', 'redo', 'Mod+Shift+Z'))}</div><div class="rb-tablist" role="tablist" aria-label="${tr('rib.ribbon-tabs')}">${tabs}</div><span class="rb-spacer"></span>${modeBtn('compact')}</div>
       <div class="rb-panels">${panels}</div>
@@ -125,7 +128,7 @@ export function buildRibbon({ icons, keyLabel = (k) => k, styleOptions }) {
 }
 
 /* tabs, layout switch and contextual tab; `run(cmd, button)` executes a command */
-export function wireRibbon(ribbon, { run, onModeChange }) {
+export function wireRibbon(ribbon, { run, onModeChange, modeKey = MODE_KEY, defaultMode = 'compact' }) {
   const tabs = [...ribbon.querySelectorAll('.rb-tab')];
   let current = 'home', inTable = false;
   let select = (id, { focus = false } = {}) => {
@@ -133,8 +136,9 @@ export function wireRibbon(ribbon, { run, onModeChange }) {
     for (const t of tabs) { const on = t.dataset.tab === id; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; if (on && focus) t.focus(); }
     for (const p of ribbon.querySelectorAll('.rb-panel')) p.hidden = p.dataset.panel !== id;
   };
-  let setMode = (m, persist = true) => { ribbon.dataset.mode = m; if (persist) saveMode(m); onModeChange?.(m); };
-  select('home'); setMode(ribbonMode(), false);
+  let setMode = (m, persist = true) => { ribbon.dataset.mode = m; if (persist) saveMode(m, modeKey); onModeChange?.(m); };
+  select('home'); setMode(ribbonMode(modeKey, defaultMode), false);
+  ribbon.addEventListener('change', (e) => { const sel = e.target.closest('select[data-cmd]'); if (sel) run(sel.dataset.cmd, sel); });
   ribbon.querySelector('.rb-tablist').addEventListener('click', (e) => { const t = e.target.closest('.rb-tab'); if (t) select(t.dataset.tab); });
   ribbon.querySelector('.rb-tablist').addEventListener('dblclick', (e) => { if (e.target.closest('.rb-tab')) setMode('compact'); });
   ribbon.querySelector('.rb-tablist').addEventListener('keydown', (e) => {
@@ -144,13 +148,13 @@ export function wireRibbon(ribbon, { run, onModeChange }) {
     if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); select((e.key === 'Home' ? shown[0] : shown.at(-1)).dataset.tab, { focus: true }); }
     if (e.key === 'ArrowDown') { e.preventDefault(); ribbon.querySelector(`#rb-panel-${current} button`)?.focus(); }
   });
-  ribbon.addEventListener('mousedown', (e) => { if (e.target.closest('.rb, .rb-style-tile')) e.preventDefault(); });
+  ribbon.addEventListener('mousedown', (e) => { if (e.target.closest('.rb, .rb-style-tile') && !e.target.closest('select')) e.preventDefault(); });
   ribbon.addEventListener('click', (e) => {
     const b = e.target.closest('[data-cmd]');
     if (b?.dataset.cmd === 'ribbonMode') return setMode(ribbon.dataset.mode === 'full' ? 'compact' : 'full');
     const tile = e.target.closest('.rb-style-tile');
     if (tile) return run('style:' + tile.dataset.style, tile);
-    if (b) run(b.dataset.cmd, b);
+    if (b && b.tagName !== 'SELECT') run(b.dataset.cmd, b);
   });
   /* narrow windows: groups fold from the right into one button that opens them, as in Word */
   const fit = () => {
@@ -175,7 +179,8 @@ export function wireRibbon(ribbon, { run, onModeChange }) {
     const r = more.getBoundingClientRect(); el.style.top = `${r.bottom + 4}px`; el.style.left = `${Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8))}px`;
     more.setAttribute('aria-expanded', 'true'); fly = { el, body, group };
     el.addEventListener('mousedown', (ev) => { if (ev.target.closest('.rb, .rb-style-tile')) ev.preventDefault(); });
-    el.addEventListener('click', (ev) => { const tile = ev.target.closest('.rb-style-tile'); const b = ev.target.closest('[data-cmd]'); if (!tile && !b) return; closeFly(); if (tile) run('style:' + tile.dataset.style, tile); else run(b.dataset.cmd, more); });
+    el.addEventListener('click', (ev) => { const tile = ev.target.closest('.rb-style-tile'); const b = ev.target.closest('[data-cmd]'); if (!tile && !b) return; if (b?.tagName === 'SELECT') return; closeFly(); if (tile) run('style:' + tile.dataset.style, tile); else run(b.dataset.cmd, more); });
+    el.addEventListener('change', (ev) => { const sel = ev.target.closest('select[data-cmd]'); if (sel) run(sel.dataset.cmd, sel); });
     el.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeFly(); more.focus(); } });
     document.addEventListener('mousedown', outsideFly, true);
     el.querySelector('button')?.focus({ preventScroll: true });
@@ -191,8 +196,8 @@ export function wireRibbon(ribbon, { run, onModeChange }) {
     /* show the Table tab while the cursor is in a table, as Word does; leaving the table goes back to Home */
     setTable(on) {
       if (on === inTable) return; inTable = on;
-      ribbon.querySelector('.rb-table').hidden = !on;
-      ribbon.querySelector('#rb-tab-table').hidden = !on;
+      const g = ribbon.querySelector('.rb-table'); if (g) g.hidden = !on;
+      const tb = ribbon.querySelector('#rb-tab-table'); if (tb) tb.hidden = !on;
       if (!on && current === 'table') select('home');
     },
   };

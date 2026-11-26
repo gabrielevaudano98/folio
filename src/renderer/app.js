@@ -38,7 +38,7 @@ const stem = (p) => base(p).replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx
 
 /* ---------- document types: every type has a visual view and a code view ---------- */
 // the visual editors are loaded the first time a document of their type is opened, so startup parses only what pages need
-const SURFACES = { slides: () => import('./slides.js').then((m) => m.mountSlides), board: () => import('./board.js').then((m) => m.mountBoard), sheet: () => import('./sheet.js').then((m) => m.mountSheet) };
+const SURFACES = { slides: () => import('./slides.js').then((m) => m.mountSlides), board: () => import('./board.js').then((m) => m.mountBoard), sheet: () => import('../sheets/ui/surface.js').then((m) => m.mountSheet) }; // Folio Sheets (src/sheets, docs/sheets)
 const surfaceMods = {};
 const loadSurface = (type) => (surfaceMods[type] ||= SURFACES[type]().then((mount) => { surfaceMods[type].mount = mount; return mount; }, (e) => { delete surfaceMods[type]; throw e; }));
 const NEW_BOARD = (t) => `# ${t}\n\nA board in board-md. Shapes: \`id: shape "Label" @x,y\`. Connectors: \`a -> b "label"\`.\n\n\`\`\`board\nstart: terminator "Start" @40,60\nidea: rect "Write the idea" @230,55\nok: diamond "Clear?" @430,45\ndone: terminator "Share" @620,60\nnote: note "Double-click to edit, drag from the dots to connect" @220,190 200x80\n\nstart -> idea\nidea -> ok\nok -> done "yes"\nok.bottom -> idea.bottom "no" {route: orthogonal}\n\`\`\`\n`;
@@ -99,6 +99,8 @@ function surfaceCtx(type) {
     userName: () => folio.userName(),
     pickImage: () => folio.pickImage(S.active),
     pickMedia: (kind) => folio.pickMedia(S.active, kind),
+    createDoc: createDocHere,
+    openFile: (p) => openFile(p),
   };
 }
 const curType = () => app.dataset.doc || 'md';
