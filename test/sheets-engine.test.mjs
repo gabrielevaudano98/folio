@@ -196,6 +196,14 @@ const rich = fx('sheets/Rich.sheet.md');
   assert.deepEqual(back.map(({ range, rule }) => ({ range, rule })), want);
   ok(`conditional formatting: ${want.length} kinds of rule (values, text, dates, average, top/bottom, duplicates, formula, colour scale, data bar, icons) go to .xlsx and back`);
 }
+{
+  // past ~120k rows an argument spread (Math.max(...rows)) overflows the stack: export and import go through loops
+  const rows = ['| N | Twice |', '| --: | --: |']; for (let i = 2; i <= 130001; i++) rows.push(`| ${i} | =A${i}*2 |`);
+  const bytes = await exportXlsx(`## Big\n\n${rows.join('\n')}\n\n<!-- sheet: {"cols":{"B":{"bold":true}}} -->\n`);
+  const back = await importFile(bytes, 'Big.xlsx');
+  assert(back.text.includes('| 130001 | =A130001*2 |'));
+  ok('130,000 rows export to .xlsx and import back');
+}
 /* ---------- collaboration-ready: operations, order, conflicts, replay ---------- */
 {
   const a = createOpLog({ actor: 'ann', now: () => 1 }), b = createOpLog({ actor: 'bob', now: () => 1 });

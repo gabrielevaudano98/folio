@@ -34,7 +34,7 @@ async function computedValues(text) {
     for (const id of data.sheetOrder) {
       const name = data.sheets[id].name; const cells = data.sheets[id].cellData || {};
       const rows = Object.keys(cells).map(Number); if (!rows.length) continue;
-      const maxR = Math.max(...rows), maxC = Math.max(...rows.flatMap((r) => Object.keys(cells[r]).map(Number)));
+      let maxR = 0, maxC = 0; for (const r of rows) { if (r > maxR) maxR = r; for (const c in cells[r]) if (+c > maxC) maxC = +c; } // loops: spreads overflow past ~120k rows
       const vals = wb.fwb.getSheetByName(name).getRange(0, 0, maxR + 1, maxC + 1).getRawValues();
       out[name] = {};
       for (const r of rows) for (const c of Object.keys(cells[r])) if (cells[r][c]?.f) (out[name][r] ||= {})[c] = vals[r]?.[c] ?? null;

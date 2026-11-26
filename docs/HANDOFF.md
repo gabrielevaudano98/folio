@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T19:38:00Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T20:07:50Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: save in slices that yield to typing; writer and converter as steps; 200k rows without stack overflow; full suite green
+- Last checkpoint: large exports: no stack overflow past 120k rows (loops everywhere), 200k-row xlsx export 8.9 s -> 5.9 s
 
 ## Resume in a new session
 
@@ -49,7 +49,8 @@ Open next (in order): visual baselines if the fixed 93px ribbon height
 changes them on macOS/Windows; MCP tools for queries, pivots and scripts; area 28 (AI) when decided.
 
 ## Commits since main
-- 71d1ed3 wip: save in slices that yield to typing; writer and converter as steps; 200k rows without stack overflow; full suite green
+- 9e0b8cf wip: large exports: no stack overflow past 120k rows (loops everywhere), 200k-row xlsx export 8.9 s -> 5.9 s
+- e245040 wip: save in slices that yield to typing; writer and converter as steps; 200k rows without stack overflow; full suite green
 - 292882b wip: formulas in a Web Worker: custom functions through the window, save baseline in the worker, saves from the live model; full suite green
 - f995079 wip: full suite green; opening a sheet with a chart no longer rewrites it; docs updated
 - f5351dd wip: languages: FQL case/replace/index/top/merge/split rows/transpose/transform + functions; Folio Script formats, borders, sort, find, rows, freeze, rename; shared replay

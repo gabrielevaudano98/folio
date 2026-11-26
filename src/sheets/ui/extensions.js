@@ -82,7 +82,7 @@ export function createExtensions({ api, surface, ctx }) {
       if (cmd.id !== 'sheet.mutation.set-range-values' || running) return;
       const p = cmd.params || {}; const rows = Object.keys(p.cellValue || {}).map(Number); if (!rows.length) return;
       const cols = Object.keys(p.cellValue[rows[0]] || {}).map(Number);
-      pendingEdit = { sheet: surface.sheetName(), row: Math.min(...rows) + 1, column: Math.min(...cols) + 1, value: p.cellValue[rows[0]]?.[cols[0]]?.v ?? null };
+      pendingEdit = { sheet: surface.sheetName(), row: rows.reduce((m, x) => (x < m ? x : m), Infinity) + 1, column: cols.reduce((m, x) => (x < m ? x : m), Infinity) + 1, value: p.cellValue[rows[0]]?.[cols[0]]?.v ?? null };
       clearTimeout(editTimer); editTimer = setTimeout(() => { const e = pendingEdit; pendingEdit = null; hook('onEdit', e); }, 400);
       if (/\bfunction\s+[A-Z][A-Z0-9_.]*\s*\(/.test(surface.scriptCode())) registerFunctions();
     },

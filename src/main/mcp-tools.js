@@ -189,7 +189,7 @@ export async function runTool(notes, name, a, hooks = {}) {
       const sheets = parseWorkbook(src).filter((b) => b.type === 'sheet' && (!a.sheet || b.name.toLowerCase() === a.sheet.toLowerCase()));
       if (!sheets.length) throw new Error(a.sheet ? `No sheet named ${a.sheet}` : 'No tables found in this note.');
       return sheets.map((s) => {
-        const ev = evaluator(s, { external }); const cols = Math.max(...s.rows.map((r) => r.length));
+        const ev = evaluator(s, { external }); const cols = s.rows.reduce((m, r) => Math.max(m, r.length), 0);
         return { sheet: s.name, columns: Array.from({ length: cols }, (_, c) => colName(c)), rows: s.rows.map((row, r) => ({ row: r + 1, values: Array.from({ length: cols }, (_, c) => { const v = ev.value(r, c); return v instanceof Date ? v.toISOString().slice(0, 10) : v ?? ''; }) })) };
       });
     }

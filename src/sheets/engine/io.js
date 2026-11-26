@@ -161,7 +161,7 @@ function snapshotFromSheetJS(bytes, name, ext) {
 function hoistColumnStyles(snap) {
   for (const id of snap.sheetOrder) {
     const u = snap.sheets[id]; const rows = Object.keys(u.cellData).map(Number); if (rows.length < 3) continue;
-    const maxR = Math.max(...rows), cols = new Set(rows.flatMap((r) => Object.keys(u.cellData[r]).map(Number)));
+    let maxR = 0; const cols = new Set(); for (const r of rows) { if (r > maxR) maxR = r; for (const c in u.cellData[r]) cols.add(+c); }
     for (const c of cols) {
       let s = undefined, same = true;
       for (let r = 1; r <= maxR && same; r++) { const x = u.cellData[r]?.[c]?.s; if (s === undefined) s = x; same = x != null && x === s; }
@@ -207,26 +207,35 @@ export async function exportXlsx(text, { source = null, values = null } = {}) {
     const computed = values?.[u.name];
     const styleOf = (s) => (typeof s === 'string' ? data.styles?.[s] : s) || null;
     // column and row styles apply to every used cell under them, as Excel stores them per cell
-    const usedRows = Object.keys(u.cellData || {}).map(Number); const maxR = usedRows.length ? Math.max(...usedRows) : -1;
+    let maxR = -1; for (const r in u.cellData || {}) if (+r > maxR) maxR = +r; // not Math.max(...rows): it overflows past ~120k rows
     const colSt = Object.fromEntries(Object.entries(u.columnData || {}).filter(([, o]) => o?.s).map(([c, o]) => [c, styleOf(o.s)]));
     const rowSt = Object.fromEntries(Object.entries(u.rowData || {}).filter(([, o]) => o?.s).map(([r, o]) => [r, styleOf(o.s)]));
-    const grid = structuredClone(u.cellData || {});
-    for (const c of Object.keys(colSt)) for (let r = 0; r <= maxR; r++) (grid[r] ||= {})[c] ||= {};
-    for (const r of Object.keys(rowSt)) for (const c of Object.keys(grid[r] || {})) grid[r][c] ||= {};
-    for (const [r, row] of Object.entries(grid)) for (const [c, cell0] of Object.entries(row || {})) {
-      if (!cell0) continue;
-      const own = styleOf(cell0.s);
-      const cell = (colSt[c] || rowSt[r]) ? { ...cell0, s: { ...(colSt[c] || {}), ...(rowSt[r] || {}), ...(own || {}) } } : cell0;
-      const R = Number(r) + 1, C = Number(c) + 1;
-      let v = null;
-      if (cell.f) { const cv = computed?.[r]?.[c]; v = { kind: 'formula', formula: cell.f.replace(/^=/, ''), t: 'normal', ...(cv != null && typeof cv !== 'object' ? { cachedValue: cv } : {}) }; }
-      else if (cell.v != null) v = cell.t === 3 ? !!Number(cell.v) : cell.t === 2 ? Number(cell.v) : String(cell.v);
-      const x = W.setCell(ws, R, C, v);
-      const st = styleOf(cell.s);
-      if (st) {
+    // no copy of the cells (a 200k-row sheet spent ~1 s cloning): rows in order, each with its own cells plus the
+    // columns that carry a style; a style is turned into an Excel style once and its id reused (stylesheet lookups
+    // per cell cost ~1 s at 200k rows)
+    const cd = u.cellData || {};
+    const styledCols = Object.keys(colSt).map(Number);
+    const rowKeys = styledCols.length ? Array.from({ length: maxR + 1 }, (_, r) => r) : Object.keys(cd).map(Number).sort((a, b) => a - b);
+    const xfIds = new Map();
+    for (const r of rowKeys) {
+      const row = cd[r] || {};
+      const cols = new Set(Object.keys(row).map(Number)); for (const c of styledCols) cols.add(c);
+      for (const c of [...cols].sort((a, b) => a - b)) {
+        const cell0 = row[c] || (colSt[c] || rowSt[r] ? {} : null);
+        if (!cell0) continue;
+        const key = typeof cell0.s === 'string' || cell0.s == null ? `${cell0.s ?? ''}|${colSt[c] ? c : ''}|${rowSt[r] ? r : ''}` : null;
+        const st = colSt[c] || rowSt[r] ? { ...(colSt[c] || {}), ...(rowSt[r] || {}), ...(styleOf(cell0.s) || {}) } : styleOf(cell0.s);
+        const R = r + 1, C = c + 1;
+        let v = null;
+        if (cell0.f) { const cv = computed?.[r]?.[c]; v = { kind: 'formula', formula: cell0.f.replace(/^=/, ''), t: 'normal', ...(cv != null && typeof cv !== 'object' ? { cachedValue: cv } : {}) }; }
+        else if (cell0.v != null) v = cell0.t === 3 ? !!Number(cell0.v) : cell0.t === 2 ? Number(cell0.v) : String(cell0.v);
+        const x = W.setCell(ws, R, C, v);
+        if (!st || !Object.keys(st).length) continue;
+        if (key && xfIds.has(key)) { x.styleId = xfIds.get(key); continue; }
         const m = styleToXlsx(st);
         if (m.font) S.setCellFont(wb, x, m.font); if (m.fill) S.setCellFill(wb, x, m.fill); if (m.border) S.setCellBorder(wb, x, m.border);
         if (m.align) S.setCellAlignment(wb, x, m.align); if (m.numfmt) S.setCellNumberFormat(wb, x, m.numfmt);
+        if (key) xfIds.set(key, x.styleId);
       }
     }
     for (const m of u.mergeData || []) W.mergeCells(ws, fromRange(m));

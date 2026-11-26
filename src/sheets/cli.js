@@ -58,7 +58,7 @@ const COMMANDS = {
       const files = {}; for (const x of ins.files) { const p = path.join(path.dirname(file), x.path); files[x.path] = x.kind === 'xlsx' ? { bytes: await fs.readFile(p) } : { text: await fs.readFile(p, 'utf8') }; }
       const sheets = {}; for (const s of ins.sheets) sheets[s.range ? `${s.sheet}!${s.range}` : s.sheet] = s.range ? wb.values(s.sheet, s.range) : all[s.sheet];
       const res = await runFql(program, { sheets, files }, { name: f.name });
-      for (const ld of res.loads) if (ld.to === 'sheet') { const s = wb.fwb.getSheetByName(ld.sheet) || wb.fwb.insertSheet(ld.sheet); const g = res.results[ld.query]; const p = toRange(ld.cell || 'A1'); s.getRange(p.startRow, p.startColumn, g.length, Math.max(...g.map((r) => r.length))).setValues(g.map((r) => r.map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ?? null)))); console.error(`${f.name}/${ld.query} → ${ld.sheet}!${ld.cell || 'A1'} (${g.length - 1} rows)`); }
+      for (const ld of res.loads) if (ld.to === 'sheet') { const s = wb.fwb.getSheetByName(ld.sheet) || wb.fwb.insertSheet(ld.sheet); const g = res.results[ld.query]; const p = toRange(ld.cell || 'A1'); s.getRange(p.startRow, p.startColumn, g.length, g.reduce((m, r) => Math.max(m, r.length), 0)).setValues(g.map((r) => r.map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ?? null)))); console.error(`${f.name}/${ld.query} → ${ld.sheet}!${ld.cell || 'A1'} (${g.length - 1} rows)`); }
     }
     await wb.settle();
     text = fromUniver(wb.save(), loaded); await fs.writeFile(file, text); H.dispose();

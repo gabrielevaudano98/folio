@@ -143,7 +143,7 @@ export function mountSheet(host, ctx) {
       if (!s) { const back = ws(); s = wb().insertSheet(sheetName); back?.activate(); } // results go to their sheet; the person stays where they are
       const start = parseAddr(at || 'A1') || [0, 0];
       if (prev) { try { const p = splitRef(prev); (p.sheet ? sheetByName(p.sheet) : s)?.getRange(p.range).clearContent(); } catch { /* a range that no longer exists */ } }
-      const h = grid.length, w = Math.max(1, ...grid.map((r) => r.length));
+      const h = grid.length, w = grid.reduce((m, r) => Math.max(m, r.length), 1);
       if (!h) return null;
       const values = grid.map((r) => Array.from({ length: w }, (_, j) => { const v = r[j]; return v instanceof Date ? v.toISOString().slice(0, 10) : v === undefined ? null : v; }));
       const rng = s.getRange(start[0], start[1], h, w);

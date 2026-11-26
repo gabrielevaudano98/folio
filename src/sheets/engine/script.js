@@ -57,7 +57,7 @@ class Range {
   getDisplayValues() { return this.getValues().map((r) => r.map((v) => (v == null ? '' : String(v)))); }
   setValues(rows) {
     if (!Array.isArray(rows) || !rows.every(Array.isArray)) throw new Error('setValues needs rows: [[...], [...]]');
-    const h = rows.length, w = Math.max(0, ...rows.map((r) => r.length));
+    const h = rows.length, w = rows.reduce((m, r) => Math.max(m, r.length), 0);
     rows.forEach((row, i) => row.forEach((v, j) => { const s = typeof v === 'string' && v.startsWith('=') ? { f: v } : { v: v === undefined ? null : v }; this.sheet.__set(this.row + i, this.col + j, s); }));
     __ops.push({ op: 'values', sheet: this.sheet.name, range: __addr(this.row, this.col) + ':' + __addr(this.row + h - 1, this.col + w - 1), values: rows });
     return this;
