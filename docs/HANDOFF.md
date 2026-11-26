@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T21:16:34Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T21:16:51Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: Sheets: Settings section for data components (DuckDB, Pyodide) with status, licences, download/cancel/remove; docs
+- Last checkpoint: docs: handoff and plan status after data components
 
 ## Resume in a new session
 
@@ -45,11 +45,20 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    workbook changes. The window uses it when the last save took > 40 ms (surface.js `save()`); `saveNow()` cancels a
    sliced save in progress. 50k rows: no main-thread pause from saving; 200k rows work (spreads removed).
 
-Open next (in order): visual baselines if the fixed 93px ribbon height
-changes them on macOS/Windows; MCP tools for queries, pivots and scripts; area 28 (AI) when decided.
+9. ~~**MCP tools on workbooks**~~ DONE: `src/sheets/engine/book.js` (values, refresh, macro) behind `sheets-engine.callFor`;
+   tools `run_sheet_query`, `sheet_goal_seek`, `refresh_sheet`, `run_sheet_macro`; `get_sheet_values` returns computed
+   values. pivot.js has no top-level await any more (jquery-lite alias, `src/sheets/core/jquery-lite.cjs`).
+
+10. ~~**Settings → data components**~~ DONE: `src/renderer/sheets-components.js`; `sheets:components` carries name,
+   licence and attribution from the catalog; en/it texts `sc.*`; test/sheets-components-ui.test.mjs (DuckDB made to look
+   installed by its marker file; Remove behind a confirmation). Full `npm test` green under xvfb (586 checks).
+
+Open next (not started): live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
+decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 0e61091 wip: Sheets: Settings section for data components (DuckDB, Pyodide) with status, licences, download/cancel/remove; docs
+- 51800d1 wip: docs: handoff and plan status after data components
+- da78013 wip: Sheets: Settings section for data components (DuckDB, Pyodide) with status, licences, download/cancel/remove; docs
 - 1c44d31 wip: MCP: values from Univer, run_sheet_query, sheet_goal_seek, refresh_sheet, run_sheet_macro; workbook jobs in the data engine; jquery-lite (no DOM for pivots)
 - 917f9f5 wip: large exports: no stack overflow past 120k rows (loops everywhere), 200k-row xlsx export 8.9 s -> 5.9 s
 - e245040 wip: save in slices that yield to typing; writer and converter as steps; 200k rows without stack overflow; full suite green

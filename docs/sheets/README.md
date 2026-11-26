@@ -147,7 +147,8 @@ The contracts are in `src/sheets/core/collab.js` and tested with two headless re
 | 5. Next | Live sync service and presence; AI assistant (area 28); streaming xlsx export for sheets over ~200k rows | Planned |
 
 Tests: `test/sheets.test.mjs` (15 checks: round trips, fuzz, shared formulas, 20k rows, save in slices), `test/fql.test.mjs` (11),
-`test/sheets-engine.test.mjs` (25), `test/sheets-i18n.test.mjs`, `test/sheets-ui.test.mjs` (19 checks in Electron).
+`test/sheets-engine.test.mjs` (27), `test/sheets-i18n.test.mjs`, `test/sheets-ui.test.mjs` (24 checks in Electron, including
+the five MCP tools), `test/sheets-components-ui.test.mjs` (4: Settings → data components).
 
 ## 8. Decisions and limits
 
