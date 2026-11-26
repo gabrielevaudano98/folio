@@ -23,9 +23,9 @@ export class FqlError extends Error {
   constructor(msg, at) { super(at ? `${msg} (line ${at.line}, column ${at.col})` : msg); this.at = at; this.plain = msg; }
 }
 
-const KEYWORDS = new Set(['query', 'model', 'let', 'from', 'where', 'derive', 'select', 'drop', 'rename', 'groupby', 'rollup', 'orderby', 'join', 'pivot', 'unpivot', 'dedupe', 'fill', 'limit', 'type', 'split', 'append', 'load', 'to', 'at', 'as', 'by', 'on', 'using', 'into', 'and', 'or', 'not', 'in', 'is', 'null', 'true', 'false', 'between', 'table', 'relate', 'measure', 'evaluate', 'sheet', 'range', 'csv', 'json', 'xlsx', 'parquet', 'sql', 'values', 'left', 'right', 'inner', 'full', 'down', 'up', 'with']);
+const KEYWORDS = new Set(['query', 'model', 'let', 'from', 'where', 'derive', 'select', 'drop', 'rename', 'groupby', 'rollup', 'orderby', 'join', 'pivot', 'unpivot', 'dedupe', 'fill', 'limit', 'type', 'split', 'append', 'load', 'to', 'at', 'as', 'by', 'on', 'using', 'into', 'and', 'or', 'not', 'in', 'is', 'null', 'true', 'false', 'between', 'table', 'relate', 'measure', 'evaluate', 'sheet', 'range', 'csv', 'json', 'xlsx', 'parquet', 'sql', 'values', 'left', 'right', 'inner', 'full', 'down', 'up', 'with', 'case', 'when', 'then', 'else', 'end', 'replace', 'index', 'top', 'merge', 'transpose', 'transform', 'rows']);
 // words that are keywords only where the grammar expects them; elsewhere they are ordinary names (a column called "type")
-const SOFT = new Set(['table', 'sheet', 'range', 'csv', 'json', 'xlsx', 'parquet', 'sql', 'values', 'left', 'right', 'inner', 'full', 'down', 'up', 'type', 'split', 'fill', 'with', 'using', 'into', 'at', 'to', 'measure', 'relate', 'evaluate', 'load', 'append']);
+const SOFT = new Set(['table', 'sheet', 'range', 'csv', 'json', 'xlsx', 'parquet', 'sql', 'values', 'left', 'right', 'inner', 'full', 'down', 'up', 'type', 'split', 'fill', 'with', 'using', 'into', 'at', 'to', 'measure', 'relate', 'evaluate', 'load', 'append', 'case', 'when', 'then', 'else', 'end', 'replace', 'index', 'top', 'merge', 'transpose', 'transform', 'rows']);
 
 /* ---------- lexer ---------- */
 export function lex(src) {
@@ -41,7 +41,7 @@ export function lex(src) {
     const p = at();
     if (c === '"' || c === "'") {
       let s = ''; adv();
-      while (i < src.length && src[i] !== c) { if (src[i] === '\\' && i + 1 < src.length) { adv(); s += { n: '\n', t: '\t' }[src[i]] ?? src[i]; adv(); continue; } if (src[i] === '\n') throw new FqlError('Text is not closed', p); s += src[i]; adv(); }
+      while (i < src.length && src[i] !== c) { if (src[i] === '\\' && i + 1 < src.length) { adv(); const e = src[i]; s += { n: '\n', t: '\t' }[e] ?? (e === c || e === '\\' ? e : '\\' + e); adv(); continue; } /* \d in a pattern stays \d */ if (src[i] === '\n') throw new FqlError('Text is not closed', p); s += src[i]; adv(); }
       if (src[i] !== c) throw new FqlError('Text is not closed', p);
       adv(); toks.push({ t: 'str', v: s, at: p }); continue;
     }
@@ -69,7 +69,7 @@ export function lex(src) {
   return toks;
 }
 
-const STEPS = ['where', 'derive', 'select', 'drop', 'rename', 'groupby', 'rollup', 'orderby', 'join', 'pivot', 'unpivot', 'dedupe', 'fill', 'limit', 'type', 'split', 'append', 'load'];
+const STEPS = ['where', 'derive', 'select', 'drop', 'rename', 'groupby', 'rollup', 'orderby', 'join', 'pivot', 'unpivot', 'dedupe', 'fill', 'limit', 'type', 'split', 'append', 'replace', 'index', 'top', 'merge', 'transpose', 'transform', 'load'];
 function distance(a, b) { const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; }
 const closest = (w, list) => { let best = null, bd = 3; for (const x of list) { const v = distance(w.toLowerCase(), x); if (v < bd) { bd = v; best = x; } } return best; };
 
@@ -135,8 +135,16 @@ export function parse(src, { name: bareName = 'Query' } = {}) {
     if (isKw('true') || isKw('false')) { next(); return { k: 'lit', v: t.v === 'true' }; }
     if (isKw('null')) { next(); return { k: 'lit', v: null }; }
     if (isOp('(')) { next(); skipNl(); const e = expr(); skipNl(); op(')'); return e; }
-    if (t.t === 'id' && !t.quoted && isOp('(', 1)) {
-      const fn = next().v.toLowerCase(); next(); skipNl();
+    // case when Qty > 10 then "large" when Qty > 0 then "small" else "none" end
+    if (isKw('case') && isKw('when', 1)) {
+      next(); const arms = [];
+      while (isKw('when')) { next(); skipNl(); const c = expr(); skipNl(); kw('then'); skipNl(); arms.push([c, expr()]); skipNl(); }
+      let other = { k: 'lit', v: null };
+      if (isKw('else')) { next(); skipNl(); other = expr(); skipNl(); }
+      kw('end'); return { k: 'case', arms, other, at: t.at };
+    }
+    if ((t.t === 'id' && !t.quoted || t.t === 'kw' && SOFT.has(t.v)) && isOp('(', 1)) { // replace(…), left(…): functions even where the word is a step
+      const fn = String(next().v).toLowerCase(); next(); skipNl();
       const args = isOp(')') ? [] : list(expr); skipNl(); op(')');
       return { k: 'call', fn, args, at: t.at };
     }
@@ -187,8 +195,19 @@ export function parse(src, { name: bareName = 'Query' } = {}) {
       case 'fill': { const dir = want(isKw('down') || isKw('up'), '"down" or "up"').v; return { op: 'fill', dir, cols: list(() => name('a column')), at }; }
       case 'limit': return { op: 'limit', n: want(peek().t === 'num', 'a number').v, at };
       case 'type': return { op: 'type', cols: list(() => { const c = name('a column'); kw('as'); const ty = name('a type').toLowerCase(); if (!['number', 'text', 'date', 'bool'].includes(ty)) throw new FqlError(`Unknown type ${ty}: use number, text, date or bool`, at); return [c, ty]; }), at };
-      case 'split': { const c = name('a column'); kw('by'); const sep = want(peek().t === 'str', 'a separator in quotes').v; kw('into'); return { op: 'split', col: c, sep, into: list(() => name('a column name')), at }; }
+      case 'split': { const c = name('a column'); kw('by'); const sep = want(peek().t === 'str', 'a separator in quotes').v; kw('into'); if (isKw('rows')) { next(); return { op: 'split', col: c, sep, rows: true, at }; } return { op: 'split', col: c, sep, into: list(() => name('a column name')), at }; }
       case 'append': return { op: 'append', other: name('a query'), at };
+      case 'replace': { const cols = list(() => name('a column')); const from = lit(expr()); kw('with'); return { op: 'replace', cols, from, to: lit(expr()), at }; }
+      case 'index': { const n = name('a name for the index column'); let start = 1; if (isKw('from')) { next(); start = want(peek().t === 'num', 'a number').v; } return { op: 'index', name: n, start, at }; }
+      case 'top': { const n = want(peek().t === 'num', 'a number of rows').v; kw('by'); return { op: 'top', n, keys: list(order), at }; }
+      case 'merge': { const cols = list(() => name('a column')); if (cols.length < 2) throw new FqlError('merge needs two columns or more: merge First, Last as Name', at); kw('as'); const into = name('a name for the new column'); let sep = ''; if (isKw('using')) { next(); sep = want(peek().t === 'str', 'a separator in quotes').v; } return { op: 'merge', cols, into, sep, at }; }
+      case 'transpose': return { op: 'transpose', at };
+      case 'transform': {
+        const cols = list(() => name('a column')); kw('with');
+        const f = want(isName(), 'a function such as trim, upper or round(2)'); const fn = String(f.v).toLowerCase(); let args = [];
+        if (isOp('(')) { next(); args = isOp(')') ? [] : list(expr); op(')'); }
+        return { op: 'transform', cols, fn, args, at: f.at };
+      }
       case 'load': {
         kw('to');
         if (isKw('sheet')) { next(); const s = want(peek().t === 'str', 'a sheet name in quotes').v; let cell = 'A1'; if (isKw('at')) { next(); cell = cellRange(); } return { op: 'load', to: 'sheet', sheet: s, cell, at }; }

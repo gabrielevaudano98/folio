@@ -24,7 +24,26 @@ export const FUNCTIONS = {
   year: (d) => toDate(d)?.getUTCFullYear() ?? null, month: (d) => (toDate(d) ? toDate(d).getUTCMonth() + 1 : null), day: (d) => toDate(d)?.getUTCDate() ?? null, quarter: (d) => (toDate(d) ? Math.floor(toDate(d).getUTCMonth() / 3) + 1 : null), weekday: (d) => (toDate(d) ? ((toDate(d).getUTCDay() + 6) % 7) + 1 : null),
   today: () => new Date(new Date().toISOString().slice(0, 10)), datediff: (a, b, unit = 'day') => { const x = toDate(a), y = toDate(b); if (!x || !y) return null; const ms = y - x; return Math.round(ms / ({ day: 864e5, week: 6048e5, hour: 36e5 }[unit] || 864e5)); },
   if: (c, a, b = null) => (c ? a : b), coalesce: (...a) => a.find((x) => x != null && x !== '') ?? null, isnull: (x) => x == null || x === '',
+  // text: regular expressions (case-insensitive), padding, the n-th part
+  matches: (s, re) => safeRe(re).test(toText(s)), extract: (s, re, g = 1) => { const m = safeRe(re).exec(toText(s)); return m ? (m.length > 1 ? m[g] ?? null : m[0]) : null; },
+  padleft: (s, n, ch = '0') => toText(s).padStart(toNum(n) || 0, toText(ch) || ' '), part: (s, sep, n) => toText(s).split(toText(sep))[(toNum(n) || 1) - 1]?.trim() ?? null,
+  // dates
+  adddays: (d, n) => (toDate(d) ? new Date(toDate(d).getTime() + (toNum(n) || 0) * 864e5) : null),
+  addmonths: (d, n) => { const x = toDate(d); if (!x) return null; const y = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + (toNum(n) || 0), 1)); const last = new Date(Date.UTC(y.getUTCFullYear(), y.getUTCMonth() + 1, 0)).getUTCDate(); y.setUTCDate(Math.min(x.getUTCDate(), last)); return y; },
+  eomonth: (d, n = 0) => { const x = toDate(d); return x ? new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + (toNum(n) || 0) + 1, 0)) : null; },
+  weeknum: (d) => { const x = toDate(d); if (!x) return null; const t = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate())); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7); }, // ISO week
+  // numbers
+  mod: (x, y) => { const a = toNum(x), b = toNum(y); return a == null || !b ? null : ((a % b) + b) % b; }, power: (x, y) => (toNum(x) == null || toNum(y) == null ? null : toNum(x) ** toNum(y)), sign: (x) => (toNum(x) == null ? null : Math.sign(toNum(x))),
+  least: (...a) => { const n = a.map(toNum).filter((v) => v != null); return n.length ? Math.min(...n) : null; }, greatest: (...a) => { const n = a.map(toNum).filter((v) => v != null); return n.length ? Math.max(...n) : null; },
 };
+/** a pattern from a query: compiled once, refused when too long (a query cannot hang the engine with a giant pattern) */
+const reCache = new Map();
+function safeRe(src) {
+  const k = toText(src); if (reCache.has(k)) return reCache.get(k);
+  if (k.length > 200) throw new FqlError('A pattern longer than 200 characters is not allowed');
+  let re; try { re = new RegExp(k, 'i'); } catch (e) { throw new FqlError(`Not a valid pattern: ${k}`); }
+  if (reCache.size > 100) reCache.clear(); reCache.set(k, re); return re;
+}
 
 /* ---------- expressions → closures ---------- */
 function compile(e, ctx) {
@@ -39,6 +58,7 @@ function compile(e, ctx) {
     case 'in': { const f = compile(e.e, ctx), items = e.list.map((x) => compile(x, ctx)); return (d) => { const v = f(d); return items.some((g) => eq(v, g(d))); }; }
     case 'between': { const f = compile(e.e, ctx), lo = compile(e.lo, ctx), hi = compile(e.hi, ctx); return (d) => { const v = f(d); return v != null && v >= lo(d) && v <= hi(d); }; }
     case 'isnull': { const f = compile(e.e, ctx); return (d) => { const v = f(d); const n = v == null || v === ''; return e.neg ? !n : n; }; }
+    case 'case': { const arms = e.arms.map(([c, v]) => [compile(c, ctx), compile(v, ctx)]), other = compile(e.other, ctx); return (d) => { for (const [c, v] of arms) if (c(d)) return v(d); return other(d); }; }
     case 'call': {
       const fn = FUNCTIONS[e.fn];
       if (!fn) throw new FqlError(`Unknown function ${e.fn}()`, e.at);
@@ -178,8 +198,31 @@ export async function run(src, env = {}, { only = null, maxRows = 1_000_000, fla
         case 'fill': for (const c of st.cols) t = t.derive({ [need(c)]: st.dir === 'down' ? op.fill_down(c) : op.fill_up(c) }); break;
         case 'limit': t = t.slice(0, st.n); break;
         case 'type': for (const [c, ty] of st.cols) { need(c); const f = { number: toNum, text: toText, date: toDate, bool: (v) => (v == null ? null : /^(true|yes|1|sì|si)$/i.test(String(v))) }[ty]; t = t.derive({ [c]: aq.escape((d) => f(d[c])) }); } break;
-        case 'split': { need(st.col); const parts = st.into; t = t.derive(Object.fromEntries(parts.map((p, i) => [p, aq.escape((d) => toText(d[st.col]).split(st.sep)[i]?.trim() ?? null)]))); break; }
+        case 'split': if (st.rows) { // one row per part, the other columns repeated (Power Query: split into rows)
+          need(st.col); const cols = t.columnNames(); const out = Object.fromEntries(cols.map((c) => [c, []]));
+          for (const row of t.objects()) for (const part of (row[st.col] == null ? [null] : toText(row[st.col]).split(st.sep))) for (const c of cols) out[c].push(c === st.col ? (part == null ? null : part.trim()) : row[c]);
+          t = aq.table(out); break;
+        } else { need(st.col); const parts = st.into; t = t.derive(Object.fromEntries(parts.map((p, i) => [p, aq.escape((d) => toText(d[st.col]).split(st.sep)[i]?.trim() ?? null)]))); break; }
         case 'append': t = t.concat(await queryTable(st.other, st.at)); break;
+        case 'replace': for (const c of st.cols) { need(c); t = t.derive({ [c]: aq.escape((d) => (eq(d[c], st.from) ? st.to : d[c])) }); } break;
+        case 'index': { const first = t.columnNames()[0]; t = t.derive({ [st.name]: `() => op.row_number() + ${Number(st.start) - 1}` }); if (first) t = t.relocate(st.name, { before: first }); break; }
+        case 'top': t = t.orderby(st.keys.map((k) => (k.desc ? aq.desc(need(k.col)) : need(k.col)))).slice(0, st.n); break;
+        case 'merge': {
+          st.cols.forEach(need); const first = st.cols[0];
+          t = t.derive({ [st.into]: aq.escape((d) => st.cols.map((c) => toText(d[c])).filter((x) => x !== '').join(st.sep)) }).relocate(st.into, { before: first });
+          t = t.select(aq.not(st.cols.filter((c) => c !== st.into))); break;
+        }
+        case 'transpose': { // the first column's values become the column names; the other columns become rows
+          const cols = t.columnNames(); if (!cols.length) break;
+          const rows = t.objects(); const names = rows.map((r, i) => (r[cols[0]] == null || r[cols[0]] === '' ? `Column${i + 1}` : toText(r[cols[0]])));
+          const out = { [cols[0]]: cols.slice(1) }; names.forEach((n, i) => { out[n] = cols.slice(1).map((c) => rows[i][c]); });
+          t = aq.table(out); break;
+        }
+        case 'transform': {
+          const fn = FUNCTIONS[st.fn]; if (!fn) throw new FqlError(`Unknown function ${st.fn}()`, st.at);
+          const extra = st.args.map((a) => compile(a, ctx));
+          for (const c of st.cols) { need(c); t = t.derive({ [c]: aq.escape((d) => fn(d[c], ...extra.map((g) => g(d)))) }); } break;
+        }
         case 'load': break;
         default: throw new FqlError(`Unknown step ${st.op}`, st.at);
       }

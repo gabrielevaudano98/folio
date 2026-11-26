@@ -11,7 +11,7 @@ import { runScript, callFunction, describe, scriptWorkbook } from '../src/sheets
 import * as crypto from '../src/sheets/engine/crypto.js';
 import * as whatif from '../src/sheets/engine/whatif.js';
 import { createHeadless } from '../src/sheets/engine/headless.js';
-import { toUniver, roundTrip } from '../src/sheets/core/convert.js';
+import { toUniver, fromUniver, roundTrip } from '../src/sheets/core/convert.js';
 import { compareWorkbooks } from '../src/sheets/core/diff.js';
 import { refsOf, findCycles, substitute } from '../src/sheets/core/refs.js';
 import { createOpLog, createLocalTransport, bindSync, overlaps, compareOps, applyWith } from '../src/sheets/core/collab.js';
@@ -92,6 +92,35 @@ const rich = fx('sheets/Rich.sheet.md');
   assert.equal(crypto.verify(crypto.withSignature(signed, s), s).valid, true); ok('signatures: valid, any edit breaks them, re-signing replaces the line');
 }
 
+{
+  // the larger API: formats, borders, merge, sort, find, rows and columns, widths, freeze, rename; the operations
+  // replay on a real (headless) Univer workbook and the file shows each effect
+  const { replayOps } = await import('../src/sheets/core/replay.js');
+  const H2 = await createHeadless(); const loaded = toUniver(rich); const w = await H2.open(loaded.data);
+  const code = `function tidy() {
+    const s = Workbook.sheet('Orders');
+    s.range('A1:F1').setFontSize(13).setFontFamily('Georgia').setUnderline().setBorder(null, null, true, null, null, null, '#000000', 'thick').setVerticalAlignment('middle').setWrap(true);
+    s.range('A2:F4').sort({ column: 4, ascending: false });
+    const hits = s.find('pen').map((r) => r.getA1Notation());
+    s.insertRowsBefore(2, 1); s.range('A2').setValue('inserted');
+    s.setColumnWidth(3, 160); s.setFrozenRows(1); s.range('A7:B7').merge();
+    Workbook.sheet('Regions').setName('Areas');
+    return { hits, after: s.range('C3:C5').getValues().map((r) => r[0]), d: s.range('D3').getValue() };
+  }`;
+  const r = await runScript(code, 'tidy', scriptWorkbook(w.save(), { active: 'Orders' }));
+  assert.deepEqual(r.result.hits, ['C2']); assert.deepEqual(r.result.after, ['Pen', 'Folder', 'Notebook']); assert.equal(r.result.d, 12);
+  const errs = []; replayOps(w.fwb, r.ops, { onError: (o, e) => errs.push(`${o.op}: ${e.message}`) }); await w.settle();
+  assert.deepEqual(errs, []);
+  const out = fromUniver(w.save(), loaded);
+  assert.deepEqual(w.values('Orders', 'C3:D5').map((x) => x[0]), ['Pen', 'Folder', 'Notebook']);
+  assert.equal(w.values('Orders', 'A2')[0][0], 'inserted');
+  assert.deepEqual(w.sheetNames(), ['Orders', 'Areas']);
+  assert(/"A1":\{[^}]*"size":13/.test(out) && /"font":"Georgia"/.test(out) && /"underline":true/.test(out) && /"wrap":true/.test(out) && /"valign":"middle"/.test(out), 'header style in the file');
+  assert(/"C":\{[^}]*"width":160/.test(out) && /"freeze":\{"rows":1\}/.test(out) && /"merges":\[[^\]]*"A7:B7"/.test(out) && /## Areas/.test(out));
+  assert(/=SUM\(F3:F5\)/.test(out), 'the total moved with the inserted row');
+  H2.close(w); H2.dispose();
+  ok('scripts: fonts, borders, merge, sort, find, rows, widths, freeze and rename replay as Univer commands');
+}
 /* ---------- what-if ---------- */
 {
   const H = await createHeadless();

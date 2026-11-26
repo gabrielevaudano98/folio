@@ -1,7 +1,7 @@
 // Folio Sheets — FQL highlighting and completion for the query editor (a CodeMirror StreamLanguage).
 import { FUNCTIONS } from '../../core/fql/run.js';
 
-const KW = new Set(['query', 'model', 'let', 'from', 'where', 'derive', 'select', 'drop', 'rename', 'groupby', 'rollup', 'orderby', 'join', 'pivot', 'unpivot', 'dedupe', 'fill', 'limit', 'type', 'split', 'append', 'load', 'to', 'at', 'as', 'by', 'on', 'using', 'into', 'and', 'or', 'not', 'in', 'is', 'null', 'true', 'false', 'between', 'table', 'relate', 'measure', 'evaluate', 'sheet', 'range', 'csv', 'json', 'xlsx', 'parquet', 'sql', 'values', 'left', 'right', 'inner', 'full', 'down', 'up', 'with']);
+const KW = new Set(['query', 'model', 'let', 'from', 'where', 'derive', 'select', 'drop', 'rename', 'groupby', 'rollup', 'orderby', 'join', 'pivot', 'unpivot', 'dedupe', 'fill', 'limit', 'type', 'split', 'append', 'load', 'to', 'at', 'as', 'by', 'on', 'using', 'into', 'and', 'or', 'not', 'in', 'is', 'null', 'true', 'false', 'between', 'table', 'relate', 'measure', 'evaluate', 'sheet', 'range', 'csv', 'json', 'xlsx', 'parquet', 'sql', 'values', 'left', 'right', 'inner', 'full', 'down', 'up', 'with', 'case', 'when', 'then', 'else', 'end', 'replace', 'index', 'top', 'merge', 'transpose', 'transform', 'rows']);
 const AGG = ['sum', 'count', 'avg', 'mean', 'min', 'max', 'median', 'distinct', 'stdev', 'variance', 'first', 'last'];
 
 export function fqlLanguage(language) {
@@ -16,7 +16,7 @@ export function fqlLanguage(language) {
       if (s.match(/^\d+(\.\d+)?(e[-+]?\d+)?/i)) return 'number';
       if (s.match(/^(->|==|!=|<>|<=|>=|[-+*/%^=<>|])/)) return 'operator';
       const m = s.match(/^[A-Za-z_À-￿][\wÀ-￿]*/);
-      if (m) { const w = m[0].toLowerCase(); if (KW.has(w)) return 'keyword'; if (s.peek() === '(') return 'function'; return 'variableName'; }
+      if (m) { const w = m[0].toLowerCase(); if (s.peek() === '(') return 'function'; if (KW.has(w)) return 'keyword'; return 'variableName'; } // replace( is a function, replace a step
       s.next(); return null;
     },
     languageData: { commentTokens: { line: '--' } },

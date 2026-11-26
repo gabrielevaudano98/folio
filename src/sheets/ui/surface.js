@@ -8,6 +8,7 @@
 // replay script operations, and the hooks an extension can attach to.
 import { buildRibbon, wireRibbon, setComboValue } from '../../renderer/page-ribbon.js';
 import { toUniver, fromUniver, folioMeta } from '../core/convert.js';
+import { replayOps } from '../core/replay.js';
 import { setFence, readDoc } from '../core/sheetmd.js';
 import { splitRef, toRange, addr, quoteSheet, parseAddr, fromRange } from '../core/a1.js';
 import { startUniver } from './univer.js';
@@ -33,7 +34,6 @@ function ensureCss() {
 }
 /** mutations that do not change the document: formula results, view state */
 const NOT_A_CHANGE = /^(formula\.|sheet\.mutation\.set-worksheet-row-is-auto-height|sheet\.mutation\.set-worksheet-row-auto-height|sheet\.mutation\.set-zoom|sheet\.mutation\.set-selections|sheet\.mutation\.set-worksheet-activate|sheet\.mutation\.set-scroll|sheet\.mutation\.toggle-gridlines-color|sheet\.mutation\.set-float-dom|sheet\.mutation\.remove-float-dom)/;
-const STYLE_KEYS = { bold: (r, v) => r.setFontWeight(v ? 'bold' : 'normal'), italic: (r, v) => r.setFontStyle(v ? 'italic' : 'normal'), color: (r, v) => r.setFontColor(v), fill: (r, v) => (v ? r.setBackground(v) : r.setBackground(null)), numfmt: (r, v) => r.setNumberFormat(v), align: (r, v) => r.setHorizontalAlignment({ left: 'left', center: 'center', centre: 'center', right: 'right' }[String(v).toLowerCase()] || 'left') };
 
 export function mountSheet(host, ctx) {
   ensureCss();
@@ -142,21 +142,7 @@ export function mountSheet(host, ctx) {
 
     /* ---------- scripts ---------- */
     /** replay the operations a script returned, through Univer's commands (undoable, recorded, saved) */
-    applyOps(ops = []) {
-      for (const o of ops) {
-        try {
-          if (o.op === 'insertSheet') { if (!sheetByName(o.sheet)) wb().insertSheet(o.sheet); continue; }
-          const s = sheetByName(o.sheet); if (!s) continue;
-          if (o.op === 'activate') { s.activate(); continue; }
-          const r = s.getRange(o.range);
-          if (o.op === 'values') r.setValues(o.values.map((row) => row.map((v) => (v === undefined ? null : v))));
-          else if (o.op === 'clear') r.clearContent();
-          else if (o.op === 'style') STYLE_KEYS[o.key]?.(r, o.value);
-          else if (o.op === 'note') { if (o.value == null) r.deleteNote?.(); else r.createOrUpdateNote?.({ note: o.value, width: 160, height: 72 }); }
-          else if (o.op === 'select') { s.activate(); r.activate(); }
-        } catch (e) { ctx.toast(L('A script step failed: {error}', { error: e.message }), { kind: 'error' }); }
-      }
-    },
+    applyOps(ops = []) { return replayOps(wb(), ops, { activeSheet: ws, onError: (o, e) => ctx.toast(L('A script step failed: {error}', { error: e.message }), { kind: 'error' }) }); },
     scriptCode: () => surface.fences('script').map((f) => f.body).join('\n\n'),
     async runMacro(name, args = []) {
       const code = surface.scriptCode();

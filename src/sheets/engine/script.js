@@ -73,6 +73,42 @@ class Range {
   setBackground(c) { return this.__style('fill', c == null ? null : String(c)); }
   setNumberFormat(p) { return this.__style('numfmt', String(p)); }
   setHorizontalAlignment(a) { return this.__style('align', String(a)); }
+  setFontSize(n) { return this.__style('size', Number(n)); }
+  setFontFamily(f) { return this.__style('font', String(f)); }
+  setFontWeight(w) { return this.__style('bold', String(w).toLowerCase() === 'bold'); }
+  setFontStyle(s) { return this.__style('italic', String(s).toLowerCase() === 'italic'); }
+  setUnderline(on = true) { return this.__style('underline', !!on); }
+  setStrikethrough(on = true) { return this.__style('strike', !!on); }
+  setVerticalAlignment(a) { return this.__style('valign', String(a)); }
+  setWrap(on = true) { return this.__style('wrap', !!on); }
+  /** setBorder(true, null, true, null) as in Apps Script (top, left, bottom, right, vertical, horizontal, colour, style), or setBorder('all' | 'outside' | 'none', colour, style) */
+  setBorder(...a) {
+    if (typeof a[0] === 'string') return this.__style('border', { sides: [a[0]], color: a[1] || '#000000', style: a[2] || 'thin' });
+    const names = ['top', 'left', 'bottom', 'right', 'vertical', 'horizontal'];
+    const on = names.filter((_, i) => a[i] === true), off = names.filter((_, i) => a[i] === false);
+    if (off.length === 6) return this.__style('border', { sides: ['none'] });
+    return this.__style('border', { sides: on.length ? on : ['all'], color: a[6] || '#000000', style: a[7] || 'thin' });
+  }
+  merge() { __ops.push({ op: 'merge', sheet: this.sheet.name, range: this.getA1Notation() }); return this; }
+  mergeAcross() { __ops.push({ op: 'merge', sheet: this.sheet.name, range: this.getA1Notation(), across: true }); return this; }
+  breakApart() { __ops.push({ op: 'unmerge', sheet: this.sheet.name, range: this.getA1Notation() }); return this; }
+  /** sort the rows of this range by a column (1-based, of the sheet) or several: sort(2), sort({ column: 2, ascending: false }), sort([{ column: 3 }, 1]) */
+  sort(spec) {
+    const keys = (Array.isArray(spec) ? spec : [spec]).map((k) => (typeof k === 'number' ? { column: k, ascending: true } : { column: k.column, ascending: k.ascending !== false }));
+    for (const k of keys) if (!(k.column >= this.col + 1 && k.column <= this.col + this.cols)) throw new Error('sort: column ' + k.column + ' is outside ' + this.getA1Notation());
+    const rows = this.__each((r, c) => { const x = this.sheet.__cell(r, c); return x.f ? x.f : x.v ?? null; });
+    const vals = this.getValues();
+    const idx = rows.map((_, i) => i);
+    const cmp = (a, b) => { if (a === b) return 0; if (a == null || a === '') return 1; if (b == null || b === '') return -1; if (typeof a === 'number' && typeof b === 'number') return a - b; return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); };
+    idx.sort((i, j) => { for (const k of keys) { const c = k.column - 1 - this.col; const d = cmp(vals[i][c], vals[j][c]); if (d) return k.ascending ? d : -d; } return i - j; });
+    return this.setValues(idx.map((i) => rows[i]));
+  }
+  /** cells of this range whose shown text matches: find('Pen'), find('pen', { matchCase: false, entireCell: true }) */
+  find(text, { matchCase = false, entireCell = false } = {}) {
+    const want = matchCase ? String(text) : String(text).toLowerCase(); const out = [];
+    this.__each((r, c) => { const v = this.sheet.__cell(r, c).v; if (v == null) return; const s = matchCase ? String(v) : String(v).toLowerCase(); if (entireCell ? s === want : s.includes(want)) out.push(new Range(this.sheet, r, c)); });
+    return out;
+  }
   setNote(t) { __ops.push({ op: 'note', sheet: this.sheet.name, range: __addr(this.row, this.col), value: t == null ? null : String(t) }); return this; }
   offset(r, c, rows = this.rows, cols = this.cols) { return new Range(this.sheet, this.row + r, this.col + c, rows, cols); }
   activate() { __ops.push({ op: 'select', sheet: this.sheet.name, range: this.getA1Notation() }); return this; }
@@ -91,6 +127,37 @@ class Sheet {
   dataRange() { return new Range(this, 0, 0, Math.max(1, this.lastRow()), Math.max(1, this.lastColumn())); }
   getDataRange() { return this.dataRange(); }
   appendRow(values) { return this.range(this.lastRow() + 1, 1, 1, values.length).setValues([values]); }
+  find(text, o) { return this.dataRange().find(text, o); }
+  createTextFinder(text) { let o = {}; const f = { matchCase: (b = true) => ((o.matchCase = b), f), matchEntireCell: (b = true) => ((o.entireCell = b), f), findAll: () => this.find(text, o), findNext: () => this.find(text, o)[0] || null }; return f; }
+  /* rows and columns are 1-based, as in Apps Script; the copy the script reads moves with them */
+  __shift(axis, at, n) {
+    const cells = this.__d.cells, out = {};
+    for (const [r, row] of Object.entries(cells)) for (const [c, x] of Object.entries(row)) {
+      let R = +r, C = +c;
+      if (axis === 'r') { if (n < 0 && R >= at && R < at - n) continue; if (R >= at) R += n; } else { if (n < 0 && C >= at && C < at - n) continue; if (C >= at) C += n; }
+      (out[R] ||= {})[C] = x;
+    }
+    this.__d.cells = out;
+  }
+  insertRowsBefore(row, n = 1) { this.__shift('r', row - 1, n); __ops.push({ op: 'insertRows', sheet: this.name, at: row - 1, count: n }); return this; }
+  insertRowsAfter(row, n = 1) { return this.insertRowsBefore(row + 1, n); }
+  insertRowBefore(row) { return this.insertRowsBefore(row, 1); } insertRowAfter(row) { return this.insertRowsAfter(row, 1); }
+  deleteRows(row, n = 1) { this.__shift('r', row - 1, -n); __ops.push({ op: 'deleteRows', sheet: this.name, at: row - 1, count: n }); return this; }
+  deleteRow(row) { return this.deleteRows(row, 1); }
+  insertColumnsBefore(col, n = 1) { this.__shift('c', col - 1, n); __ops.push({ op: 'insertCols', sheet: this.name, at: col - 1, count: n }); return this; }
+  insertColumnsAfter(col, n = 1) { return this.insertColumnsBefore(col + 1, n); }
+  deleteColumns(col, n = 1) { this.__shift('c', col - 1, -n); __ops.push({ op: 'deleteCols', sheet: this.name, at: col - 1, count: n }); return this; }
+  deleteColumn(col) { return this.deleteColumns(col, 1); }
+  setColumnWidth(col, px) { __ops.push({ op: 'colWidth', sheet: this.name, at: col - 1, size: Number(px) }); return this; }
+  setRowHeight(row, px) { __ops.push({ op: 'rowHeight', sheet: this.name, at: row - 1, size: Number(px) }); return this; }
+  setFrozenRows(n) { __ops.push({ op: 'freeze', sheet: this.name, rows: Number(n) || 0 }); return this; }
+  setFrozenColumns(n) { __ops.push({ op: 'freeze', sheet: this.name, cols: Number(n) || 0 }); return this; }
+  setName(name) {
+    name = String(name); if (!name || name in __wb.sheets) throw new Error('A sheet named ' + name + ' already exists');
+    __ops.push({ op: 'renameSheet', sheet: this.name, name }); __wb.sheets[name] = __wb.sheets[this.name]; delete __wb.sheets[this.name];
+    const old = this.name; __sheets.delete(old); this.name = name; __sheets.set(name, this); if (__wb.active === old) __wb.active = name; return this;
+  }
+  clear() { return this.dataRange().clear(); }
   activate() { __ops.push({ op: 'activate', sheet: this.name }); return this; }
 }
 const __sheets = new Map();
@@ -102,6 +169,8 @@ const Workbook = Object.freeze({
   getActiveSheet: () => Workbook.active(),
   selection: () => (__wb.selection ? Workbook.active().range(__wb.selection) : null),
   getActiveRange: () => Workbook.selection(),
+  getSheets: () => Workbook.sheets(),
+  deleteSheet(sheet) { const name = typeof sheet === 'string' ? sheet : sheet.name; if (!(name in __wb.sheets)) throw new Error('No sheet named ' + name); if (Object.keys(__wb.sheets).length < 2) throw new Error('A workbook keeps at least one sheet'); delete __wb.sheets[name]; __sheets.delete(name); __ops.push({ op: 'deleteSheet', sheet: name }); },
   insertSheet(name) { if (name in __wb.sheets) throw new Error('A sheet named ' + name + ' already exists'); __wb.sheets[name] = { cells: {} }; __ops.push({ op: 'insertSheet', sheet: name }); return Workbook.sheet(name); },
   name: (n) => { const v = __wb.names && __wb.names[n]; if (!v) throw new Error('No name ' + n); const m = /^=?'?([^'!]+)'?!(.+)$/.exec(v); return m ? Workbook.sheet(m[1]).range(m[2].replace(/\$/g, '')) : null; },
 });

@@ -27,15 +27,16 @@ function onEdit(e) {                                // a hook (only when hooks a
 
 | Object | Members |
 |---|---|
-| `Workbook` | `active()`, `sheet(name)`, `sheets()`, `getSheetByName(name)`, `selection()`, `insertSheet(name)`, `name(definedName)` |
-| `Sheet` | `name`, `range("A1:C3")`, `range(row, col, rows, cols)`, `cell(row, col)`, `lastRow()`, `lastColumn()`, `dataRange()`, `appendRow([…])`, `activate()` |
-| `Range` | `getValue()`, `getValues()`, `getFormula()`, `getFormulas()`, `getDisplayValues()`, `setValue(v)`, `setValues([[…]])`, `setFormula("=…")`, `setFormulas`, `clear()`, `setBold()`, `setItalic()`, `setBackground(c)`, `setFontColor(c)`, `setNumberFormat(p)`, `setHorizontalAlignment(a)`, `setNote(t)`, `offset(r, c, rows, cols)`, `getA1Notation()`, `getRow()`, `getColumn()`, `activate()` |
+| `Workbook` | `active()`, `sheet(name)`, `sheets()` / `getSheets()`, `getSheetByName(name)`, `selection()`, `insertSheet(name)`, `deleteSheet(name or sheet)`, `name(definedName)` |
+| `Sheet` | `name`, `range("A1:C3")`, `range(row, col, rows, cols)`, `cell(row, col)`, `lastRow()`, `lastColumn()`, `dataRange()`, `appendRow([…])`, `find(text, { matchCase, entireCell })`, `createTextFinder(text)`, `insertRowsBefore/After(row, n)`, `deleteRows(row, n)`, `insertColumnsBefore/After(col, n)`, `deleteColumns(col, n)`, `setColumnWidth(col, px)`, `setRowHeight(row, px)`, `setFrozenRows(n)`, `setFrozenColumns(n)`, `setName(name)`, `clear()`, `activate()` |
+| `Range` | `getValue()`, `getValues()`, `getFormula()`, `getFormulas()`, `getDisplayValues()`, `setValue(v)`, `setValues([[…]])`, `setFormula("=…")`, `setFormulas`, `clear()`, `setBold()`, `setItalic()`, `setBackground(c)`, `setFontColor(c)`, `setNumberFormat(p)`, `setHorizontalAlignment(a)`, `setVerticalAlignment(a)`, `setFontSize(n)`, `setFontFamily(f)`, `setFontWeight(w)`, `setFontStyle(s)`, `setUnderline()`, `setStrikethrough()`, `setWrap()`, `setBorder(top, left, bottom, right, vertical, horizontal, colour, style)` or `setBorder('all' \| 'outside' \| 'none', colour, style)`, `merge()`, `mergeAcross()`, `breakApart()`, `sort(column \| { column, ascending } \| [ … ])`, `find(text)`, `setNote(t)`, `offset(r, c, rows, cols)`, `getA1Notation()`, `getRow()`, `getColumn()`, `getNumRows()`, `getNumColumns()`, `activate()` |
 | `ui` | `toast(message)`, `alert(message)` |
 | `console` / `log` | `console.log(…)` — shown in the Scripts panel |
 | `SpreadsheetApp` | `getActive()`, `getActiveSpreadsheet()`, `getActiveSheet()`, `getUi()` — for code written for Apps Script |
 
-Setters return the range, so calls chain. Rows and columns are 1-based in `range(row, col)` and `cell(row, col)`, as in
-Apps Script.
+Setters return the range or the sheet, so calls chain. Rows and columns are 1-based everywhere, as in Apps Script.
+`sort` reorders the rows of the range (empty cells last, text compared naturally: "Item 2" before "Item 10"); inserting
+or deleting rows moves what the script reads at once, and the formulas move when the steps replay in the grid.
 
 ## How it runs
 
@@ -43,10 +44,11 @@ Apps Script.
    headless Univer and gives the script a copy: values, formulas, the active sheet and the selection.
 2. The script runs in **QuickJS** compiled to WebAssembly (`quickjs-emscripten`): no `require`, `process`, `fetch`,
    file system, network or DOM; 64 MB of memory, 512 KB of stack, 5 seconds (1 second per custom-function call).
-3. Writes do not touch the file. The script returns a list of operations
-   (`{ op: 'values' | 'clear' | 'style' | 'note' | 'insertSheet' | 'activate' | 'select', … }`).
-4. The window replays them through Univer's commands: undoable, recorded in the operation log, saved like any edit,
-   and refused by a protected sheet like any edit.
+3. Writes do not touch the file. The script returns a list of operations (`values`, `clear`, `style`, `note`, `merge`,
+   `unmerge`, `insertRows`, `deleteRows`, `insertCols`, `deleteCols`, `colWidth`, `rowHeight`, `freeze`, `insertSheet`,
+   `deleteSheet`, `renameSheet`, `activate`, `select`; listed in `src/sheets/core/replay.js`).
+4. The window replays them through Univer's commands (`replayOps`, the same code the tests run on the headless engine):
+   undoable, recorded in the operation log, saved like any edit, and refused by a protected sheet like any edit.
 
 Reads inside one run see the script's own earlier writes. Formulas a script writes are computed when the grid
 recalculates after the run.

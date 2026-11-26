@@ -77,6 +77,13 @@ DuckDB runs with external access switched off except for the files of that query
 | `type` | `type Qty as number, Date as date` (`number`, `text`, `date`, `bool`) |
 | `split` | `split Name by " " into First, Last` |
 | `limit` | `limit 100` |
+| `replace` | `replace Region "EU" with "Europe"` — whole values (case-insensitive for text); for parts of a text use `derive X = replace(X, "-", " ")` |
+| `index` | `index Id` / `index Id from 0` — a numbered column first |
+| `top` | `top 10 by -Revenue` — the first rows in that order (Keep top rows) |
+| `merge` | `merge First, Last as Name using " "` — one column in place of several (empty parts skipped) |
+| `split … into rows` | `split Tags by "," into rows` — one row per part, the other columns repeated |
+| `transpose` | `transpose` — the first column's values become the column names |
+| `transform` | `transform Name, City with trim` · `transform Price with round(2)` — a function applied to the column in place |
 | `load` | `load to sheet "Summary" at B2` · `load to table Name` · `load to model` |
 
 `load` says where a result goes when the person runs **Save and load** or **Data → Refresh all**. A refresh first
@@ -88,8 +95,13 @@ clears what the previous load of the same query wrote (the range is kept in the 
 - Operators: `+ - * / % ^`, `== != <> < <= > >=`, `and or not`, `in (…)`, `between a and b`, `is null`, `is not null`.
   `+` joins text when either side is text that is not a number. Comparisons of text ignore case.
 - Columns by name, `` `Name with spaces` ``, or `Table.column` inside models.
-- Functions: `lower upper trim len contains startswith endswith replace left right substr concat text number date
-  round floor ceil abs sqrt ln exp year month day quarter weekday today datediff if coalesce isnull`.
+- `case when Qty >= 10 then "large" when Qty > 0 then "small" else "none" end` (the first true branch; no `else`: null).
+- Functions: `lower upper trim len contains startswith endswith replace left right substr concat padleft part text number
+  date round floor ceil abs sqrt ln exp mod power sign least greatest year month day quarter weekday weeknum today
+  datediff adddays addmonths eomonth if coalesce isnull`; patterns (regular expressions, case-insensitive):
+  `matches(Code, "^[a-z]{2}-")`, `extract(Code, "-(\d+)")` (the first group, or the whole match).
+- Text in quotes: `\n` and `\t` are a line break and a tab, `\"` and `\\` the character; any other `\` stays as written,
+  so patterns read as usual (`"\d+"`).
 - Aggregates (in `rollup` and measures): `sum count avg mean average min max median stdev variance distinct first last
   product mode any`. A rollup value may combine aggregates: `Margin = (sum(Revenue) - sum(Cost)) / sum(Revenue)`.
 

@@ -54,4 +54,36 @@ for (const [bad, msg] of [['query A = from sheet "X" | wher x > 1', /Did you mea
   await assert.rejects(async () => run(bad, env), msg, bad);
 }
 ok('errors name the problem and where it is');
+{
+  // Power Query parity: conditional column, replace values, index, keep top rows, merge columns, split into rows,
+  // transpose, transform a column, and functions that are also step names (replace) still work as functions
+  const q = `
+query Sized = from sheet "Orders"
+  | where not isnull(Region)
+  | derive Size = case when Qty >= 10 then "large" when Qty > 0 then "small" else "none" end, Tag = replace(Product, "o", "0")
+  | replace Region "EU" with "Europe"
+  | top 2 by -Qty
+  | index Id from 10
+  | select Id, Region, Product, Size, Tag
+query Names = from values([["First", "Last", "Tags"], ["Ada", "Lovelace", "math, poetry"], ["Alan", null, "code"]])
+  | merge First, Last as Name using " "
+  | split Tags by "," into rows
+  | transform Name with upper
+  | transform Tags with padleft(8, "*")
+query Flip = from values([["Metric", "Q1", "Q2"], ["Revenue", 10, 20], ["Cost", 4, 5]]) | transpose
+query Fns = from values([["Code", "When"], ["AB-123", "2026-01-31"]])
+  | derive n = extract(Code, "-(\\d+)"), ok = matches(Code, "^[a-z]{2}-"), next = addmonths(When, 1), eom = eomonth(When), wk = weeknum(When), p = part(Code, "-", 2), m = mod(-7, 3)
+`;
+  const x = (await run(q, env)).results;
+  assert.deepEqual(x.Sized, [['Id', 'Region', 'Product', 'Size', 'Tag'], [10, 'US', 'Pen', 'large', 'Pen'], [11, 'Europe', 'Folder', 'small', 'F0lder']]);
+  assert.deepEqual(x.Names, [['Name', 'Tags'], ['ADA LOVELACE', '****math'], ['ADA LOVELACE', '**poetry'], ['ALAN', '****code']]);
+  assert.deepEqual(x.Flip, [['Metric', 'Revenue', 'Cost'], ['Q1', 10, 4], ['Q2', 20, 5]]);
+  const f = x.Fns[1]; const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
+  assert.deepEqual([f[2], f[3], iso(f[4]), iso(f[5]), f[6], f[7], f[8]], ['123', true, '2026-02-28', '2026-01-31', 5, '123', 2]);
+  ok('case when, replace, top, index, merge, split into rows, transpose, transform and the new functions');
+  await assert.rejects(async () => run('query A = from sheet "Orders" | top 2 by Nope', env), /No column named Nope/);
+  await assert.rejects(async () => run('query A = from sheet "Orders" | transform Qty with nosuch', env), /Unknown function nosuch/);
+  await assert.rejects(async () => run('query A = from sheet "Orders" | merge Qty as X', env), /merge needs two columns/);
+  ok('the new steps report mistakes with their place');
+}
 console.log(`\n${n} FQL checks passed`);
