@@ -144,7 +144,8 @@ The contracts are in `src/sheets/core/collab.js` and tested with two headless re
 | 4c. Formula worker | Univer's formula engine in a Web Worker; custom functions through the window; save baseline in the worker; save from the live model | Done |
 | 4d. Sliced save | Save in ~8 ms slices that give up on an edit; writer and converter as steps; no stack overflow past 120k rows | Done |
 | 4e. Assistant tools and Settings | MCP tools on the running app: `get_sheet_values` with computed values, `run_sheet_query`, `sheet_goal_seek`, `refresh_sheet`, `run_sheet_macro` (`engine/book.js`); Settings → Spreadsheet data components (status, size, what each enables, licence, Download / Cancel / Remove with confirmation, live progress; `renderer/sheets-components.js`, test/sheets-components-ui.test.mjs) | Done |
-| 5. Next | Live sync service and presence; AI assistant (area 28); streaming xlsx export for sheets over ~200k rows | Planned |
+| 4f. Stability pass | Random-edit test (750 sequences, save → reopen identical), stress run, CPU profiles. Fixed: every edit re-parsed the whole file for script blocks (200 → 1 ms per edit); the worker's formula results counted as edits (extra save, logged for collaboration, `onEdit` fired); the cell editor's keystrokes and Folio's own chart drawing counted as edits; duplicate or invalid sheet names; Cancel ignored while checking a download; a formula worker that dies is now noticed (heartbeat) | Done |
+| 5. Next | Keep recent workbooks loaded across tab switches; live sync service and presence; AI assistant (area 28); dynamic-array metadata in .xlsx; streaming xlsx export over ~200k rows | Planned |
 
 Tests: `test/sheets.test.mjs` (15 checks: round trips, fuzz, shared formulas, 20k rows, save in slices), `test/fql.test.mjs` (11),
 `test/sheets-engine.test.mjs` (27), `test/sheets-i18n.test.mjs`, `test/sheets-ui.test.mjs` (24 checks in Electron, including
@@ -161,15 +162,23 @@ the five MCP tools), `test/sheets-components-ui.test.mjs` (4: Settings → data 
 - **Data tables, pivots and query loads write values**, refreshed by Refresh all (Excel's data tables are live formulas).
 - **Scripts cannot do I/O.** Anything that needs files or the network is a query (FQL) or Python with packages.
 - **VBA is preserved, not run.** An `.xlsm` keeps its macros for Excel; Folio Script is the language that runs here.
-- **Export to .xlsx** covers fonts, fills, borders, alignment, number formats, validation, freeze panes and conditional
-  formatting. A rule Excel cannot express ("equal to the average", icons mixed from several sets) stays in Folio's file only.
+- **Export to .xlsx** covers fonts, fills, borders, alignment, number formats, validation, freeze panes, conditional
+  formatting, notes, defined names, tab colours, hidden sheets, zoom, gridlines and the filter range; Excel recalculates
+  every formula on open (`fullCalcOnLoad`). Functions newer than Excel 2007 get their `_xlfn.` prefix on the way out and
+  lose it on the way in (`engine/xlsx-formula.js`), so `XLOOKUP`, `IFS` or `TEXTJOIN` never show #NAME?. Not exported:
+  a rule Excel cannot express ("equal to the average", icons mixed from several sets), checkbox validation, the
+  filter's criteria (the range is), charts. `FILTER`, `SORT`, `UNIQUE` are written as ordinary formulas: Excel shows
+  their first value until the cell is re-entered (dynamic-array metadata is not written yet).
 - **Formulas run in a Web Worker** (`ui/formula-worker.js`, a second Univer reached through `@univerjs/rpc`). Univer
   refuses to send custom functions to a worker as code, so the window sends their names and the worker asks the window
   for each value (which asks the data engine). Validation and formatting formulas, SUBTOTAL under filters and the
   formula audit work there (tested). If the worker cannot start, Folio says so and computes on the window's thread
   from the next open (`folio.sheets.worker` = `off`). The worker holds a second copy of the workbook in memory.
-- **Large sheets.** Measured in the app at 50,000 rows × 7 columns: the file converts in 0.24 s; an edit holds the
-  grid for 60–140 ms (Univer's own handling and redraw; the worker recalculates). Saving never blocks typing: a
+- **Large sheets.** Measured in the app at 50,000 rows × 7 columns and 100,000 formulas (`test/sheets-stress.test.mjs`,
+  opt-in): an edit holds the window for 1 ms (median; 16 ms at worst) and the worker brings the totals up to date in
+  ~3 s; 50 undos take 75 ms; the workbook opens with totals in ~10 s (2 s of it on the window's thread) and reopens in
+  1.5 s; the data engine, killed, restarts on the next call (0.4 s). Known costs: switching tabs reloads the workbook
+  (1.5 s at this size) and each reload keeps ~70 MB of the window's native memory (renderer peak 2.3 GB after 20 reloads). Saving never blocks typing: a
   workbook whose save takes more than 40 ms is saved in slices of ~8 ms (`fromUniverAsync`, the same steps as
   `fromUniver`), reading Univer's live model; an edit during the save makes it give up and start again, and
   `saveNow()` takes over from it. 200,000 rows open, save and come back byte for byte (no argument spreads that

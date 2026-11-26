@@ -474,7 +474,10 @@ function activate(p, { line } = {}) {
   app.dataset.modeView = v;
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
   layoutPanes();
-  if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
+  // a document shown only in its visual view (a sheet, deck, board) is not loaded into the hidden text editor: parsing
+  // a 3.6 MB workbook there cost ~1.4 s of the window's time; setView hands the text over when split or code is shown
+  if (type !== 'md' && v === 'visual') { if (editor.view.state.doc.length) editor.setDoc(''); t.cm = null; }
+  else if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
   if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
   else {
     const s = surfaceFor(type);
@@ -2556,6 +2559,7 @@ window.__folioErrors = [];
 window.__folioRun = (id) => (id === 'palette' ? openPalette('commands') : COMMANDS.find((x) => x.id === id)?.run()); // the palette is opened by the menu, not a command
 Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
 Object.defineProperty(window, '__folioEditor', { get: () => editor });
+Object.defineProperty(window, '__folioTabText', { get: () => activeTab()?.text ?? '' }); // tests: the active document's text in any view
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
 addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); if (e.reason?.stack) console.error('[folio-error-stack]', e.reason.stack.split('\n').slice(0, 4).join(' | ')); console.error('[folio-error]', e.reason?.message || e.reason); });
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>${esc(tr('app.could-not-start', { message: e.message }))}</p></div></div>`); console.error(e); });

@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T21:41:52Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T22:45:12Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open
+- Last checkpoint: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green
 
 ## Resume in a new session
 
@@ -53,11 +53,26 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    licence and attribution from the catalog; en/it texts `sc.*`; test/sheets-components-ui.test.mjs (DuckDB made to look
    installed by its marker file; Remove behind a confirmation). Full `npm test` green under xvfb (586 checks).
 
-Open next (not started): live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
+11. ~~**Real downloads**~~ DONE: DuckDB and Pyodide downloaded for real (cancel at 30 %, resume with a Range request,
+   damaged file refused); Cancel while checking/unpacking is honoured; engine errors name "Spreadsheet data components"
+   and are translated (`engine-client.js`). Opt-in test/sheets-components-e2e.test.mjs (`FOLIO_COMPONENTS_READY` when
+   Chromium cannot verify the proxy's certificate, as in the cloud sandbox).
+
+12. **Excel check** — files ready (`/tmp/xl/Compat.sheet.md` → `Folio-Compat.xlsx`), waiting for a connected folder on
+   the user's Windows PC to open them in Excel. Fixed from the file itself: `_xlfn.` prefixes both ways, tab colour,
+   hidden sheets, zoom, gridlines, filter range, `fullCalcOnLoad`. LibreOffice recomputes the same values.
+
+13. ~~**Stability and speed**~~ DONE (see README §7 phase 4f and §8 "Large sheets"): opt-in test/sheets-stress.test.mjs,
+   opt-in test/sheets-fuzz.test.mjs (seeded random edits; 750 runs clean after the sheet-name fix). Dev-only harness
+   step `{ profile: 'start' | 'stop', profileOut }` writes a CPU profile (src/main/main.js devShot).
+
+Open next (not started): keep recent workbooks loaded across tab switches (each switch reloads, ~70 MB native memory
+kept per reload); live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- c70546e wip: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open
+- 473c529 wip: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green
+- 0242bf3 wip: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open
 - a5e8fce wip: components: Cancel honoured while checking/unpacking (verified files kept), engine errors name the right Settings section and are translated; real-download e2e test (opt-in)
 - 630985a wip: docs: handoff and plan status after data components
 - da78013 wip: Sheets: Settings section for data components (DuckDB, Pyodide) with status, licences, download/cancel/remove; docs

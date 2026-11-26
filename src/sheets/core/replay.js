@@ -33,18 +33,29 @@ export const STYLE_KEYS = {
   },
 };
 
+/** why a sheet name cannot be used, or null: Excel's rules (1–31 characters, none of : \\ / ? * [ ], no ' at either end), and
+ *  unique ignoring case, since two `## Name` headings would not open as two sheets */
+export function sheetNameProblem(fwb, name, self = null) {
+  const n = String(name ?? '');
+  if (!n.trim()) return 'A sheet name cannot be empty.';
+  if (n.length > 31) return `"${n}" is longer than 31 characters.`;
+  if (/[:\\/?*[\]\x00-\x1f]/.test(n) || /^'|'$/.test(n)) return `"${n}" contains a character a sheet name cannot have (: \\ / ? * [ ] or ' at the start or end).`;
+  const clash = fwb.getSheets().find((x) => x.getSheetName().toLowerCase() === n.toLowerCase() && x.getSheetId() !== self?.getSheetId());
+  return clash ? `A sheet named "${clash.getSheetName()}" already exists.` : null;
+}
+
 /** replay `ops` on a Univer facade workbook; `onError(op, error)` is told about a step that failed (the rest go on) */
 export function replayOps(fwb, ops = [], { onError = () => {}, activeSheet = null } = {}) {
   const byName = (n) => (n ? fwb.getSheetByName(n) : activeSheet?.() || fwb.getActiveSheet());
   let done = 0;
   for (const o of ops) {
     try {
-      if (o.op === 'insertSheet') { if (!fwb.getSheetByName(o.sheet)) fwb.insertSheet(o.sheet); done++; continue; }
+      if (o.op === 'insertSheet') { if (!fwb.getSheetByName(o.sheet)) { const bad = sheetNameProblem(fwb, o.sheet); if (bad) throw new Error(bad); fwb.insertSheet(o.sheet); } done++; continue; }
       const s = byName(o.sheet); if (!s) throw new Error(`No sheet named ${o.sheet}`);
       switch (o.op) {
         case 'activate': s.activate(); break;
         case 'deleteSheet': fwb.deleteSheet(s); break;
-        case 'renameSheet': s.setName(String(o.name)); break;
+        case 'renameSheet': { const bad = sheetNameProblem(fwb, o.name, s); if (bad) throw new Error(bad); s.setName(String(o.name)); break; }
         case 'insertRows': s.insertRowsBefore(o.at, o.count || 1); break;
         case 'deleteRows': s.deleteRows(o.at, o.count || 1); break;
         case 'insertCols': s.insertColumnsBefore(o.at, o.count || 1); break;

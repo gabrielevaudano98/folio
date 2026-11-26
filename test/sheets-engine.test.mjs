@@ -118,8 +118,13 @@ const rich = fx('sheets/Rich.sheet.md');
   assert(/"A1":\{[^}]*"size":13/.test(out) && /"font":"Georgia"/.test(out) && /"underline":true/.test(out) && /"wrap":true/.test(out) && /"valign":"middle"/.test(out), 'header style in the file');
   assert(/"C":\{[^}]*"width":160/.test(out) && /"freeze":\{"rows":1\}/.test(out) && /"merges":\[[^\]]*"A7:B7"/.test(out) && /## Areas/.test(out));
   assert(/=SUM\(F3:F5\)/.test(out), 'the total moved with the inserted row');
+  // a sheet name Excel would refuse, or one another sheet has (any case), is refused: two `## Name` headings would
+  // not open as two sheets (found by a random-edit test)
+  const bad = []; replayOps(w.fwb, [{ op: 'renameSheet', sheet: 'Areas', name: 'orders' }, { op: 'insertSheet', sheet: 'A/B' }, { op: 'renameSheet', sheet: 'Areas', name: 'x'.repeat(32) }, { op: 'renameSheet', sheet: 'Areas', name: 'Areas' }],
+    { onError: (o, e) => bad.push(e.message) });
+  assert.equal(bad.length, 3, bad.join(' | ')); assert.match(bad[0], /already exists/); assert.deepEqual(w.sheetNames(), ['Orders', 'Areas']);
   H2.close(w); H2.dispose();
-  ok('scripts: fonts, borders, merge, sort, find, rows, widths, freeze and rename replay as Univer commands');
+  ok('scripts: fonts, borders, merge, sort, find, rows, widths, freeze and rename replay as Univer commands; duplicate or invalid sheet names are refused');
 }
 /* ---------- what-if ---------- */
 {

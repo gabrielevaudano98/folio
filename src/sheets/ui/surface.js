@@ -94,7 +94,9 @@ export function mountSheet(host, ctx) {
     meta: (id = surface.sheetId()) => (sheetMeta[id] ||= {}),
     metaByName: (name) => { const s = sheetByName(name); return s ? surface.meta(s.getSheetId()) : null; },
     workbook: () => workbookMeta,
-    fences: (lang) => readDoc(text || '').fences.filter((f) => !lang || f.lang === lang),
+    // the blocks as last loaded or set (setFence re-reads them; grid edits never touch them): re-parsing the whole
+    // file here cost ~85 ms per edit on a 50k-row workbook, since every edit asks for the script code (hooks, UDFs)
+    fences: (lang) => (loaded?.doc?.fences || readDoc(text || '').fences).filter((f) => !lang || f.lang === lang),
     /** change Folio-owned meta and write the file */
     setMeta(patch, id = surface.sheetId()) { const m = surface.meta(id); Object.assign(m, patch); for (const [k, v] of Object.entries(patch)) if (v == null) delete m[k]; save(); },
     setWorkbook(patch) { Object.assign(workbookMeta, patch); for (const [k, v] of Object.entries(patch)) if (v == null) delete workbookMeta[k]; save(); },
@@ -207,6 +209,7 @@ export function mountSheet(host, ctx) {
   void ribbon;
 
   /* ---------- load and save ---------- */
+  let drawing = false; // Folio putting its charts and floating objects on the grid after a load: not an edit
   function load(t) {
     loading = true;
     try {
@@ -225,7 +228,7 @@ export function mountSheet(host, ctx) {
       if (prevSheet) { const s = wb().getSheetByName(prevSheet); if (s) s.activate(); }
       oplog.reset(loaded.data);
       // drawings need the sheet's render unit, which Univer creates on the next frames
-      setTimeout(() => { try { charts.renderAll(); floats.renderAll(); } catch (e) { console.error('[sheets] drawings', e); } }, 60);
+      setTimeout(() => { drawing = true; try { charts.renderAll(); floats.renderAll(); } catch (e) { console.error('[sheets] drawings', e); } finally { drawing = false; } }, 60);
       panels.refresh();
       extensions.loaded();
       setTimeout(syncRibbon, 0);
@@ -264,7 +267,12 @@ export function mountSheet(host, ctx) {
     else saveTimer = setTimeout(run, Math.max(250, saveMs * 4));
   }
   U.commands.onCommandExecuted((c, options) => {
-    if (c.type !== 2 || loading || NOT_A_CHANGE.test(c.id)) return;
+    if (c.type !== 2 || loading || drawing || NOT_A_CHANGE.test(c.id)) return;
+    // formula results the worker sends back (set-range-values marked fromSync): not an edit, so no save, no entry in
+    // the operation log (results are excluded from collaboration) and no onEdit hook; charts still follow them
+    if (options?.fromSync) { charts.refreshSoon(); return; }
+    // the cell editor is a document of its own (doc.mutation.* on every keystroke): only the workbook's changes count
+    if (c.params?.unitId && c.params.unitId !== unitId) return;
     oplog.record(c, options);
     dirty.add(c.params?.subUnitId || '*'); changes++;
     save();

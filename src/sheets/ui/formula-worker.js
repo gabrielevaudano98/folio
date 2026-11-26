@@ -37,6 +37,7 @@ self.addEventListener('message', (e) => {
   port = e.ports[0];
   port.onmessage = (m) => {
     const d = m.data || {};
+    if (d.op === 'ping') { port.postMessage({ op: 'pong' }); return; }
     if (d.op === 'register') { register(d.names || []); port.postMessage({ op: 'registered', id: d.id }); return; }
     // the file as the window opened it, made comparable (convert.js): the window's first save then has nothing to compute
     if (d.op === 'baseline') { let baseline = null; try { baseline = baselineOf(d.text, { share: true }); } catch { /* the window computes it */ } port.postMessage({ op: 'baseline', id: d.id, baseline }); return; }

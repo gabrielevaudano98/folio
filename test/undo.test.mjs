@@ -40,7 +40,7 @@ const r = await runApp(w, [
   open('System.board.md'), log("document.querySelector('#btn-undo').disabled"),
   // ----- an outside change (an AI edit, the code pane) is an undo step of its own
   open('Brand.slides.md'), log("document.querySelectorAll('.sl-thumb').length"),
-  step("window.__folioSurface.setText(window.__folioEditor.text+'\\n\\n---\\n\\n# Added by AI\\n')", 900), log("document.querySelectorAll('.sl-thumb').length"),
+  step("window.__folioSurface.setText(window.__folioTabText+'\\n\\n---\\n\\n# Added by AI\\n')", 900), log("document.querySelectorAll('.sl-thumb').length"),
   run('undo', 900), log("document.querySelectorAll('.sl-thumb').length"),
   // ----- file actions: rename, undo, redo, trash, undo, new folder, undo
   open('Roadmap.md'), run('rename', 500), answer('Plan'), files,

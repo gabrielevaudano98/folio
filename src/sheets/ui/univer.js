@@ -112,7 +112,7 @@ export function startUniver(container, { lang = 'en', dark = false, worker: useW
     locales: { [LocaleType.EN_US]: mergeLocales(...EN), [LocaleType.IT_IT]: mergeLocales(...IT) },
   });
   const fontFamily = tok('--font-sans');
-  let worker = null, port = null;
+  let worker = null, port = null, heartbeat = 0, lastPong = 0;
   if (useWorker) {
     try {
       worker = new Worker(new URL('sheets-formula-worker.js', document.baseURI), { name: 'folio-formulas' });
@@ -124,7 +124,15 @@ export function startUniver(container, { lang = 'en', dark = false, worker: useW
         const d = m.data || {};
         if (d.op === 'call') { let value; try { value = udf ? await udf(d.name, d.args) : '#NAME?'; } catch (e) { value = `#ERROR: ${e.message}`; } port.postMessage({ id: d.id, value }); }
         else if (d.op === 'registered' || d.op === 'baseline') { pending.get(d.id)?.(d.baseline); pending.delete(d.id); }
+        else if (d.op === 'pong') lastPong = Date.now();
       };
+      // a worker killed later (out of memory, a crash) sends no error event: formulas would silently stop updating.
+      // It answers a ping between calculations; two minutes without an answer is far beyond any recalculation measured (3 s at 50k rows)
+      lastPong = Date.now();
+      heartbeat = setInterval(() => {
+        if (Date.now() - lastPong > 120_000) { clearInterval(heartbeat); console.error('[sheets] formula worker stopped answering'); onWorkerFailed?.(new Error('no answer')); return; }
+        try { port.postMessage({ op: 'ping' }); } catch { /* closed */ }
+      }, 5000);
     } catch (e) { console.error('[sheets] formula worker', e); worker = null; port = null; }
   }
   const pending = new Map(); let reqId = 0;
@@ -175,6 +183,6 @@ export function startUniver(container, { lang = 'en', dark = false, worker: useW
     open(data) { return univer.createUnit(UniverInstanceType.UNIVER_SHEET, data); },
     close(unitId) { api.disposeUnit?.(unitId); },
     setDark(on) { api.toggleDarkMode?.(on); univer.setTheme?.(folioTheme(on)); },
-    dispose() { univer.dispose(); worker?.terminate(); port?.close(); },
+    dispose() { clearInterval(heartbeat); univer.dispose(); worker?.terminate(); port?.close(); },
   };
 }

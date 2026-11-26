@@ -798,6 +798,8 @@ async function devShot(w) {
         const m = app.getAppMetrics().map((x) => ({ type: x.type, mb: Math.round((x.memory.privateBytes ?? x.memory.workingSetSize) / 1024), cpu: Math.round(x.cpu.percentCPUUsage) }));
         console.log('js', JSON.stringify({ metrics: m, totalMB: m.reduce((n, x) => n + x.mb, 0) }));
       }
+      if (s.profile === 'start') { w.webContents.debugger.attach('1.3'); await w.webContents.debugger.sendCommand('Profiler.enable'); await w.webContents.debugger.sendCommand('Profiler.setSamplingInterval', { interval: 200 }); await w.webContents.debugger.sendCommand('Profiler.start'); }
+      if (s.profile === 'stop') { const { profile } = await w.webContents.debugger.sendCommand('Profiler.stop'); w.webContents.debugger.detach(); fss.writeFileSync(s.profileOut, JSON.stringify(profile)); console.log('profile', s.profileOut); }
       if (s.tool) { try { const v = await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); if (s.log) console.log('js', JSON.stringify(v ?? null)); } catch (e) { console.error('shot tool', e.message); if (s.log) console.log('js', JSON.stringify(`ERR ${e.message}`)); } }
       await wait(s.wait ?? 700);
       if (s.out) { const img = await w.webContents.capturePage(); fss.writeFileSync(s.out, img.toPNG()); console.log('shot', s.out); }

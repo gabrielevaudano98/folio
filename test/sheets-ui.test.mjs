@@ -14,6 +14,9 @@ const book = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['Item', 'Qty', 'Price'], ['Pen', 3, 1.5], ['Book', 2, 12]]), 'Stock');
 const xlsxPath = path.join(w.tmp, 'Stock.xlsx'); fs.writeFileSync(xlsxPath, XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }));
 
+// a fresh workbook with formulas and a chart: opening it must log nothing
+fs.writeFileSync(path.join(w.ws, 'sheets', 'Results.sheet.md'), ['## R', '', '| Item | Qty | Price | Total |', '| --- | --: | --: | --: |', '| A | 4 | 3.5 | =B2*C2 |', '| B | 2 | 1 | =B3*C3 |', '',
+  '<!-- sheet: {"charts":[{"type":"column","range":"A1:B3"}]} -->', ''].join('\n'));
 // a workbook the AI-assistant tools (MCP, through the running app) work on
 fs.writeFileSync(path.join(w.ws, 'sheets', 'Mcp.sheet.md'), ['## Orders', '', '| Region | Qty | Price | Total |', '| --- | --: | --: | --: |', '| EU | 4 | 3.5 | =B2*C2 |', '| US | 12 | 1.2 | =B3*C3 |', '| EU | 6 | 2.1 | =B4*C4 |', '| Sum | | | =SUM(D2:D4) |', '',
   '```fql Report', 'query ByRegion = from sheet "Orders" | where Region != "Sum" | groupby Region | rollup Qty = sum(Qty) | orderby Region | load to sheet "Report" at A1', '```', '',
@@ -82,10 +85,15 @@ const steps = [
   tool('sheet_goal_seek', { path: 'sheets/Mcp.sheet.md', set: 'D5', to: 50, by: 'B2' }),
   tool('refresh_sheet', { path: 'sheets/Mcp.sheet.md' }),
   tool('run_sheet_macro', { path: 'sheets/Mcp.sheet.md', macro: 'mark' }),
+  // 16 formula results from the worker are not edits: opening logs nothing, one edit logs one operation and saves once
+  open('sheets/Results.sheet.md'),
+  ev(`await new Promise((r) => setTimeout(r, 2500)); const s = ${S}; const before = s.oplog.ops().length; const t0 = s.text();
+    await s.ws().getRange('B2').setValue(5); await new Promise((r) => setTimeout(r, 2500));
+    return { before, after: s.oplog.ops().length, ids: s.oplog.ops().map((o) => o.mutation.id), f2: s.ws().getRange('D2').getRawValue(), unchangedOnOpen: !!t0 }`, 500),
   errors,
 ];
 const r = await runApp(w, steps, { FOLIO_IMPORT_SHEET: xlsxPath }, 240000);
-const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, ribbon, worker, mValues, mQuery, mGoal, mRefresh, mMacro, errs] = r.js;
+const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, ribbon, worker, mValues, mQuery, mGoal, mRefresh, mMacro, results, errs] = r.js;
 let n = 0; const ok = (m) => { n++; console.log('  ✓ ' + m); };
 console.log('sheets in the app');
 assert.equal(ping, 1); ok('the data engine starts as a separate process');
@@ -115,5 +123,7 @@ assert(mGoal.found && Math.abs(mGoal.value - (4 + 9 / 3.5)) < 1e-6, JSON.stringi
 const mcp = w.read('sheets/Mcp.sheet.md');
 assert(mRefresh.written && mRefresh.loaded === 1 && /## Report/.test(mcp) && /\| EU +\| 10 +\|/.test(mcp), JSON.stringify(mRefresh)); ok('MCP refresh_sheet loads the queries into their sheets');
 assert(mMacro.written && mMacro.result === 7 && /\| seen/.test(mcp)); ok('MCP run_sheet_macro runs a macro and writes its changes');
+assert.equal(results.before, 0, JSON.stringify(results)); assert.equal(results.after, 1, JSON.stringify(results)); assert.deepEqual(results.ids, ['sheet.mutation.set-range-values']); assert.equal(results.f2, 17.5); assert.equal(w.read('sheets/Results.sheet.md').includes('| A    | 5   |'), true, w.read('sheets/Results.sheet.md'));
+ok('formula results from the worker are not logged or saved as edits: one edit is one operation, and its total recomputes');
 assert.deepEqual(errs, []); ok('no errors in the window');
 console.log(`\n${n} sheets app checks passed`);
