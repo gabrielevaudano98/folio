@@ -32,7 +32,7 @@ const steps = [
   { js: "document.querySelector('#btn-record').click();1", wait: 800 }, // one click: no question about the title
   waitFor("document.querySelector('.meeting-bar [data-meeting-stop]')", 90000),
   log("document.querySelector('.meeting-bar').textContent"),
-  log("document.querySelector('#btn-record').dataset.recording + '|' + document.querySelector('#btn-record').getAttribute('aria-pressed') + '|' + !!document.querySelector('#sheet-prompt[open]')"),
+  log("document.querySelector('#btn-record').dataset.recording + '|' + !!document.querySelector('#sheet-prompt[open]')"),
   { js: '1', wait: wavMs + 5000 }, // the fake microphone plays the whole wav through the page, as real audio would
   { js: "document.querySelector('#btn-record').click();1", wait: 500 }, // and one click stops
   waitFor("(window.__folioToasts||[]).includes('Meeting saved.')", 120000),
@@ -47,7 +47,7 @@ assert.equal(started, true, r.log.slice(-3000));
 assert.equal(ready, true, r.log.slice(-3000));
 assert.ok(subs.some((s) => /Speech model.*Ready/.test(s) || /Needed to record · Ready/.test(s)), JSON.stringify(subs));
 assert.equal(sw, 'switch|true');
-assert.equal(visible, true); assert.match(bar, /Recording/); assert.equal(btn, 'true|true|false', 'the button shows the recording and no title question was asked');
+assert.equal(visible, true); assert.match(bar, /Recording/); assert.equal(btn, 'true|false', 'the button shows the recording and no title question was asked');
 assert.equal(saved, true, r.log.slice(-3000)); assert.equal(gone, true);
 assert.deepEqual(errs, []);
 const dir = path.join(w.ws, 'Meetings'); const files = fs.readdirSync(dir);

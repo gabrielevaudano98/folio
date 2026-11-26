@@ -21,6 +21,7 @@ await t('only apps that have the microphone open now are listed', () => {
 });
 await t('empty, partial or odd output gives an empty list and never throws', () => {
   for (const x of ['', 'ERROR: The system was unable to find the specified registry key or value.', `${base}\\X\r\n    LastUsedTimeStart    REG_QWORD    nonsense\r\n`, null, undefined]) assert.deepEqual(parseInUse(x), []);
+  assert.deepEqual(parseInUse(`${base}\\Z\r\n    LastUsedTimeStart    REG_QWORD    0x5\r\n`), [], 'a start without a stop is a half-read key, not a call');
   assert.deepEqual(parseInUse(`${base}\\Y\n    LastUsedTimeStart    REG_QWORD    0x5\n    LastUsedTimeStop    REG_QWORD    0x0\n`).map((a) => a.name), ['Y']); // LF line ends too
 });
 await t('a call is offered once, after the hold time, not for a short blip', () => {
@@ -50,6 +51,11 @@ await t('the watcher skips the app itself, stays quiet while recording, and surv
   assert.deepEqual(calls, [{ app: 'Zoom' }]);
   boom = true; await w.tick(); // no throw
   assert.equal(calls.length, 1);
+});
+await t('an offer that fails is contained: tick never rejects, and the next tick still runs', async () => {
+  let clock = 0, offers = 0;
+  const w = createMicWatch({ exec: async () => reg(['NonPackaged\\C:#Program Files#Zoom#bin#Zoom.exe', '0x1', '0x0']), onCall: async () => { offers++; throw new Error('notification failed'); }, now: () => clock, episodes: createEpisodes({ holdMs: 0, quietMs: 1000 }) });
+  await w.tick(); await w.tick(); assert.equal(offers, 1, 'the failed offer ran once for this call'); // and no unhandled rejection reached the process
 });
 await t('start and stop manage one timer', () => {
   const made = [], cleared = [];

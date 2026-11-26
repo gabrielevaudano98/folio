@@ -7,8 +7,8 @@ You need Windows, headphones, about 3 GB of free disk space and 15 minutes for t
    1.1 GB) if you want a summary and action items.
 3. Choose the **Meeting language**: *Detect* for mixed Italian and English, or a fixed language.
 4. Put on your headphones and join the call. Tell everyone you are recording.
-5. Click the microphone button next to **New note** in the sidebar. Recording starts at once; the first time, Folio
-   reminds you about consent and headphones. (**Start recording** in Settings and the command *Record a meeting…* in the
+5. Click the microphone button next to **New note** in the sidebar. The first time, Folio asks you to confirm
+   consent and headphones; after that, recording starts at once. (**Start recording** in Settings and the command *Record a meeting…* in the
    command palette, `Ctrl+Shift+P`, ask for a title first.) You can rename the note afterwards.
 6. A bar at the bottom shows *Recording* and the time. Talk as usual.
 7. Click the button again, or **Stop**. The transcript is saved at once in `Meetings/`; the notes follow within a few minutes.

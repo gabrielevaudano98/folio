@@ -265,6 +265,13 @@ await t('a call that holds the microphone gets one notification; clicking it ask
   assert.deepEqual(sent.filter(([c]) => c === 'meeting:auto-start'), [['meeting:auto-start', { title: 'Meeting Zoom' }]]);
   await handlers['features:set']('meeting-recorder', { detectCalls: false });
 });
+await t('a notification is not shown if the person turned detection off while it was being prepared', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const { handlers, toasts } = callService({ detect: { ready: async () => { await gate; return true; } } });
+  await nap(200); // the call is noticed, the readiness check is waiting
+  await handlers['features:set']('meeting-recorder', { detectCalls: false }); release(); await nap(100);
+  assert.equal(toasts.length, 0);
+});
 await t('nothing is offered while the speech model is not downloaded', async () => {
   const { toasts, handlers } = callService({ detect: { ready: async () => false } });
   await nap(300); assert.equal(toasts.length, 0);

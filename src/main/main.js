@@ -224,7 +224,7 @@ h('settings:set', async (patch) => {
 const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs'),
   // Windows only: a notification when another app starts using the microphone, and the registry query that finds it
   notify: ({ title, body, onClick }) => { if (!Notification.isSupported()) return; const n = new Notification({ title, body, silent: true }); n.on('click', onClick); n.show(); },
-  execReg: process.platform === 'win32' ? (args) => new Promise((res, rej) => execFile('reg', args, { windowsHide: true, timeout: 5000, maxBuffer: 1 << 20 }, (e, out) => (e ? rej(e) : res(out)))) : null });
+  execReg: process.platform === 'win32' ? (args) => new Promise((res, rej) => execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe'), args, { windowsHide: true, timeout: 5000, maxBuffer: 1 << 20 }, (e, out) => (e ? rej(e) : res(out)))) : null });
 h('workspace:choose', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;

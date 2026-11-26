@@ -26,16 +26,15 @@ export function appName(key) {
  */
 export function parseInUse(text) {
   const out = [];
-  let key = null, start = 0n, stop = 0n, seen = false;
-  const flush = () => { if (key && seen && start > 0n && stop === 0n) out.push({ name: appName(key), key, since: Number(start) }); };
+  let key = null, start = 0n, stop = 0n, gotStart = false, gotStop = false;
+  const flush = () => { if (key && gotStart && gotStop && start > 0n && stop === 0n) out.push({ name: appName(key), key, since: Number(start) }); }; // both values must be there: a half-read key is not a call
   for (const raw of String(text).split(/\r?\n/)) {
     const line = raw.trimEnd();
-    if (/^HK[A-Z_]+\\/i.test(line)) { flush(); key = line; start = 0n; stop = 0n; seen = false; continue; }
+    if (/^HK[A-Z_]+\\/i.test(line)) { flush(); key = line; start = 0n; stop = 0n; gotStart = false; gotStop = false; continue; }
     const m = /^\s+(LastUsedTimeStart|LastUsedTimeStop)\s+REG_QWORD\s+(0x[0-9a-f]+|\d+)\s*$/i.exec(line);
     if (!m) continue;
     let v; try { v = BigInt(m[2]); } catch { continue; }
-    seen = true;
-    if (/Start$/i.test(m[1])) start = v; else stop = v;
+    if (/Start$/i.test(m[1])) { start = v; gotStart = true; } else { stop = v; gotStop = true; }
   }
   flush();
   return out;
@@ -81,7 +80,7 @@ export function createMicWatch({ exec, onCall, isBusy = () => false, own = [], i
       if (isBusy()) { episodes.reset(); return; }
       const apps = parseInUse(await exec(['query', MIC_KEY, '/s'])).filter((a) => !mine(a));
       const who = episodes.step(apps.map((a) => a.name), now());
-      if (who) onCall({ app: who });
+      if (who) await onCall({ app: who }); // an offer that fails stays inside this try
     } catch { /* reg missing or the key not there yet: nothing to report */ } finally { running = false; }
   }
   return {

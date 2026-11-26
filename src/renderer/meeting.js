@@ -199,5 +199,5 @@ export function createMeeting(ui) {
       if (r?.path) toast(tr('mtg.meeting-saved'), { action: [tr('mtg.open'), () => openFile(r.path)] });
     } catch (e) { toast(e.message, { kind: 'error' }); }
   }
-  return { renderSettings, start, stop, toggle: () => (rec ? stop() : start()), quickToggle: () => (rec || state?.phase === 'recording' ? stop() : start({ quick: true })), recording: () => !!rec };
+  return { renderSettings, start, stop, toggle: () => (rec ? stop() : start()), quickToggle: () => (state?.phase === 'starting' ? undefined : rec || state?.phase === 'recording' ? stop() : start({ quick: true })), recording: () => !!rec };
 }

@@ -119,7 +119,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   async function offer(who) {
     if (session || !wanted()) return;
     const ready = detect.ready ? await detect.ready() : (await describe())[0].required.ready;
-    if (!ready) return; // nothing to record with yet
+    if (!ready || session || !wanted()) return; // nothing to record with yet, or the person's situation changed while we checked
     notify({
       title: t('mtg.detect-title', { app: who }), body: t('mtg.detect-body'),
       onClick: () => { const w = getWin(); if (!w) return; if (w.isMinimized()) w.restore(); w.show(); w.focus(); send('meeting:auto-start', { title: t('mtg.auto-title', { app: who }) }); },
