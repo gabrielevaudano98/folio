@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T16:07:56Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T16:18:41Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: ribbon: Excel-style combo boxes (font, size, number format with previews), same height on every tab
+- Last checkpoint: large sheets: 6x faster open, per-sheet save cache, shared formulas, fresh unit ids in the headless engine
 
 ## Resume in a new session
 
@@ -18,13 +18,21 @@ Written by `node scripts/checkpoint.mjs` (2026-11-26T16:07:56Z). Read this first
 Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 28, AI, is out of scope):
 1. ~~**Cell values lossless**~~ DONE (fuzz in test/sheets.test.mjs, rule in FORMATS.md) — `src/sheets/core/cell-text.js` written (apostrophe rule for text that reads as number/TRUE/formula, `&#32;` for edge blanks, `&lt;br>` for a literal tag). Wire it into `convert.js` (`cellFromRaw`/`rawFromCell`) and `renderer/sheet-core.js` (`evaluator` → `cellValue`), add the fuzz test (`/tmp/fz/fuzz.mjs` idea: 400 random grids, value + type must survive save/reload, second save identical) to `test/sheets.test.mjs`, document in `docs/FORMATS.md`.
 2. ~~**Ribbon**~~ DONE (combos in page-ribbon.js, fixed height, 4 new checks in test/sheets-ui.test.mjs; run test/visual.test.mjs: baselines may need refreshing because the ribbon is now a fixed 93px) — `.rb-select` has `min-width: 9.5rem` that beats `width: 58px` (font size box 152 px) and 28 px selects make the Home ribbon 18 px taller than other tabs. Replace Font / Size / Number format with typeable comboboxes in `renderer/page-ribbon.js`, fixed ribbon height, re-check collapse with screenshots.
-3. **Large sheets** — time convert / headless / export at 50k rows, fix hot spots.
+3. ~~**Large sheets**~~ DONE in part. Measured at 50k rows × 7 cols: open (convert) 1.6 s → 0.24 s; first save no longer
+   recomputes untouched sheets (cache by sheet id in fromUniver); debounce adapts to save time; runs of formulas such as
+   =D2*E2 are opened as Univer shared formulas (`si`, `shareFormulas` in convert.js, guarded by `shareable()` and a test
+   that compares files and values with and without sharing) → edit recalculation 1.6 s → 0.95 s; headless engine gives a
+   fresh unit id to a reused id (stale validation rules leaked between runs). **Still open:** Univer rebuilds its
+   dependency tree on every edit (~1 s at 50k formulas, on the window's thread). Next: formula engine in a Web Worker
+   (`@univerjs/rpc` is installed: UniverRPCMainThreadPlugin + worker with UniverRemoteSheetsFormulaPlugin); custom
+   functions (async, call the data engine) and the audit panel (getCellDependencyTree) must then go through the worker.
 4. **.xlsx** — export (and import) conditional formatting, data validation, freeze panes (documented gap in docs/sheets/README.md §8).
 5. **Languages** — FQL: `replace`, `index`, `top`, `case when`; Folio Script: setFontSize/Family, setBorder, merge, sort, insert/delete rows, find.
 6. Final: full test suite, screenshots, docs, Project doc `claude/SHEETS-PLAN.md`.
 
 ## Commits since main
-- 3478642 wip: ribbon: Excel-style combo boxes (font, size, number format with previews), same height on every tab
+- 9793b80 wip: large sheets: 6x faster open, per-sheet save cache, shared formulas, fresh unit ids in the headless engine
+- 4abfa4b wip: ribbon: Excel-style combo boxes (font, size, number format with previews), same height on every tab
 - 6b505ff wip: cell values lossless: apostrophe rule and entities, fuzz test through Univer
 - 75254bf wip: handoff next steps
 - 574e3ee wip: Sheets on Univer: 27 areas, tests green; started robustness pass

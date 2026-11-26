@@ -30,11 +30,42 @@ export function rawFromCell(cell) {
   return writeText(String(v));
 }
 
+/* ---------- shared formulas ---------- */
+// Down a column, =D2*E2, =D3*E3, =D4*E4… are one formula moved row by row. Univer (like Excel) can hold them as one
+// shared formula (`si`): it parses it once, which is what keeps a sheet of 50k such rows quick to recalculate. A run is
+// shared only when the formula is simple enough that Folio and Univer move it the same way (checked here), and only
+// when moving the first one gives each next one exactly as written, so the file is written back unchanged.
+const REF_AT = /(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\w(])/g;
+export function shareable(f) {
+  if (typeof f !== 'string' || f.length < 3 || !f.startsWith('=')) return false;
+  if (!/^=[A-Z0-9$:+\-*/^&(),.<>= %]+$/.test(f)) return false;               // no text, sheet names, names in lowercase, arrays
+  if (/\d[E]\d/.test(f) || /(^|[^A-Z$])\$?\d+\s*:\s*\$?\d+/.test(f)) return false; // 1E5, whole rows (2:2)
+  for (const m of f.matchAll(REF_AT)) if (/[A-Z0-9_.$]/.test(f[m.index - 1] || '') && f[m.index - 1] !== '$') return false; // a reference inside a longer word
+  return true;
+}
+function shareFormulas(cellData, prefix) {
+  const byCol = new Map();
+  for (const [r, row] of Object.entries(cellData)) for (const [c, cell] of Object.entries(row)) if (cell.f) (byCol.get(+c) || byCol.set(+c, []).get(+c)).push(+r);
+  let n = 0;
+  for (const [c, rows] of byCol) {
+    rows.sort((a, b) => a - b);
+    let root = null, len = 0;
+    const end = () => { if (root && len < 2) delete cellData[root.r][c].si; root = null; len = 0; };
+    for (const r of rows) {
+      const cell = cellData[r][c];
+      if (root && r === root.last + 1 && shiftFormula(root.f, r - root.r, 0) === cell.f) { cell.si = root.si; delete cell.f; root.last = r; len++; continue; }
+      end();
+      if (shareable(cell.f)) { root = { r, f: cell.f, last: r, si: `${prefix}-${++n}` }; cell.si = root.si; len = 1; }
+    }
+    end();
+  }
+}
+
 /* ---------- md → Univer ---------- */
 const sheetId = (i) => `sheet-${i + 1}`;
 
 /** sheet-md text → { data: IWorkbookData, doc, baseline } */
-export function toUniver(text, { id = 'folio-wb', name = 'Workbook' } = {}) {
+export function toUniver(text, { id = 'folio-wb', name = 'Workbook', share = true } = {}) {
   const doc = readDoc(text);
   const sheets = sheetsOf(doc);
   const data = { id, name, appVersion: '1', locale: 'enUS', styles: {}, sheetOrder: [], sheets: {}, resources: [] };
@@ -48,23 +79,31 @@ export function toUniver(text, { id = 'folio-wb', name = 'Workbook' } = {}) {
     const colStyle = (c) => { const base = { ...(b.align?.[c] && ALIGN[b.align[c]] ? { align: b.align[c] } : {}) }; const cm = m.cols?.[colName(c)]; if (cm) { const { width, hidden, ...st } = cm; Object.assign(base, st); } return base; };
     const rowStyle = (r) => { const rm = m.rows?.[r + 1]; if (!rm) return {}; const { height, hidden, ...st } = rm; return st; };
     const cellData = {};
-    const ncol = Math.max(0, ...b.rows.map((r) => r.length));
+    const ncol = b.rows.reduce((n, r) => Math.max(n, r.length), 0); // not Math.max(...rows): 100k+ arguments overflow the stack
     const put = (r, c, cell) => { (cellData[r] ||= {})[c] = cell; };
     b.rows.forEach((row, r) => row.forEach((raw, c) => { const v = cellFromRaw(raw); if (v) put(r, c, v); }));
-    // styles: a cell gets column ⊕ row ⊕ its own style, so Univer shows exactly what sheet-md says
+    if (share) shareFormulas(cellData, `fs${i + 1}`);
+    // styles: a cell gets column ⊕ row ⊕ its own style, so Univer shows exactly what sheet-md says. Ids are memoised
+    // per column (cells with no style of their own and no row style, nearly all of them), so 100k cells cost little.
     const styledCols = new Set([...Object.keys(m.cols || {}).map(colIndex), ...(b.align || []).map((a, c) => (a ? c : -1)).filter((c) => c >= 0)]);
-    const cellsMeta = m.cells || {};
+    const cellsMeta = new Map();
+    for (const [a, v] of Object.entries(m.cells || {})) { const p = parseAddr(a); if (p) cellsMeta.set(p[0] * 20000 + p[1], v); }
+    const styledRows = new Set(Object.keys(m.rows || {}).map((rk) => Number(rk) - 1).filter((r) => { const { height, hidden, ...st } = m.rows[r + 1] || {}; return Object.keys(st).length; }));
+    const colRef = new Map();
+    const refOf = (r, c) => {
+      const own = cellsMeta.get(r * 20000 + c);
+      if (!own && !styledRows.has(r)) { if (!colRef.has(c)) colRef.set(c, styleRef(colStyle(c))); return [colRef.get(c), undefined]; }
+      const { data: custom, ...ownStyle } = own || {};
+      return [styleRef({ ...colStyle(c), ...rowStyle(r), ...ownStyle }), custom];
+    };
     const touch = new Set();
-    for (const r of Object.keys(cellData)) for (const c of Object.keys(cellData[r])) touch.add(`${r},${c}`);
-    for (const a of Object.keys(cellsMeta)) { const p = parseAddr(a); if (p) touch.add(`${p[0]},${p[1]}`); }
-    for (const rk of Object.keys(m.rows || {})) for (let c = 0; c < ncol; c++) touch.add(`${Number(rk) - 1},${c}`);
-    for (const c of styledCols) for (let r = 0; r < b.rows.length; r++) touch.add(`${r},${c}`);
+    for (const r of Object.keys(cellData)) for (const c of Object.keys(cellData[r])) touch.add(+r * 20000 + +c);
+    for (const k of cellsMeta.keys()) touch.add(k);
+    for (const rk of Object.keys(m.rows || {})) for (let c = 0; c < ncol; c++) touch.add((Number(rk) - 1) * 20000 + c);
+    for (const c of styledCols) for (let r = 0; r < b.rows.length; r++) touch.add(r * 20000 + c);
     for (const key of touch) {
-      const [r, c] = key.split(',').map(Number);
-      const own = cellsMeta[addr(r, c)] || {};
-      const { data: custom, ...ownStyle } = own;
-      const st = { ...colStyle(c), ...rowStyle(r), ...ownStyle };
-      const s = styleRef(st);
+      const r = Math.floor(key / 20000), c = key % 20000;
+      const [s, custom] = refOf(r, c);
       if (!s && !custom) continue;
       const cell = cellData[r]?.[c] || {};
       if (s) cell.s = s;
@@ -96,8 +135,12 @@ export function toUniver(text, { id = 'folio-wb', name = 'Workbook' } = {}) {
   const resources = { [RES.dv]: res.dv, [RES.cf]: res.cf, [RES.notes]: res.notes, [RES.filter]: res.filter, [RES.names]: Object.fromEntries(names) };
   for (const [k, v] of Object.entries(wb.univer || {})) resources[k] = v;
   data.resources = Object.entries(resources).filter(([, v]) => v && Object.keys(v).length).map(([name, v]) => ({ name, data: JSON.stringify(v) }));
-  const baseline = canonicalOf(data);
-  return { data, doc, baseline };
+  // the baseline is needed at the first save, not to show the file: it is computed then, from the same text (the data
+  // object itself belongs to Univer by then and may have changed)
+  const out = { data, doc };
+  let base = null;
+  Object.defineProperty(out, 'baseline', { enumerable: true, get: () => (base ||= canonicalOf(toUniver(text, { id, name, share }).data)) });
+  return out;
 }
 
 /* ---------- Univer → md ---------- */
@@ -144,15 +187,24 @@ export function sheetFromUniver(snap, ws, res) {
     if (!isEmpty(e)) rowsMeta[+r + 1] = e;
   }
   const cells = {};
+  // what a cell adds to its column and row, memoised by (style id, column, styled row): most cells share a few styles
+  const ownMemo = new Map();
+  const ownStyle = (s, r, c) => {
+    const key = typeof s === 'string' ? `${s}|${c}|${rowSt[r] ? r : ''}` : null;
+    if (key && ownMemo.has(key)) return ownMemo.get(key);
+    const st = fromUniverStyle(styleOf(snap, s));
+    const base = { ...(align[+c] ? { align: align[+c] } : {}), ...(colSt[c] || {}), ...(rowSt[r] || {}) };
+    const own = styleDiff(st, base);
+    // a key the column sets but this cell clears
+    for (const k of Object.keys(base)) if (!(k in st) && k !== 'align') own[k] = k === 'border' ? {} : false;
+    if (key) ownMemo.set(key, own);
+    return own;
+  };
   for (const [r, row] of Object.entries(cd)) for (const [c, cell] of Object.entries(row || {})) {
     if (!cell) continue;
-    const st = fromUniverStyle(styleOf(snap, cell.s));
-    const base = { ...(align[+c] ? { align: align[+c] } : {}), ...(colSt[c] || {}), ...(rowSt[r] || {}) };
-    const own = cell.s ? styleDiff(st, base) : {};
-    // a key the column sets but this cell clears
-    if (cell.s) for (const k of Object.keys(base)) if (!(k in st) && k !== 'align') own[k] = k === 'border' ? {} : false;
-    if (cell.custom?.folio) own.data = cell.custom.folio;
-    if (!isEmpty(own)) cells[addr(+r, +c)] = own;
+    let own = cell.s ? ownStyle(cell.s, r, c) : null;
+    if (cell.custom?.folio) own = { ...own, data: cell.custom.folio };
+    if (own && !isEmpty(own)) cells[addr(+r, +c)] = own;
   }
   if (!isEmpty(cells)) meta.cells = sortCells(cells);
   if (!isEmpty(rowsMeta)) meta.rows = rowsMeta;
@@ -211,21 +263,31 @@ export function canonicalOf(snap) {
  * Write a Univer snapshot back into the document it came from. Untouched sheets keep their exact text.
  * `loaded` is what toUniver() returned for that document.
  */
-export function fromUniver(snap, loaded, { sheetMeta = {}, workbook = null } = {}) {
+export function fromUniver(snap, loaded, { sheetMeta = {}, workbook = null, dirty = null, cache = null } = {}) {
+  // `dirty` (Set of sheet ids, '*' for all) and `cache` (Map kept by the caller) let the window skip sheets nothing
+  // changed since its last save: their block from that save is reused as is.
   const { doc, baseline } = loaded;
   const res = parseRes(snap);
   const oldSheets = sheetsOf(doc);
   const byId = new Map(oldSheets.map((b, i) => [sheetId(i), b]));
+  const reuse = cache && dirty && !dirty.has('*');
   const next = snap.sheetOrder.map((id) => {
-    const cur = JSON.stringify(sheetFromUniver(snap, snap.sheets[id], res));
     const old = byId.get(id);
     const own = { ...folioMeta(old?.meta), ...(sheetMeta[id] || {}) };
+    const ownKey = cache ? JSON.stringify(own) : '';
+    if (reuse && !dirty.has(id) && cache.get(id)?.own === ownKey && cache.get(id).name === snap.sheets[id].name) return cache.get(id).block;
+    const block = sheetBlock(id, old, own);
+    cache?.set(id, { own: ownKey, name: snap.sheets[id].name, block });
+    return block;
+  });
+  function sheetBlock(id, old, own) {
+    const cur = JSON.stringify(sheetFromUniver(snap, snap.sheets[id], res));
     const ownSame = JSON.stringify(dropEmpty(own)) === JSON.stringify(dropEmpty(folioMeta(old?.meta)));
     if (old && baseline.sheets[id] === cur && ownSame) return old;
     const s = JSON.parse(cur);
     const meta = { ...s.meta, ...dropEmpty(own) };
     return { type: 'sheet', name: s.name, named: old ? old.named || old.name !== s.name : true, headingLines: old && old.name === s.name ? old.headingLines : [], rows: s.rows.length ? s.rows : [['']], align: s.align, meta };
-  });
+  }
   // sheets take the slots the old sheets had; extra sheets go after the last one; removed sheets leave
   const blocks = []; let k = 0;
   const lastSheet = doc.blocks.reduce((a, b, i) => (b.type === 'sheet' ? i : a), -1);

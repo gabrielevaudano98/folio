@@ -57,8 +57,14 @@ export async function createHeadless({ functions = {} } = {}) {
   }
   const commands = univer.__getInjector().get(ICommandService);
 
+  let opened = 0; const usedIds = new Set();
   async function open(data) {
-    const unit = univer.createUnit(UniverInstanceType.UNIVER_SHEET, structuredClone(data));
+    // an id already used in this engine gets a fresh one (wb.id says which): Univer's plugins (validation, formatting
+    // rules) keep state per unit id, and a workbook opened again under the same id would meet the rules of the one before
+    const fresh = usedIds.has(data.id) ? `${data.id || 'wb'}~${++opened}` : data.id;
+    usedIds.add(fresh);
+    const json = fresh === data.id ? null : JSON.stringify(data).split(`"${data.id}"`).join(`"${fresh}"`).split(`\\"${data.id}\\"`).join(`\\"${fresh}\\"`);
+    const unit = univer.createUnit(UniverInstanceType.UNIVER_SHEET, json ? { ...JSON.parse(json), id: fresh } : structuredClone(data));
     const id = unit.getUnitId();
     api.setCurrent?.(id);
     const fwb = api.getWorkbook(id);

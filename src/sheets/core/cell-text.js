@@ -29,9 +29,14 @@ const textOf = (s) => s.split(BR).map((p) => p.replace(ENT, decode)).join('\n');
 /** does this text need an apostrophe to stay text? */
 const needsQuote = (s) => { const p = plain(s); return !p || p.t !== 1 || (s.startsWith("'") && needsQuote(s.slice(1))); };
 
+// the common case, plain words: nothing to quote or decode (checked first, for sheets of 100k cells)
+const PLAIN_OUT = /^[A-Za-z\u00c0-\uffff_(\[#@!?,;:/*"][^&<\r\n\t\v\f\u00a0]*$/;
+const PLAIN_IN = /^[A-Za-z\u00c0-\uffff_(\[#@!?,;:/*"][^&<]*$/;
+
 /** markdown cell text → Univer-shaped cell (value part only), or null for an empty cell */
 export function readCell(raw) {
   const s = String(raw ?? '');
+  if (PLAIN_IN.test(s) && s !== 'TRUE' && s !== 'FALSE') return { v: s, t: 1 };
   if (s.length > 1 && s.startsWith("'")) { const rest = s.slice(1); if (needsQuote(rest)) return { v: textOf(rest), t: 1 }; }
   return plain(s);
 }
@@ -40,6 +45,7 @@ export function readCell(raw) {
 export function writeText(text) {
   let s = String(text);
   if (s === '') return '';
+  if (PLAIN_OUT.test(s) && !s.endsWith(' ') && s !== 'TRUE' && s !== 'FALSE') return s;
   s = s.replace(/&(?=(#\d{1,7}|lt|amp);)/g, '&amp;').replace(/<(?=br\s*\/?>)/gi, '&lt;').replace(/\r\n?|\n/g, '<br>');
   const lead = /^ +/.exec(s)?.[0].length || 0;
   if (lead === s.length) return '&#32;'.repeat(lead);

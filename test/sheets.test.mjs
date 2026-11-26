@@ -94,5 +94,51 @@ ok('a real Univer instance hands every file back byte-identical');
   }
   assert.deepEqual([...new Set(fails)], []); ok('fuzz: 1,200 cells of hostile text, numbers and booleans keep value and type through save and reload');
 }
+{
+  // the window's save cache: sheets not changed since the last save are reused; the file is the same as a full save
+  const loaded = toUniver(fx('sheets/Rich.sheet.md'));
+  const wb = await H.open(loaded.data); const cache = new Map();
+  let out = fromUniver(wb.save(), loaded, { dirty: new Set(['*']), cache });
+  assert.equal(out, fromUniver(wb.save(), loaded));
+  await wb.setAndSettle('Orders', 'C2', 'Diary');
+  const ordersId = wb.save().sheetOrder[0];
+  out = fromUniver(wb.save(), loaded, { dirty: new Set([ordersId]), cache });
+  assert.equal(out, fromUniver(wb.save(), loaded)); assert(out.includes('Diary'));
+  await wb.setAndSettle('Regions', 'B2', 'Europa');
+  out = fromUniver(wb.save(), loaded, { dirty: new Set([wb.save().sheetOrder[1]]), cache });
+  assert.equal(out, fromUniver(wb.save(), loaded)); assert(out.includes('Diary') && out.includes('Europa'), 'an earlier edit is not lost when another sheet changes');
+  H.close(wb); ok('saving only the sheets that changed gives the same file as a full save, edit after edit');
+}
+{
+  // a large sheet: 20,000 rows open and save in bounded time, and an untouched file comes back byte for byte
+  const rows = ['| Date | Region | Qty | Price | Total |', '| --- | --- | --: | --: | --: |'];
+  for (let i = 2; i <= 20001; i++) rows.push(`| 2026-01-${String(1 + (i % 28)).padStart(2, '0')} | ${i % 2 ? 'EU' : 'US'} | ${i % 13} | ${(i % 7) + 0.5} | =C${i}*D${i} |`);
+  const big = `## Data\n\n${rows.join('\n')}\n`;
+  let t = performance.now(); const l = toUniver(big); const open = performance.now() - t;
+  t = performance.now(); const back = fromUniver(JSON.parse(JSON.stringify(l.data)), l); const save = performance.now() - t;
+  assert.equal(back, big); assert(open < 1500 && save < 3000, `open ${open | 0} ms, save ${save | 0} ms`);
+  ok(`20,000 rows: converted in ${Math.round(open)} ms, saved unchanged in ${Math.round(save)} ms`);
+}
+{
+  // shared formulas: a run like =D2*E2, =D3*E3… is opened as one Univer shared formula; whatever is done to it
+  // (edit its first cell, a middle cell, insert and delete rows above and inside it, copy it), the file and the values
+  // are those of the same workbook opened with every formula on its own
+  const rows = ['| A | B | C | D |', '| --- | --- | --- | --- |'];
+  for (let i = 2; i <= 12; i++) rows.push(`| ${i} | ${i * 2} | =A${i}*B${i} | =SUM($C$2:C${i}) |`);
+  rows.push('| | | =SUM(C2:C12) | =1E2+A2 |');
+  const text = `## S\n\n${rows.join('\n')}\n`;
+  const ops = [
+    (w) => w.set('S', 'C2', '=A2+B2'), (w) => w.set('S', 'C6', 7), (w) => w.set('S', 'A9', 100),
+    (w) => w.sheet('S').insertRowsBefore(4, 2), (w) => w.sheet('S').deleteRows(9, 1), (w) => w.sheet('S').insertRowsAfter(1, 1),
+    (w) => w.sheet('S').getRange('C3:D5').copyTo?.(w.sheet('S').getRange('E3')) ?? w.set('S', 'E3', '=C3*2'),
+  ];
+  const run = async (share) => { const l = toUniver(text, { share }); const w = await H.open(l.data); const outs = []; for (const op of ops) { op(w); await w.settle(); outs.push([fromUniver(w.save(), l), JSON.stringify(w.usedValues())]); } H.close(w); return outs; };
+  const [a, b] = [await run(true), await run(false)];
+  const firstShared = toUniver(text).data.sheets['sheet-1'].cellData[2][2];
+  assert(firstShared.si && !firstShared.f, 'C3 is part of a shared formula');
+  assert.equal(toUniver(text).data.sheets['sheet-1'].cellData[12][3].si, undefined, '=1E2+A2 is never shared');
+  for (let k = 0; k < ops.length; k++) { assert.equal(a[k][0], b[k][0], `file after step ${k + 1}`); assert.equal(a[k][1], b[k][1], `values after step ${k + 1}`); }
+  ok('shared formulas: edits, row inserts and deletes give the same file and values as formulas kept one by one');
+}
 H.dispose();
 console.log(`\n${n} sheet checks passed`);

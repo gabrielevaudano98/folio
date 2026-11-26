@@ -207,6 +207,7 @@ export function mountSheet(host, ctx) {
       const prevSheet = ws()?.getSheetName();
       if (unitId) { charts.clear(); floats.clear(); api.disposeUnit(unitId); unitId = null; }
       loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook' });
+      dirty = new Set(['*']); saveCache.clear();
       sheetMeta = {};
       const sheets = loaded.doc.blocks.filter((b) => b.type === 'sheet');
       sheets.forEach((b, i) => { sheetMeta[`sheet-${i + 1}`] = structuredClone(folioMeta(b.meta)); });
@@ -224,19 +225,27 @@ export function mountSheet(host, ctx) {
     } finally { setTimeout(() => { loading = false; }, 0); }
   }
   function writeText(out) { if (out === text) return; text = out; ctx.onChange(out); }
-  let saveTimer = 0;
+  let saveTimer = 0, saveMs = 0;
+  // sheets changed since the last save (by their mutations' subUnitId; '*' when a change is not tied to one sheet);
+  // the others reuse the block of the last save (fromUniver's cache), so a big workbook saves only what changed
+  let dirty = new Set(['*']); const saveCache = new Map();
   function save(now = false) {
     clearTimeout(saveTimer);
     const run = () => {
       if (!loaded || !unitId) return;
+      const t0 = performance.now();
       charts.sync(); floats.sync();
-      writeText(fromUniver(surface.snapshot(), loaded, { sheetMeta, workbook: workbookMeta }));
+      const changed = dirty; dirty = new Set();
+      writeText(fromUniver(surface.snapshot(), loaded, { sheetMeta, workbook: workbookMeta, dirty: changed, cache: saveCache }));
+      saveMs = performance.now() - t0;
     };
-    if (now === true) run(); else saveTimer = setTimeout(run, 250);
+    // a save that takes long (a sheet of 50k rows) waits for a longer pause in typing, so typing never stutters
+    if (now === true) run(); else saveTimer = setTimeout(run, Math.min(2000, Math.max(250, saveMs * 4)));
   }
   U.commands.onCommandExecuted((c, options) => {
     if (c.type !== 2 || loading || NOT_A_CHANGE.test(c.id)) return;
     oplog.record(c, options);
+    dirty.add(c.params?.subUnitId || '*');
     save();
     charts.refreshSoon();
     extensions.edited(c);
