@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T16:29:20Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T16:46:45Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: languages: FQL case/replace/index/top/merge/split rows/transpose/transform + functions; Folio Script formats, borders, sort, find, rows, freeze, rename; shared replay
+- Last checkpoint: full suite green; opening a sheet with a chart no longer rewrites it; docs updated
 
 ## Resume in a new session
 
@@ -28,10 +28,17 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    functions (async, call the data engine) and the audit panel (getCellDependencyTree) must then go through the worker.
 4. ~~**.xlsx**~~ DONE: conditional formatting both ways (`src/sheets/engine/xlsx-cf.js`, 14 rule kinds, checked in LibreOffice too); validation and freeze were already exported. Shared formulas never reach code that reads cellData itself (`toUniver` shares only with `share: true`; `expandSharedFormulas` for snapshots).
 5. ~~**Languages**~~ DONE: FQL `case when`, `replace`, `index`, `top`, `merge`, `split … into rows`, `transpose`, `transform`, 13 new functions, `\d` kept in strings (test/fql.test.mjs); Folio Script: fonts, borders, merge, sort, find, rows/columns, widths, freeze, rename/delete sheet; replay shared in `src/sheets/core/replay.js` and tested on the headless engine.
-6. Final: full test suite, screenshots, docs, Project doc `claude/SHEETS-PLAN.md`.
+6. ~~Final~~ DONE: full `npm test` green under xvfb. It found that opening Budget.sheet.md in the window rewrote it
+   (an empty Univer OLE resource and a chart's default position were written): fixed (`deepEmpty` in convert.js,
+   `DEFAULT_AT` in charts.js). Docs updated: docs/sheets/README.md (= Project doc `claude/SHEETS-PLAN.md`), FQL.md,
+   SCRIPT.md, FORMATS.md.
+
+Open next (in order): formula engine in a Web Worker (see 3); visual baselines if the fixed 93px ribbon height
+changes them on macOS/Windows; MCP tools for queries, pivots and scripts; area 28 (AI) when decided.
 
 ## Commits since main
-- 5be4763 wip: languages: FQL case/replace/index/top/merge/split rows/transpose/transform + functions; Folio Script formats, borders, sort, find, rows, freeze, rename; shared replay
+- f10110e wip: full suite green; opening a sheet with a chart no longer rewrites it; docs updated
+- f5351dd wip: languages: FQL case/replace/index/top/merge/split rows/transpose/transform + functions; Folio Script formats, borders, sort, find, rows, freeze, rename; shared replay
 - 7ee70ab wip: xlsx: conditional formatting exported and imported (14 rule kinds); shared formulas kept out of export and scripts
 - 34fcb3c wip: large sheets: 6x faster open, per-sheet save cache, shared formulas, fresh unit ids in the headless engine
 - 4abfa4b wip: ribbon: Excel-style combo boxes (font, size, number format with previews), same height on every tab

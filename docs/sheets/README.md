@@ -57,8 +57,8 @@ The command line (`npm run sheets -- …`, `src/sheets/cli.js`) and the tests us
 
 | Folder | Pure? | What |
 |---|---|---|
-| `src/sheets/core/` | yes | `convert.js` (sheet-md ⇄ Univer model, lossless), `sheetmd.js` (blocks and workbook settings), `a1.js`, `style.js`, `collab.js` (operations, transport contract), `diff.js` (version comparison, json-diff-ts), `pivot.js` (pivot spec and computation, pivottable), `refs.js` (formula references, cycles), `fql/` (language). |
-| `src/sheets/engine/` | Node | The data engine and its modules (§2). `headless.js` is Univer without a window. |
+| `src/sheets/core/` | yes | `convert.js` (sheet-md ⇄ Univer model, lossless; shared formulas), `cell-text.js` (how a value is written in a table cell), `replay.js` (script operations → Univer commands), `sheetmd.js` (blocks and workbook settings), `a1.js`, `style.js`, `collab.js` (operations, transport contract), `diff.js` (version comparison, json-diff-ts), `pivot.js` (pivot spec and computation, pivottable), `refs.js` (formula references, cycles), `fql/` (language). |
+| `src/sheets/engine/` | Node | The data engine and its modules (§2). `headless.js` is Univer without a window; `xlsx-cf.js` maps conditional formatting to and from Excel. |
 | `src/sheets/ui/` | window | The surface, ribbon, commands, panels, charts, floating objects, protection, extensions, print. |
 | `src/main/sheets-engine.js` | main | The engine's process, IPC and optional components. |
 | `src/sheets/cli.js` | Node | Batch commands: values, import, export, refresh, goal seek, check, PDF. |
@@ -102,7 +102,7 @@ The contracts are in `src/sheets/core/collab.js` and tested with two headless re
 
 | # | Area | Package | Where | How it works |
 |---|---|---|---|---|
-| 1 | Grid & navigation | `@univerjs/sheets-ui` (+ find-replace, sort) | `ui/univer.js`, `ui/ribbon.js`, `ui/commands.js`, `panels/series.js`, `panels/text-to-cols.js` | Univer draws the grid, sheet bar, freeze, zoom, fill handle, find and replace, undo and redo; Folio's ribbon (Home … Automate) calls Univer commands. Fill series and text to columns are panels that write through `applyOps`. |
+| 1 | Grid & navigation | `@univerjs/sheets-ui` (+ find-replace, sort) | `ui/univer.js`, `ui/ribbon.js`, `ui/commands.js`, `panels/series.js`, `panels/text-to-cols.js` | Univer draws the grid, sheet bar, freeze, zoom, fill handle, find and replace, undo and redo; Folio's ribbon (Home … Automate) calls Univer commands. Font, size and number format are Excel-style combo boxes (type any size or font; each format previews the active cell); every tab has the same height. Fill series and text to columns are panels that write through `applyOps`. |
 | 2 | Styles & formatting | `@univerjs/sheets` (+ numfmt) | `core/style.js`, `commands.js` | Font, colours, borders, alignment, wrap, rotation, merge, format painter, number formats, cell styles. Styles map both ways to readable sheet-md keys (`bold`, `fill`, `format`…); dark mode follows Folio. |
 | 3 | Rules & validation | `@univerjs/data-validation` (+ sheets-data-validation, conditional formatting, notes) | `convert.js`, `panels/cf.js`, `protection.js` | Validation, conditional formatting, notes are Univer resources saved in the sheet comment (`validation`, `cf`, `notes`). Protection: §26. |
 | 4 | Formulas & calculation | `@univerjs/engine-formula` (+ sheets-formula) | `univer.js`, `headless.js` | 400+ functions, dynamic arrays, cross-sheet references, defined names, reactive recalculation. The headless copy computes what the grid shows for exports, scripts, what-if and the CLI. |
@@ -110,17 +110,17 @@ The contracts are in `src/sheets/core/collab.js` and tested with two headless re
 | 6 | PivotTables | `pivottable` | `core/pivot.js`, `panels/pivot.js` | Excel-style field pane (Filters, Columns, Rows, Values); pivottable's `PivotData` and aggregators compute; a readable ```` ```pivot ```` block is saved and placed in a sheet; Refresh all recomputes. Sources: range, FQL query, data model. |
 | 7 | Charts | `echarts` | `ui/charts.js`, `panels/chart.js` | Column, bar, line, area, pie, doughnut, scatter, radar, funnel as Univer floating elements; specs in the sheet comment (`charts`), redrawn as data changes, themed from tokens. |
 | 8 | Print & PDF | `puppeteer-core` (CLI), Chromium printToPDF (app) | `ui/print-ui.js`, `panels/print.js`, `cli.js` | One HTML builder: paper, orientation, margins, scale, print area, repeated title rows, gridlines and headings. The app prints through Folio's script-free export window; the CLI drives Chrome with Puppeteer (§8). |
-| 9 | Import / export .xlsx .csv | `xlsx` (SheetJS) | `engine/io.js` | Import via a Univer snapshot and `fromUniver`, so imported files look hand-written (column styles hoisted). CSV is read as text: `1,5` never becomes 15. Export writes formulas with their computed values. |
+| 9 | Import / export .xlsx .csv | `xlsx` (SheetJS) | `engine/io.js` | Import via a Univer snapshot and `fromUniver`, so imported files look hand-written (column styles hoisted). CSV is read as text: `1,5` never becomes 15. Export writes formulas with their computed values, validation, freeze panes and conditional formatting (`engine/xlsx-cf.js`: 14 kinds of rule, read back on import). |
 | 10 | External data | `@duckdb/node-api` (optional component) | `engine/duck.js`, `panels/queries.js` | SQL, Parquet, large CSV and `.duckdb` files inside the folder; fresh in-memory database per query, `enable_external_access = false`, `allowed_paths` = that query's files, configuration locked. |
-| 11 | Power Query | `arquero` | `core/fql/*`, `panels/queries.js` | FQL ([spec](FQL.md)): sources, 18 steps, parameters, errors with line and column; editor with highlighting and completion; preview; load to sheets; Refresh all. |
+| 11 | Power Query | `arquero` | `core/fql/*`, `panels/queries.js` | FQL ([spec](FQL.md)): sources, 24 steps (with `case when`, `top`, `index`, `merge`, `split … into rows`, `transpose`, `transform`), parameters, errors with line and column; editor with highlighting and completion; preview; load to sheets; Refresh all. |
 | 12 | Power Pivot | `arquero` | `core/fql/run.js`, `panels/model.js` | `model` blocks: tables, many-to-one relations, measures that use measures, evaluation by columns of related tables; flattened model as a pivot source. |
-| 13 | Scripting & UDF | `@univerjs/core` facade semantics, Folio Script | `engine/script.js`, `panels/scripts.js`, `extensions.js` | Apps Script-like API ([Folio Script](SCRIPT.md)); macros return operations the window replays with the Univer facade; UPPER_CASE functions register as async formula functions; buttons over the grid run macros. |
+| 13 | Scripting & UDF | `@univerjs/core` facade semantics, Folio Script | `engine/script.js`, `panels/scripts.js`, `extensions.js` | Apps Script-like API ([Folio Script](SCRIPT.md)); macros return operations replayed with the Univer facade (`core/replay.js`, shared by the window and the headless engine); UPPER_CASE functions register as async formula functions; buttons over the grid run macros. |
 | 14 | Script sandbox | `quickjs-emscripten` | `engine/script.js` | QuickJS in WebAssembly: no Node, network or files; 64 MB, 5 s per run, 1 s per function call; warm contexts for custom functions. |
 | 15 | Audit, diff & versions | `json-diff-ts` | `core/diff.js`, `panels/history.js` | Any two versions compared cell by cell through the Univer model (values, formulas, formats, rules, queries, scripts); one change can be put back. |
 | 16 | Formula dependencies | `@univerjs/engine-formula` | `panels/audit.js`, `core/refs.js` | Precedents (`getCellDependencyTree`) and dependents (`getRangeDependents`) of the selection, all formulas, errors with explanations, circular references, evaluate step by step, notes. |
 | 17 | UI controls & forms | `@univerjs/ui` | `panels/form.js`, `floats.js`, `commands.js` | Checkbox and drop-down validation, data form (one record at a time, validation-aware), macro buttons; side panel docked like Excel's task panes. |
 | 18 | Headless / batch | `@univerjs/core` | `engine/headless.js`, `cli.js` | Univer without a window, event-driven settling (~13 ms per recalculation); CLI: values, import, export, refresh, goal, check, pdf. |
-| 19 | Localisation | `@univerjs/core` locales | `univer.js`, `ui/i18n.js`, `ui/locale-it.js` | Univer's en-US and it-IT catalogues plus Folio's (717 texts, tested for completeness and placeholders). |
+| 19 | Localisation | `@univerjs/core` locales | `univer.js`, `ui/i18n.js`, `ui/locale-it.js` | Univer's en-US and it-IT catalogues plus Folio's (709 texts, tested for completeness and placeholders). |
 | 20 | Extensibility & hooks | `@univerjs/core` facade | `ui/extensions.js` | Workbook hooks (`onOpen`, `onEdit`, `onSelectionChange`) opt-in per file; `surface.extensions.register()` for commands, functions and listeners. |
 | 21 | Rich data types | `@univerjs/core` (cell custom data) | `panels/entity.js`, `convert.js` | Person, company, place, product, link or custom objects in a cell (`custom.folio`, saved as the cell's `data`); fields inserted next to it. |
 | 22 | Slicers & timelines | `@univerjs/sheets-filter` | `ui/floats.js`, `panels/slicer.js` | Buttons over the grid that drive Univer's filter; timeline by month spans; state saved in the sheet comment. |
@@ -139,10 +139,11 @@ The contracts are in `src/sheets/core/collab.js` and tested with two headless re
 | 2. Data, files, charts | Data engine process, import/export xlsx/xlsm/csv/ods, FQL queries and data models, DuckDB, pivots, slicers and timelines, page setup and PDF | Done |
 | 3. Automation, analysis, security, history | Folio Script in QuickJS (macros, UDF, hooks, buttons), Python in Pyodide, what-if and Monte Carlo, encryption and signatures, version compare and restore, formula auditing, data form, rich data types, extensions, CLI | Done |
 | 4. Collaboration-ready | Operation, OpLog, Transport contract, replay, conflict footprint; two replicas converge in tests | Done (no server, by design) |
-| 5. Next | Live sync service and presence; AI assistant (area 28); MCP tools for queries, pivots and scripts; Settings view listing the data components; virtualised export for very large sheets | Planned |
+| 4b. Robustness (Nov 2026) | Lossless cell text (apostrophe rule, entities; fuzz through Univer), Excel-style combo boxes and fixed ribbon height, 6× faster open of large sheets, per-sheet save cache, shared formulas for runs like `=D2*E2`, fresh unit ids in the headless engine, conditional formatting in .xlsx, FQL and Folio Script extended | Done |
+| 5. Next | Formula engine in a Web Worker (an edit still costs ~1 s on the window's thread at 50k formulas); live sync service and presence; AI assistant (area 28); MCP tools for queries, pivots and scripts; Settings view listing the data components; virtualised export for very large sheets | Planned |
 
-Tests: `test/sheets.test.mjs` (round trips), `test/fql.test.mjs`, `test/sheets-engine.test.mjs` (22 checks),
-`test/sheets-i18n.test.mjs`, `test/sheets-ui.test.mjs` (14 checks in Electron).
+Tests: `test/sheets.test.mjs` (14 checks: round trips, fuzz, shared formulas, 20k rows), `test/fql.test.mjs` (11),
+`test/sheets-engine.test.mjs` (25), `test/sheets-i18n.test.mjs`, `test/sheets-ui.test.mjs` (18 checks in Electron).
 
 ## 8. Decisions and limits
 
@@ -155,5 +156,10 @@ Tests: `test/sheets.test.mjs` (round trips), `test/fql.test.mjs`, `test/sheets-e
 - **Data tables, pivots and query loads write values**, refreshed by Refresh all (Excel's data tables are live formulas).
 - **Scripts cannot do I/O.** Anything that needs files or the network is a query (FQL) or Python with packages.
 - **VBA is preserved, not run.** An `.xlsm` keeps its macros for Excel; Folio Script is the language that runs here.
-- **Export of styles to .xlsx** covers fonts, fills, borders, alignment and number formats; conditional formatting rules
-  are kept in Folio's file and in the source package when there is one, but not rebuilt in a new .xlsx yet.
+- **Export to .xlsx** covers fonts, fills, borders, alignment, number formats, validation, freeze panes and conditional
+  formatting. A rule Excel cannot express ("equal to the average", icons mixed from several sets) stays in Folio's file only.
+- **Large sheets.** Measured at 50,000 rows × 7 columns: the file converts in 0.24 s and saves in 0.35 s; Univer's
+  formula engine still rebuilds its dependency tree on each edit (~1 s with shared formulas, on the window's thread).
+  Next step: run it in a Web Worker (`@univerjs/rpc`), with custom functions and the audit panel going through it.
+- **Shared formulas** are only how Univer holds a run of formulas in memory: the file always lists each formula, and
+  code that reads Univer data itself (export, scripts, version compare) never sees `si` cells (`expandSharedFormulas`).

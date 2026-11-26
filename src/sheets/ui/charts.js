@@ -68,11 +68,12 @@ export function createCharts({ api, surface, ctx }) {
   function openEditor(k) { surface.panels?.open('chart', { key: k }); }
   function ensure() { if (registered) return; api.registerComponent('folio-chart', Chart); registered = true; }
 
+  const DEFAULT_AT = { x: 420, y: 40, w: 480, h: 300 };
   function place(sheetId, i) {
     ensure();
     const spec = surface.meta(sheetId).charts[i];
     const ws = surface.wb().getSheetBySheetId(sheetId); if (!ws) return;
-    const at = spec.at || { x: 420, y: 40, w: 480, h: 300 };
+    const at = spec.at || DEFAULT_AT;
     const k = key(sheetId, i);
     const res = ws.addFloatDomToPosition({ componentKey: 'folio-chart', allowTransform: true, initPosition: { startX: at.x, endX: at.x + at.w, startY: at.y, endY: at.y + at.h }, data: { key: k, label: spec.title || L('Chart') } }, `folio-chart-${k.replace(':', '-')}`);
     if (res) doms.set(k, res.id);
@@ -91,7 +92,11 @@ export function createCharts({ api, surface, ctx }) {
     sync() {
       for (const [k, id] of doms) {
         const [sid] = k.split(':'); const ws = surface.wb().getSheetBySheetId(sid); const d = ws?.getFloatDomById?.(id); const spec = specOf(k);
-        if (d?.position && spec) { const p = d.position; spec.at = { x: Math.round(p.left), y: Math.round(p.top), w: Math.round(p.width), h: Math.round(p.height) }; }
+        if (!d?.position || !spec) continue;
+        const p = d.position, at = { x: Math.round(p.left), y: Math.round(p.top), w: Math.round(p.width), h: Math.round(p.height) };
+        // a chart the person has not moved keeps no position in the file (opening a file must not rewrite it)
+        if (!spec.at && at.x === DEFAULT_AT.x && at.y === DEFAULT_AT.y && at.w === DEFAULT_AT.w && at.h === DEFAULT_AT.h) continue;
+        spec.at = at;
       }
     },
     refresh() { for (const [k, { el }] of live) draw(el, k); },

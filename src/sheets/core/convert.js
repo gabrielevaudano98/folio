@@ -250,6 +250,8 @@ function withoutFolioDoms(v) {
   }
   return out;
 }
+/** {} or { files: {}, objects: {} }: a plugin's resource that holds nothing (Univer's OLE attachments write one) */
+const deepEmpty = (v) => v == null || (Array.isArray(v) ? v.every(deepEmpty) : typeof v === 'object' ? Object.values(v).every(deepEmpty) : false);
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== ''));
 const cellKey = (a) => { const p = parseAddr(a) || [0, 0]; return p[0] * 20000 + p[1]; };
 const sortCells = (o) => Object.fromEntries(Object.entries(o).sort((a, b) => cellKey(a[0]) - cellKey(b[0])));
@@ -260,8 +262,8 @@ function workbookFromUniver(snap, res) {
   if (names) { const o = {}; for (const n of Object.values(names)) { const sheet = n.localSheetId && n.localSheetId !== 'AllDefaultWorkbook' ? snap.sheets?.[n.localSheetId]?.name : null; o[n.name] = sheet || n.comment ? clean({ ref: n.formulaOrRefString, sheet, comment: n.comment }) : n.formulaOrRefString; } if (!isEmpty(o)) wb.names = o; }
   const known = new Set(Object.values(RES));
   const pass = {};
-  for (const [k, v] of Object.entries(res)) if (!known.has(k) && !/MOCK|_UI_PLUGIN$|PROTECTION|RANGE_THEME/i.test(k) && !isEmpty(v)) pass[k] = k === 'SHEET_DRAWING_PLUGIN' ? withoutFolioDoms(v) : v;
-  for (const k of Object.keys(pass)) if (isEmpty(pass[k])) delete pass[k];
+  for (const [k, v] of Object.entries(res)) if (!known.has(k) && !/MOCK|_UI_PLUGIN$|PROTECTION|RANGE_THEME/i.test(k) && !deepEmpty(v)) pass[k] = k === 'SHEET_DRAWING_PLUGIN' ? withoutFolioDoms(v) : v;
+  for (const k of Object.keys(pass)) if (deepEmpty(pass[k])) delete pass[k];
   if (!isEmpty(pass)) wb.univer = pass;
   return wb;
 }
