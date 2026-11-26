@@ -59,15 +59,17 @@ export function createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin
   // relative to the open note: "data/x.csv" next to "Reports/Sales.sheet.md" is "Reports/data/x.csv"
   const relTo = (noteRel, p) => (p.startsWith('/') ? p.slice(1) : path.posix.normalize(path.posix.join(path.posix.dirname(noteRel || ''), p)));
 
-  const ALLOWED = new Set(['ping', 'file.exportXlsx', 'file.exportCsv', 'fql.inputs', 'fql.run', 'sql.run', 'script.describe', 'script.run', 'script.call', 'python.run', 'crypto.hash', 'crypto.check', 'crypto.encrypt', 'crypto.decrypt', 'crypto.sign', 'crypto.verify', 'whatif.goalSeek', 'whatif.dataTable', 'whatif.scenarios', 'whatif.simulate', 'calc.grids']);
-  h('sheets:call', async (method, payload = {}, o = {}) => {
+  const ALLOWED = new Set(['ping', 'file.exportXlsx', 'file.exportCsv', 'fql.inputs', 'fql.run', 'sql.run', 'script.describe', 'script.run', 'script.call', 'python.run', 'crypto.hash', 'crypto.check', 'crypto.encrypt', 'crypto.decrypt', 'crypto.sign', 'crypto.verify', 'whatif.goalSeek', 'whatif.dataTable', 'whatif.scenarios', 'whatif.simulate', 'calc.grids', 'book.values', 'book.refresh', 'book.macro']);
+  /** a call for a note: the window and the MCP tools send workspace paths relative to the note, the engine gets
+   *  absolute ones, each checked to stay inside the workspace */
+  async function callFor(method, payload = {}, o = {}) {
     if (!ALLOWED.has(method)) throw new Error(`Unknown engine method ${method}`);
     const p = { ...payload };
-    // files the call reads: the window sends workspace paths relative to the note, the engine gets absolute ones
     if (Array.isArray(p.files)) { const map = {}; for (const f of p.files) Object.assign(map, { [f]: resolveAll([relTo(o.note, f)])[relTo(o.note, f)] }); p.files = map; }
     if (method === 'file.exportXlsx' && p.source) { const abs = notes.resolve(relTo(o.note, p.source), { allowAsset: true }); p.source = new Uint8Array(await fs.readFile(abs)); }
     return call(method, p, { call: o.call ?? null, timeoutMs: method === 'script.call' ? 10_000 : undefined });
-  });
+  }
+  h('sheets:call', (method, payload = {}, o = {}) => callFor(method, payload, o));
 
   /** pick a spreadsheet file and convert it; the original package comes back too when export should write into it */
   h('sheets:import', async () => {
@@ -95,5 +97,5 @@ export function createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin
   h('sheets:uninstall', async (id) => { if (!COMP.includes(id)) throw new Error('Unknown component.'); child?.kill(); child = null; await installer.uninstall(id); return (await installer.statuses([id]))[id]; });
   h('sheets:cancel-install', () => { installer.cancel(); return true; });
 
-  return { call, stop: () => { child?.kill(); child = null; } };
+  return { call, callFor, stop: () => { child?.kill(); child = null; } };
 }

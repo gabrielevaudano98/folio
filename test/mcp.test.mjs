@@ -111,6 +111,8 @@ if (!process.env.FOLIO_APP_BRIDGE) {
   const c = new Client({ name: 'folio-test', version: '1' });
   await c.connect(t);
   await suite(c, root, 'stdio bridge, Folio closed (direct mode)');
+  const q = await c.callTool({ name: 'refresh_sheet', arguments: { path: 'Budget.sheet.md' } });
+  assert(q.isError && /Open Folio/.test(text(q))); ok('sheet engine tools ask for Folio when it is closed');
   await c.close();
 } else {
   const bridge = JSON.parse(fs.readFileSync(process.env.FOLIO_APP_BRIDGE, 'utf8'));

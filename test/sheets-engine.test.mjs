@@ -204,6 +204,28 @@ const rich = fx('sheets/Rich.sheet.md');
   assert(back.text.includes('| 130001 | =A130001*2 |'));
   ok('130,000 rows export to .xlsx and import back');
 }
+{
+  // whole-workbook jobs for AI assistants (book.js): computed values, Refresh all (queries and pivots, written where
+  // the window writes them, replacing the previous results), a macro replayed as commands, protection respected
+  const book = await import('../src/sheets/engine/book.js');
+  const H3 = await createHeadless();
+  const v = await book.values(H3, rich, { sheet: 'Orders' });
+  assert.equal(v[0].values[4][5], 41); assert.equal(v[0].display[1][4], '€3.50');
+  let text = rich + '\n```pivot By region\nsource: Orders!A1:F4\nrows: Region\nvalues: sum(Total)\nplace: Pivot!A1\n```\n';
+  const r1 = await book.refresh(H3, text);
+  assert.deepEqual(r1.errors, []); assert(r1.loaded >= 2, `loaded ${r1.loaded}`);
+  assert(/## Summary/.test(r1.text) && /## Pivot/.test(r1.text) && /"loads":\{[^}]*"pivot\/By region":"Pivot!A1:B4"/.test(r1.text), 'results and where they went');
+  const r2 = await book.refresh(H3, r1.text); assert.equal(r2.text, r1.text, 'a second refresh of unchanged data writes the same file');
+  text = r1.text + '\n```script Macros\nfunction stamp(){ const s = Workbook.sheet("Orders"); s.range("H1").setValue("checked").setBold(); s.range("A2").setValue("hack"); return s.lastRow(); }\n```\n';
+  const m1 = await book.macro(H3, text, { entry: 'stamp' });
+  assert.equal(m1.result, 5); assert(/\| checked/.test(m1.text) && /\| hack/.test(m1.text) && m1.refused.length === 0);
+  const prot = text.replace('<!-- sheet: {"cols"', '<!-- sheet: {"protect":{"allow":["H1:H9"]},"cols"');
+  assert(prot !== text);
+  const m2 = await book.macro(H3, prot, { entry: 'stamp' });
+  assert(/\| checked/.test(m2.text) && !/\| hack/.test(m2.text)); assert.deepEqual(m2.refused, ['values Orders!A2:A2']);
+  H3.dispose();
+  ok('workbook jobs: values as shown, Refresh all of queries and pivots (stable), macros that respect protection');
+}
 /* ---------- collaboration-ready: operations, order, conflicts, replay ---------- */
 {
   const a = createOpLog({ actor: 'ann', now: () => 1 }), b = createOpLog({ actor: 'bob', now: () => 1 });

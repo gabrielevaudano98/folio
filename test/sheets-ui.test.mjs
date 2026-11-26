@@ -14,6 +14,11 @@ const book = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['Item', 'Qty', 'Price'], ['Pen', 3, 1.5], ['Book', 2, 12]]), 'Stock');
 const xlsxPath = path.join(w.tmp, 'Stock.xlsx'); fs.writeFileSync(xlsxPath, XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }));
 
+// a workbook the AI-assistant tools (MCP, through the running app) work on
+fs.writeFileSync(path.join(w.ws, 'sheets', 'Mcp.sheet.md'), ['## Orders', '', '| Region | Qty | Price | Total |', '| --- | --: | --: | --: |', '| EU | 4 | 3.5 | =B2*C2 |', '| US | 12 | 1.2 | =B3*C3 |', '| EU | 6 | 2.1 | =B4*C4 |', '| Sum | | | =SUM(D2:D4) |', '',
+  '```fql Report', 'query ByRegion = from sheet "Orders" | where Region != "Sum" | groupby Region | rollup Qty = sum(Qty) | orderby Region | load to sheet "Report" at A1', '```', '',
+  '```script Macros', 'function mark(){ Workbook.sheet("Orders").range("F1").setValue("seen"); return 7; }', '```', ''].join('\n'));
+const tool = (name, args) => ({ tool: { name, args }, log: true, wait: 600 });
 const steps = [
   { wait: 2500 }, open('sheets/Rich.sheet.md'), { wait: 5000 },
   // 1 engine up
@@ -71,10 +76,16 @@ const steps = [
     const visible = d.reduce((a, v, i) => a + (hidden.has(i + 1) ? 0 : v), 0);
     const dv = [String(await ws.getRange('D2').getValidatorStatus()), String(await ws.getRange('D3').getValidatorStatus())];
     return { worker: s.univerWorker(), udf, plainF, tree: tree && typeof tree === 'object' ? 'ok' : String(tree), subtotal: ws.getRange('J4').getRawValue() === visible, dv }`, 6000),
+  // 15 AI assistants (MCP) get the values Folio shows and run queries, goal seek, Refresh all and macros
+  tool('get_sheet_values', { path: 'sheets/Mcp.sheet.md' }),
+  tool('run_sheet_query', { path: 'sheets/Mcp.sheet.md', fql: 'query Big = from sheet "Orders" | where Qty > 5 | select Region, Qty' }),
+  tool('sheet_goal_seek', { path: 'sheets/Mcp.sheet.md', set: 'D5', to: 50, by: 'B2' }),
+  tool('refresh_sheet', { path: 'sheets/Mcp.sheet.md' }),
+  tool('run_sheet_macro', { path: 'sheets/Mcp.sheet.md', macro: 'mark' }),
   errors,
 ];
 const r = await runApp(w, steps, { FOLIO_IMPORT_SHEET: xlsxPath }, 240000);
-const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, ribbon, worker, errs] = r.js;
+const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, ribbon, worker, mValues, mQuery, mGoal, mRefresh, mMacro, errs] = r.js;
 let n = 0; const ok = (m) => { n++; console.log('  ✓ ' + m); };
 console.log('sheets in the app');
 assert.equal(ping, 1); ok('the data engine starts as a separate process');
@@ -98,5 +109,11 @@ assert.deepEqual([ribbon.fs, ribbon.fs2, ribbon.sizeBox], [13, 13, '13']); ok('a
 assert.deepEqual([ribbon.matches, ribbon.font], [1, 'System']); ok('the font box filters as you type and Escape gives back the font in use');
 assert.equal(ribbon.cur, 'Currency€1.20'); ok('the Number format list previews the active cell in each format');
 assert.deepEqual(worker, { worker: true, udf: 15, plainF: 8, tree: 'ok', subtotal: true, dv: ['invalid', 'valid'] }, JSON.stringify(worker)); ok('formulas are computed in a Web Worker: custom functions, the formula audit, validation formulas and SUBTOTAL under a filter work through it');
+assert.equal(mValues[0].rows[4].values[3], 41); assert.equal(mValues[0].rows[1].text[2], '3.5'); ok('MCP get_sheet_values: the values Folio computes, with their shown text');
+assert.deepEqual(mQuery.results.Big.data, [['Region', 'Qty'], ['US', 12], ['EU', 6]]); ok('MCP run_sheet_query runs FQL on the workbook without writing');
+assert(mGoal.found && Math.abs(mGoal.value - (4 + 9 / 3.5)) < 1e-6, JSON.stringify(mGoal)); ok('MCP sheet_goal_seek finds the input (B2 = 6.571 makes the total 50) and writes nothing');
+const mcp = w.read('sheets/Mcp.sheet.md');
+assert(mRefresh.written && mRefresh.loaded === 1 && /## Report/.test(mcp) && /\| EU +\| 10 +\|/.test(mcp), JSON.stringify(mRefresh)); ok('MCP refresh_sheet loads the queries into their sheets');
+assert(mMacro.written && mMacro.result === 7 && /\| seen/.test(mcp)); ok('MCP run_sheet_macro runs a macro and writes its changes');
 assert.deepEqual(errs, []); ok('no errors in the window');
 console.log(`\n${n} sheets app checks passed`);

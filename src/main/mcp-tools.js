@@ -4,6 +4,8 @@ import { z } from 'zod';
 import FORMATS from '../../docs/FORMATS.md';
 import TEMPLATES from '../../docs/TEMPLATES.md';
 import { parseWorkbook, evaluator, colName } from '../renderer/sheet-core.js';
+import { readDoc } from '../sheets/core/sheetmd.js';
+import { parse as parseFql, inputsOf } from '../sheets/core/fql/parse.js';
 import { resolveRef, loadExternals } from '../renderer/refs.js';
 import { createAssets } from './assets.js';
 import { parseRef, resolveTarget, docKind } from '../renderer/refs-syntax.js';
@@ -17,7 +19,7 @@ export const SERVER_INFO = { name: 'folio', version: pkg.version };
 export const INSTRUCTIONS = `Folio is the user's Markdown workspace. Paths are relative to the open folder and use forward slashes.
 Read a note before editing it. Prefer edit_note (exact find-and-replace) over write_note for small changes so the user's formatting survives.
 Every change you make is shown live to the user in Folio with a one-click undo. Use get_open_note to see what the user is looking at right now.
-Besides pages (.md) Folio has slides (name.slides.md, Marp compatible), boards (name.board.md, diagrams as text) and sheets (name.sheet.md, Markdown tables with Excel formulas). Call get_format_guide before creating or editing those, and get_sheet_values to read computed sheet values. Documents can reference each other: [[Doc#part]] links, {{Doc#part}} shows a live value (e.g. {{Budget.sheet#Summary!B7}}), ![[Doc#part]] embeds a sheet range, slide, board or page section. Use resolve_ref to see what a reference shows.
+Besides pages (.md) Folio has slides (name.slides.md, Marp compatible), boards (name.board.md, diagrams as text) and sheets (name.sheet.md, Markdown tables with Excel formulas). Call get_format_guide before creating or editing those, and get_sheet_values to read computed sheet values; run_sheet_query, sheet_goal_seek, refresh_sheet and run_sheet_macro run a workbook's queries, what-if, pivots and macros. Documents can reference each other: [[Doc#part]] links, {{Doc#part}} shows a live value (e.g. {{Budget.sheet#Summary!B7}}), ![[Doc#part]] embeds a sheet range, slide, board or page section. Use resolve_ref to see what a reference shows.
 For long pages work by section: get_outline, read_section, replace_section, insert_after (after a heading or a ^block-id). To propose rather than apply, use suggest_edit (tracked change) and add_comment (comment on a passage); the user accepts or rejects them in Folio. Every write is kept in the page's version history: list_versions, get_version, diff_versions, restore_version. resolve_link tells you where a [[link]] points. Slide decks can use a template (template: Templates/Name.slides); get_format_guide with type template explains how to build one.`;
 
 const ro = { readOnlyHint: true, openWorldHint: false };
@@ -40,8 +42,20 @@ export const TOOLS = [
     description: 'Return the syntax of Folio document types: pages (.md: footnotes, maths, colour, alignment, hidden comments), slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/).',
     input: { type: z.enum(['page', 'slides', 'board', 'sheet', 'template', 'all']).optional() } },
   { name: 'get_sheet_values', title: 'Get sheet values', write: false, annotations: ro,
-    description: 'Evaluate every formula in a .sheet.md note and return each sheet as a grid of computed values, with cell addresses.',
+    description: 'Evaluate every formula in a .sheet.md note with the same engine Folio shows (400+ Excel functions, dynamic arrays) and return each sheet as a grid of computed values, with cell addresses and the text as formatted in Folio.',
     input: { path: z.string(), sheet: z.string().optional().describe('Sheet name; all sheets when omitted') } },
+  { name: 'run_sheet_query', title: 'Run sheet query', write: false, annotations: ro,
+    description: 'Run FQL (Folio Query Language, Power Query-like: get_format_guide type sheet, and docs in the workbook) against a .sheet.md workbook and return the results without writing anything. Give `query` to run one of the workbook\'s own queries, or `fql` to run your own program (e.g. `query Top = from sheet "Orders" | groupby Region | rollup Total = sum(Qty)`).',
+    input: { path: z.string(), query: z.string().optional().describe('Name of a query in the workbook\'s ```fql blocks'), fql: z.string().optional().describe('An FQL program to run instead'), limit: z.number().int().min(1).max(5000).optional().describe('Rows returned per result (default 200)') } },
+  { name: 'sheet_goal_seek', title: 'Goal seek', write: false, annotations: ro,
+    description: 'Excel\'s Goal Seek on a .sheet.md workbook, without changing it: find the value of the `by` cell that makes the formula in `set` equal `to`.',
+    input: { path: z.string(), set: z.string().describe('Cell with the formula, e.g. "F5" or "Orders!F5"'), to: z.number(), by: z.string().describe('Input cell to change, e.g. "D2"'), sheet: z.string().optional().describe('Sheet the cells are on when not written in them') } },
+  { name: 'refresh_sheet', title: 'Refresh sheet queries and pivots', write: true, annotations: rw,
+    description: 'Refresh all in a .sheet.md workbook: run every FQL query that loads into a sheet and recompute every PivotTable, writing the results where Folio writes them (the previous results are replaced).',
+    input: { path: z.string() } },
+  { name: 'run_sheet_macro', title: 'Run sheet macro', write: true, annotations: rw,
+    description: 'Run a macro (a function of the workbook\'s ```script blocks, Folio Script, Apps Script-like) and write its changes. Protected sheets refuse changes outside their editable ranges, as in Folio.',
+    input: { path: z.string(), macro: z.string(), args: z.array(z.any()).optional(), sheet: z.string().optional().describe('Active sheet for the macro (default: the first)') } },
   { name: 'get_open_note', title: 'Get open note', write: false, annotations: ro, appOnly: true,
     description: 'Return the note the user has open in Folio right now, its unsaved text and the current selection.',
     input: {} },
@@ -185,6 +199,11 @@ export async function runTool(notes, name, a, hooks = {}) {
     }
     case 'get_sheet_values': {
       const src = await notes.read(a.path);
+      // the engine Folio shows (Univer, in the data engine) when Folio is running; the plain evaluator otherwise
+      if (hooks.sheets) {
+        const out = await hooks.sheets('book.values', { text: src, sheet: a.sheet || null }, a.path);
+        return out.map((s) => ({ sheet: s.sheet, range: s.range, columns: Array.from({ length: s.values[0]?.length || 0 }, (_, c) => colName(c)), rows: s.values.map((vals, r) => ({ row: r + 1, values: vals.map((v) => v ?? ''), text: s.display[r] })) }));
+      }
       const external = await loadExternals(src, { files: await notes.allFiles(), from: notes.relOf(notes.resolve(a.path)), read: (p) => notes.read(p), seen: [notes.relOf(notes.resolve(a.path))] });
       const sheets = parseWorkbook(src).filter((b) => b.type === 'sheet' && (!a.sheet || b.name.toLowerCase() === a.sheet.toLowerCase()));
       if (!sheets.length) throw new Error(a.sheet ? `No sheet named ${a.sheet}` : 'No tables found in this note.');
@@ -192,6 +211,40 @@ export async function runTool(notes, name, a, hooks = {}) {
         const ev = evaluator(s, { external }); const cols = s.rows.reduce((m, r) => Math.max(m, r.length), 0);
         return { sheet: s.name, columns: Array.from({ length: cols }, (_, c) => colName(c)), rows: s.rows.map((row, r) => ({ row: r + 1, values: Array.from({ length: cols }, (_, c) => { const v = ev.value(r, c); return v instanceof Date ? v.toISOString().slice(0, 10) : v ?? ''; }) })) };
       });
+    }
+    case 'run_sheet_query': case 'sheet_goal_seek': case 'refresh_sheet': case 'run_sheet_macro': {
+      if (!/\.sheet\.md$/i.test(a.path)) throw new Error('This tool works on a workbook (.sheet.md).');
+      if (!hooks.sheets) throw new Error('Open Folio to use this tool: queries, pivots, macros and what-if run in Folio\'s spreadsheet engine.');
+      const text = await notes.read(a.path);
+      const fqlFiles = (src) => { try { return inputsOf(parseFql(src)).files.map((f) => f.path); } catch { return []; } };
+      if (name === 'sheet_goal_seek') {
+        const r = await hooks.sheets('whatif.goalSeek', { text, set: a.set, to: a.to, by: a.by, active: a.sheet }, a.path);
+        return { ...r, note: 'Nothing was written. Set the cell yourself (edit_note) if the user wants this value.' };
+      }
+      if (name === 'run_sheet_query') {
+        const blocks = readDoc(text).fences.filter((f) => f.lang === 'fql');
+        let src = a.fql, only = null, block = 'Query';
+        if (!src) {
+          if (!a.query) throw new Error('Give `query` (a query of the workbook) or `fql` (a program to run).');
+          const hit = blocks.find((b) => { try { return parseFql(b.body, { name: b.name }).queries.some((q) => q.name.toLowerCase() === a.query.toLowerCase()); } catch { return false; } });
+          if (!hit) throw new Error(`No query named ${a.query}. Queries: ${blocks.flatMap((b) => { try { return parseFql(b.body, { name: b.name }).queries.map((q) => q.name); } catch { return []; } }).join(', ') || 'none'}`);
+          src = hit.body; block = hit.name || 'Query'; only = parseFql(hit.body, { name: block }).queries.find((q) => q.name.toLowerCase() === a.query.toLowerCase()).name;
+        }
+        const res = await hooks.sheets('fql.run', { src, name: block, text, files: fqlFiles(src), only }, a.path);
+        const limit = a.limit || 200;
+        return { results: Object.fromEntries(Object.entries(res.results || {}).map(([q, g]) => [q, { rows: Math.max(0, g.length - 1), columns: g[0] || [], data: g.slice(0, limit + 1), truncated: g.length - 1 > limit }])), note: 'Nothing was written: refresh_sheet loads the workbook\'s queries into their sheets.' };
+      }
+      if (name === 'refresh_sheet') {
+        const files = readDoc(text).fences.filter((f) => f.lang === 'fql').flatMap((f) => fqlFiles(f.body));
+        const r = await hooks.sheets('book.refresh', { text, files: [...new Set(files)] }, a.path);
+        if (r.text === text) return { loaded: r.loaded, errors: r.errors, written: false };
+        const msg = await wrote(await notes.write(a.path, r.text), 'Refreshed');
+        return { loaded: r.loaded, errors: r.errors, written: true, message: msg };
+      }
+      const r = await hooks.sheets('book.macro', { text, entry: a.macro, args: a.args || [], active: a.sheet }, a.path);
+      const out = { result: r.result, logs: r.logs, messages: r.toasts, refused: r.refused, failed: r.failed };
+      if (r.text === text) return { ...out, written: false };
+      return { ...out, written: true, message: await wrote(await notes.write(a.path, r.text), `Ran ${a.macro} in`) };
     }
     case 'create_note': return wrote(await notes.write(a.path, a.content, { overwrite: false }), 'Created');
     case 'write_note': return wrote(await notes.write(a.path, a.content), 'Rewrote');

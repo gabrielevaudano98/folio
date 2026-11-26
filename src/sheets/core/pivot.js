@@ -13,13 +13,8 @@
 //
 // The numbers are computed by pivottable (Nicolas Kruchten, MIT): its PivotData and aggregators, the engine behind
 // pivotUI, given rows of records. Pure apart from that library, which needs jQuery's object helpers only.
-import $ from 'jquery';
-// jQuery 4 removed helpers pivottable 2.23 still calls: put back the three it uses, with their old meaning
-$.isFunction ??= (f) => typeof f === 'function';
-$.isArray ??= Array.isArray;
-$.inArray ??= (v, a, i) => (a == null ? -1 : Array.prototype.indexOf.call(a, v, i));
-globalThis.jQuery ??= $;
-await import('pivottable/dist/pivot.js');
+import $ from './pivot-jquery.js'; // first: jQuery global, with the helpers pivottable still calls
+import 'pivottable/dist/pivot.js';
 
 export const AGGREGATORS = { sum: 'Sum', count: 'Count', counta: 'Count', countunique: 'Count Unique Values', avg: 'Average', average: 'Average', min: 'Minimum', max: 'Maximum', median: 'Median', var: 'Sample Variance', stdev: 'Sample Standard Deviation', first: 'First', last: 'Last', list: 'List Unique Values', sumfraction: 'Sum as Fraction of Total' };
 export const AGG_LABEL = { sum: 'Sum', count: 'Count', countunique: 'Distinct count', avg: 'Average', min: 'Min', max: 'Max', median: 'Median', var: 'Variance', stdev: 'Std dev', first: 'First', last: 'Last', list: 'List', sumfraction: '% of total' };

@@ -533,6 +533,7 @@ const appBackend = {
         win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans, aiKept });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
+      sheets: (method, payload, notePath) => sheetsEngine.callFor(method, payload, { note: notes.relOf(notes.resolve(notePath)) }),
       openNote: () => askRenderer('open-note'),
       showNote: (a) => { win?.show(); win?.focus(); return askRenderer('show-note', a); },
     });
@@ -797,7 +798,7 @@ async function devShot(w) {
         const m = app.getAppMetrics().map((x) => ({ type: x.type, mb: Math.round((x.memory.privateBytes ?? x.memory.workingSetSize) / 1024), cpu: Math.round(x.cpu.percentCPUUsage) }));
         console.log('js', JSON.stringify({ metrics: m, totalMB: m.reduce((n, x) => n + x.mb, 0) }));
       }
-      if (s.tool) { try { await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); } catch (e) { console.error('shot tool', e.message); } }
+      if (s.tool) { try { const v = await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); if (s.log) console.log('js', JSON.stringify(v ?? null)); } catch (e) { console.error('shot tool', e.message); if (s.log) console.log('js', JSON.stringify(`ERR ${e.message}`)); } }
       await wait(s.wait ?? 700);
       if (s.out) { const img = await w.webContents.capturePage(); fss.writeFileSync(s.out, img.toPNG()); console.log('shot', s.out); }
     }

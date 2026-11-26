@@ -12,6 +12,7 @@ import { importFile, exportXlsx, exportCsv, readXlsxGrid } from './io.js';
 import { runScript, callFunction, describe, scriptWorkbook } from './script.js';
 import * as crypto from './crypto.js';
 import * as whatif from './whatif.js';
+import * as book from './book.js';
 import * as duck from './duck.js';
 import * as python from './python.js';
 import { toUniver } from '../core/convert.js';
@@ -119,6 +120,15 @@ const METHODS = {
 
   /* batch: computed values for MCP, the command line and exports */
   'calc.grids': ({ text }) => grids(text),
+
+  /* whole-workbook jobs (book.js): for AI assistants through MCP and for the command line */
+  'book.values': async ({ text, sheet }) => book.values(await headless(), text, { sheet }),
+  'book.refresh': async ({ text, files }) => {
+    const kinds = Object.fromEntries(book.inputsOfBook(text).map((f) => [f.path, f.kind]));
+    const env = { files: await readFiles(files, kinds), readers: { xlsx: async (bytes, sheet) => readXlsxGrid(bytes, sheet), sql: async (sql, db) => duck.query(opts.duckdbDir, sql, { files: Object.fromEntries(Object.entries(files || {}).filter(([r]) => ['parquet', 'csv', 'json'].includes(kinds[r]))), db: db ? files?.[db] : null }) } };
+    return book.refresh(await headless(), text, { env });
+  },
+  'book.macro': async ({ text, entry, args, active }) => book.macro(await headless(), text, { entry, args, active }),
 };
 
 let queue = Promise.resolve(); // one call at a time: the headless Univer and QuickJS are single-threaded anyway
