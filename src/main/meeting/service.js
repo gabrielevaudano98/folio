@@ -118,6 +118,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
   function syncWatch() { if (!watch) return; if (wanted()) watch.start(); else watch.stop(); }
   async function offer(who) {
     if (session || !wanted()) return;
+    try { notes.root(); } catch { return; } // no folder open: a recording could not be saved, so there is nothing to offer
     const ready = detect.ready ? await detect.ready() : (await describe())[0].required.ready;
     if (!ready || session || !wanted()) return; // nothing to record with yet, or the person's situation changed while we checked
     notify({

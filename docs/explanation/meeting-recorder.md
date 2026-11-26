@@ -26,7 +26,7 @@ in its file name; rename it afterwards). It shows only when the recorder is on a
 opened and closed the microphone (the keys behind *Settings > Privacy > Microphone*). Every 4 seconds Folio asks `reg query`
 for them. When an app other than Folio has held the microphone for 8 seconds, Folio shows one notification for that call; a
 short blip (dictation, a notification sound) is ignored, and muting inside a call does not count as a new call (a call
-ends after 30 seconds without the microphone). Clicking the notification starts the recording; ignoring it does nothing.
+ends after 30 seconds without the microphone). Folio offers only while a folder is open (a recording needs somewhere to be saved). Clicking the notification starts the recording; ignoring it does nothing.
 Nothing is listened to or stored by the watcher: it reads app names and timestamps only.
 
 ## Why the notes quote the transcript

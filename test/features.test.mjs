@@ -272,6 +272,11 @@ await t('a notification is not shown if the person turned detection off while it
   await handlers['features:set']('meeting-recorder', { detectCalls: false }); release(); await nap(100);
   assert.equal(toasts.length, 0);
 });
+await t('nothing is offered while no folder is open', async () => {
+  const { toasts, handlers } = callService({ svc: { notes: { resolve: (r) => r, root: () => { throw new Error('Open a folder first.'); } } } });
+  await nap(300); assert.equal(toasts.length, 0);
+  await handlers['features:set']('meeting-recorder', { detectCalls: false });
+});
 await t('nothing is offered while the speech model is not downloaded', async () => {
   const { toasts, handlers } = callService({ detect: { ready: async () => false } });
   await nap(300); assert.equal(toasts.length, 0);
