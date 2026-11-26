@@ -170,11 +170,11 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
           send('meeting:segment', seg);
         } else if (m.type === 'stats' && session) {
           session.queueSec = m.queueSec;
-          // no sound has reached the speech engine after a while: say so now, not with an empty note at the end
-          const heard = (m.audioSec?.me || 0) + (m.audioSec?.them || 0);
-          if (session.phase === 'recording' && !heard && !session.silentWarned && Date.now() - session.started.getTime() > 12000) {
+          // no sound has reached the speech engine 12 s into the recording (nothing at all, or only digital silence from a
+          // muted or wrong input): say so now, not with an empty note at the end
+          if (session.phase === 'recording' && !m.signalSec && !session.silentWarned && session.recordingAt && Date.now() - session.recordingAt > 12000) {
             session.silentWarned = true;
-            send('meeting:state', { ...publicSession(), error: 'No sound is reaching Folio. Check the microphone in Windows settings, then stop and start again.' });
+            send('meeting:state', { ...publicSession(), error: t('mtg.err-no-sound') });
           }
         }
         else if (m.type === 'done' && session) session.done?.(m);
@@ -202,7 +202,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
     try { await ready; } catch (e) { const s = session; session = null; try { s.worker.kill(); } catch {} await fs.rm(workFile, { force: true }); send('meeting:state', null); throw e; }
     getWin()?.webContents.postMessage('meeting:port', { id }, [session.port]);
     session.port = null;
-    phase('recording');
+    phase('recording'); session.recordingAt = Date.now();
     memoryGuard();
     if (env.FOLIO_MEETING_FAKE_WAV) feedWav(env.FOLIO_MEETING_FAKE_WAV, env.FOLIO_MEETING_FAKE_TRACK || 'them');
     return publicSession();

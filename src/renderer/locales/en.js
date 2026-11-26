@@ -1600,6 +1600,7 @@ export default {
   'mtg.err-stop-first': 'Stop the recording first.',
   'mtg.err-over-budget': 'Folio stopped the recording because it used {used} MB, above its {limit} MB limit. The transcript so far is saved.',
   'mtg.err-running': 'A recording is already running.',
+  'mtg.err-no-sound': 'No sound is reaching Folio. Check the microphone in Windows settings, then stop and start again.',
   'mtg.err-enable': 'Turn on the meeting recorder in Settings first.',
   'mtg.err-unavailable': 'The meeting recorder is not available on this computer yet.',
   'mtg.err-download': 'Download the meeting recorder in Settings first.',
