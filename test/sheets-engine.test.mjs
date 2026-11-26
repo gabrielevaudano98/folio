@@ -251,4 +251,27 @@ const rich = fx('sheets/Rich.sheet.md');
   assert.equal(l2.ops().length, 1); assert.equal(l2.ops()[0].actor, 'one'); off.dispose(); H.dispose();
   ok('an edit on one replica reaches the other as a serialisable operation and both compute the same totals');
 }
+{
+  // what Excel needs besides cells: function prefixes (_xlfn.), the sheet's view (tab colour, hidden, zoom, gridlines,
+  // filter range), and a full recalculation on open; each comes back on import
+  const { toExcelFormula, fromExcelFormula } = await import('../src/sheets/engine/xlsx-formula.js');
+  assert.equal(toExcelFormula('=XLOOKUP(A1,B:B,C:C)+SUM(IFS(A1>1,1,TRUE,2))'), '_xlfn.XLOOKUP(A1,B:B,C:C)+SUM(_xlfn.IFS(A1>1,1,TRUE,2))');
+  assert.equal(toExcelFormula('=FILTER(A2:A9,B2:B9>1)&"XLOOKUP(x)"&\'TEXTJOIN(\'!A1'), '_xlfn._xlws.FILTER(A2:A9,B2:B9>1)&"XLOOKUP(x)"&\'TEXTJOIN(\'!A1');
+  assert.equal(toExcelFormula('=STDEV.S(A1:A3)+stdev(A1:A3)'), '_xlfn.STDEV.S(A1:A3)+stdev(A1:A3)');
+  assert.equal(fromExcelFormula('_xlfn._xlws.SORT(_xlfn.UNIQUE(A1:A9))&"_xlfn.x"'), 'SORT(UNIQUE(A1:A9))&"_xlfn.x"');
+  assert.equal(fromExcelFormula('_xlfn.LAMBDA(_xlpm.x,_xlpm.x+1)(2)'), 'LAMBDA(x,x+1)(2)');
+  const text = ['## A', '', '| N | L |', '| --- | --- |', '| 1 | =XLOOKUP(1,A2:A3,A2:A3) |', '| 2 | =TEXTJOIN(",",TRUE,A2:A3) |', '',
+    '<!-- sheet: {"tab":"#3b82f6","zoom":1.5,"gridlines":false,"filter":{"range":"A1:B3"},"cf":[{"range":"A2:A3","rule":{"type":"highlightCell","subType":"formula","value":"=IFS(A2>1,TRUE)","style":{"bl":1}}}]} -->', '',
+    '## B', '', '| X |', '| --- |', '| 1 |', '', '<!-- sheet: {"hidden":true} -->', ''].join('\n');
+  const bytes = await exportXlsx(text);
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(bytes); const wbx = await zip.file('xl/workbook.xml').async('string'), s1 = await zip.file('xl/worksheets/sheet1.xml').async('string');
+  assert.match(wbx, /<sheet name="B"[^>]*state="hidden"/); assert.match(wbx, /fullCalcOnLoad="1"/);
+  assert.match(s1, /<tabColor rgb="FF3B82F6"\/>/); assert.match(s1, /<autoFilter ref="A1:B3"\/>/); assert.match(s1, /zoomScale="150"/); assert.match(s1, /showGridLines="0"/);
+  assert.match(s1, /<f>_xlfn\.XLOOKUP\(/); assert.match(s1, /<f>_xlfn\.TEXTJOIN\(/); assert.match(s1, /_xlfn\.IFS\(A2&gt;1,TRUE\)/);
+  const back = (await importFile(bytes, 'A.xlsx')).text;
+  assert.match(back, /=XLOOKUP\(1,A2:A3,A2:A3\)/); assert.doesNotMatch(back, /_xlfn/);
+  for (const k of ['"tab":"#3b82f6"', '"zoom":1.5', '"gridlines":false', '"filter":{"range":"A1:B3"}', '"hidden":true', '"value":"=IFS(A2>1,TRUE)"']) assert.ok(back.includes(k), k);
+  ok('.xlsx: _xlfn prefixes both ways, tab colour, hidden sheet, zoom, gridlines and filter range go to Excel and back; Excel recalculates on open');
+}
 console.log(`\n${n} sheets engine checks passed`);

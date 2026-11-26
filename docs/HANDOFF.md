@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T21:35:27Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T21:41:52Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: components: Cancel honoured while checking/unpacking (verified files kept), engine errors name the right Settings section and are translated; real-download e2e test (opt-in)
+- Last checkpoint: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open
 
 ## Resume in a new session
 
@@ -57,7 +57,8 @@ Open next (not started): live sync and presence (contracts ready, §5 of docs/sh
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 3fef7d6 wip: components: Cancel honoured while checking/unpacking (verified files kept), engine errors name the right Settings section and are translated; real-download e2e test (opt-in)
+- c70546e wip: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open
+- a5e8fce wip: components: Cancel honoured while checking/unpacking (verified files kept), engine errors name the right Settings section and are translated; real-download e2e test (opt-in)
 - 630985a wip: docs: handoff and plan status after data components
 - da78013 wip: Sheets: Settings section for data components (DuckDB, Pyodide) with status, licences, download/cancel/remove; docs
 - 1c44d31 wip: MCP: values from Univer, run_sheet_query, sheet_goal_seek, refresh_sheet, run_sheet_macro; workbook jobs in the data engine; jquery-lite (no DOM for pivots)

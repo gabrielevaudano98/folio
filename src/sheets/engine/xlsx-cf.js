@@ -14,6 +14,7 @@
 //
 // A rule Excel cannot express (an average "equal to", icons mixed from several sets) is left out of the export; the
 // sheet-md file keeps it. Every rule that is written reads back as the same rule (tested).
+import { toExcelFormula, fromExcelFormula } from './xlsx-formula.js';
 import { addDxf, makeDifferentialStyle, makeFont, makePatternFill } from 'xlsx-kit/styles';
 import * as W from 'xlsx-kit/worksheet';
 import { addr, fromRange } from '../core/a1.js';
@@ -106,7 +107,7 @@ export function writeConditionalFormatting(wb, ws, rules = []) {
         rule = { type: 'aboveAverage', aboveAverage: map[0], ...(map[1] ? { equalAverage: true } : {}), formulas: [] };
       } else if (st === 'rank') rule = { type: 'top10', rank: Number(r.value) || 10, ...(r.isBottom ? { bottom: true } : {}), ...(r.isPercent ? { percent: true } : {}), formulas: [] };
       else if (st === 'duplicateValues' || st === 'uniqueValues') rule = { type: st, formulas: [] };
-      else if (st === 'formula' && r.value) rule = { type: 'expression', formulas: [num(r.value)] };
+      else if (st === 'formula' && r.value) rule = { type: 'expression', formulas: [toExcelFormula(num(r.value))] };
       if (rule) rule.dxfId = dxf();
     } else if (r.type === 'colorScale') {
       const cfg = [...(r.config || [])].sort((x, y) => x.index - y.index);
@@ -162,7 +163,7 @@ export function readConditionalFormatting(wb, ws, sheetKey) {
       else if (x.type === 'aboveAverage') rule = { type: 'highlightCell', subType: 'average', operator: (x.aboveAverage === false ? 'lessThan' : 'greaterThan') + (x.equalAverage ? 'OrEqual' : ''), style };
       else if (x.type === 'top10') rule = { type: 'highlightCell', subType: 'rank', isBottom: !!x.bottom, isPercent: !!x.percent, value: x.rank ?? 10, style };
       else if (x.type === 'duplicateValues' || x.type === 'uniqueValues') rule = { type: 'highlightCell', subType: x.type, style };
-      else if (x.type === 'expression' && f[0]) rule = { type: 'highlightCell', subType: 'formula', value: '=' + String(f[0]).replace(/^=/, ''), style };
+      else if (x.type === 'expression' && f[0]) rule = { type: 'highlightCell', subType: 'formula', value: '=' + fromExcelFormula(String(f[0]).replace(/^=/, '')), style };
       else if (x.type === 'colorScale') { const v = cfvos(x.innerXml), c = colors(x.innerXml); if (v.length >= 2) rule = { type: 'colorScale', config: v.map((value, index) => ({ index, color: c[index] || '#000000', value })) }; }
       else if (x.type === 'dataBar') { const v = cfvos(x.innerXml), c = colors(x.innerXml); rule = { type: 'dataBar', isShowValue: attr(x.innerXml || '', 'showValue') !== '0', config: { min: v[0] || { type: 'min' }, max: v[1] || { type: 'max' }, isGradient: false, positiveColor: c[0] || '#638ec6', nativeColor: '#ff0000' } }; }
       else if (x.type === 'iconSet') {

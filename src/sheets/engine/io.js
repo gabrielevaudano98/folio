@@ -17,6 +17,11 @@ import { toUniver, fromUniver } from '../core/convert.js';
 import { addr, colName, toRange, fromRange, parseAddr } from '../core/a1.js';
 import { BORDER } from '../core/style.js';
 import { writeConditionalFormatting, readConditionalFormatting } from './xlsx-cf.js';
+import { toExcelFormula, fromExcelFormula } from './xlsx-formula.js';
+import { setSheetState } from 'xlsx-kit/workbook';
+
+/** a tab colour as Excel's opaque ARGB, or null */
+const tabArgb = (c) => (/^#?[0-9a-f]{6}$/i.test(String(c || '')) ? 'FF' + String(c).replace('#', '').toUpperCase() : null);
 
 const PX_PER_CHAR = 7, PT_TO_PX = 4 / 3;
 const isZip = (b) => b[0] === 0x50 && b[1] === 0x4b;
@@ -93,7 +98,7 @@ const excelDate = (d) => d.getTime() / 864e5 + 25569;
 async function snapshotFromXlsx(bytes, name) {
   const wb = await loadWorkbook(fromBuffer(Buffer.from(bytes)));
   const snap = emptySnapshot(name); styleIds.clear();
-  const dv = {}, notes = {}, cf = {};
+  const dv = {}, notes = {}, cf = {}, flt = {};
   for (const ref of wb.sheets) {
     if (ref.kind !== 'worksheet') continue;
     const ws = ref.sheet, u = addSheet(snap, ws.title);
@@ -101,7 +106,7 @@ async function snapshotFromXlsx(bytes, name) {
     for (const cell of W.iterCells(ws)) {
       const r = cell.row - 1, c = cell.col - 1; maxR = Math.max(maxR, r); maxC = Math.max(maxC, c);
       const v = cell.value;
-      let out = v && typeof v === 'object' && v.kind === 'formula' ? (v.t === 'shared' && !v.formula ? null : { f: '=' + v.formula })
+      let out = v && typeof v === 'object' && v.kind === 'formula' ? (v.t === 'shared' && !v.formula ? null : { f: '=' + fromExcelFormula(v.formula) })
         : v && typeof v === 'object' && v.kind === 'rich-text' ? { v: v.runs.map((x) => x.text).join(''), t: 1 }
         : v && typeof v === 'object' && v.kind === 'error' ? { v: v.code, t: 1 } : valueCell(v);
       const st = cell.styleId ? styleFromXlsx(S.getCellFont(wb, cell), S.getCellFill(wb, cell), S.getCellBorder(wb, cell), S.getCellAlignment(wb, cell), S.getCellNumberFormat(wb, cell)) : null;
@@ -118,16 +123,23 @@ async function snapshotFromXlsx(bytes, name) {
     if (p && (p[0] || p[1])) u.freeze = { xSplit: p[1], ySplit: p[0], startRow: p[0] || -1, startColumn: p[1] || -1 };
     const rules = W.listDataValidations(ws).map((x, k) => ({
       uid: `dv-${u.id}-${k}`, type: x.type === 'list' ? 'list' : x.type || 'custom', ...(x.operator ? { operator: x.operator } : {}),
-      formula1: x.type === 'list' ? String(x.formula1 || '').replace(/^"|"$/g, '') : x.formula1, ...(x.formula2 ? { formula2: x.formula2 } : {}),
+      formula1: x.type === 'list' ? String(x.formula1 || '').replace(/^"|"$/g, '') : fromExcelFormula(x.formula1 ?? ''), ...(x.formula2 ? { formula2: fromExcelFormula(x.formula2) } : {}),
       ranges: (x.sqref?.ranges || []).map((g) => ({ startRow: g.minRow - 1, endRow: g.maxRow - 1, startColumn: g.minCol - 1, endColumn: g.maxCol - 1, rangeType: 0 })),
     })).filter((x) => x.ranges.length);
     if (rules.length) dv[u.id] = rules;
     const cfRules = readConditionalFormatting(wb, ws, u.id); if (cfRules.length) cf[u.id] = cfRules;
     for (const n of W.listComments(ws)) { const q = parseAddr(n.ref); if (q) ((notes[u.id] ||= {})[q[0]] ||= {})[q[1]] = { id: `note-${n.ref}`, row: q[0], col: q[1], width: 160, height: 72, note: n.text }; }
     u.rowCount = Math.max(1000, maxR + 100); u.columnCount = Math.max(26, maxC + 10);
+    const tab = ws.sheetProperties?.tabColor?.rgb; if (tab && /^[0-9A-F]{8}$/i.test(tab)) u.tabColor = '#' + tab.slice(2).toLowerCase();
+    if (ref.state && ref.state !== 'visible') u.hidden = 1;
+    const view = ws.views?.[0];
+    if (view?.zoomScale && view.zoomScale !== 100) u.zoomRatio = view.zoomScale / 100;
+    if (view?.showGridLines === false) u.showGridlines = 0;
+    const af = ws.autoFilter?.ref; const afr = af && toRange(String(af));
+    if (afr) flt[u.id] = { ref: afr, filterColumns: [], cachedFilteredOut: [] };
   }
-  const names = Object.fromEntries(listDefinedNames(wb).filter((n) => !n.name.startsWith('_xlnm')).map((n, k) => [`name-${k + 1}`, { id: `name-${k + 1}`, name: n.name, formulaOrRefString: '=' + String(n.value).replace(/^=/, ''), localSheetId: 'AllDefaultWorkbook' }]));
-  snap.resources = [['SHEET_DATA_VALIDATION_PLUGIN', dv], ['SHEET_CONDITIONAL_FORMATTING_PLUGIN', cf], ['SHEET_NOTE_PLUGIN', notes], ['SHEET_DEFINED_NAME_PLUGIN', names]].filter(([, v]) => Object.keys(v).length).map(([n, v]) => ({ name: n, data: JSON.stringify(v) }));
+  const names = Object.fromEntries(listDefinedNames(wb).filter((n) => !n.name.startsWith('_xlnm')).map((n, k) => [`name-${k + 1}`, { id: `name-${k + 1}`, name: n.name, formulaOrRefString: '=' + fromExcelFormula(String(n.value).replace(/^=/, '')), localSheetId: 'AllDefaultWorkbook' }]));
+  snap.resources = [['SHEET_DATA_VALIDATION_PLUGIN', dv], ['SHEET_CONDITIONAL_FORMATTING_PLUGIN', cf], ['SHEET_NOTE_PLUGIN', notes], ['SHEET_DEFINED_NAME_PLUGIN', names], ['SHEET_FILTER_PLUGIN', flt]].filter(([, v]) => Object.keys(v).length).map(([n, v]) => ({ name: n, data: JSON.stringify(v) }));
   return snap;
 }
 
@@ -227,7 +239,7 @@ export async function exportXlsx(text, { source = null, values = null } = {}) {
         const st = colSt[c] || rowSt[r] ? { ...(colSt[c] || {}), ...(rowSt[r] || {}), ...(styleOf(cell0.s) || {}) } : styleOf(cell0.s);
         const R = r + 1, C = c + 1;
         let v = null;
-        if (cell0.f) { const cv = computed?.[r]?.[c]; v = { kind: 'formula', formula: cell0.f.replace(/^=/, ''), t: 'normal', ...(cv != null && typeof cv !== 'object' ? { cachedValue: cv } : {}) }; }
+        if (cell0.f) { const cv = computed?.[r]?.[c]; v = { kind: 'formula', formula: toExcelFormula(cell0.f), t: 'normal', ...(cv != null && typeof cv !== 'object' ? { cachedValue: cv } : {}) }; }
         else if (cell0.v != null) v = cell0.t === 3 ? !!Number(cell0.v) : cell0.t === 2 ? Number(cell0.v) : String(cell0.v);
         const x = W.setCell(ws, R, C, v);
         if (!st || !Object.keys(st).length) continue;
@@ -245,17 +257,28 @@ export async function exportXlsx(text, { source = null, values = null } = {}) {
     for (const rule of res.SHEET_DATA_VALIDATION_PLUGIN?.[id] || []) {
       if (!['list', 'whole', 'decimal', 'date', 'time', 'textLength', 'custom'].includes(rule.type)) continue;
       try {
-        W.addDataValidation(ws, W.makeDataValidation({ type: rule.type, sqref: (rule.ranges || []).map(fromRange).join(' '), ...(rule.operator ? { operator: rule.operator } : {}), formula1: rule.type === 'list' && !/^=/.test(rule.formula1 || '') ? `"${rule.formula1}"` : String(rule.formula1 || '').replace(/^=/, ''), ...(rule.formula2 ? { formula2: String(rule.formula2).replace(/^=/, '') } : {}), allowBlank: rule.allowBlank !== false }));
+        W.addDataValidation(ws, W.makeDataValidation({ type: rule.type, sqref: (rule.ranges || []).map(fromRange).join(' '), ...(rule.operator ? { operator: rule.operator } : {}), formula1: rule.type === 'list' && !/^=/.test(rule.formula1 || '') ? `"${rule.formula1}"` : toExcelFormula(rule.formula1 || ''), ...(rule.formula2 ? { formula2: toExcelFormula(rule.formula2) } : {}), allowBlank: rule.allowBlank !== false }));
       } catch { /* a rule Excel cannot express is left out of the export */ }
     }
     writeConditionalFormatting(wb, ws, res.SHEET_CONDITIONAL_FORMATTING_PLUGIN?.[id] || []);
     for (const row of Object.values(res.SHEET_NOTE_PLUGIN?.[id] || {})) for (const n of Object.values(row || {})) if (n?.note) W.setComment(ws, { ref: addr(n.row, n.col), author: 'Folio', text: n.note });
+    // the sheet's view: tab colour, zoom, gridlines, filter range (its criteria stay in Folio's file)
+    if (tabArgb(u.tabColor)) W.setSheetTabColor(ws, tabArgb(u.tabColor));
+    if (u.zoomRatio && u.zoomRatio !== 1) { try { W.setSheetZoom(ws, Math.round(u.zoomRatio * 100)); } catch { /* outside 10–400% */ } }
+    if (u.showGridlines === 0) { if (!ws.views[0]) W.setFreezePanes(ws, undefined); (ws.views[0] ||= W.makeSheetView()).showGridLines = false; }
+    const flt = res.SHEET_FILTER_PLUGIN?.[id];
+    if (flt?.ref) W.setAutoFilter(ws, W.makeAutoFilter({ ref: fromRange(flt.ref) }));
   }
+  // hidden sheets last: Excel needs one visible sheet, and setSheetState refuses to hide the last one
+  for (const id of data.sheetOrder) { const u = data.sheets[id]; if (u.hidden) { try { setSheetState(wb, u.name, 'hidden'); } catch { /* the only visible sheet stays visible */ } } }
   if (!source) {
-    for (const n of Object.values(res.SHEET_DEFINED_NAME_PLUGIN || {})) { try { addDefinedName(wb, makeDefinedName({ name: n.name, value: String(n.formulaOrRefString).replace(/^=/, '') })); } catch { /* invalid name */ } }
+    for (const n of Object.values(res.SHEET_DEFINED_NAME_PLUGIN || {})) { try { addDefinedName(wb, makeDefinedName({ name: n.name, value: toExcelFormula(n.formulaOrRefString) })); } catch { /* invalid name */ } }
   } else {
-    for (const n of Object.values(res.SHEET_DEFINED_NAME_PLUGIN || {})) { try { removeDefinedName(wb, n.name); } catch { /* not there */ } try { addDefinedName(wb, makeDefinedName({ name: n.name, value: String(n.formulaOrRefString).replace(/^=/, '') })); } catch { /* invalid */ } }
+    for (const n of Object.values(res.SHEET_DEFINED_NAME_PLUGIN || {})) { try { removeDefinedName(wb, n.name); } catch { /* not there */ } try { addDefinedName(wb, makeDefinedName({ name: n.name, value: toExcelFormula(n.formulaOrRefString) })); } catch { /* invalid */ } }
   }
+  // Excel recomputes every formula when it opens the file: the saved results are Folio's, and xlsx-kit can only save
+  // an error result (#DIV/0!) as text
+  wb.calcProperties = { ...(wb.calcProperties || {}), fullCalcOnLoad: true };
   return new Uint8Array(await workbookToBytes(wb));
 }
 
