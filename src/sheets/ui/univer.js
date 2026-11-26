@@ -36,6 +36,7 @@ import { UniverDrawingUIPlugin } from '@univerjs/drawing-ui';
 import { UniverSheetsDrawingPlugin } from '@univerjs/sheets-drawing';
 import { UniverSheetsDrawingUIPlugin } from '@univerjs/sheets-drawing-ui';
 import { FUniver } from '@univerjs/core/facade';
+import { UniverRPCMainThreadPlugin } from '@univerjs/rpc';
 import '@univerjs/ui/facade';
 import '@univerjs/sheets/facade';
 import '@univerjs/sheets-ui/facade';
@@ -100,21 +101,43 @@ export function folioTheme(dark) {
 }
 
 /** start Univer in `container`; returns { univer, api, commands, dispose } */
-export function startUniver(container, { lang = 'en', dark = false } = {}) {
+/**
+ * `worker`: compute formulas in a Web Worker (formula-worker.js) so a large workbook never blocks the window. Falls back
+ * to the window's thread when a worker cannot start. `udf(name, args)` answers custom functions asked by the worker.
+ */
+export function startUniver(container, { lang = 'en', dark = false, worker: useWorker = false, udf = null, onWorkerFailed = null } = {}) {
   const locale = lang === 'it' ? LocaleType.IT_IT : LocaleType.EN_US;
   const univer = new Univer({
     theme: folioTheme(dark), darkMode: dark, locale,
     locales: { [LocaleType.EN_US]: mergeLocales(...EN), [LocaleType.IT_IT]: mergeLocales(...IT) },
   });
   const fontFamily = tok('--font-sans');
+  let worker = null, port = null;
+  if (useWorker) {
+    try {
+      worker = new Worker(new URL('sheets-formula-worker.js', document.baseURI), { name: 'folio-formulas' });
+      // a worker that cannot load reports it later, not here: formulas would then never compute, so say so
+      worker.addEventListener('error', (e) => { console.error('[sheets] formula worker failed', e.message || e); onWorkerFailed?.(e); }, { once: true });
+      const ch = new MessageChannel(); port = ch.port1;
+      worker.postMessage({ folio: 'udf-port' }, [ch.port2]);
+      port.onmessage = async (m) => {
+        const d = m.data || {};
+        if (d.op === 'call') { let value; try { value = udf ? await udf(d.name, d.args) : '#NAME?'; } catch (e) { value = `#ERROR: ${e.message}`; } port.postMessage({ id: d.id, value }); }
+        else if (d.op === 'registered' || d.op === 'baseline') { pending.get(d.id)?.(d.baseline); pending.delete(d.id); }
+      };
+    } catch (e) { console.error('[sheets] formula worker', e); worker = null; port = null; }
+  }
+  const pending = new Map(); let reqId = 0;
+  const off = worker ? { notExecuteFormula: true } : undefined;
+  if (worker) univer.registerPlugin(UniverRPCMainThreadPlugin, { workerURL: worker });
   univer.registerPlugin(UniverRenderEnginePlugin);
-  univer.registerPlugin(UniverFormulaEnginePlugin);
+  univer.registerPlugin(UniverFormulaEnginePlugin, off);
   univer.registerPlugin(UniverUIPlugin, { container, header: true, toolbar: false, footer: true, contextMenu: true, disableAutoFocus: true, customFontFamily: [{ value: fontFamily, label: 'System', category: 'sans-serif' }] });
   univer.registerPlugin(UniverDocsPlugin);
   univer.registerPlugin(UniverDocsUIPlugin);
-  univer.registerPlugin(UniverSheetsPlugin);
+  univer.registerPlugin(UniverSheetsPlugin, off);
   univer.registerPlugin(UniverSheetsUIPlugin, { formulaBar: true, footer: { sheetBar: true, statisticBar: true, menus: true, zoomSlider: true } });
-  univer.registerPlugin(UniverSheetsFormulaPlugin);
+  univer.registerPlugin(UniverSheetsFormulaPlugin, off);
   univer.registerPlugin(UniverSheetsFormulaUIPlugin);
   univer.registerPlugin(UniverSheetsNumfmtPlugin);
   univer.registerPlugin(UniverSheetsNumfmtUIPlugin);
@@ -143,9 +166,15 @@ export function startUniver(container, { lang = 'en', dark = false } = {}) {
   const commands = univer.__getInjector().get(ICommandService);
   return {
     univer, api, commands,
+    /** true when formulas are computed in the worker */
+    worker: !!worker,
+    /** make custom functions known to the worker; resolves once they are registered there */
+    /** the save baseline of a file's text, computed in the worker (null without a worker or when it fails) */
+    workerBaseline(text) { if (!port) return Promise.resolve(null); const id = ++reqId; return new Promise((res) => { pending.set(id, res); port.postMessage({ op: 'baseline', id, text }); }); },
+    registerWorkerFunctions(names) { if (!port || !names.length) return Promise.resolve(); const id = ++reqId; return new Promise((res) => { pending.set(id, res); port.postMessage({ op: 'register', id, names }); setTimeout(res, 3000); }); },
     open(data) { return univer.createUnit(UniverInstanceType.UNIVER_SHEET, data); },
     close(unitId) { api.disposeUnit?.(unitId); },
     setDark(on) { api.toggleDarkMode?.(on); univer.setTheme?.(folioTheme(on)); },
-    dispose() { univer.dispose(); },
+    dispose() { univer.dispose(); worker?.terminate(); port?.close(); },
   };
 }

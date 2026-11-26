@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T16:46:45Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-26T18:13:55Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: full suite green; opening a sheet with a chart no longer rewrites it; docs updated
+- Last checkpoint: formulas in a Web Worker: custom functions through the window, save baseline in the worker, saves from the live model; full suite green
 
 ## Resume in a new session
 
@@ -33,11 +33,19 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    `DEFAULT_AT` in charts.js). Docs updated: docs/sheets/README.md (= Project doc `claude/SHEETS-PLAN.md`), FQL.md,
    SCRIPT.md, FORMATS.md.
 
-Open next (in order): formula engine in a Web Worker (see 3); visual baselines if the fixed 93px ribbon height
+7. ~~**Formula worker**~~ DONE: `src/sheets/ui/formula-worker.js` (bundled as dist/renderer/sheets-formula-worker.js,
+   checked to load from app.asar with the app's CSP and sandbox). Custom functions: window sends names over a
+   MessageChannel, worker asks the window for values (Univer 1.6 refuses remote function code). Save baseline computed
+   in the worker; saves read Univer's live model (`surface.liveSnapshot`). 50k rows in the app: edit 0–130 ms, save
+   after a pause ~0.35 s. Test step 14 in test/sheets-ui.test.mjs (UDF, audit, validation formula, SUBTOTAL+filter);
+   the same suite passes with `localStorage['folio.sheets.worker'] = 'off'`.
+
+Open next (in order): save in slices that yields to typing (very large sheets); visual baselines if the fixed 93px ribbon height
 changes them on macOS/Windows; MCP tools for queries, pivots and scripts; area 28 (AI) when decided.
 
 ## Commits since main
-- f10110e wip: full suite green; opening a sheet with a chart no longer rewrites it; docs updated
+- 945b542 wip: formulas in a Web Worker: custom functions through the window, save baseline in the worker, saves from the live model; full suite green
+- f995079 wip: full suite green; opening a sheet with a chart no longer rewrites it; docs updated
 - f5351dd wip: languages: FQL case/replace/index/top/merge/split rows/transpose/transform + functions; Folio Script formats, borders, sort, find, rows, freeze, rename; shared replay
 - 7ee70ab wip: xlsx: conditional formatting exported and imported (14 rule kinds); shared formulas kept out of export and scripts
 - 34fcb3c wip: large sheets: 6x faster open, per-sheet save cache, shared formulas, fresh unit ids in the headless engine

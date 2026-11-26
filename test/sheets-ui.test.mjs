@@ -58,10 +58,23 @@ const steps = [
     const nf = q('x:numfmt'); nf.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); await new Promise(r=>setTimeout(r,100));
     const cur = [...document.querySelectorAll('.rb-listbox .rb-option')].find((o) => o.textContent.startsWith('Currency'))?.textContent; key(nf, 'Escape');
     return { heights: [...h], fs, fs2, sizeBox: size.value, matches, font: font.value, cur }`, 2500),
+  // 14 formulas are computed in a Web Worker: values arrive, a script's custom function answers through the window,
+  //    and the formula audit gets its dependency tree
+  ev(`const s = ${S}; s.wb().getSheetByName('Orders').activate(); s.ws().getRange('J2').setValue('=TRIPLE(5)'); s.ws().getRange('J3').setValue('=D2*2');
+    const wait = async (f) => { for (let i = 0; i < 60; i++) { const v = f(); if (v !== null && v !== undefined && v !== '' && !String(v).startsWith('#')) return v; await new Promise((r) => setTimeout(r, 100)); } return f(); };
+    const udf = await wait(() => s.ws().getRange('J2').getRawValue()); const plainF = await wait(() => s.ws().getRange('J3').getRawValue());
+    let tree = null; try { tree = await s.formulaApi().getCellDependencyTree({ unitId: s.unitId(), sheetId: s.sheetId(), row: 1, column: 5 }, 5000); } catch (e) { tree = 'ERR ' + e.message; }
+    // formulas inside rules (a custom validation) and SUBTOTAL, which skips rows a filter hides, are computed there too
+    const ws = s.ws(); ws.getRange('D2:D4').setDataValidation(s.univerApi().newDataValidation().requireFormulaSatisfied('=D2>5').build());
+    ws.getRange('J4').setValue('=SUBTOTAL(9,D2:D4)'); await new Promise((r) => setTimeout(r, 1500));
+    const hidden = new Set(ws.getFilter?.()?.getFilteredOutRows?.() || []); const d = ws.getRange('D2:D4').getRawValues().map((x) => x[0]);
+    const visible = d.reduce((a, v, i) => a + (hidden.has(i + 1) ? 0 : v), 0);
+    const dv = [String(await ws.getRange('D2').getValidatorStatus()), String(await ws.getRange('D3').getValidatorStatus())];
+    return { worker: s.univerWorker(), udf, plainF, tree: tree && typeof tree === 'object' ? 'ok' : String(tree), subtotal: ws.getRange('J4').getRawValue() === visible, dv }`, 6000),
   errors,
 ];
 const r = await runApp(w, steps, { FOLIO_IMPORT_SHEET: xlsxPath }, 240000);
-const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, ribbon, errs] = r.js;
+const [ping, macro, pivot, summary, prot, dec, sig, , slicer, , panels, , imported, ribbon, worker, errs] = r.js;
 let n = 0; const ok = (m) => { n++; console.log('  ✓ ' + m); };
 console.log('sheets in the app');
 assert.equal(ping, 1); ok('the data engine starts as a separate process');
@@ -84,5 +97,6 @@ assert.equal(ribbon.heights.length, 1, `ribbon heights ${ribbon.heights}`); ok('
 assert.deepEqual([ribbon.fs, ribbon.fs2, ribbon.sizeBox], [13, 13, '13']); ok('a font size typed in the box applies; one out of range (999) is refused');
 assert.deepEqual([ribbon.matches, ribbon.font], [1, 'System']); ok('the font box filters as you type and Escape gives back the font in use');
 assert.equal(ribbon.cur, 'Currency€1.20'); ok('the Number format list previews the active cell in each format');
+assert.deepEqual(worker, { worker: true, udf: 15, plainF: 8, tree: 'ok', subtotal: true, dv: ['invalid', 'valid'] }, JSON.stringify(worker)); ok('formulas are computed in a Web Worker: custom functions, the formula audit, validation formulas and SUBTOTAL under a filter work through it');
 assert.deepEqual(errs, []); ok('no errors in the window');
 console.log(`\n${n} sheets app checks passed`);

@@ -14,7 +14,7 @@ import { splitRef, toRange, addr, quoteSheet, parseAddr, fromRange } from '../co
 import { startUniver } from './univer.js';
 import { createCommands } from './commands.js';
 import { TABS, COMPACT, NUMBER_FORMATS } from './ribbon.js';
-import { numfmt } from '@univerjs/core';
+import { numfmt, IUniverInstanceService, IResourceManagerService, UniverInstanceType } from '@univerjs/core';
 import { icons as xsIcons } from './icons.js';
 import { L } from './i18n.js';
 import { createPanels } from './panels/index.js';
@@ -50,7 +50,12 @@ export function mountSheet(host, ctx) {
     </div>`;
   const ribbonEl = host.querySelector('.ribbon');
   const gridEl = host.querySelector('.xs-grid');
-  const U = startUniver(gridEl, { lang: locale(), dark: !!ctx.isDark?.() });
+  // formulas are computed in a Web Worker (the grid stays responsive on large workbooks); `folio.sheets.worker` = 'off'
+  // in localStorage keeps them on the window's thread, as before
+  const workerOff = (() => { try { return localStorage.getItem('folio.sheets.worker') === 'off'; } catch { return false; } })();
+  let udfImpl = null; // set below, once the surface exists
+  const U = startUniver(gridEl, { lang: locale(), dark: !!ctx.isDark?.(), worker: !workerOff, udf: (name, args) => udfImpl?.(name, args) ?? '#NAME?',
+    onWorkerFailed: () => { try { localStorage.setItem('folio.sheets.worker', 'off'); } catch { /* private storage */ } ctx.toast(L('Formulas could not be computed in the background. Close and reopen the workbook to compute them here.'), { kind: 'error' }); } });
   const { api } = U;
 
   /* ---------- state ---------- */
@@ -77,6 +82,13 @@ export function mountSheet(host, ctx) {
     unitId: () => unitId,
     /** Univer's formula facade: dependency trees, calculation control, custom functions */
     formulaApi: () => api.getFormula(),
+    /** Univer's facade (FUniver), for extensions and tests */
+    univerApi: () => api,
+    /** formulas computed in a Web Worker (formula-worker.js) */
+    univerWorker: () => U.worker,
+    /** how long the last save took, in ms (the save delay adapts to it) */
+    lastSaveMs: () => saveMs,
+    registerWorkerFunctions: (names) => U.registerWorkerFunctions(names),
     /** run a Univer command by id (its own panels and operations) */
     exec: (id, params) => U.commands.executeCommand(id, params),
     meta: (id = surface.sheetId()) => (sheetMeta[id] ||= {}),
@@ -89,6 +101,13 @@ export function mountSheet(host, ctx) {
     /** add, replace or remove (body null) a named block: ```fql Sales``` etc. */
     setFence(lang_, name, body) { save(true); setFence(loaded.doc, lang_, name, body); const out = fromUniver(surface.snapshot(), loaded, { sheetMeta, workbook: workbookMeta }); writeText(out); },
     snapshot: () => wb().save(),
+    /** the workbook as Univer holds it, without the deep copy save() makes: read-only, for writing the file (a 50k-row
+     *  workbook copies in ~0.6 s); anything that may change what it gets uses snapshot() */
+    liveSnapshot() {
+      const inj = U.univer.__getInjector(); const unit = inj.get(IUniverInstanceService).getUnit(unitId);
+      if (!unit) return wb().save();
+      return { ...unit.getSnapshot(), resources: inj.get(IResourceManagerService).getResources(unitId, UniverInstanceType.UNIVER_SHEET) };
+    },
     text: () => text,
     /** write pending edits now and return the file text */
     saveNow() { save(true); return text; },
@@ -182,6 +201,7 @@ export function mountSheet(host, ctx) {
   surface.protection = protection;
   const extensions = createExtensions({ api, U, surface, ctx });
   surface.extensions = extensions;
+  udfImpl = (name, args) => extensions.callFunction(name, args);
   const cmds = createCommands({ api, commands: U.commands, host, ctx, panels, surface });
   const ribbon = wireRibbon(ribbonEl, { run: (cmd, el) => { if (!cmds.run(cmd, el)) ctx.toast(L('Not available yet.')); setTimeout(syncRibbon, 0); }, modeKey: 'folio.ribbon.sheet', defaultMode: 'full', describe: numberPreview });
   void ribbon;
@@ -194,6 +214,7 @@ export function mountSheet(host, ctx) {
       if (unitId) { charts.clear(); floats.clear(); api.disposeUnit(unitId); unitId = null; }
       loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook', share: true });
       dirty = new Set(['*']); saveCache.clear();
+      if (U.worker) { const mine = loaded; U.workerBaseline(t).then((b) => { if (b && loaded === mine) mine.provideBaseline(b); }); }
       sheetMeta = {};
       const sheets = loaded.doc.blocks.filter((b) => b.type === 'sheet');
       sheets.forEach((b, i) => { sheetMeta[`sheet-${i + 1}`] = structuredClone(folioMeta(b.meta)); });
@@ -222,7 +243,7 @@ export function mountSheet(host, ctx) {
       const t0 = performance.now();
       charts.sync(); floats.sync();
       const changed = dirty; dirty = new Set();
-      writeText(fromUniver(surface.snapshot(), loaded, { sheetMeta, workbook: workbookMeta, dirty: changed, cache: saveCache }));
+      writeText(fromUniver(surface.liveSnapshot(), loaded, { sheetMeta, workbook: workbookMeta, dirty: changed, cache: saveCache }));
       saveMs = performance.now() - t0;
     };
     // a save that takes long (a sheet of 50k rows) waits for a longer pause in typing, so typing never stutters

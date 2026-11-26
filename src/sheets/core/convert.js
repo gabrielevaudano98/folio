@@ -144,6 +144,8 @@ export function toUniver(text, { id = 'folio-wb', name = 'Workbook', share = fal
   const out = { data, doc };
   let base = null;
   Object.defineProperty(out, 'baseline', { enumerable: true, get: () => (base ||= canonicalOf(toUniver(text, { id, name, share }).data)) });
+  /** a baseline computed elsewhere (the formula worker, from the same text: baselineOf(text)), so no save waits for it */
+  out.provideBaseline = (b) => { if (!base && b?.sheets && typeof b.workbook === 'string') { base = b; out.baselineFrom = 'elsewhere'; } };
   return out;
 }
 
@@ -167,20 +169,36 @@ export function expandSharedFormulas(snap) {
   return out;
 }
 /** formulas shared by Univer (si) written out as ordinary formulas */
+// moved formulas are remembered between saves: the window saves the same 50k shared cells again and again
+const SHIFTED = new Map();
+const shifted = (f, dr, dc) => {
+  const k = `${dr},${dc},${f}`; let v = SHIFTED.get(k);
+  if (v === undefined) { if (SHIFTED.size > 400000) SHIFTED.clear(); v = shiftFormula(f, dr, dc); SHIFTED.set(k, v); }
+  return v;
+};
 function expandShared(cellData) {
   const roots = new Map();
-  for (const [r, row] of Object.entries(cellData || {})) for (const [c, cell] of Object.entries(row || {})) if (cell?.si && cell.f) roots.set(cell.si, { f: cell.f, r: Number(r), c: Number(c) });
-  return (r, c, cell) => (cell && !cell.f && cell.si && roots.has(cell.si) ? (() => { const o = roots.get(cell.si); return { ...cell, f: shiftFormula(o.f, r - o.r, c - o.c) }; })() : cell);
+  for (const r in cellData || {}) { const row = cellData[r]; for (const c in row || {}) { const cell = row[c]; if (cell?.si && cell.f) roots.set(cell.si, { f: cell.f, r: Number(r), c: Number(c) }); } }
+  if (!roots.size) return (r, c, cell) => cell;
+  return (r, c, cell) => { if (!cell || cell.f || !cell.si) return cell; const o = roots.get(cell.si); return o ? { ...cell, f: shifted(o.f, r - o.r, c - o.c) } : cell; };
 }
 
 /** one Univer worksheet → { name, rows, align, meta } */
 export function sheetFromUniver(snap, ws, res) {
   const cd = ws.cellData || {};
   const shared = expandShared(cd);
-  let maxR = -1, maxC = -1;
-  for (const [r, row] of Object.entries(cd)) for (const [c, cell] of Object.entries(row || {})) { if (rawFromCell(shared(+r, +c, cell)) !== '' || cell?.s || cell?.custom) { maxR = Math.max(maxR, +r); maxC = Math.max(maxC, +c); } }
-  const rows = [];
-  for (let r = 0; r <= Math.max(maxR, 0); r++) { const row = []; for (let c = 0; c <= Math.max(maxC, 0); c++) row.push(rawFromCell(shared(r, c, cd[r]?.[c]))); rows.push(row); }
+  // one pass: each cell's text is computed once (a 50k-row sheet has 350k of them)
+  let maxR = -1, maxC = -1; const raws = [];
+  for (const r in cd) {
+    const row = cd[r]; if (!row) continue; const R = +r;
+    for (const c in row) {
+      const cell = row[c]; const C = +c; const raw = rawFromCell(shared(R, C, cell));
+      if (raw !== '' || cell?.s || cell?.custom) { if (R > maxR) maxR = R; if (C > maxC) maxC = C; }
+      if (raw !== '') (raws[R] ||= [])[C] = raw;
+    }
+  }
+  const rows = new Array(Math.max(maxR, 0) + 1);
+  for (let r = 0; r < rows.length; r++) { const row = new Array(Math.max(maxC, 0) + 1).fill(''); const src = raws[r]; if (src) for (const c in src) if (+c < row.length) row[c] = src[c]; rows[r] = row; }
   // trailing empty rows/columns that only carried a style stay in the table: the style needs a cell to live on
   const meta = {};
   const cols = {}, align = [];
@@ -268,6 +286,8 @@ function workbookFromUniver(snap, res) {
   return wb;
 }
 
+/** the baseline toUniver(text) would compute at the first save; pure, so a worker can do it */
+export const baselineOf = (text, opts = {}) => canonicalOf(toUniver(text, opts).data);
 /** canonical, comparable form of a snapshot: one JSON per sheet id plus the workbook part */
 export function canonicalOf(snap) {
   const res = parseRes(snap);

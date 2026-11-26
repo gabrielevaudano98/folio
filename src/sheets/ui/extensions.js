@@ -37,7 +37,20 @@ export function createExtensions({ api, surface, ctx }) {
 
   /* custom functions: UPPER_CASE functions of the scripts, computed in the engine's sandbox */
   const registered = new Set();
+  /** a custom function's value: an extension's function in the window, or a script's in the data engine */
+  async function callFunction(name, args) {
+    for (const e of exts.values()) if (typeof e.functions?.[name] === 'function') return e.functions[name](...args);
+    try { const r = await surface.call('script.call', { code: surface.scriptCode(), name, args }); return r.value ?? ''; }
+    catch (e) { return `#ERROR: ${e.message}`; }
+  }
   function registerFunctions() {
+    if (surface.univerWorker?.()) { // formulas run in the worker: it registers the names and asks callFunction for values
+      const names = [...scriptInfo().functions.map((f) => f.name), ...[...exts.values()].flatMap((e) => Object.keys(e.functions || {}))].filter((n) => !registered.has(n));
+      if (!names.length) return;
+      names.forEach((n) => registered.add(n));
+      surface.registerWorkerFunctions(names).then(() => api.getFormula().executeCalculation?.());
+      return;
+    }
     const formula = api.getFormula();
     for (const f of scriptInfo().functions) {
       if (registered.has(f.name)) continue;
@@ -56,6 +69,7 @@ export function createExtensions({ api, surface, ctx }) {
 
   return {
     scriptInfo,
+    callFunction,
     register(ext) {
       if (!ext?.id) throw new Error('An extension needs an id.');
       exts.set(ext.id, ext); registerFunctions();

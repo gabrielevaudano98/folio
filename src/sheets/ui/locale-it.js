@@ -1,6 +1,7 @@
 // Folio Sheets — Italian interface text, keyed by the English text in the code (i18n.js). Names that read the same
 // in both languages (fonts, paper sizes, products) are listed too, so test/i18n-sheets checks find every label here.
 export default {
+  "Formulas could not be computed in the background. Close and reopen the workbook to compute them here.": "Non è stato possibile calcolare le formule in background. Chiudi e riapri la cartella di lavoro per calcolarle qui.",
   "Custom": "Personalizzato",
   "$ US dollar": "$ Dollaro USA",
   "% of total": "% del totale",
