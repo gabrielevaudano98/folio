@@ -81,7 +81,7 @@
     "pngjs": "^7.0.0",
     "polygon-clipping": "^0.15.7",
     "pptxgenjs": "^4.0.1",
-    "pptxtojson": "^3.0.0",
+    "pptxtojson": "^3.0.2",
     "qrcode-generator": "^1.5.2",
     "selecto": "^1.26.3",
     "turndown": "^7.2.5",
