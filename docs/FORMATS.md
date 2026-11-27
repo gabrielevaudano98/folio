@@ -56,7 +56,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | PDF | `![Annual report](.asset/77ab0e91-report.pdf)` | A card that opens the file. |
 | Web embed | `![](https://www.youtube.com/watch?v=…)` | YouTube, Vimeo, Loom, Figma, Google Maps and Drive, Miro, X, CodePen, Gist, Spotify, SoundCloud, Excalidraw, Canva: a card that opens in the browser (Folio does not load other sites inside the page). |
 | Web bookmark, file | a paragraph that is only a link: `[https://site.com](https://site.com)`, `[budget.xlsx](.asset/d20f6a3b-budget.xlsx)` | Drawn as a card. |
-| Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen from the block's menu. |
+| Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen in the block's top bar, which also has Copy and Wrap (Wrap is view only and never saved). |
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
 | Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
 | Link to a day | `[[2026-11-21]]` | The daily note, `Journal/2026-11-21.md`, made when you first open it. `@tomorrow`, `@next friday`, `@domani` and their first letters (`@tod`, `@ven`) write it. The file always keeps the ISO day; the page shows it as a date mention in the user's format (Settings → Date format: relative “Today”, “Friday”, “3 Dec”; full; short; D/M/Y; M/D/Y; ISO). A valid day link is never reported as broken; an impossible calendar date is. |
