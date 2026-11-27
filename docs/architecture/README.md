@@ -37,17 +37,17 @@ C4Context
   System(folio, "Folio", "Desktop app")
   System_Ext(ai, "AI assistant", "Claude Desktop, Claude Code, Cursor, VS Code…")
   System_Ext(fs, "The open folder", "Markdown files and assets on disk")
-  System_Ext(dl, "Download sources", "Hugging Face, npm, GitHub releases (optional components only)")
+  System_Ext(dl, "Download sources", "Hugging Face, npm, GitHub releases (optional components; update checks and, on the Windows installer, update downloads)")
   Person_Ext(aud, "Audience", "People in the room during a presentation")
   Rel(user, folio, "Uses")
   Rel(aud, folio, "Sends questions", "HTTP on the local network, only while Q&A is open")
   Rel(ai, folio, "MCP tools", "HTTP on 127.0.0.1 or stdio")
   Rel(folio, fs, "Reads and writes")
-  Rel(folio, dl, "Downloads pinned files", "HTTPS, only when a feature is turned on")
+  Rel(folio, dl, "Downloads pinned files; asks for the newest release", "HTTPS, when a feature is turned on; the update check can be switched off")
 ```
 
 Outside Folio's scope: sync (use any sync client on the folder), accounts, a cloud service. Folio sends nothing to a
-server; the only network traffic is the optional component download and what the person's documents link to.
+server; the only network traffic is the optional component download, the update check against this repository's GitHub releases (switchable in Settings; an update downloads only when the person clicks) and what the person's documents link to.
 
 ## 4. Solution strategy
 
