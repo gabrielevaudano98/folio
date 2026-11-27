@@ -393,8 +393,8 @@ function setView(v, { persist = true } = {}) {
     return;
   }
   if (t && rich && editor) {
+    if (v !== 'edit' && prev === 'edit') { rich.flush?.(); editor.applyRemote(t.text); } // the page's pending change reaches the tab before the other views take its text
     if (v === 'edit' && prev !== 'edit') richShow().setMarkdown(t.text);
-    if (v !== 'edit' && prev === 'edit') editor.applyRemote(t.text);
   }
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
   layoutPanes();
@@ -581,6 +581,7 @@ async function saveTabNow(t) {
 }
 /** save every open tab before they go away (close folder, switch folder, reload, quit); when some write fails, ask before dropping the unsaved text */
 async function saveAllOrAsk() {
+  flushSurface(); // a change still waiting for its pause (page editor, surfaces) reaches its tab first, so quitting or installing an update saves it
   const failed = [];
   for (const t of S.tabs.filter((x) => !x.dead)) {
     let ok = true;
