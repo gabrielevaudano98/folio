@@ -1394,10 +1394,10 @@ const isLocked = (p) => !!p && !!S.settings.lockedPages?.[p];
 let lockApplied = false;
 function applyLock() {
   const on = curType() === 'md' && isLocked(S.active);
-  if (on === lockApplied) return; // reconfiguring the source editor on every activation ended slide text editing
+  if (rich && on !== lockApplied) rich.setLocked(on);
   lockApplied = on;
-  if (rich) rich.setLocked(on);
-  editor?.setReadOnly(on);
+  // only when it differs: reconfiguring on every activation ended slide text editing, and setDoc() resets it to editable
+  if (editor && editor.view.state.readOnly !== on) editor.setReadOnly(on);
 }
 function setPageLock(p, on) {
   if (!p) return;

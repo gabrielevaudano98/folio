@@ -79,6 +79,14 @@ const CodeHighlight = Extension.create({
     })];
   },
 });
+/* X3: a locked page takes no edit from any path (keys, input rules, paste, drop); loading the file (setContent without update) still works */
+const PageLockGuard = Extension.create({
+  name: 'pageLockGuard',
+  addProseMirrorPlugins() {
+    const ed = this.editor;
+    return [new Plugin({ key: new PluginKey('pageLockGuard'), filterTransaction: (tr) => !(ed.storage.pageLock?.on && tr.docChanged && !tr.getMeta('preventUpdate')) })];
+  },
+});
 const FolioCodeBlock = CodeBlock.extend({
   addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null, onCopy: null }; },
   /* Mod+Alt+C is the Format painter; TipTap's default would also toggle a code block. Code stays on the / menu, the ribbon and ``` */
@@ -120,13 +128,13 @@ const FolioCodeBlock = CodeBlock.extend({
         editor.view.dispatch(editor.state.tr.setNodeMarkup(getPos(), undefined, { ...node.attrs, language: sel.value || null }));
         editor.commands.focus();
       });
+      bar.addEventListener('click', (e) => { // Copy puts the code on the clipboard; Wrap only changes how it is drawn (never saved)
+        const tool = e.target.closest('.rich-code-tool'); if (!tool) return;
+        if (tool.dataset.tool === 'copy') opts.onCopy?.(node.textContent); else { wrapped = !wrapped; dom.classList.toggle('is-wrapped', wrapped); tool.setAttribute('aria-pressed', String(wrapped)); }
+      });
       bar.addEventListener('mousedown', (e) => {
         const tool = e.target.closest('.rich-code-tool');
-        if (tool) { // Copy puts the code on the clipboard; Wrap only changes how it is drawn (never saved)
-          e.preventDefault();
-          if (tool.dataset.tool === 'copy') opts.onCopy?.(node.textContent); else { wrapped = !wrapped; dom.classList.toggle('is-wrapped', wrapped); tool.setAttribute('aria-pressed', String(wrapped)); }
-          return;
-        }
+        if (tool) { e.preventDefault(); return; } // keep the caret; the action runs on click, so Enter and Space work too
         if (!e.target.closest('button')) return;
         e.preventDefault(); editing = !editing; sync(node);
         if (editing && typeof getPos === 'function') editor.chain().focus().setTextSelection(getPos() + 1).run();
@@ -897,7 +905,8 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       CodeHighlight,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
-      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock, check: icons.check } }),
+      PageLockGuard,
+        BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock, check: icons.check } }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply), onDate: onDate ? (el, day, apply, open) => onDate(el, day, apply, open) : null, dayLabel: (d) => formatDay(d, { style: dateStyle(), lang: locale() }), dayTitle: (d) => fullDay(d, locale()), dayTense: (d) => dayTense(d) }),
       Markdown.configure({ markedOptions: { gfm: true } }),

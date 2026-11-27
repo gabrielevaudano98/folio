@@ -22,8 +22,8 @@ const steps = [
   { js: "document.querySelector('#view-switch [data-view=\"edit\"]').click()", wait: 1200 },
   // 1. the code block bar has Copy and Wrap; Wrap flips a class only
   { js: "[...document.querySelectorAll('.rich-code-tool')].map((b) => b.dataset.tool)", log: true, wait: 100 },
-  { js: "document.querySelector('.rich-code-tool[data-tool=wrap]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); document.querySelector('.rich-code').classList.contains('is-wrapped')", log: true, wait: 100 },
-  { js: "document.querySelector('.rich-code-tool[data-tool=copy]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); true", wait: 400 },
+  { js: "document.querySelector('.rich-code-tool[data-tool=wrap]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); document.querySelector('.rich-code').classList.contains('is-wrapped')", log: true, wait: 100 },
+  { js: "document.querySelector('.rich-code-tool[data-tool=copy]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); true", wait: 400 },
   { js: "[...document.querySelectorAll('.toast')].some((n) => n.textContent.includes('Copied'))", log: true, wait: 100 },
   { js: `${disk}.then((t) => t === ${JSON.stringify(SRC)})`, log: true, wait: 100 },
   // 2. expand all: both toggles open, the file says so; one Ctrl+Z puts it back
