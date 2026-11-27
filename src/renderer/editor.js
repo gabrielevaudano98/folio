@@ -246,7 +246,7 @@ function continueList(view) {
 }
 
 export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImage, onSave, resolveImage, live = false }) {
-  const wrapComp = new Compartment(), spellComp = new Compartment(), liveComp = new Compartment();
+  const wrapComp = new Compartment(), spellComp = new Compartment(), liveComp = new Compartment(), lockComp = new Compartment();
   const extensions = [
     history(), drawSelection(), dropCursor(), indentOnInput(), bracketMatching(), highlightSelectionMatches(), highlightActiveLine(),
     EditorView.lineWrapping,
@@ -262,6 +262,7 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
       { key: 'Mod-s', run: () => { onSave?.(); return true; } },
       ...searchKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap,
     ]),
+    lockComp.of([]),
     spellComp.of(EditorView.contentAttributes.of({ spellcheck: 'true', autocorrect: 'on', autocapitalize: 'sentences' })),
     wrapComp.of([]),
     liveComp.of(live ? livePlugin(resolveImage) : []),
@@ -290,18 +291,22 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
     }),
   ];
   const view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions }) });
+  let locked = false; // a new or restored state starts from `extensions`, so the page lock is put back after it
+  // readOnly only stops typing and the built-in commands: Mod+B, a template or insert() dispatch straight to the view, so a locked page also drops every change that is not an outside reload (remoteAnn)
+  const lockExt = () => [EditorState.readOnly.of(locked), EditorView.editable.of(!locked), ...(locked ? [EditorState.transactionFilter.of((tr) => (tr.docChanged && !tr.annotation(remoteAnn) ? [] : tr))] : [])];
+  const relock = () => { if (view.state.readOnly !== locked) view.dispatch({ effects: lockComp.reconfigure(lockExt()) }); };
   return {
     view,
     setDoc(text, { keepHistory = false } = {}) {
       if (keepHistory) {
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, annotations: remoteAnn.of(true) });
       } else {
-        view.setState(EditorState.create({ doc: text, extensions }));
+        view.setState(EditorState.create({ doc: text, extensions })); relock();
       }
     },
     /** the editor state of this document, with its undo history, to put back when the tab is shown again */
     snapshot() { return view.state; },
-    restore(state) { view.setState(state); },
+    restore(state) { view.setState(state); relock(); },
     undo() { return cmUndo(view); },
     redo() { return cmRedo(view); },
     canUndo() { return undoDepth(view.state) > 0; },
@@ -330,6 +335,8 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
     insert(text) { const r = view.state.selection.main; view.dispatch({ changes: { from: r.from, to: r.to, insert: text }, selection: { anchor: r.from + text.length } }); view.focus(); },
     focus() { view.focus(); },
     setLive(on) { view.dispatch({ effects: liveComp.reconfigure(on ? livePlugin(resolveImage) : []) }); },
+    /** a locked page (X3) cannot be typed into in the source view either */
+    setReadOnly(on) { locked = !!on; view.dispatch({ effects: lockComp.reconfigure(lockExt()) }); },
     setSpellcheck(on) { view.dispatch({ effects: spellComp.reconfigure(EditorView.contentAttributes.of({ spellcheck: on ? 'true' : 'false' })) }); },
   };
 }

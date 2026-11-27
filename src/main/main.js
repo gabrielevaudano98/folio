@@ -14,12 +14,14 @@ import { createNotes, NOTE_EXT } from './notes.js';
 import { createHistory } from './history.js';
 import { createGitLog } from './git-log.js';
 import { createAssets, isAssetPath } from './assets.js';
+import { duplicate } from './duplicate.js';
+import { assertUnlocked, isLockedPage } from './locks.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
-import { writeAtomic, writeAtomicSync } from './atomic.js';
+import { writeAtomic, writeAtomicSync, writeNew } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 if (process.env.FOLIO_FAKE_AUDIO_FILE) app.commandLine.appendSwitch('use-file-for-fake-audio-capture', process.env.FOLIO_FAKE_AUDIO_FILE); // tests: the fake microphone speaks this wav
@@ -44,7 +46,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true, remoteImages: false,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
-  language: 'en', dateStyle: 'relative',
+  language: 'en', dateStyle: 'relative', lockedPages: {},
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
@@ -263,7 +265,10 @@ h('fs:rename', async (from, to) => {
   const r = await notes.move(from, to);
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
-  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b, (f, text) => keep(f, text, { reason: 'before-rename', force: true })).catch(() => [])) changed.add(c); }
+  // a locked page keeps its old link (X3); a moved page's own links still follow it. Locks are still keyed by the old path here.
+  const oldOf = (f) => (f === r.to || f.startsWith(r.to + '/') ? r.from + f.slice(r.to.length) : f);
+  const lockSkip = (f, was) => !pairs.some(([, b]) => b === f) && (isLockedPage(settings.lockedPages, settings.workspace, oldOf(f)) || isLockedPage(settings.lockedPages, settings.workspace, was));
+  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b, (f, text) => keep(f, text, { reason: 'before-rename', force: true }), { skip: lockSkip }).catch(() => [])) changed.add(c); }
   /* a page (or a folder of pages) moved: files a page uses that did not move with it are copied into its new .asset, references follow */
   for (const [a, b] of pairs) {
     if (path.dirname(a) === path.dirname(b)) continue;
@@ -273,6 +278,18 @@ h('fs:rename', async (from, to) => {
     } catch (e) { console.error('assets relocate', e.message); }
   }
   return { to: r.to, changed: [...changed] };
+});
+/* duplicate a note or a folder next to itself: new notes written atomically, the files they use copied into their own .asset */
+h('fs:duplicate', async (rel, suffix) => {
+  guardAsset(rel);
+  return duplicate({ notes, assets, from: rel, suffix, write: async (r, text) => {
+    const abs = notes.resolve(r, { mustBeNote: true });
+    ownWrites.set(abs, text);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    // exclusive: a note another program or an AI created at this very name a moment ago is never replaced
+    try { await writeNew(abs, text); } catch (e) { ownWrites.delete(abs); throw e.code === 'EEXIST' ? new Error('A note with that name already exists.') : e; }
+    keep(notes.relOf(abs), text, { reason: 'created', force: true });
+  } });
 });
 // A copy of every trashed item is kept in a private folder for this session so the move can be undone.
 // Copies belong to the workspace they came from and are removed when it changes and when Folio quits.
@@ -396,7 +413,7 @@ h('templates:import-files', async () => {
 });
 h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
-h('clipboard:read', () => ({ text: clipboard.readText(), html: clipboard.readHTML() }));
+h('clipboard:read', async () => ({ text: await clipboard.readText(), html: typeof clipboard.readHTML === 'function' ? clipboard.readHTML() : '' })); // Electron 45: readText is async, readHTML is gone
 /* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */
 h('import:document', async () => {
   const pick = !app.isPackaged && process.env.FOLIO_IMPORT_FILE ? { filePaths: [process.env.FOLIO_IMPORT_FILE] } : await dialog.showOpenDialog(win, { title: tl('dlg', 'Import a document'), properties: ['openFile'], filters: [{ name: tl('dlg', 'Documents'), extensions: ['docx', 'html', 'htm'] }] });
@@ -519,9 +536,10 @@ const appBackend = {
     if (!tool) throw new Error(`Unknown tool ${name}`);
     if (tool.write && !settings.allowWrite) throw new Error('Folio is set to read-only for AI assistants. The user can allow edits in Folio → AI.');
     if (!settings.workspace) throw new Error('No folder is open in Folio. Ask the user to open one.');
+    assertUnlocked(tool, args, { notes, lockedPages: settings.lockedPages, workspace: settings.workspace }); // X3: a locked page takes no AI edit and is not moved
     logActivity({ client: ctx.client, tool: name, path: args.path || args.from || args.query || '' });
     return runTool(notes, name, args, {
-      history, client: ctx.client,
+      history, client: ctx.client, isLocked: (rel) => isLockedPage(settings.lockedPages, settings.workspace, rel),
       onWrite: async (r) => {
         if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
         const aiKept = (await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true })) !== false;

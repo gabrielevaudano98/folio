@@ -5,7 +5,7 @@ import { Editor, Extension, InputRule } from '@tiptap/core';
 import katex from 'katex';
 import Typography from '@tiptap/extension-typography';
 import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
-import { filterInserts, runInsert, INSERTS } from './inserts.js';
+import { filterInserts, runInsert, INSERTS, turnIdAtSelection } from './inserts.js';
 import { mentionEntries, TAG, FIELD, statusClass } from './page-mentions.js';
 import { highlight } from './fuzzy.js';
 import { BlockHandles, blockCmd, currentBlock } from './page-blocks.js';
@@ -79,8 +79,18 @@ const CodeHighlight = Extension.create({
     })];
   },
 });
+/* X3: a locked page takes no edit from any path (keys, input rules, paste, drop); loading the file (setContent without update) still works */
+const PageLockGuard = Extension.create({
+  name: 'pageLockGuard',
+  addProseMirrorPlugins() {
+    const ed = this.editor;
+    return [new Plugin({ key: new PluginKey('pageLockGuard'), filterTransaction: (tr) => !(ed.storage.pageLock?.on && tr.docChanged && !tr.getMeta('preventUpdate')) })];
+  },
+});
 const FolioCodeBlock = CodeBlock.extend({
-  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null }; },
+  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null, onCopy: null }; },
+  /* Mod+Alt+C is the Format painter; TipTap's default would also toggle a code block. Code stays on the / menu, the ribbon and ``` */
+  addKeyboardShortcuts() { const k = { ...this.parent?.() }; delete k['Mod-Alt-c']; return k; },
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('div'); dom.className = 'rich-code';
@@ -88,7 +98,7 @@ const FolioCodeBlock = CodeBlock.extend({
       const preview = document.createElement('div'); preview.className = 'rich-code-preview'; preview.contentEditable = 'false';
       const bar = document.createElement('div'); bar.className = 'rich-code-bar'; bar.contentEditable = 'false';
       dom.append(bar, preview, pre);
-      let lang = node.attrs.language || '', timer, editing = false;
+      let lang = node.attrs.language || '', timer, editing = false, wrapped = false;
       const opts = this.options;
       const draw = (text) => {
         clearTimeout(timer);
@@ -108,7 +118,9 @@ const FolioCodeBlock = CodeBlock.extend({
         dom.classList.toggle('is-visual', visual); dom.classList.toggle('is-editing', !visual || editing);
         const known = LANGS.some(([v]) => v === lang);
         const select = `<select class="rich-code-lang" aria-label="${tr('rich.code-language')}">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
-        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select;
+        const tools = `<span class="rich-code-tools"><button type="button" class="rich-code-tool" data-tool="copy" aria-label="${tr('rich.copy-code')}">${tr('rich.copy-code')}</button><button type="button" class="rich-code-tool" data-tool="wrap" aria-pressed="${wrapped}" aria-label="${tr('rich.wrap-code')}">${tr('rich.wrap-code')}</button></span>`;
+        dom.classList.toggle('is-wrapped', wrapped);
+        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select + tools;
         if (visual) draw(n.textContent); else preview.innerHTML = '';
       };
       bar.addEventListener('change', (e) => {
@@ -116,7 +128,13 @@ const FolioCodeBlock = CodeBlock.extend({
         editor.view.dispatch(editor.state.tr.setNodeMarkup(getPos(), undefined, { ...node.attrs, language: sel.value || null }));
         editor.commands.focus();
       });
+      bar.addEventListener('click', (e) => { // Copy puts the code on the clipboard; Wrap only changes how it is drawn (never saved)
+        const tool = e.target.closest('.rich-code-tool'); if (!tool) return;
+        if (tool.dataset.tool === 'copy') opts.onCopy?.(node.textContent); else { wrapped = !wrapped; dom.classList.toggle('is-wrapped', wrapped); tool.setAttribute('aria-pressed', String(wrapped)); }
+      });
       bar.addEventListener('mousedown', (e) => {
+        const tool = e.target.closest('.rich-code-tool');
+        if (tool) { e.preventDefault(); return; } // keep the caret; the action runs on click, so Enter and Space work too
         if (!e.target.closest('button')) return;
         e.preventDefault(); editing = !editing; sync(node);
         if (editing && typeof getPos === 'function') editor.chain().focus().setTextSelection(getPos() + 1).run();
@@ -684,13 +702,15 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   const iconOf = (it) => (it.swatch !== undefined ? `<span class="slash-swatch${it.bg ? ' is-bg' : ''}" data-c="${it.swatch}">A</span>` : it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
   const paint = () => {
     let html = '', group = null;
+    const curTurn = insertMenu && props?.editor ? turnIdAtSelection(props.editor.state) : null;
     items.forEach((x, i) => {
       if (x.group !== group) { if (group !== null) html += '</div>'; group = x.group; html += `<div class="slash-group" role="group" aria-label="${tl('grp', group)}"><div class="slash-head" aria-hidden="true">${tl('grp', group)}</div>`; }
       /* the hint on the right: the Markdown you could type instead (Notion: "#", "##", "-", "[]"), else the shortcut */
       const mdh = typeof x.item.md === 'string' && /^(#{1,6}|-|1\.|>|- \[ \]|\$\$|```) ?$/.test(x.item.md) ? x.item.md.trim().replace('- [ ]', '[]') : '';
       const k = mdh ? `<kbd class="slash-md">${mdh.replace(/</g, '&lt;')}</kbd>` : x.item.key ? `<kbd>${opts.keyLabel(x.item.key)}</kbd>` : '';
       const turnTag = x.mode === 'turn' && x.group !== 'Turn into' ? `<span class="slash-turn"> · ${tr('blk.turn-into')}</span>` : '';
-      html += `<div class="slash-item${x.item.danger ? ' is-danger' : ''}" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}${turnTag}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${k}</div>`;
+      const isCur = x.mode === 'turn' && curTurn && x.item.id === curTurn;
+      html += `<div class="slash-item${x.item.danger ? ' is-danger' : ''}${isCur ? ' is-current' : ''}" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"${isCur ? ' aria-current="true"' : ''}><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}${turnTag}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${isCur ? `<span class="slash-check" aria-hidden="true">${icons.check}</span>` : ''}${k}</div>`;
     });
     if (group !== null) html += '</div>';
     list.innerHTML = html || (props?.loading ? '' : '<div class="slash-empty">' + tr('rich.no-matches-keep-typing-or-press-esc') + '</div>');
@@ -831,9 +851,10 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null, onCopyCode = null, onUnlock = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
+    <div class="rich-lock" hidden><span class="rich-lock-badge">${icons.lock}<span>${tr('rich.locked')}</span></span><button type="button" class="btn btn-quiet rich-unlock">${tr('rich.unlock')}</button></div>
     <div class="rich-scroll"><div class="rich-page"></div></div>
     <div class="bubble" role="toolbar" aria-label="${tr('rich.selection')}">
       <label class="visually-hidden" for="rb-turn">${tr('rich.turn-into')}</label>
@@ -869,7 +890,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     element: page,
     extensions: [
       ...pageExtensions({
-        codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
+        codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), onCopy: (t) => onCopyCode?.(t), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
         image: FolioImage.configure({ resolve: resolveImage, blocked, inline: false, allowBase64: true, openFile: (src) => openMedia?.(src), openUrl: (u) => openMedia?.(u) }),
         raw: RawBlock,
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
@@ -884,7 +905,8 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       CodeHighlight,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
-      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
+      PageLockGuard,
+        BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock, check: icons.check } }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply), onDate: onDate ? (el, day, apply, open) => onDate(el, day, apply, open) : null, dayLabel: (d) => formatDay(d, { style: dateStyle(), lang: locale() }), dayTitle: (d) => fullDay(d, locale()), dayTense: (d) => dayTense(d) }),
       Markdown.configure({ markedOptions: { gfm: true } }),
@@ -902,11 +924,16 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   let emitTimer;
   function emit() {
     clearTimeout(emitTimer);
-    emitTimer = setTimeout(() => onChange?.(api.getMarkdown()), 220);
+    emitTimer = setTimeout(() => { emitTimer = null; onChange?.(api.getMarkdown()); }, 220);
   }
+  /** hand over a change still waiting in the 220 ms debounce now, so the tab's text is what is on screen */
+  function flushChange() { if (emitTimer) { clearTimeout(emitTimer); emitTimer = null; onChange?.(api.getMarkdown()); } }
 
+  host.querySelector('.rich-unlock').addEventListener('click', () => onUnlock?.());
+  const LOCK_OK = /^(find|reviewPane|prevChange|nextChange|app:(focus|outline|help|link-health|daily-note))$/;
   const run = (id, btn) => {
     if (!id) return false;
+    if (editor.storage.pageLock?.on && !LOCK_OK.test(id)) return false; // a locked page changes through no command
     if (id.startsWith('ins:')) return api.insert(id.slice(4));
     if (id.startsWith('app:')) { const r = onCommand?.(id.slice(4)); setTimeout(syncToolbar, 50); return r; }
     if (id.startsWith('style:')) return setStyle(id.slice(6));
@@ -1152,7 +1179,8 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n), onType: (k, t) => onPropType?.(k, t),
     tags: () => (mentions ? mentions()?.tags?.() : []) || [],
     get: () => model?.fm || '',
-    set: (fm) => { if (!model) model = codec.load(''); const old = model.fm; model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
+    locked: () => !!editor.storage.pageLock?.on,
+    set: (fm) => { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
   });
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {
@@ -1264,10 +1292,28 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
 
   ready = true;
   const api = {
+    flush: flushChange,
     /** the person allowed web images: try again every one that was held back */
     refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,
     /** redraw chips after a setting that changes how they read (date format, language) */
+    /** X3: a locked page opens read-only (state kept by the app, never in the file) and shows a Locked badge with Unlock */
+    setLocked(on) {
+      editor.storage.pageLock = { on: !!on };
+      host.classList.toggle('is-locked', !!on); host.querySelector('.rich-lock').hidden = !on;
+      editor.setEditable(!on && !host.classList.contains('is-viewing'));
+      props.render(); review.render(); // their controls follow the lock
+    },
+    /** B8: open or close every toggle in one transaction (one undo step); returns how many changed */
+    setToggles(open) {
+      if (editor.storage.pageLock?.on) return 0;
+      const t2 = editor.state.tr; let n = 0;
+      editor.state.doc.descendants((node, pos) => { if (node.type.name === 'details' && !!node.attrs.open !== open) { t2.setNodeMarkup(pos, undefined, { ...node.attrs, open }); n++; } });
+      if (n) editor.view.dispatch(t2);
+      return n;
+    },
+    /** how many toggles are open and closed: the toggle-all command opens them all unless they all are */
+    toggleCount() { let open = 0, closed = 0; editor.state.doc.descendants((node) => { if (node.type.name === 'details') (node.attrs.open ? open++ : closed++); }); return { open, closed }; },
     refreshDecorations() { editor.view.dispatch(editor.state.tr.setMeta('folioRedecorate', true).setMeta('addToHistory', false)); },
     /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
     setMarkdown(md, { keepHistory = false } = {}) {
@@ -1303,7 +1349,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     },
     focus(where) { editor.commands.focus(where); },
     run,
-    insert(id) { const item = INSERTS.find((i) => i.id === id); return item ? runInsert(editor, { item }, insertCtx()) : false; },
+    insert(id) { if (editor.storage.pageLock?.on) return false; const item = INSERTS.find((i) => i.id === id); return item ? runInsert(editor, { item }, insertCtx()) : false; },
     headings() { const out = []; editor.state.doc.descendants((n, pos) => { if (n.type.name === 'heading') out.push(pos); }); return out; },
     scrollToHeading(i) {
       const pos = api.headings()[i]; if (pos == null) return;
@@ -1334,6 +1380,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     review: () => review,
     /* put a filled template in this page: its properties join the page's, its body goes at the cursor (or at pos) */
     insertTemplate(text, pos = null) {
+      if (editor.storage.pageLock?.on) return false;
       const { fm, body: raw } = splitTemplate(text); const body = text.startsWith('```template-button') ? raw : intoPage(raw);
       if (fm) { const merged = mergeProps(model?.fm || '', fm); if (merged !== (model?.fm || '')) { const old = model.fm; model.fm = merged; model.text = merged + model.text.slice(old.length); props.render(); } }
       const nodes = body.trim() ? codec.load(body).json.content : [];

@@ -77,6 +77,15 @@ export async function writeNew(file, data) {
   catch (e) {
     if (e.code === 'EEXIST') throw e;
     const nf = await fs.open(file, 'wx'); // no hard links here: exclusive create still never replaces a file
-    try { await nf.writeFile(data, typeof data === 'string' ? 'utf8' : undefined); await nf.sync(); } finally { await nf.close().catch(() => {}); }
+    try { await nf.writeFile(data, typeof data === 'string' ? 'utf8' : undefined); await nf.sync(); }
+    catch (err) {
+      // Unlink while our handle is still open, so the name cannot have been taken by another writer in between.
+      // Where the OS refuses to remove an open file (Windows), close first and remove: the only gap left.
+      const gone = await fs.rm(file, { force: true }).then(() => true, () => false);
+      await nf.close().catch(() => {});
+      if (!gone) await fs.rm(file, { force: true }).catch(() => {});
+      throw err;
+    }
+    finally { await nf.close().catch(() => {}); }
   } finally { await fs.rm(tmp, { force: true }).catch(() => {}); }
 }

@@ -33,6 +33,15 @@ const steps = [
   { js: "document.querySelector('#dock-tab-info').click(); true", wait: 900 },
   { js: "Object.fromEntries([...document.querySelectorAll('#dock-info .info-list > div')].map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent]))", log: true, wait: 100 },
   { js: "[document.querySelector('#dock-tab-info').getAttribute('aria-selected'), document.querySelector('#dock-info').hidden, document.querySelector('#dock-review').hidden]", log: true, wait: 100 },
+  // 3b. Resolve keeps the thread in the file and hides it; Show resolved brings it back; Delete removes it
+  { js: "document.querySelector('#dock-tab-review').click(); true", wait: 600 },
+  { js: "document.querySelector('.rv-card.rv-thread [data-act=resolve]').click(); true", wait: 2500 },
+  { js: "[document.querySelectorAll('.rv-card.rv-thread').length, document.querySelector('[data-rv=resolved]')?.textContent.trim() || '']", log: true, wait: 100 },
+  { js: "folio.read('pages/r.md')", log: true, wait: 100 },
+  { js: "document.querySelector('[data-rv=resolved]').click(); true", wait: 400 },
+  { js: "[document.querySelectorAll('.rv-card.rv-thread').length, document.querySelectorAll('.rv-card.is-resolved').length, (document.querySelector('.rv-card.is-resolved .rv-resolved-by span')?.textContent || '').split(' · ')[0], [...document.querySelectorAll('.rv-card.is-resolved .rv-comment p')].map((x) => x.textContent)]", log: true, wait: 100 },
+  { js: "document.querySelector('.rv-card.is-resolved [data-act=delThread]').click(); true", wait: 2500 },
+  { js: "[document.querySelectorAll('.rv-card.rv-thread').length, !!document.querySelector('[data-rv=resolved]')]", log: true, wait: 100 },
   // 4. gallery thumbnails
   { js: "document.querySelector('.ribbon [data-cmd=\"app:template\"]').click(); true", wait: 2500 },
   { js: "(() => { const t = [...document.querySelectorAll('.tg-card .tg-thumb-page')]; return [t.length, t.filter((x) => x.textContent.trim().length > 10).length, Math.round(document.querySelector('.tg-thumb').getBoundingClientRect().height)]; })()", log: true, wait: 100 },
@@ -46,8 +55,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nreview ui (D16)'); if (process.env.DEBUG) console.log(JSON.stringify(logs, null, 1));
-  assert.equal(logs.length, 8, out.slice(-1500));
-  const [al, unal, hov, accepted, info, tab, thumbs, errors] = logs; assert.deepEqual(errors, []);
+  assert.equal(logs.length, 12, out.slice(-1500));
+  const [al, unal, hov, accepted, info, tab, resolvedHidden, resolvedFile, resolvedShown, deleted, thumbs, errors] = logs; assert.deepEqual(errors, []);
   assert(al.aligned && al.n === 2 && al.gap > 100, JSON.stringify(al));
   assert(al.tops[1] - al.tops[0] > al.gap * 0.5, `the second card sits well below the first: ${JSON.stringify(al)}`);
   assert.equal(unal, false);
@@ -59,6 +68,12 @@ child.on('exit', () => {
   assert(/^\d/.test(info.Words) && info.Headings === '1' && info.Tasks === '1 of 2 done' && info.Comments === '2' && info.Path === 'pages/r.md' && /KB|B/.test(info.Size) && info.Changed, JSON.stringify(info));
   assert.deepEqual(tab, ['true', false, true]);
   console.log('  ✓ the Info tab lists words, headings, tasks, comments, path, size and when the file changed');
+  assert.deepEqual(resolvedHidden, [1, 'Show 1 resolved']);
+  assert(/Check this/.test(resolvedFile) && /\{>>Tester, \d{4}-\d{2}-\d{2} \d{2}:\d{2}: \[resolved\]<<\}/.test(resolvedFile), 'after Resolve the file keeps the thread and its [resolved] reply:\n' + resolvedFile);
+  assert.deepEqual(resolvedShown, [2, 1, 'Resolved by Tester', ['Check this']]);
+  assert.deepEqual(deleted, [1, false]);
+  { const f = fs.readFileSync(path.join(pages, 'r.md'), 'utf8'); assert(!/Check this|\[resolved\]/.test(f) && /First line here/.test(f) && /And this<</.test(f), f); }
+  console.log('  ✓ Resolve hides a thread but keeps it in the file with a [resolved] reply; Show resolved lists it; Delete removes it');
   assert(thumbs[0] >= 3 && thumbs[1] >= 1 && thumbs[2] >= 150, JSON.stringify(thumbs));
   console.log('  ✓ gallery cards carry a large thumbnail of the filled page');
 });

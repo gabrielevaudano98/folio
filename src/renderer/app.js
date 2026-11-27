@@ -148,6 +148,8 @@ async function boot() {
 
   rich = createRich($('#pane-rich'), {
     keyLabel,
+    onCopyCode: (text) => { folio.copy(text); toast(tr('app.copied')); },
+    onUnlock: () => setPageLock(S.active, false),
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
     onChange: (md) => onEditorChange(md, false, 'rich'),
@@ -488,6 +490,7 @@ function activate(p, { line } = {}) {
     if (s) { s.setText(t.text); s.setMode?.(v); }
     else { loadSurface(type).then(() => { if (S.active === p) activate(p, { line }); }, (e) => toast(e.message, { kind: 'error' })); return; }
   }
+  applyLock();
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
@@ -878,6 +881,7 @@ function pickTemplate({ title = tr('app.insert-template'), note = tr('app.templa
 }
 async function applyTemplate(t, pos = null) {
   if (!t || curType() !== 'md') return;
+  if (isLocked(S.active)) { toast(tr('app.this-page-is-locked'), { kind: 'error' }); return; }
   const text = await askFilled(t, { title: stem(S.active || 'Untitled') }); if (text == null) return;
   rememberTemplate(t);
   if (isRich()) { rich.insertTemplate(text, pos); return; }
@@ -1379,6 +1383,12 @@ async function moveRaw(from, to) {
 }
 async function movePath(from, to, isDir) {
   try {
+    // links and attachment paths are rewritten on disk in other pages: an open page with unsaved text would save its old paths back over them
+    if (isRich()) rich.flush?.();
+    for (const t of S.tabs.filter((x) => !x.dead && x.text !== x.saved)) {
+      await saveTab(t).catch(() => {});
+      if (t.text !== t.saved) throw new Error(tr('app.move-not-saved', { name: stem(t.path) }));
+    }
     const n = await moveRaw(from, to);
     actions.push({ scope: S.workspace, label: `${dirOf(from) === dirOf(to) ? 'renamed' : 'moved'} ${isDir ? base(from) : stem(from)}`, undo: () => moveRaw(to, from), redo: () => moveRaw(from, to) });
     const what = isDir ? base(from) : stem(from);
@@ -1386,7 +1396,44 @@ async function movePath(from, to, isDir) {
     updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
+/* X3: locked pages live in the app settings, per workspace folder (relative paths inside it), never in the .md */
+const lockMap = () => { const m = S.workspace && S.settings.lockedPages?.[S.workspace]; return m && typeof m === 'object' ? m : {}; };
+const isLocked = (p) => !!p && lockMap()[p] === true;
+function saveLocks(map) {
+  const all = {}; for (const [k, v] of Object.entries(S.settings.lockedPages || {})) if (v && typeof v === 'object' && k !== S.workspace) all[k] = v;
+  if (Object.keys(map).length) all[S.workspace] = map;
+  S.settings.lockedPages = all; saveSetting({ lockedPages: all });
+}
+let lockApplied = false;
+function applyLock() {
+  const on = curType() === 'md' && isLocked(S.active);
+  if (rich && on !== lockApplied) rich.setLocked(on);
+  lockApplied = on;
+  // only when it differs: reconfiguring on every activation ended slide text editing, and setDoc() resets it to editable
+  if (editor && editor.view.state.readOnly !== on) editor.setReadOnly(on);
+}
+function setPageLock(p, on) {
+  if (!p || !S.workspace) return;
+  const lp = { ...lockMap() };
+  if (on) lp[p] = true; else delete lp[p];
+  saveLocks(lp);
+  if (p === S.active) applyLock();
+  toast(tr(on ? 'app.page-locked' : 'app.page-unlocked'));
+}
+/** B8: open or close every toggle of the page in one undo step; with no argument it opens them all unless all are open */
+function toggleAllToggles(open) {
+  if (curType() !== 'md' || !isRich() || app.dataset.modeView !== 'edit') return toast(tr('app.open-a-page-in-the-write-view-first'));
+  if (isLocked(S.active)) return toast(tr('app.this-page-is-locked'));
+  const { open: o, closed: c } = rich.toggleCount();
+  if (o + c === 0) return toast(tr('app.no-toggles-on-this-page'));
+  rich.setToggles(open ?? c > 0);
+}
 function retargetTabs(from, to) {
+  const lp = lockMap();
+  if (Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
+    const next = {}; for (const [k, v] of Object.entries(lp)) next[k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k] = v;
+    saveLocks(next);
+  }
   nav.list = nav.list.map((x) => (x === from || x.startsWith(from + '/') ? to + x.slice(from.length) : x));
   for (const t of S.tabs) {
     if (t.path === from || t.path.startsWith(from + '/')) {
@@ -1397,6 +1444,33 @@ function retargetTabs(from, to) {
   }
   renderTabs(); renderStatus(); persistTabs();
 }
+/* [PAGE ACTIONS]: duplicate, move to…, copy link (sidebar menu, ••• menu, palette) */
+async function duplicatePath(p, isDir) {
+  try {
+    if (isRich()) rich.flush?.(); // typing still in the 220 ms debounce is in the tab's text before it is compared with the file
+    for (const t of S.tabs.filter((x) => (x.path === p || x.path.startsWith(p + '/')) && x.text !== x.saved)) { // the copy has what is on screen
+      await saveTab(t).catch(() => {});
+      if (t.text !== t.saved) throw new Error(tr('app.duplicate-not-saved', { name: stem(t.path) }));
+    }
+    const r = await folio.duplicate(p, tr('app.copy-suffix'));
+    if (isDir) S.expanded.add(r.to);
+    await refreshTree();
+    if (!isDir) await openFile(r.to);
+    let rec = null;
+    actions.push({ scope: S.workspace, label: `duplicated ${isDir ? base(p) : stem(p)}`,
+      undo: async () => { rec = await trashRaw(r.to); if (r.assets.length) await folio.assetsRemove(r.assets, false); },
+      redo: async () => { await untrashRaw(rec); if (r.assets.length) await folio.assetsRestore(r.assets); await refreshTree(); if (!isDir) await openFile(r.to); } });
+    toast(tr('app.duplicated-what', { what: isDir ? base(r.to) : stem(r.to) }), { action: [tr('app.undo'), () => fileUndo('undo')] });
+    updateHistoryButtons();
+  } catch (e) { toast(e.message, { kind: 'error' }); }
+}
+function allDirs(nodes = S.tree || [], out = []) { for (const n of nodes) if (n.type === 'dir') { out.push(n.path); allDirs(n.children, out); } return out; }
+/** Move to…: the quick switcher, listing the folders the item can go to */
+function moveToPicker(p, isDir) {
+  if (!p) return;
+  openPalette('move', { p, isDir });
+}
+function copyPageLink(p) { if (p) copyRef(p, '', 'link'); }
 /** move to the Trash, keeping a copy so the move can be undone; unsaved edits are saved first so they come back too */
 async function trashRaw(p) {
   const open = S.tabs.filter((t) => t.path === p || t.path.startsWith(p + '/')).map((t) => t.path);
@@ -1407,12 +1481,17 @@ async function trashRaw(p) {
     if (t.text !== t.saved) throw new Error(`Could not save “${stem(q)}”, so it was not moved. Your changes are still open.`);
   }
   const { token } = await folio.trash(p);
+  // a trashed page takes its lock along, so a new page at the same path opens unlocked; Undo puts the lock back
+  const lp = lockMap(); const locks = Object.keys(lp).filter((k) => k === p || k.startsWith(p + '/'));
+  if (locks.length) { const next = { ...lp }; for (const k of locks) delete next[k]; saveLocks(next); }
   for (const q of open) await closeTab(q);
   await refreshTree();
-  return { token, open, active };
+  return { token, open, active, locks };
 }
 async function untrashRaw(rec) {
-  await folio.untrash(rec.token); await refreshTree();
+  await folio.untrash(rec.token);
+  if (rec.locks?.length) { const next = { ...lockMap() }; for (const k of rec.locks) next[k] = true; saveLocks(next); }
+  await refreshTree();
   for (const q of rec.open) await openFile(q, { background: true });
   if (rec.active) await openFile(rec.active);
 }
@@ -1800,6 +1879,10 @@ const COMMANDS = [
   { id: 'review-pane', title: 'Show or hide comments and suggestions', run: () => rich.run('reviewPane') },
   { id: 'accept-all', title: 'Accept all suggestions', run: () => rich.run('acceptAll') },
   { id: 'reject-all', title: 'Reject all suggestions', run: () => rich.run('rejectAll') },
+  { id: 'lock-page', title: 'Lock or unlock this page', run: () => (curType() === 'md' && S.active ? setPageLock(S.active, !isLocked(S.active)) : toast(tr('app.open-a-page-first'))) },
+  { id: 'toggle-all-toggles', title: 'Expand or collapse all toggles', key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() },
+  { id: 'expand-toggles', title: 'Expand all toggles', run: () => toggleAllToggles(true) },
+  { id: 'collapse-toggles', title: 'Collapse all toggles', run: () => toggleAllToggles(false) },
   { id: 'insert-template', title: 'Insert template…', key: 'Mod+Alt+T', run: () => insertTemplateCmd() },
   { id: 'template-button', title: 'Insert template button', run: () => insertTemplateButton() },
   { id: 'daily-note', title: 'Open today’s daily note', key: 'Mod+Alt+D', run: () => (S.workspace ? openDailyNote(todayKey()) : chooseFolder()) },
@@ -1856,6 +1939,9 @@ const COMMANDS = [
   { id: 'reveal', title: 'Show in folder', run: () => folio.reveal(S.active || '') },
   { id: 'rename', title: 'Rename note…', run: () => S.active && renamePath(S.active, false) },
   { id: 'trash', title: 'Move note to Trash', run: () => S.active && trashPath(S.active, false) },
+  { id: 'duplicate', title: 'Duplicate note', run: () => S.active && duplicatePath(S.active, false) },
+  { id: 'move-to', title: 'Move note to…', run: () => S.active && moveToPicker(S.active, false) },
+  { id: 'copy-page-link', title: 'Copy link to note', run: () => copyPageLink(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
@@ -1916,12 +2002,12 @@ function insertMd(md) {
   editor.insert(md);
 }
 let pal = { mode: 'commands', items: [], sel: 0, opener: null };
-function openPalette(mode = 'commands') {
-  pal = { mode, items: [], sel: 0, opener: document.activeElement };
+function openPalette(mode = 'commands', move = null) {
+  pal = { mode, items: [], sel: 0, opener: document.activeElement, move };
   const input = $('#palette-input');
   input.value = mode === 'commands' ? '>' : '';
-  input.placeholder = tr(mode === 'commands' ? 'app.type-a-command' : 'app.go-to-note');
-  $('#palette-hint').textContent = mode === 'commands' ? 'Delete the > to search notes instead.' : 'Type > for commands.';
+  input.placeholder = mode === 'move' ? tr('app.move-name-to', { name: move.isDir ? base(move.p) : stem(move.p) }) : tr(mode === 'commands' ? 'app.type-a-command' : 'app.go-to-note');
+  $('#palette-hint').textContent = mode === 'move' ? tr('app.move-to-hint') : mode === 'commands' ? 'Delete the > to search notes instead.' : 'Type > for commands.';
   $('#palette').hidden = false;
   $$('#app, .toasts').forEach((e) => (e.inert = true));
   input.focus();
@@ -1930,9 +2016,16 @@ function openPalette(mode = 'commands') {
 function closePalette() { $('#palette').hidden = true; $$('#app, .toasts').forEach((e) => (e.inert = false)); pal.opener?.focus?.(); }
 function updatePalette() {
   const raw = $('#palette-input').value;
-  const isCmd = raw.startsWith('>');
+  const isCmd = pal.mode !== 'move' && raw.startsWith('>');
   const q = isCmd ? raw.slice(1).trim() : raw.trim();
-  if (isCmd) {
+  if (pal.mode === 'move') {
+    const { p, isDir } = pal.move; const root = S.workspace ? S.workspace.split(/[\\/]/).filter(Boolean).pop() : tr('app.workspace-folder');
+    const dirs = ['', ...allDirs()].filter((d) => d !== dirOf(p) && !(isDir && (d === p || d.startsWith(p + '/'))));
+    pal.items = dirs.map((d) => ({ d, label: d || root, f: q ? fuzzy(q, d || root) : { score: 0, marks: [] } })).filter((x) => x.f)
+      .sort((a, b) => b.f.score - a.f.score).slice(0, 80)
+      .map(({ d, label, f }) => ({ html: `${icons.folder}<span class="palette-title">${highlight(label, f.marks)}</span>${d ? '' : `<span class="palette-sub">${esc(tr('app.top-of-the-folder'))}</span>`}`,
+        run: () => { if (d) S.expanded.add(d); return movePath(p, (d ? d + '/' : '') + base(p), isDir); } }));
+  } else if (isCmd) {
     pal.items = COMMANDS.map((c) => ({ c, f: fuzzy(q, c.title) || (c.en && c.en !== c.title ? fuzzy(q, c.en) : null) })).filter((x) => x.f).sort((a, b) => b.f.score - a.f.score)
       .map(({ c, f }) => ({ html: `<span class="palette-title">${highlight(c.title, f.marks)}</span>${c.key ? `<kbd>${esc(keyLabel(c.key))}</kbd>` : ''}`, run: c.run }));
   } else {
@@ -2314,6 +2407,9 @@ function bindChrome() {
     const v = views[(i + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; setView(v); $(`#view-switch [data-view="${v}"]`).focus();
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
+    ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
+      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }] : []),
+    ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
     { label: tr('app.import-word-or-html'), run: importDocument }, '-',
@@ -2342,12 +2438,18 @@ function bindChrome() {
     const at = { x: e.clientX, y: e.clientY };
     if (f) { const p = f.dataset.file; showMenu(null, [
       { label: tr('app.open'), run: () => openFile(p) }, '-',
+      { label: tr('app.duplicate'), run: () => duplicatePath(p, false) },
+      { label: tr('app.move-to'), run: () => moveToPicker(p, false) },
+      { label: tr('app.copy-link'), run: () => copyPageLink(p) }, '-',
       { label: tr('app.rename'), run: () => renamePath(p, false) },
+      ...(docType(p) === 'md' ? [{ label: tr(isLocked(p) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(p, !isLocked(p)) }] : []),
       { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) },
       { label: tr('app.copy-relative-path'), run: () => folio.copy(p) }, '-',
       { label: tr('app.move-to-trash'), danger: true, run: () => trashPath(p, false) }], at); }
     else if (d) { const p = d.dataset.dir; showMenu(null, [
       { label: tr('app.new-note-here'), run: () => newNote(p) }, { label: tr('app.new-folder-here'), run: () => newFolder(p) }, '-',
+      { label: tr('app.duplicate'), run: () => duplicatePath(p, true) },
+      { label: tr('app.move-to'), run: () => moveToPicker(p, true) }, '-',
       { label: tr('app.rename'), run: () => renamePath(p, true) },
       { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) }, '-',
       { label: tr('app.move-to-trash'), danger: true, run: () => trashPath(p, true) }], at); }
@@ -2367,12 +2469,14 @@ function bindChrome() {
   });
   // drag to move
   let dragPath = null;
+  /* a folder row drops into that folder; a note row drops into the folder that holds the note (not the root) */
+  const dropDir = (t) => { const row = t.closest('.tree-row'); if (row?.dataset.file) { const dir = dirOf(row.dataset.file); return dir ? $$('[data-dir]', tree).find((x) => x.dataset.dir === dir) || null : null; } return t.closest('[data-dir]'); };
   tree.addEventListener('dragstart', (e) => { const r = e.target.closest('.tree-row'); dragPath = r?.dataset.file || r?.dataset.dir; e.dataTransfer.effectAllowed = 'move'; });
-  tree.addEventListener('dragover', (e) => { const d = e.target.closest('[data-dir]'); if (!dragPath) return; e.preventDefault(); $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target')); d?.classList.add('drop-target'); });
-  tree.addEventListener('dragleave', (e) => e.target.closest('[data-dir]')?.classList.remove('drop-target'));
+  tree.addEventListener('dragover', (e) => { const d = dropDir(e.target); if (!dragPath) return; e.preventDefault(); $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target')); d?.classList.add('drop-target'); });
+  tree.addEventListener('dragleave', (e) => $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target')));
   tree.addEventListener('drop', (e) => {
     e.preventDefault(); $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target'));
-    const d = e.target.closest('[data-dir]'); const to = d ? d.dataset.dir : '';
+    const d = dropDir(e.target); const to = d ? d.dataset.dir : '';
     if (!dragPath || to === dragPath || to.startsWith(dragPath + '/') || dirOf(dragPath) === to) return (dragPath = null);
     const isDir = !!tree.querySelector(`[data-dir="${CSS.escape(dragPath)}"]`);
     movePath(dragPath, (to ? to + '/' : '') + base(dragPath), isDir); if (to) S.expanded.add(to); dragPath = null;
@@ -2424,6 +2528,7 @@ function bindChrome() {
     const copy = e.target.closest('.copy-code');
     if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = tr('app.copied'); setTimeout(() => (copy.textContent = tr('app.copy')), 1400); return; }
     const box = e.target.closest('.task-list-item input');
+    if (box && isLocked(S.active)) { e.preventDefault(); return; }
     if (box) {
       const li = box.closest('[data-line]'); if (!li) return;
       const n = Number(li.dataset.line); const lines = activeTab().text.split('\n');
@@ -2511,6 +2616,8 @@ function bindChrome() {
     const m = e.metaKey || e.ctrlKey;
     if (m && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openPalette('commands'); }
     if (m && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); insertRef('link'); }
+    if (m && e.altKey && e.shiftKey && e.code === 'KeyT') { e.preventDefault(); toggleAllToggles(); } // B8: Notion's Ctrl+Alt+T is Insert template here
+    else if (m && e.altKey && !e.shiftKey && e.code === 'KeyT' && curType() === 'md') { e.preventDefault(); insertTemplateCmd(); } // shown in the palette, was never bound
     if (m && e.key === 'Enter' && curType() === 'slides') { e.preventDefault(); curSurface()?.present(); }
     if (e.key === 'Escape' && app.classList.contains('focus') && $('#palette').hidden) toggleFocus();
   });

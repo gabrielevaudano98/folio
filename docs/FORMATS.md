@@ -47,6 +47,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Notion callout (icon, colour) | `> [!callout|💡 yellow] Title` | Obsidian metadata after `|`: an emoji and/or a colour from the list below. Works on any type. |
 | Toggle | `<details>`, `<summary>Title</summary>`, a blank line, the content, `</details>` | `<details open>` starts open. Toggles can nest. |
 | Toggle heading | `<summary><h2>Title</h2></summary>` inside a toggle | h1 to h3. |
+| Formatting in a toggle title | `<summary><strong>Bold</strong> and <a href="https://…">link</a></summary>` | `<summary>` is HTML, so a title's formatting uses inline tags: `<a href="…">`, `<strong>`, `<em>`, `<s>`, `<u>`, `<mark>`, `<sup>`, `<sub>`, `<code>`, nested in that order (a link outside, code inside). In a formatted title every `<` in the text is written `&lt;` and `&` before an entity `&amp;`. Any other text in a title, `**Bold**` included, is kept literally as written. |
 | Columns | `:::: columns`, then two to five `::: column` … `:::`, then `::::` | The outer fence has four colons so it can hold the inner ones. |
 | Table of contents | `[TOC]` on its own line | Live list of the page's headings. |
 | Breadcrumb | `[BREADCRUMB]` on its own line | Where the page sits in the workspace. Folio only. |
@@ -56,7 +57,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | PDF | `![Annual report](.asset/77ab0e91-report.pdf)` | A card that opens the file. |
 | Web embed | `![](https://www.youtube.com/watch?v=…)` | YouTube, Vimeo, Loom, Figma, Google Maps and Drive, Miro, X, CodePen, Gist, Spotify, SoundCloud, Excalidraw, Canva: a card that opens in the browser (Folio does not load other sites inside the page). |
 | Web bookmark, file | a paragraph that is only a link: `[https://site.com](https://site.com)`, `[budget.xlsx](.asset/d20f6a3b-budget.xlsx)` | Drawn as a card. |
-| Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen from the block's menu. |
+| Code block | ```` ```python ```` | Coloured as in the Read view; the language is chosen in the block's top bar, which also has Copy and Wrap (Wrap is view only and never saved). |
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
 | Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
 | Link to a day | `[[2026-11-21]]` | The daily note, `Journal/2026-11-21.md`, made when you first open it. `@tomorrow`, `@next friday`, `@domani` and their first letters (`@tod`, `@ven`) write it. The file always keeps the ISO day; the page shows it as a date mention in the user's format (Settings → Date format: relative “Today”, “Friday”, “3 Dec”; full; short; D/M/Y; M/D/Y; ISO). A valid day link is never reported as broken; an impossible calendar date is. |
@@ -70,6 +71,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Template button (Folio) | ```` ```template-button ```` with `label: New meeting`, `template: Meeting notes`, optional `where: above` | Drawn as a button; inserts the template from `Templates/` (or a starter). Other editors show a code block. |
 | Suggested insertion, deletion, replacement | `{++new text++}`, `{--old text--}`, `{~~old~>new~~}` | CriticMarkup. Accept or reject in the review pane; Suggesting mode writes them as you type. |
 | Comment | `{==quoted text==}{>>Ada, 2026-11-20 14:05: Comment<<}` | CriticMarkup. The `Author, date time:` prefix is optional; comments that follow each other are replies. |
+| Resolved comment | `{==quoted text==}{>>Ada, …: Comment<<}{>>Bob, 2026-11-27 10:05: [resolved]<<}` | Resolve adds a reply whose text is exactly `[resolved]`; the comments and the highlight stay in the file. A thread is resolved while that reply is its last one (one-emoji reactions aside), so a later reply reopens it; Reopen removes the marker. Resolved threads are hidden in the review pane until Show resolved. Delete thread removes the comments and keeps the text. |
 | Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |
 | Alignment (Folio) | a paragraph, then `{align=center}` on the next line; a heading: `## Title {align=right}` | left, center, right, justify. |
 
@@ -85,6 +87,7 @@ Pictures, video, audio, PDFs, fonts and attachments live in a hidden `.asset` fo
 - **AI edits.** When an AI assistant's edit drops the last reference to a file, Folio asks the same question. Removal re-checks that no page uses the file at that moment. MCP tools `find_unused_assets` and `find_missing_assets` list them; none of them removes anything.
 - **Asset trash.** `.asset/.trash/<time>~<name>`, purged after 30 days. A reference to a file that is gone (Undo after removing it, restoring an old version) brings it back from there automatically.
 - **Moving a page** to another folder copies the files it uses into the new folder's `.asset` and rewrites its references.
+- **Duplicating a page** (Duplicate in the sidebar or ••• menu) writes `<name> copy.md` next to it (the word follows the interface language; then `copy 2`, `copy 3`…). Every file the page uses gets a new file of its own in the copy's `.asset` (`<hash>-<name>-2.<ext>` when the plain name is taken), so the two pages share no files; only those references change, `[[links]]` stay as written. A folder is duplicated with all its pages and sub-folders by the same rules; other files in it are not copied.
 - **Old workspaces.** `assets/` references keep working. *Files: clean up unused files…* lists unused and missing files and moves `assets/` into `.asset` (a version of every changed page is kept first; the old files go to the asset trash).
 
 ### Paste, import and export
