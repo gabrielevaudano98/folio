@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-27T08:09:13Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-27T08:23:54Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: Excel check passed on Windows (Folio-Compat.xlsx)
+- Last checkpoint: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
 
 ## Resume in a new session
 
@@ -72,7 +72,8 @@ kept per reload); live sync and presence (contracts ready, §5 of docs/sheets/RE
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 7941519 wip: Excel check passed on Windows (Folio-Compat.xlsx)
+- 6aaf0dc wip: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
+- 7a36a37 wip: Excel check passed on Windows (Folio-Compat.xlsx)
 - 988613e wip: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green
 - 0242bf3 wip: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open
 - a5e8fce wip: components: Cancel honoured while checking/unpacking (verified files kept), engine errors name the right Settings section and are translated; real-download e2e test (opt-in)

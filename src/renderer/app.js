@@ -77,7 +77,9 @@ function surfaceFor(type) {
 function surfaceCtx(type) {
   return {
     icons, keyLabel, toast, prompt, confirm: confirmSheet, showMenu,
-    onChange: (text) => onEditorChange(text, false, 'surface'),
+    // a surface that saves later (a sheet saves after a pause, or in slices) names the document it saved: when that is
+    // no longer the active tab, the text goes to its own tab, never into the one now shown
+    onChange: (text, path) => (path && path !== S.active ? backgroundChange(path, text) : onEditorChange(text, false, 'surface')),
     onStatus: (s) => { S.surfaceStatus = s; renderStatus(); },
     resolveImage: resolveImg,
     dataUrl: (src) => folio.dataUrl(src, S.active),
@@ -150,7 +152,9 @@ async function boot() {
     keyLabel,
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
-    onChange: (md) => onEditorChange(md, false, 'rich'),
+    // the page editor reports a change after a short pause: it names the page it holds (richPath), so a change that
+    // lands after the tab changed goes to that page, never into the document now shown
+    onChange: (md) => (richPath && richPath !== S.active ? backgroundChange(richPath, md) : onEditorChange(md, false, 'rich')),
     resolveImage: resolveImg,
     onRemoteBlocked: (n) => { remoteBlockedCount = n; renderRemoteNotice(); },
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
@@ -385,7 +389,7 @@ function setView(v, { persist = true } = {}) {
     return;
   }
   if (t && rich && editor) {
-    if (v === 'edit' && prev !== 'edit') rich.setMarkdown(t.text);
+    if (v === 'edit' && prev !== 'edit') richShow().setMarkdown(t.text);
     if (v !== 'edit' && prev === 'edit') editor.applyRemote(t.text);
   }
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
@@ -458,6 +462,12 @@ async function openFile(p, { line, background = false } = {}) {
 }
 function activate(p, { line } = {}) {
   const prev = activeTab();
+  if (prev && prev.path !== p) {
+    flushSurface();
+    // the tab being left is written now: autosave waits for a pause and then saves the active tab, so edits made just
+    // before switching would otherwise stay in memory until the tab is shown again or Folio closes
+    if (prev.text !== prev.saved) saveTab(prev);
+  }
   if (prev) {
     prev.scroll = editor.view.scrollDOM.scrollTop;
     prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
@@ -478,7 +488,7 @@ function activate(p, { line } = {}) {
   // a 3.6 MB workbook there cost ~1.4 s of the window's time; setView hands the text over when split or code is shown
   if (type !== 'md' && v === 'visual') { if (editor.view.state.doc.length) editor.setDoc(''); t.cm = null; }
   else if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
-  if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
+  if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) richShow().restore(t.rich); else richShow().setMarkdown(t.text); } }
   else {
     const s = surfaceFor(type);
     if (s) { s.setText(t.text); s.setMode?.(v); }
@@ -502,6 +512,7 @@ function renderTabs() {
 }
 async function closeTab(p = S.active) {
   const t = tabOf(p); if (!t) return;
+  if (p === S.active) flushSurface();
   while (t.text !== t.saved) if (!(await saveTab(t))) return; // typing during the write saves again; a failed write keeps the tab open with its text (the toast offers Retry)
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
@@ -518,6 +529,20 @@ function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 const autosave = debounce(() => saveActive(), 650);
 const surfaceSoon = debounce((text) => curSurface()?.setText(text), 250);
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
+let richPath = null; // the page the page editor holds
+/** the page editor, about to be given the active tab's page */
+function richShow() { richPath = S.active; return rich; }
+/** a change a surface reports for a tab that is not the active one (see surfaceCtx onChange) */
+function backgroundChange(path, text) {
+  const t = tabOf(path); if (!t || t.dead || text === t.text) return;
+  t.text = text; renderTabsDirty();
+  saveTab(t);
+}
+/** a surface finishes what it has pending for the shown document (a sheet's delayed save) before the tab changes */
+function flushSurface() {
+  try { curSurface()?.flush?.(); } catch (e) { console.error('[surface] flush', e); }
+  try { if (curType() === 'md' && isRich()) rich.flush?.(); } catch (e) { console.error('[rich] flush', e); }
+}
 function onEditorChange(text, isRemote, from = 'source') {
   const t = activeTab(); if (!t) return;
   historySoon();
@@ -537,7 +562,7 @@ function setActiveText(text) {
   const t = activeTab(); if (!t) return;
   t.text = text;
   editor.applyRemote(text);
-  if (curType() === 'md') { if (isRich()) rich.setMarkdown(text, { keepHistory: true }); }
+  if (curType() === 'md') { if (isRich()) richShow().setMarkdown(text, { keepHistory: true }); }
   else curSurface()?.setText(text);
 }
 function renderTabsDirty() {
@@ -2413,7 +2438,7 @@ function bindChrome() {
       lines.splice(at, 0, ...(b.where === 'above' ? [intoPage(body).trimEnd(), ''] : ['', intoPage(body).trimEnd()]));
       text = lines.join('\n');
       if (fm) { const cur = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)?.[0] || ''; text = mergeProps(cur, fm) + text.slice(cur.length); }
-      editor.applyRemote(text); tab.text = text; if (isRich()) rich.setMarkdown(text); renderPreview(); autosave(); return;
+      editor.applyRemote(text); tab.text = text; if (isRich()) richShow().setMarkdown(text); renderPreview(); autosave(); return;
     }
     const copy = e.target.closest('.copy-code');
     if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = tr('app.copied'); setTimeout(() => (copy.textContent = tr('app.copy')), 1400); return; }

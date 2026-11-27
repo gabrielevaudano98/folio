@@ -62,6 +62,7 @@ export function mountSheet(host, ctx) {
   let text = null;          // the text last loaded or written
   let loaded = null;        // what toUniver() returned for it
   let unitId = null;
+  let docPath = null;       // the document this workbook was loaded for
   let loading = false;      // mutations while loading are not edits
   let sheetMeta = {};       // Folio's own meta per sheet id: charts, print, slicers, protection…
   let workbookMeta = {};    // Folio's own workbook settings: scenarios, print, source, loads…
@@ -214,6 +215,9 @@ export function mountSheet(host, ctx) {
     loading = true;
     try {
       const prevSheet = ws()?.getSheetName();
+      // what the previous workbook still had to save goes to its own document first (writeText names it)
+      if (unitId && (pending || sliced)) { try { save(true); } catch (e) { console.error('[sheets] save before load', e); } }
+      clearTimeout(saveTimer); pending = false; if (sliced) { sliced.cancelled = true; sliced = null; }
       if (unitId) { charts.clear(); floats.clear(); api.disposeUnit(unitId); unitId = null; }
       loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook', share: true });
       dirty = new Set(['*']); saveCache.clear();
@@ -224,7 +228,7 @@ export function mountSheet(host, ctx) {
       workbookMeta = structuredClone(Object.fromEntries(Object.entries(loaded.doc.workbook || {}).filter(([k]) => k !== 'names' && k !== 'univer')));
       const unit = U.open(loaded.data);
       unitId = unit.getUnitId();
-      text = t;
+      text = t; docPath = ctx.getPath?.() || null;
       if (prevSheet) { const s = wb().getSheetByName(prevSheet); if (s) s.activate(); }
       oplog.reset(loaded.data);
       // drawings need the sheet's render unit, which Univer creates on the next frames
@@ -234,7 +238,9 @@ export function mountSheet(host, ctx) {
       setTimeout(syncRibbon, 0);
     } finally { setTimeout(() => { loading = false; }, 0); }
   }
-  function writeText(out) { if (out === text) return; text = out; ctx.onChange(out); }
+  // every save names the document it belongs to (docPath, set at load): a save that lands after the tab changed goes
+  // to that document, never to the one now shown
+  function writeText(out) { if (out === text) return; text = out; ctx.onChange(out, docPath); }
   let saveTimer = 0, saveMs = 0;
   // sheets changed since the last save (by their mutations' subUnitId; '*' when a change is not tied to one sheet);
   // the others reuse the block of the last save (fromUniver's cache), so a big workbook saves only what changed
@@ -243,9 +249,10 @@ export function mountSheet(host, ctx) {
   // give up (it reads Univer's live model), and saveNow() takes over from one in progress
   let changes = 0, sliced = null;
   const SLICE_ABOVE_MS = 40;
+  let pending = false; // a save is scheduled and has not started
   function save(now = false) {
-    clearTimeout(saveTimer);
-    const begin = () => { charts.sync(); floats.sync(); const changed = dirty; dirty = new Set(); return changed; };
+    clearTimeout(saveTimer); pending = now !== true;
+    const begin = () => { pending = false; charts.sync(); floats.sync(); const changed = dirty; dirty = new Set(); return changed; };
     const run = () => {
       if (!loaded || !unitId) return;
       if (sliced) { sliced.cancelled = true; for (const id of sliced.changed) dirty.add(id); sliced = null; }
@@ -361,6 +368,8 @@ export function mountSheet(host, ctx) {
   host.__surface = surface; // tests and the developer console reach the API through the surface element
   return {
     setText(t) { if (t === text) return; load(t); },
+    /** write what is pending now (the app calls this before the tab changes) */
+    flush() { if (unitId && (pending || sliced)) surface.saveNow(); },
     setMode() { /* one view */ },
     focus() { surface.focusGrid(); },
     /** "Costs!B7" from a reference or a search result */
