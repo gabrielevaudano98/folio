@@ -148,6 +148,8 @@ async function boot() {
 
   rich = createRich($('#pane-rich'), {
     keyLabel,
+    onCopyCode: (text) => { folio.copy(text); toast(tr('app.copied')); },
+    onUnlock: () => setPageLock(S.active, false),
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
     onChange: (md) => onEditorChange(md, false, 'rich'),
@@ -488,6 +490,7 @@ function activate(p, { line } = {}) {
     if (s) { s.setText(t.text); s.setMode?.(v); }
     else { loadSurface(type).then(() => { if (S.active === p) activate(p, { line }); }, (e) => toast(e.message, { kind: 'error' })); return; }
   }
+  applyLock();
   requestAnimationFrame(() => { editor.view.scrollDOM.scrollTop = t.scroll || 0; if (line) editor.scrollToLine(line, { select: true }); });
   const ai = S.aiEdits.get(p);
   if (ai && Date.now() - ai.at < 10 * 60e3) { showAiBanner(p); highlightAi(p, { fresh: false }); } else hideAiBanner();
@@ -1386,7 +1389,35 @@ async function movePath(from, to, isDir) {
     updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
+/* X3: locked pages live in the app settings (workspace-relative path), never in the .md */
+const isLocked = (p) => !!p && !!S.settings.lockedPages?.[p];
+function applyLock() {
+  const on = curType() === 'md' && isLocked(S.active);
+  if (rich) rich.setLocked(on);
+  editor?.setReadOnly(on);
+}
+function setPageLock(p, on) {
+  if (!p) return;
+  const lp = { ...(S.settings.lockedPages || {}) };
+  if (on) lp[p] = true; else delete lp[p];
+  S.settings.lockedPages = lp; saveSetting({ lockedPages: lp });
+  if (p === S.active) applyLock();
+  toast(tr(on ? 'app.page-locked' : 'app.page-unlocked'));
+}
+/** B8: open or close every toggle of the page in one undo step; with no argument it opens them all unless all are open */
+function toggleAllToggles(open) {
+  if (curType() !== 'md' || !isRich() || app.dataset.modeView !== 'edit') return toast(tr('app.open-a-page-in-the-write-view-first'));
+  if (isLocked(S.active)) return toast(tr('app.this-page-is-locked'));
+  const { open: o, closed: c } = rich.toggleCount();
+  if (o + c === 0) return toast(tr('app.no-toggles-on-this-page'));
+  rich.setToggles(open ?? c > 0);
+}
 function retargetTabs(from, to) {
+  const lp = S.settings.lockedPages;
+  if (lp && Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
+    const next = {}; for (const [k, v] of Object.entries(lp)) next[k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k] = v;
+    S.settings.lockedPages = next; saveSetting({ lockedPages: next });
+  }
   nav.list = nav.list.map((x) => (x === from || x.startsWith(from + '/') ? to + x.slice(from.length) : x));
   for (const t of S.tabs) {
     if (t.path === from || t.path.startsWith(from + '/')) {
@@ -1826,6 +1857,10 @@ const COMMANDS = [
   { id: 'review-pane', title: 'Show or hide comments and suggestions', run: () => rich.run('reviewPane') },
   { id: 'accept-all', title: 'Accept all suggestions', run: () => rich.run('acceptAll') },
   { id: 'reject-all', title: 'Reject all suggestions', run: () => rich.run('rejectAll') },
+  { id: 'lock-page', title: 'Lock or unlock this page', run: () => (curType() === 'md' && S.active ? setPageLock(S.active, !isLocked(S.active)) : toast(tr('app.open-a-page-first'))) },
+  { id: 'toggle-all-toggles', title: 'Expand or collapse all toggles', key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() },
+  { id: 'expand-toggles', title: 'Expand all toggles', run: () => toggleAllToggles(true) },
+  { id: 'collapse-toggles', title: 'Collapse all toggles', run: () => toggleAllToggles(false) },
   { id: 'insert-template', title: 'Insert template…', key: 'Mod+Alt+T', run: () => insertTemplateCmd() },
   { id: 'template-button', title: 'Insert template button', run: () => insertTemplateButton() },
   { id: 'daily-note', title: 'Open today’s daily note', key: 'Mod+Alt+D', run: () => (S.workspace ? openDailyNote(todayKey()) : chooseFolder()) },
@@ -2351,7 +2386,8 @@ function bindChrome() {
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
     ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
-      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }, '-'] : []),
+      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }] : []),
+    ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
     { label: tr('app.import-word-or-html'), run: importDocument }, '-',
@@ -2384,6 +2420,7 @@ function bindChrome() {
       { label: tr('app.move-to'), run: () => moveToPicker(p, false) },
       { label: tr('app.copy-link'), run: () => copyPageLink(p) }, '-',
       { label: tr('app.rename'), run: () => renamePath(p, false) },
+      ...(docType(p) === 'md' ? [{ label: tr(isLocked(p) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(p, !isLocked(p)) }] : []),
       { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) },
       { label: tr('app.copy-relative-path'), run: () => folio.copy(p) }, '-',
       { label: tr('app.move-to-trash'), danger: true, run: () => trashPath(p, false) }], at); }
@@ -2469,6 +2506,7 @@ function bindChrome() {
     const copy = e.target.closest('.copy-code');
     if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = tr('app.copied'); setTimeout(() => (copy.textContent = tr('app.copy')), 1400); return; }
     const box = e.target.closest('.task-list-item input');
+    if (box && isLocked(S.active)) { e.preventDefault(); return; }
     if (box) {
       const li = box.closest('[data-line]'); if (!li) return;
       const n = Number(li.dataset.line); const lines = activeTab().text.split('\n');
@@ -2556,6 +2594,7 @@ function bindChrome() {
     const m = e.metaKey || e.ctrlKey;
     if (m && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openPalette('commands'); }
     if (m && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); insertRef('link'); }
+    if (m && e.altKey && e.shiftKey && e.code === 'KeyT') { e.preventDefault(); toggleAllToggles(); } // B8: Notion's Ctrl+Alt+T is Insert template here
     if (m && e.key === 'Enter' && curType() === 'slides') { e.preventDefault(); curSurface()?.present(); }
     if (e.key === 'Escape' && app.classList.contains('focus') && $('#palette').hidden) toggleFocus();
   });

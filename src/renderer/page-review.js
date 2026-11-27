@@ -254,11 +254,11 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     },
     mode(m) {
       if (m === 'view') { editor.storage.suggestMode.on = false; editor.setEditable(false); }
-      else { editor.setEditable(true); editor.storage.suggestMode.on = m === 'suggest'; }
+      else { editor.setEditable(!editor.storage.pageLock?.on); editor.storage.suggestMode.on = m === 'suggest'; }
       host.classList.toggle('is-suggesting', m === 'suggest'); host.classList.toggle('is-viewing', m === 'view');
       render(); onToggle?.(visible()); return m;
     },
-    suggest(on = !editor.storage.suggestMode.on) { if (!editor.isEditable) editor.setEditable(true); host.classList.remove('is-viewing'); editor.storage.suggestMode.on = on; host.classList.toggle('is-suggesting', on); render(); onToggle?.(visible()); return on; },
+    suggest(on = !editor.storage.suggestMode.on) { if (editor.storage.pageLock?.on) return false; if (!editor.isEditable) editor.setEditable(true); host.classList.remove('is-viewing'); editor.storage.suggestMode.on = on; host.classList.toggle('is-suggesting', on); render(); onToggle?.(visible()); return on; },
     /* the next or previous change or comment after the cursor */
     step(dir) {
       const list = items.filter((x) => x.kind !== 'hl'); if (!list.length) return false;

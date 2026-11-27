@@ -246,7 +246,7 @@ function continueList(view) {
 }
 
 export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImage, onSave, resolveImage, live = false }) {
-  const wrapComp = new Compartment(), spellComp = new Compartment(), liveComp = new Compartment();
+  const wrapComp = new Compartment(), spellComp = new Compartment(), liveComp = new Compartment(), lockComp = new Compartment();
   const extensions = [
     history(), drawSelection(), dropCursor(), indentOnInput(), bracketMatching(), highlightSelectionMatches(), highlightActiveLine(),
     EditorView.lineWrapping,
@@ -262,6 +262,7 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
       { key: 'Mod-s', run: () => { onSave?.(); return true; } },
       ...searchKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap,
     ]),
+    lockComp.of([]),
     spellComp.of(EditorView.contentAttributes.of({ spellcheck: 'true', autocorrect: 'on', autocapitalize: 'sentences' })),
     wrapComp.of([]),
     liveComp.of(live ? livePlugin(resolveImage) : []),
@@ -330,6 +331,8 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
     insert(text) { const r = view.state.selection.main; view.dispatch({ changes: { from: r.from, to: r.to, insert: text }, selection: { anchor: r.from + text.length } }); view.focus(); },
     focus() { view.focus(); },
     setLive(on) { view.dispatch({ effects: liveComp.reconfigure(on ? livePlugin(resolveImage) : []) }); },
+    /** a locked page (X3) cannot be typed into in the source view either */
+    setReadOnly(on) { view.dispatch({ effects: lockComp.reconfigure([EditorState.readOnly.of(!!on), EditorView.editable.of(!on)]) }); },
     setSpellcheck(on) { view.dispatch({ effects: spellComp.reconfigure(EditorView.contentAttributes.of({ spellcheck: on ? 'true' : 'false' })) }); },
   };
 }

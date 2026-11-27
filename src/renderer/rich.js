@@ -80,7 +80,7 @@ const CodeHighlight = Extension.create({
   },
 });
 const FolioCodeBlock = CodeBlock.extend({
-  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null }; },
+  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null, onCopy: null }; },
   /* Mod+Alt+C is the Format painter; TipTap's default would also toggle a code block. Code stays on the / menu, the ribbon and ``` */
   addKeyboardShortcuts() { const k = { ...this.parent?.() }; delete k['Mod-Alt-c']; return k; },
   addNodeView() {
@@ -90,7 +90,7 @@ const FolioCodeBlock = CodeBlock.extend({
       const preview = document.createElement('div'); preview.className = 'rich-code-preview'; preview.contentEditable = 'false';
       const bar = document.createElement('div'); bar.className = 'rich-code-bar'; bar.contentEditable = 'false';
       dom.append(bar, preview, pre);
-      let lang = node.attrs.language || '', timer, editing = false;
+      let lang = node.attrs.language || '', timer, editing = false, wrapped = false;
       const opts = this.options;
       const draw = (text) => {
         clearTimeout(timer);
@@ -110,7 +110,9 @@ const FolioCodeBlock = CodeBlock.extend({
         dom.classList.toggle('is-visual', visual); dom.classList.toggle('is-editing', !visual || editing);
         const known = LANGS.some(([v]) => v === lang);
         const select = `<select class="rich-code-lang" aria-label="${tr('rich.code-language')}">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
-        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select;
+        const tools = `<span class="rich-code-tools"><button type="button" class="rich-code-tool" data-tool="copy" aria-label="${tr('rich.copy-code')}">${tr('rich.copy-code')}</button><button type="button" class="rich-code-tool" data-tool="wrap" aria-pressed="${wrapped}" aria-label="${tr('rich.wrap-code')}">${tr('rich.wrap-code')}</button></span>`;
+        dom.classList.toggle('is-wrapped', wrapped);
+        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select + tools;
         if (visual) draw(n.textContent); else preview.innerHTML = '';
       };
       bar.addEventListener('change', (e) => {
@@ -119,6 +121,12 @@ const FolioCodeBlock = CodeBlock.extend({
         editor.commands.focus();
       });
       bar.addEventListener('mousedown', (e) => {
+        const tool = e.target.closest('.rich-code-tool');
+        if (tool) { // Copy puts the code on the clipboard; Wrap only changes how it is drawn (never saved)
+          e.preventDefault();
+          if (tool.dataset.tool === 'copy') opts.onCopy?.(node.textContent); else { wrapped = !wrapped; dom.classList.toggle('is-wrapped', wrapped); tool.setAttribute('aria-pressed', String(wrapped)); }
+          return;
+        }
         if (!e.target.closest('button')) return;
         e.preventDefault(); editing = !editing; sync(node);
         if (editing && typeof getPos === 'function') editor.chain().focus().setTextSelection(getPos() + 1).run();
@@ -835,9 +843,10 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null, onCopyCode = null, onUnlock = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
+    <div class="rich-lock" hidden><span class="rich-lock-badge">${icons.lock}<span>${tr('rich.locked')}</span></span><button type="button" class="btn btn-quiet rich-unlock">${tr('rich.unlock')}</button></div>
     <div class="rich-scroll"><div class="rich-page"></div></div>
     <div class="bubble" role="toolbar" aria-label="${tr('rich.selection')}">
       <label class="visually-hidden" for="rb-turn">${tr('rich.turn-into')}</label>
@@ -873,7 +882,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     element: page,
     extensions: [
       ...pageExtensions({
-        codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
+        codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), onCopy: (t) => onCopyCode?.(t), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
         image: FolioImage.configure({ resolve: resolveImage, blocked, inline: false, allowBase64: true, openFile: (src) => openMedia?.(src), openUrl: (u) => openMedia?.(u) }),
         raw: RawBlock,
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
@@ -909,8 +918,11 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     emitTimer = setTimeout(() => onChange?.(api.getMarkdown()), 220);
   }
 
+  host.querySelector('.rich-unlock').addEventListener('click', () => onUnlock?.());
+  const LOCK_OK = /^(find|reviewPane|prevChange|nextChange|app:(focus|outline|help|link-health|daily-note))$/;
   const run = (id, btn) => {
     if (!id) return false;
+    if (editor.storage.pageLock?.on && !LOCK_OK.test(id)) return false; // a locked page changes through no command
     if (id.startsWith('ins:')) return api.insert(id.slice(4));
     if (id.startsWith('app:')) { const r = onCommand?.(id.slice(4)); setTimeout(syncToolbar, 50); return r; }
     if (id.startsWith('style:')) return setStyle(id.slice(6));
@@ -1272,6 +1284,22 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,
     /** redraw chips after a setting that changes how they read (date format, language) */
+    /** X3: a locked page opens read-only (state kept by the app, never in the file) and shows a Locked badge with Unlock */
+    setLocked(on) {
+      editor.storage.pageLock = { on: !!on };
+      host.classList.toggle('is-locked', !!on); host.querySelector('.rich-lock').hidden = !on;
+      editor.setEditable(!on && !host.classList.contains('is-viewing'));
+    },
+    /** B8: open or close every toggle in one transaction (one undo step); returns how many changed */
+    setToggles(open) {
+      if (editor.storage.pageLock?.on) return 0;
+      const t2 = editor.state.tr; let n = 0;
+      editor.state.doc.descendants((node, pos) => { if (node.type.name === 'details' && !!node.attrs.open !== open) { t2.setNodeMarkup(pos, undefined, { ...node.attrs, open }); n++; } });
+      if (n) editor.view.dispatch(t2);
+      return n;
+    },
+    /** how many toggles are open and closed: the toggle-all command opens them all unless they all are */
+    toggleCount() { let open = 0, closed = 0; editor.state.doc.descendants((node) => { if (node.type.name === 'details') (node.attrs.open ? open++ : closed++); }); return { open, closed }; },
     refreshDecorations() { editor.view.dispatch(editor.state.tr.setMeta('folioRedecorate', true).setMeta('addToHistory', false)); },
     /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
     setMarkdown(md, { keepHistory = false } = {}) {
@@ -1307,7 +1335,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     },
     focus(where) { editor.commands.focus(where); },
     run,
-    insert(id) { const item = INSERTS.find((i) => i.id === id); return item ? runInsert(editor, { item }, insertCtx()) : false; },
+    insert(id) { if (editor.storage.pageLock?.on) return false; const item = INSERTS.find((i) => i.id === id); return item ? runInsert(editor, { item }, insertCtx()) : false; },
     headings() { const out = []; editor.state.doc.descendants((n, pos) => { if (n.type.name === 'heading') out.push(pos); }); return out; },
     scrollToHeading(i) {
       const pos = api.headings()[i]; if (pos == null) return;
