@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('folio', {
   trash: (p) => call('fs:trash', p),
   untrash: (t) => call('fs:untrash', t),
   search: (q, o) => call('fs:search', q, o),
+  reminders: { list: () => call('reminders:list'), set: (id, state) => call('reminders:set', id, state), onChanged: on('reminders:changed'), onFired: on('reminders:fired'), onOpen: on('reminders:open') },
   backlinks: (p) => call('fs:backlinks', p),
   userName: () => call('app:user-name'),
   unlinked: (p) => call('fs:unlinked', p),

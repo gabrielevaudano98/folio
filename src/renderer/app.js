@@ -12,6 +12,7 @@ import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
 import { openDatePicker } from './page-date-ui.js';
+import { whenLabel } from './page-when.js';
 import { DATE_STYLES, formatDay, datePrefs } from './page-dates.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
@@ -177,7 +178,7 @@ async function boot() {
     onPropType: (k, t) => folio.setPropType(k, t).then(setTypeOverrides).catch(() => {}),
     onStatus: (el, cur, apply) => showMenu(el, statusOptions(activeTab()?.text).map((v) => ({ label: (v.toLowerCase() === cur.toLowerCase() ? '✓ ' : '') + v, run: () => apply(v) }))),
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
-    onDate: (el, day, apply, openNote) => openDatePicker(el, day, { onPick: apply, onOpenNote: openNote }),
+    onDate: (el, when, apply, openNote) => openDatePicker(el, when, { onPick: apply, onOpenNote: openNote }),
     dateStyle: () => datePrefs.style,
     preview: previewHtml,
     saveImage: async (src) => {
@@ -422,7 +423,7 @@ async function refreshTree() {
   try {
     S.tree = await folio.tree();
     S.files = flatten(S.tree);
-    renderTree(); tagsStale();
+    renderTree(); tagsStale(); remindersSoon();
   } catch (e) {
     $('#tree').innerHTML = `<div class="side-empty">${esc(tr('app.could-not-read-folder', { message: e.message }))}<br><button class="btn" type="button" data-act="choose">${tr('app.choose-another-folder')}</button></div>`;
   }
@@ -792,6 +793,31 @@ async function renderTags() {
     return `<button type="button" class="tag-item" data-tag="${esc(t.tag)}" style="--depth:${depth}"${active === t.tag.toLowerCase() ? ' aria-current="true"' : ''}><span class="tag-name">#${esc(depth ? name : t.tag)}</span><span class="tag-count">${t.count}</span></button>`; }).join('');
 }
 const tagsSoon = debounce(() => renderTags(), 400);
+/* the Reminders section of the sidebar (X13): every @remind of the workspace, overdue first, with Done and Dismiss.
+   The list comes from the main process, which also fires them; Done and Dismiss are app state, never written in the page. */
+const remindersOpen = () => S.settings.showReminders !== false;
+let reminderList = [], showDoneReminders = false;
+const reminderWhen = (r) => whenLabel(r, (d) => formatDay(d, { style: datePrefs.style, lang: locale() }));
+async function renderReminders() {
+  const sec = $('#section-reminders'), box = $('#reminders-list'); if (!sec || !box) return;
+  try { reminderList = S.workspace && folio.reminders ? await folio.reminders.list() : []; } catch { reminderList = []; }
+  sec.hidden = !reminderList.length;
+  const open = remindersOpen(); $('#reminders-head').setAttribute('aria-expanded', String(open)); box.hidden = !open;
+  const overdue = reminderList.filter((r) => r.state === 'overdue').length; const badge = $('#reminders-badge');
+  badge.hidden = !overdue; badge.textContent = overdue ? String(overdue) : ''; badge.setAttribute('aria-label', tr('app.reminders-overdue', { n: overdue }));
+  const shown = reminderList.filter((r) => showDoneReminders || r.state !== 'done'); const done = reminderList.length - reminderList.filter((r) => r.state !== 'done').length;
+  box.innerHTML = shown.map((r) => `<div class="rem-item is-${r.state}" role="listitem" data-id="${esc(r.id)}">
+      <button type="button" class="rem-open" data-open="${esc(r.rel)}" data-line="${r.line}" title="${esc(r.rel)}"><span class="rem-title">${esc(r.title || stem(r.rel))}</span><span class="rem-meta"><span class="rem-when">${esc(reminderWhen(r))}</span>${r.state === 'overdue' ? ` · <span class="rem-late">${tr('app.reminder-overdue')}</span>` : ''} · ${esc(stem(r.rel))}</span></button>
+      <button type="button" class="icon-btn rem-act" data-act="${r.state === 'done' ? 'undo' : 'done'}" aria-label="${r.state === 'done' ? tr('app.reminder-not-done') : tr('app.reminder-done')}" data-tip="${r.state === 'done' ? tr('app.reminder-not-done') : tr('app.reminder-done')}" aria-pressed="${r.state === 'done'}">${icons.check}</button>
+      <button type="button" class="icon-btn rem-act" data-act="dismiss" aria-label="${tr('app.reminder-dismiss')}" data-tip="${tr('app.reminder-dismiss')}">${icons.close}</button></div>`).join('')
+    + (done ? `<button type="button" class="rem-more" data-act="toggle-done">${showDoneReminders ? tr('app.reminders-hide-done') : tr('app.reminders-show-done', { n: done })}</button>` : '');
+}
+const remindersSoon = debounce(() => renderReminders(), 150);
+function onReminderFired(r) {
+  const what = r.title || stem(r.rel);
+  toast(tr('app.reminder-toast', { what, when: reminderWhen(r) }), { action: [tr('app.open'), () => openFile(r.rel, { line: r.line })] });
+  remindersSoon();
+}
 function showTag(tag) {
   const si = $('#sidebar-search'); si.value = '#' + tag.replace(/^#/, '');
   if (app.dataset.sidebar !== 'open') toggleSidebar?.();
@@ -2379,6 +2405,16 @@ function bindChrome() {
   document.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); navGo(e.button === 3 ? -1 : 1); } });
   $('#btn-outline').onclick = toggleOutline;
   $('#tags-head').addEventListener('click', () => { saveSetting({ showTags: !tagsOpen() }); renderTags(); });
+  $('#reminders-head').addEventListener('click', () => { saveSetting({ showReminders: !remindersOpen() }); renderReminders(); });
+  $('#reminders-list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.act === 'toggle-done') { showDoneReminders = !showDoneReminders; return renderReminders(); }
+    if (b.dataset.open) return openFile(b.dataset.open, { line: Number(b.dataset.line) });
+    const id = b.closest('[data-id]')?.dataset.id; if (!id) return;
+    const state = { done: 'done', undo: null, dismiss: 'dismissed' }[b.dataset.act];
+    try { await folio.reminders.set(id, state); } catch (er) { return toast(er.message, { kind: 'error' }); }
+    if (state === 'dismissed') toast(tr('app.reminder-dismissed'), { action: [tr('app.undo'), () => folio.reminders.set(id, null)] });
+  });
   $('#tags-list').addEventListener('click', (e) => { const b = e.target.closest('[data-tag]'); if (b) showTag(b.dataset.tag); });
   $('#tags-list').addEventListener('contextmenu', (e) => {
     const b = e.target.closest('[data-tag]'); if (!b) return; e.preventDefault(); const tag = b.dataset.tag;
@@ -2622,6 +2658,7 @@ function dragResize(handle, onMove) {
 
 function bindIpc() {
   folio.onTreeChanged(() => { refreshTree(); backlinksSoon(); });
+  if (folio.reminders) { folio.reminders.onChanged(remindersSoon); folio.reminders.onFired(onReminderFired); folio.reminders.onOpen((r) => openFile(r.rel, { line: r.line })); setInterval(remindersSoon, 60000); /* overdue as time passes */ }
   folio.onFileChanged(({ path: p, content }) => {
     tagsStale();
     if (p !== S.active) backlinksSoon();

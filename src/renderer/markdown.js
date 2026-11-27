@@ -1,7 +1,8 @@
 // Folio — Markdown to safe HTML, with source-line anchors for scroll sync and AI-edit marks.
 import MarkdownIt from 'markdown-it';
 import { FIELD, statusClass, DAY } from './page-mentions.js';
-import { formatDay, fullDay, datePrefs } from './page-dates.js';
+import { formatDay, fullDay, datePrefs, dayTense } from './page-dates.js';
+import { tailLength, parseMention, whenLabel, startOf } from './page-when.js';
 import { parseButton } from './page-templates.js';
 import { parseComment } from './page-critic.js';
 import { refsPlugin } from './refs-syntax.js';
@@ -187,9 +188,12 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
     const t = state.push('html_inline', '', 0);
     const target = m[1].trim();
     const day = DAY.test(target) && !m[2];
-    t.content = `<a class="wikilink${day ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim())}</a>`;
+    const tail = day ? tailLength(src.slice(m[0].length)) : 0; const w = tail ? parseMention(src.slice(0, m[0].length + tail)) : null; // [[2026-12-01]]{09:00 remind}
+    const due = w?.remind != null && (startOf(w) <= new Date() || dayTense(w.day) === 'today');
+    const label = w ? whenLabel(w, (d) => formatDay(d, datePrefs)) : day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim();
+    t.content = `<a class="wikilink${day ? ' wikilink-date' : ''}${w?.remind != null ? ' is-remind' : ''}${due ? ' is-due' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(label)}</a>`;
   }
-  state.pos += m[0].length;
+  state.pos += m[0].length + (DAY.test(m[1].trim()) && !m[2] ? tailLength(src.slice(m[0].length)) : 0);
   return true;
 });
 

@@ -61,6 +61,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Wiki link | `[[Note]]`, `[[Note#Heading|label]]` | |
 | Block id, link to a block | `A paragraph. ^abc123`, then `[[Note#^abc123]]` | Obsidian syntax. For a table, quote or code block the id is a line `^abc123` after it. **Copy link to block** adds one. |
 | Link to a day | `[[2026-11-21]]` | The daily note, `Journal/2026-11-21.md`, made when you first open it. `@tomorrow`, `@next friday`, `@domani` and their first letters (`@tod`, `@ven`) write it. The file always keeps the ISO day; the page shows it as a date mention in the user's format (Settings → Date format: relative “Today”, “Friday”, “3 Dec”; full; short; D/M/Y; M/D/Y; ISO). A valid day link is never reported as broken; an impossible calendar date is. |
+| Date with time, end, reminder | `[[2026-12-01]]{09:00}`, `[[2026-12-03]]{→ 2026-12-05}`, `[[2026-12-01]]{09:00 → 10:30 remind 30m}`, `[[2026-12-01]]{remind 1d}` | The day link stays as it is (date only: `[[2026-12-01 09:00]]` is never written, it would be a missing page); a brace group follows `]]` with no space. Inside, in this order, separated by spaces: a start time `HH:MM` (24 h); `→` then an end day `YYYY-MM-DD`, an end time, or both (an end time needs a start time); `remind` (at the start) or `remind N` with `m`, `h`, `d` or `w` (minutes, hours, days, weeks before). An all-day date reminds from 9:00 on its day (`{remind 1d}` = 9:00 the day before). Folio writes `→`; `->` is read too. Braces that do not read exactly like this (`[[2026-12-07]]{see notes}`) are ordinary text. The page shows one chip: “@Tomorrow 9:00”, “@3 Dec → 5 Dec”, a bell when there is a reminder, red from the day it is due (unless the to-do is checked). Set from the date popover (Include time, End date, Remind) or typed: `@tomorrow 9am`, `@3 dec - 5 dec`, `@remind tomorrow 9am`, `@ricordami domani alle 9`. Other editors show the day link followed by the braces. |
 | Link to a person | `[[Ada Lovelace]]` | A note in a `People/` folder; shown as a person chip. |
 | Tag | `#project`, `#project/alpha` | Starts after a space, has a letter, may contain `-`, `_`, `/`. Also read from front matter `tags:`. Not in code. |
 | Status chip, inline field | `[status:: In progress]`, `[owner:: Ada]` | Dataview inline field. `status` is a coloured chip (Not started, In progress, Blocked, Done; other words are grey). Click the chip to change it. A page can offer its own words in the front matter: `folio:` then `  status: [Idea, Design, Shipped]` (or a `- Idea` list); the `@` picker offers the same words. |
@@ -400,3 +401,13 @@ transcription_speed: 0.21       # seconds of work per second of audio
 - Every transcript line has a number; every note cites the line it comes from. Folio keeps a point only when its quote is on that line, and keeps an owner or a date only when it is written on that line.
 - `You` is the microphone, `Others` is the computer's sound. Microphone lines that repeat what Others said at the same moment (echo without headphones) are left out.
 - Writing notes later never rewrites the person's edits: if the page changed, the notes are inserted above `## Transcript`.
+
+## Reminders
+
+A reminder is a date mention with `remind` in its brace group (see *Date with time, end, reminder* above). While Folio is open
+it fires once at its time: a system notification (click it to open the page at that line) and a toast with **Open**.
+Nothing is sent when Folio is closed; a reminder whose time passed meanwhile is listed as overdue, not announced.
+The **Reminders** section of the sidebar lists every reminder of the folder, soonest first, with **Done** and **Dismiss**.
+Done and Dismiss are kept in the app's settings file per folder, never in the page: the page keeps the reminder as written.
+A reminder is known by its own text and its place among identical ones on the page, so editing the words around it keeps
+its state, and changing its date, time or offset makes it a new reminder. Front matter dates have no reminder.
