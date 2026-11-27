@@ -103,7 +103,11 @@ const reminders = createReminders({
     try {
       if (!Notification.isSupported() || process.env.FOLIO_NO_OS_NOTIFY) return;
       const n = new Notification({ title: t('rem.notify-title'), body: r.title || path.basename(r.rel).replace(/\.[^.]+$/, ''), silent: false });
-      n.on('click', () => { if (!liveWin() || settings.workspace !== fromWorkspace) return; /* another workspace is open now: r.rel would point at a different note */ if (win.isMinimized()) win.restore(); win.show(); win.focus(); win.webContents.send('reminders:open', r); });
+      n.on('click', () => {
+        if (settings.workspace !== fromWorkspace) return; /* another workspace is open now: r.rel would point at a different note */
+        if (!liveWin()) { createWindow(); win.webContents.once('did-finish-load', () => { win.show(); win.focus(); win.webContents.send('reminders:open', r); }); return; }
+        if (win.isMinimized()) win.restore(); win.show(); win.focus(); win.webContents.send('reminders:open', r);
+      });
       n.show();
     } catch (e) { console.error('[folio] notification', e.message); }
   },
