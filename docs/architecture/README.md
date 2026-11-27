@@ -160,7 +160,7 @@ drafts notes, the code checks every quote, the note is updated, the engine exits
 - **Errors**: IPC handlers throw plain-language messages that the window shows as toasts; a crashed window is reloaded.
 - **Design system**: `src/renderer/tokens.css` and the rules in `AGENTS.md`.
 - **Accessibility**: ARIA roles on menus and switches, visible focus, reduced motion, no meaning by colour alone.
-- **Internationalisation**: every interface string goes through i18next; English is the source, Italian complete
+- **Internationalisation**: i18next is the source for translated interface strings; English is the source, Italian complete
   ([how-to](../how-to/add-ui-text.md)). The native menu uses the same catalogue (`tl()` in `main.js`).
 - **Testing**: round-trip tests for every format, MCP end to end, in-app tests that check the file on disk
   ([testing](../explanation/testing.md)).
