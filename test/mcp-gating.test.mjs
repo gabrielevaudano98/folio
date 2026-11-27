@@ -57,6 +57,8 @@ ok('locked pages are kept per workspace folder and refuse MCP writes to the page
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-locks-')); const f = path.join(d, 'settings.json');
   assert.deepEqual(readLockedPages(f), {});
   fs.writeFileSync(f, '{ not json'); assert.throws(() => readLockedPages(f));
+  for (const bad of ['{ "lockedPages": null }', '{ "lockedPages": [] }', '{ "lockedPages": { "/ws": null } }', '{ "lockedPages": { "/ws": { "a.md": "yes" } } }', '[]']) { fs.writeFileSync(f, bad); assert.throws(() => readLockedPages(f), bad); }
+  fs.writeFileSync(f, '{}'); assert.deepEqual(readLockedPages(f), {});
   fs.writeFileSync(f, JSON.stringify({ lockedPages: { '/ws': { 'a.md': true } } })); assert.deepEqual(readLockedPages(f), { '/ws': { 'a.md': true } });
   fs.rmSync(d, { recursive: true, force: true });
   ok('a missing settings.json means no locks; a corrupt one throws so the write is refused');
