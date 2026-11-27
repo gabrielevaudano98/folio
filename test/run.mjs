@@ -12,6 +12,7 @@ run('test/assets.test.mjs');
 run('test/duplicate.test.mjs');
 run('test/i18n.test.mjs');
 run('test/dates.test.mjs');
+run('test/search.test.mjs');
 run('test/git-log.test.mjs');
 run('test/security.test.mjs');
 run('scripts/docs-reference.mjs', '--check');
@@ -58,5 +59,6 @@ if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || proces
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/security-app.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/remote-images.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/page-actions-ui.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/search-ui.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/smoke.test.mjs');
 else console.log('\nui smoke skipped (no display; run under xvfb-run)');
