@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-26T22:45:12Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-27T08:09:13Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green
+- Last checkpoint: Excel check passed on Windows (Folio-Compat.xlsx)
 
 ## Resume in a new session
 
@@ -58,8 +58,9 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    and are translated (`engine-client.js`). Opt-in test/sheets-components-e2e.test.mjs (`FOLIO_COMPONENTS_READY` when
    Chromium cannot verify the proxy's certificate, as in the cloud sandbox).
 
-12. **Excel check** — files ready (`/tmp/xl/Compat.sheet.md` → `Folio-Compat.xlsx`), waiting for a connected folder on
-   the user's Windows PC to open them in Excel. Fixed from the file itself: `_xlfn.` prefixes both ways, tab colour,
+12. ~~**Excel check**~~ DONE: `Folio-Compat.xlsx` (formats, 12 conditional-formatting rules, validation, freeze, filter,
+   tab colours, hidden sheet, notes, names, XLOOKUP/SUMIFS/TEXT…) opened by the user in Excel on Windows: everything as
+   expected. Not yet checked in Excel: an .xlsm with VBA through Folio and back. Fixed from the file itself: `_xlfn.` prefixes both ways, tab colour,
    hidden sheets, zoom, gridlines, filter range, `fullCalcOnLoad`. LibreOffice recomputes the same values.
 
 13. ~~**Stability and speed**~~ DONE (see README §7 phase 4f and §8 "Large sheets"): opt-in test/sheets-stress.test.mjs,
@@ -71,7 +72,8 @@ kept per reload); live sync and presence (contracts ready, §5 of docs/sheets/RE
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 473c529 wip: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green
+- 7941519 wip: Excel check passed on Windows (Folio-Compat.xlsx)
+- 988613e wip: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green
 - 0242bf3 wip: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open
 - a5e8fce wip: components: Cancel honoured while checking/unpacking (verified files kept), engine errors name the right Settings section and are translated; real-download e2e test (opt-in)
 - 630985a wip: docs: handoff and plan status after data components
