@@ -31,7 +31,8 @@ export function refsIn(text) {
     let name = m[3].replace(/[.:;!?]+$/, '');
     if (!name || name.startsWith('.trash/') || name.includes('/')) continue;
     const raw = m[1] + m[2] + '/' + name;
-    let decoded; try { decoded = decodeURI(raw); } catch { decoded = raw; }
+    // each path segment fully decoded, so `a%23b.png` is the file `a#b.png`; a segment that would decode to a separator stays as written
+    const decoded = raw.split('/').map((seg) => { try { const d = decodeURIComponent(seg); return /[\\/]/.test(d) ? seg : d; } catch { return seg; } }).join('/');
     out.push({ start: m.index, end: m.index + raw.length, raw, prefix: m[1], dir: m[2], name, decoded });
   }
   return out;
@@ -306,7 +307,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
           target = await placeCopy(assetDirOf(newDir), real); done.set(src, target); copied.push(rel(target));
         }
         const to = path.relative(newDir, target).split(path.sep).join('/');
-        out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeURI(to)); last = r.end;
+        out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeURI(to).replace(/#/g, '%23').replace(/\?/g, '%3F')); last = r.end;
       }
     } catch (e) { // nothing half done: the copies made so far go again
       for (const p of copied) await fs.unlink(path.join(root(), p)).catch(() => {});
