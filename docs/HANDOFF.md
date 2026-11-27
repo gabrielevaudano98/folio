@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-27T08:23:54Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-27T13:33:28Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
+- Last checkpoint: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
 
 ## Resume in a new session
 
@@ -67,12 +67,16 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    opt-in test/sheets-fuzz.test.mjs (seeded random edits; 750 runs clean after the sheet-name fix). Dev-only harness
    step `{ profile: 'start' | 'stop', profileOut }` writes a CPU profile (src/main/main.js devShot).
 
-Open next (not started): keep recent workbooks loaded across tab switches (each switch reloads, ~70 MB native memory
-kept per reload); live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
+14. ~~**Tab switching**~~ DONE (README §8 "Large sheets"): hidden-workbook cache in src/sheets/ui/surface.js
+   (`kept`, `KEEP_HIDDEN=2`, `KEEP_TEXT=8 MB`, `forget` on tab close), saves routed by tab object (`backgroundChange`
+   in app.js), `drawQuietly`. Tests: test/sheets-tabs.test.mjs, test/tab-switch-save.test.mjs.
+
+Open next (not started): live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 6aaf0dc wip: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
+- 5044a36 wip: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
+- d6ca0df wip: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
 - 7a36a37 wip: Excel check passed on Windows (Folio-Compat.xlsx)
 - 988613e wip: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green
 - 0242bf3 wip: xlsx: _xlfn prefixes both ways (XLOOKUP, FILTER, IFS, TEXTJOIN… no #NAME? in Excel or Folio), tab colour, hidden sheets, zoom, gridlines, filter range both ways, full recalculation on open

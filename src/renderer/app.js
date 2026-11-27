@@ -77,9 +77,9 @@ function surfaceFor(type) {
 function surfaceCtx(type) {
   return {
     icons, keyLabel, toast, prompt, confirm: confirmSheet, showMenu,
-    // a surface that saves later (a sheet saves after a pause, or in slices) names the document it saved: when that is
-    // no longer the active tab, the text goes to its own tab, never into the one now shown
-    onChange: (text, path) => (path && path !== S.active ? backgroundChange(path, text) : onEditorChange(text, false, 'surface')),
+    // a surface that saves later (a sheet saves after a pause, or in slices) names the tab it saved (the tab object, which
+    // a rename keeps): when that is no longer the active tab, the text goes to its own tab, never into the one now shown
+    onChange: (text, tab) => (tab && tab !== activeTab() ? backgroundChange(tab, text) : onEditorChange(text, false, 'surface')),
     onStatus: (s) => { S.surfaceStatus = s; renderStatus(); },
     resolveImage: resolveImg,
     dataUrl: (src) => folio.dataUrl(src, S.active),
@@ -152,9 +152,9 @@ async function boot() {
     keyLabel,
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
-    // the page editor reports a change after a short pause: it names the page it holds (richPath), so a change that
-    // lands after the tab changed goes to that page, never into the document now shown
-    onChange: (md) => (richPath && richPath !== S.active ? backgroundChange(richPath, md) : onEditorChange(md, false, 'rich')),
+    // the page editor reports a change after a short pause: it names the page it holds (richTab), so a change that
+    // lands after the tab changed goes to that page, never into the document now shown (richTab)
+    onChange: (md) => (richTab && richTab !== activeTab() ? backgroundChange(richTab, md) : onEditorChange(md, false, 'rich')),
     resolveImage: resolveImg,
     onRemoteBlocked: (n) => { remoteBlockedCount = n; renderRemoteNotice(); },
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
@@ -517,6 +517,7 @@ async function closeTab(p = S.active) {
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
+  setTimeout(() => forgetTab(t), 0); // after the next tab is shown, so a surface lets go of the closed one
   if (S.active === p) {
     const next = S.tabs[i] || S.tabs[i - 1];
     if (next) activate(next.path); else { S.active = null; showNoNote(); renderTabs(); renderTree(); }
@@ -529,12 +530,14 @@ function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 const autosave = debounce(() => saveActive(), 650);
 const surfaceSoon = debounce((text) => curSurface()?.setText(text), 250);
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
-let richPath = null; // the page the page editor holds
+let richTab = null; // the tab whose page the page editor holds
 /** the page editor, about to be given the active tab's page */
-function richShow() { richPath = S.active; return rich; }
+function richShow() { richTab = activeTab(); return rich; }
+/** a surface that keeps documents of hidden tabs (sheets do) lets go of a closed tab's */
+function forgetTab(t) { for (const sf of Object.values(surfaces)) { try { sf.forget?.(t); } catch (e) { console.error('[surface] forget', e); } } }
 /** a change a surface reports for a tab that is not the active one (see surfaceCtx onChange) */
-function backgroundChange(path, text) {
-  const t = tabOf(path); if (!t || t.dead || text === t.text) return;
+function backgroundChange(t, text) {
+  if (!S.tabs.includes(t) || t.dead || text === t.text) return; // a closed tab was flushed and saved before it closed
   t.text = text; renderTabsDirty();
   saveTab(t);
 }
@@ -1228,7 +1231,7 @@ function renderStatus() {
 function showEmpty(html) { const e = $('#empty-state'); e.innerHTML = `<div class="empty-inner">${html}</div>`; e.hidden = false; }
 function hideEmpty() { $('#empty-state').hidden = true; }
 function showWelcome() {
-  S.workspace = null; S.tabs = []; S.active = null;
+  S.workspace = null; S.tabs.forEach(forgetTab); S.tabs = []; S.active = null;
   $('#workspace-name').textContent = tr('ui.no-folder');
   $('#tree').innerHTML = '<div class="side-empty">' + tr('app.open-a-folder-to-see-its-notes-here') + '</div>';
   renderTabs(); renderStatus(); hideAiBanner();
@@ -1458,7 +1461,7 @@ async function chooseFolder() {
 async function switchWorkspace(dir, { saved = false } = {}) {
   if (!saved) { await actions.idle(); if (!(await saveAllOrAsk())) return false; } // let a file action still running finish in the folder it started in
   for (const t of S.tabs) t.dead = true; // the old tabs go now: nothing of theirs is written any more (not even a pending Retry)
-  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); resetRemote();
+  S.tabs.forEach(forgetTab); S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); resetRemote();
   S.writesFrozen = false;
   renderTabs();
   await folio.openWorkspace(dir);
@@ -2573,7 +2576,7 @@ function bindIpc() {
   folio.onTheme(({ dark, accent }) => applyTheme(dark, accent));
   folio.onSwitched(async ({ file }) => {
     const ws = (await folio.init()).settings.workspace;
-    if (ws !== S.workspace) { S.tabs = []; S.active = null; renderTabs(); await loadWorkspace(ws); }
+    if (ws !== S.workspace) { S.tabs.forEach(forgetTab); S.tabs = []; S.active = null; renderTabs(); await loadWorkspace(ws); }
     if (file) { await refreshTree(); openFile(file); }
   });
   folio.onBeforeClose(async () => { if (await saveAllOrAsk()) folio.closeOk(); else folio.closeCancel?.(); });

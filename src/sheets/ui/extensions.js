@@ -78,6 +78,10 @@ export function createExtensions({ api, surface, ctx }) {
     list: () => [...exts.values()].map((e) => ({ id: e.id, name: e.name || e.id, commands: (e.commands || []).map((c) => ({ id: c.id, label: c.label })) })),
     command(id) { for (const e of exts.values()) for (const c of e.commands || []) if (`${e.id}:${c.id}` === id) return () => c.run(surface); return null; },
     loaded() { infoFor = null; registerFunctions(); setTimeout(() => hook('onOpen'), 0); },
+    /** a kept workbook shown again: its functions, not its onOpen (Excel runs that once, when the file opens) */
+    shown() { infoFor = null; registerFunctions(); },
+    /** another workbook is about to be shown: a pending onEdit would run against it */
+    leaving() { clearTimeout(editTimer); pendingEdit = null; },
     edited(cmd) {
       if (cmd.id !== 'sheet.mutation.set-range-values' || running) return;
       const p = cmd.params || {}; const rows = Object.keys(p.cellValue || {}).map(Number); if (!rows.length) return;

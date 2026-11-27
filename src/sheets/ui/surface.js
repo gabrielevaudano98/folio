@@ -14,7 +14,7 @@ import { splitRef, toRange, addr, quoteSheet, parseAddr, fromRange } from '../co
 import { startUniver } from './univer.js';
 import { createCommands } from './commands.js';
 import { TABS, COMPACT, NUMBER_FORMATS } from './ribbon.js';
-import { numfmt, IUniverInstanceService, IResourceManagerService, UniverInstanceType } from '@univerjs/core';
+import { numfmt, IUniverInstanceService, IResourceManagerService, IUndoRedoService, UniverInstanceType } from '@univerjs/core';
 import { icons as xsIcons } from './icons.js';
 import { L } from './i18n.js';
 import { createPanels } from './panels/index.js';
@@ -62,19 +62,21 @@ export function mountSheet(host, ctx) {
   let text = null;          // the text last loaded or written
   let loaded = null;        // what toUniver() returned for it
   let unitId = null;
-  let docPath = null;       // the document this workbook was loaded for
+  let docTab = null;        // the document (the app's tab object) this workbook was loaded for
   let loading = false;      // mutations while loading are not edits
   let sheetMeta = {};       // Folio's own meta per sheet id: charts, print, slicers, protection…
   let workbookMeta = {};    // Folio's own workbook settings: scenarios, print, source, loads…
-  const oplog = createOpLog({ actor: 'me' });
-  ctx.userName?.().then?.((n) => { if (n) oplog.actor = n; }).catch?.(() => {});
+  let actor = 'me';
+  let oplog = createOpLog({ actor }); // one per open workbook (kept with it while it is hidden)
+  ctx.userName?.().then?.((n) => { if (n) { actor = n; oplog.actor = n; } }).catch?.(() => {});
 
   const wb = () => api.getActiveWorkbook();
   const ws = () => wb()?.getActiveSheet();
   const sheetByName = (n) => (n ? wb()?.getSheetByName(n) : ws());
 
   const surface = {
-    icons, ctx, L, oplog,
+    icons, ctx, L,
+    get oplog() { return oplog; },
     wb, ws,
     range: () => wb()?.getActiveRange(),
     sheetId: () => ws()?.getSheetId(),
@@ -211,40 +213,110 @@ export function mountSheet(host, ctx) {
 
   /* ---------- load and save ---------- */
   let drawing = false; // Folio putting its charts and floating objects on the grid after a load: not an edit
-  function load(t) {
+  /** Folio putting its charts and floating objects on the grid (or taking them off): not an edit, and not a step of the
+   *  workbook's undo history either. Univer records each drawing it inserts as undoable, so the first Ctrl+Z after
+   *  opening (or after switching back) took a chart's box off instead of undoing the last edit. The workbook's undo
+   *  and redo stacks are put back as they were; with an Univer that does not expose them, the drawing still happens. */
+  function drawQuietly(fn) {
+    const svc = (() => { try { return U.univer.__getInjector().get(IUndoRedoService); } catch { return null; } })();
+    const id = unitId, undo = svc?._getUndoStack?.(id), redo = svc?._getRedoStack?.(id);
+    const keepU = undo ? [...undo] : null, keepR = redo ? [...redo] : null;
+    drawing = true;
+    try { fn(); } catch (e) { console.error('[sheets] drawings', e); }
+    finally {
+      drawing = false;
+      if (svc?._getUndoStack) {
+        const u = svc._getUndoStack(id, true), r = svc._getRedoStack(id, true);
+        u.length = 0; if (keepU) u.push(...keepU); r.length = 0; if (keepR) r.push(...keepR);
+        svc._updateStatus?.();
+      }
+    }
+  }
+  /* ---------- workbooks kept while their tab is hidden ----------
+   * Switching back to a workbook shown recently does not reload it: its Univer unit (with its undo history, selection
+   * and computed values) stays in memory and becomes the current one again. Reloading a 50,000-row workbook cost 1.5 s
+   * and kept ~70 MB of the window's memory each time. At most KEEP_HIDDEN workbooks, and KEEP_TEXT characters of them,
+   * are kept besides the one shown; the least recently shown goes first. A workbook whose file changed meanwhile is
+   * loaded again. */
+  const KEEP_HIDDEN = 2, KEEP_TEXT = 8 * 2 ** 20;
+  const kept = new Map(); // tab object → state of a hidden workbook
+  const closed = new WeakSet(); // tabs the app closed: their workbook is let go, never kept
+  const stateNow = () => ({ text, loaded, unitId, docTab, sheetMeta, workbookMeta, dirty, saveCache, oplog, saveMs, shown: Date.now() });
+  function useState(st) { ({ text, loaded, unitId, docTab, sheetMeta, workbookMeta, dirty, saveCache, oplog, saveMs } = st); }
+  function dropKept(st) { try { api.disposeUnit(st.unitId); } catch (e) { console.error('[sheets] dispose', e); } }
+  function trimKept() {
+    const order = [...kept.entries()].sort((a, b) => a[1].shown - b[1].shown); // oldest first
+    let size = order.reduce((n, [, st]) => n + st.text.length, 0);
+    for (const [k, st] of order) { if (kept.size <= KEEP_HIDDEN && size <= KEEP_TEXT) break; kept.delete(k); size -= st.text.length; dropKept(st); }
+  }
+  /** before another workbook is shown: write what this one has pending, take its drawings off the grid, cancel its
+   *  pending onEdit hook (it would run against the next workbook) */
+  function leave() {
+    if (!unitId) return;
+    if (pending || sliced) { try { save(true); } catch (e) { console.error('[sheets] save before leaving', e); } }
+    clearTimeout(saveTimer); pending = false; if (sliced) { sliced.cancelled = true; sliced = null; }
+    extensions.leaving();
+    drawQuietly(() => { charts.sync(); floats.sync(); charts.clear(true); floats.clear(true); });
+  }
+  /** show a kept workbook again */
+  function show(st) {
     loading = true;
     try {
-      const prevSheet = ws()?.getSheetName();
-      // what the previous workbook still had to save goes to its own document first (writeText names it)
-      if (unitId && (pending || sliced)) { try { save(true); } catch (e) { console.error('[sheets] save before load', e); } }
-      clearTimeout(saveTimer); pending = false; if (sliced) { sliced.cancelled = true; sliced = null; }
-      if (unitId) { charts.clear(); floats.clear(); api.disposeUnit(unitId); unitId = null; }
+      useState(st);
+      const inj = U.univer.__getInjector(); const units = inj.get(IUniverInstanceService);
+      units.setCurrentUnitForType(unitId); units.focusUnit(unitId);
+      setTimeout(() => drawQuietly(() => { charts.renderAll(); floats.renderAll(); }), 60);
+      panels.refresh();
+      extensions.shown();
+      setTimeout(syncRibbon, 0);
+    } finally { setTimeout(() => { loading = false; }, 0); }
+  }
+  /** the app shows a document: the kept workbook when it is unchanged, otherwise a fresh load */
+  function open(t) {
+    const tab = ctx.docKey?.() || null;
+    if (tab && tab === docTab) { if (t !== text) load(t, { replace: true }); return; } // the same document changed (another editor, the code view)
+    const st = tab && kept.get(tab);
+    leave();
+    if (unitId) { const cur = stateNow(); if (docTab && !closed.has(docTab)) kept.set(docTab, cur); else dropKept(cur); unitId = null; }
+    if (st) { kept.delete(tab); if (st.text === t) { show(st); trimKept(); return; } dropKept(st); } // its file changed while hidden
+    load(t);
+    trimKept();
+  }
+  /** the app closed a document: a kept workbook for it is let go */
+  function forget(tab) { closed.add(tab); const st = kept.get(tab); if (st) { kept.delete(tab); dropKept(st); } }
+
+  function load(t, { replace = false } = {}) {
+    loading = true;
+    try {
+      const prevSheet = replace ? ws()?.getSheetName() : null; // reloading the same document keeps its sheet
+      if (replace) { leave(); if (unitId) { api.disposeUnit(unitId); unitId = null; } }
+      oplog = createOpLog({ actor });
       loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook', share: true });
-      dirty = new Set(['*']); saveCache.clear();
+      dirty = new Set(['*']); saveCache = new Map();
       if (U.worker) { const mine = loaded; U.workerBaseline(t).then((b) => { if (b && loaded === mine) mine.provideBaseline(b); }); }
-      sheetMeta = {};
+      sheetMeta = {}; saveMs = 0;
       const sheets = loaded.doc.blocks.filter((b) => b.type === 'sheet');
       sheets.forEach((b, i) => { sheetMeta[`sheet-${i + 1}`] = structuredClone(folioMeta(b.meta)); });
       workbookMeta = structuredClone(Object.fromEntries(Object.entries(loaded.doc.workbook || {}).filter(([k]) => k !== 'names' && k !== 'univer')));
       const unit = U.open(loaded.data);
       unitId = unit.getUnitId();
-      text = t; docPath = ctx.getPath?.() || null;
+      text = t; docTab = ctx.docKey?.() || null;
       if (prevSheet) { const s = wb().getSheetByName(prevSheet); if (s) s.activate(); }
       oplog.reset(loaded.data);
       // drawings need the sheet's render unit, which Univer creates on the next frames
-      setTimeout(() => { drawing = true; try { charts.renderAll(); floats.renderAll(); } catch (e) { console.error('[sheets] drawings', e); } finally { drawing = false; } }, 60);
+      setTimeout(() => drawQuietly(() => { charts.renderAll(); floats.renderAll(); }), 60);
       panels.refresh();
       extensions.loaded();
       setTimeout(syncRibbon, 0);
     } finally { setTimeout(() => { loading = false; }, 0); }
   }
-  // every save names the document it belongs to (docPath, set at load): a save that lands after the tab changed goes
+  // every save names the document it belongs to (docTab, set at load): a save that lands after the tab changed goes
   // to that document, never to the one now shown
-  function writeText(out) { if (out === text) return; text = out; ctx.onChange(out, docPath); }
+  function writeText(out) { if (out === text) return; text = out; ctx.onChange(out, docTab); }
   let saveTimer = 0, saveMs = 0;
   // sheets changed since the last save (by their mutations' subUnitId; '*' when a change is not tied to one sheet);
   // the others reuse the block of the last save (fromUniver's cache), so a big workbook saves only what changed
-  let dirty = new Set(['*']); const saveCache = new Map();
+  let dirty = new Set(['*']); let saveCache = new Map();
   // a large workbook saves in slices (fromUniverAsync) so typing never waits for it; an edit during the save makes it
   // give up (it reads Univer's live model), and saveNow() takes over from one in progress
   let changes = 0, sliced = null;
@@ -367,7 +439,9 @@ export function mountSheet(host, ctx) {
 
   host.__surface = surface; // tests and the developer console reach the API through the surface element
   return {
-    setText(t) { if (t === text) return; load(t); },
+    setText(t) { if (t === text && (ctx.docKey?.() || null) === docTab) return; open(t); },
+    /** the app closed this document's tab */
+    forget,
     /** write what is pending now (the app calls this before the tab changes) */
     flush() { if (unitId && (pending || sliced)) surface.saveNow(); },
     setMode() { /* one view */ },
@@ -377,6 +451,6 @@ export function mountSheet(host, ctx) {
     selectAtLine() {},
     setDark(on) { U.setDark(on); charts.refresh(); },
     surface,
-    dispose() { U.dispose(); },
+    dispose() { kept.clear(); U.dispose(); },
   };
 }

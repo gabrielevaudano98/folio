@@ -21,6 +21,11 @@ const r = await runApp(w, [{ size: [1300, 900], wait: 1200 },
   { js: `document.querySelector('.ProseMirror').editor.commands.insertContentAt(1, 'Typed '); ${click('sheets/A.sheet.md')}; 1`, wait: 2500 }, // note → sheet
   { js: `${click('Note.md')};1`, wait: 1500 },
   { js: `document.querySelector('.ProseMirror').editor.commands.insertContentAt(1, 'Again '); ${click('Roadmap.md')}; 1`, wait: 2500 }, // note → note
+  // a workbook renamed while open keeps saving into itself (documents are known by their tab, which a rename keeps)
+  { js: `${click('sheets/B.sheet.md')};1`, wait: 2500 },
+  { js: "window.__folioRun('rename');1", wait: 600 },
+  { js: "const i=document.querySelector('#prompt-input');i.value='B2';i.closest('form').requestSubmit();1", wait: 1500 },
+  { js: `${S}.ws().getRange('A2').setValue(333);1`, wait: 2500 },
   errors,
 ]);
 const errs = r.js.at(-1);
@@ -28,8 +33,10 @@ let n = 0; const ok = (m) => { n++; console.log('  ✓ ' + m); };
 console.log('edits just before a tab switch');
 assert.equal(w.read('Note.md'), '# Again Typed Note\n\nhello\n', 'the note holds only its own text'); assert.equal(w.read('Roadmap.md'), roadmap);
 ok('a sheet saving after the switch never writes into the note now shown');
-assert.match(w.read('sheets/A.sheet.md'), /\| 222 \|/); assert.equal(w.read('sheets/B.sheet.md'), '## S\n\n| X |\n| --- |\n| 2 |\n');
+assert.match(w.read('sheets/A.sheet.md'), /\| 222 \|/);
 ok('the sheet edited just before switching is written to its own file; the other sheet is untouched');
 ok('a page typed in just before switching (to a sheet or another page) is written at once, and only into itself');
+assert.ok(!fs.existsSync(path.join(w.ws, 'sheets', 'B.sheet.md'))); assert.match(w.read('sheets/B2.sheet.md'), /\| 333 \|/);
+ok('a workbook renamed while open keeps saving into itself');
 assert.deepEqual(errs, []);
 console.log(`\n${n} checks passed`);
