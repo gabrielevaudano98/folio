@@ -85,6 +85,7 @@ Pictures, video, audio, PDFs, fonts and attachments live in a hidden `.asset` fo
 - **AI edits.** When an AI assistant's edit drops the last reference to a file, Folio asks the same question. Removal re-checks that no page uses the file at that moment. MCP tools `find_unused_assets` and `find_missing_assets` list them; none of them removes anything.
 - **Asset trash.** `.asset/.trash/<time>~<name>`, purged after 30 days. A reference to a file that is gone (Undo after removing it, restoring an old version) brings it back from there automatically.
 - **Moving a page** to another folder copies the files it uses into the new folder's `.asset` and rewrites its references.
+- **Duplicating a page** (Duplicate in the sidebar or ••• menu) writes `<name> copy.md` next to it (the word follows the interface language; then `copy 2`, `copy 3`…). Every file the page uses gets a new file of its own in the copy's `.asset` (`<hash>-<name>-2.<ext>` when the plain name is taken), so the two pages share no files; only those references change, `[[links]]` stay as written. A folder is duplicated with all its pages and sub-folders by the same rules; other files in it are not copied.
 - **Old workspaces.** `assets/` references keep working. *Files: clean up unused files…* lists unused and missing files and moves `assets/` into `.asset` (a version of every changed page is kept first; the old files go to the asset trash).
 
 ### Paste, import and export

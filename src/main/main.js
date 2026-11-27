@@ -14,6 +14,7 @@ import { createNotes, NOTE_EXT } from './notes.js';
 import { createHistory } from './history.js';
 import { createGitLog } from './git-log.js';
 import { createAssets, isAssetPath } from './assets.js';
+import { duplicate } from './duplicate.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
@@ -274,6 +275,18 @@ h('fs:rename', async (from, to) => {
   }
   return { to: r.to, changed: [...changed] };
 });
+/* duplicate a note or a folder next to itself: new notes written atomically, the files they use copied into their own .asset */
+h('fs:duplicate', async (rel, suffix) => {
+  guardAsset(rel);
+  return duplicate({ notes, assets, from: rel, suffix, write: async (r, text) => {
+    const abs = notes.resolve(r, { mustBeNote: true });
+    if (fss.existsSync(abs)) throw new Error('A note with that name already exists.');
+    ownWrites.set(abs, text);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await writeAtomic(abs, text);
+    keep(notes.relOf(abs), text, { reason: 'created', force: true });
+  } });
+});
 // A copy of every trashed item is kept in a private folder for this session so the move can be undone.
 // Copies belong to the workspace they came from and are removed when it changes and when Folio quits.
 const trashed = new Map();
@@ -396,7 +409,7 @@ h('templates:import-files', async () => {
 });
 h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
-h('clipboard:read', () => ({ text: clipboard.readText(), html: clipboard.readHTML() }));
+h('clipboard:read', async () => ({ text: await clipboard.readText(), html: typeof clipboard.readHTML === 'function' ? clipboard.readHTML() : '' })); // Electron 45: readText is async, readHTML is gone
 /* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */
 h('import:document', async () => {
   const pick = !app.isPackaged && process.env.FOLIO_IMPORT_FILE ? { filePaths: [process.env.FOLIO_IMPORT_FILE] } : await dialog.showOpenDialog(win, { title: tl('dlg', 'Import a document'), properties: ['openFile'], filters: [{ name: tl('dlg', 'Documents'), extensions: ['docx', 'html', 'htm'] }] });
