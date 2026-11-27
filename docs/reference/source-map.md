@@ -16,6 +16,7 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 |---|---|---|
 | `boot.js` | entry | One binary, two jobs: starts the app (`main.js`), or the stdio MCP bridge when run with `--mcp-stdio`. |
 | `main.js` | composition root (~800 lines) | Settings (`settings.json`, batched atomic writes), window and its lockdown, workspace and file watcher (chokidar), every IPC handler (`h()`), renderer round-trips for app-only MCP tools, the MCP HTTP server on 127.0.0.1, one-click connection to AI apps, native menu, lifecycle and crash recovery. |
+| `updater.js` | core (injected Electron) | Update checks and installs from GitHub releases through electron-updater: which builds can install, the state machine, the `update:*` handlers. See [updates](../explanation/updates.md). |
 | `preload.cjs` | bridge | The window's only door to the system: exposes `window.folio` (requests and events). See [IPC](ipc.md). |
 | `notes.js` | core (Node fs) | Every file operation: `resolve()` checks that a path stays inside the workspace, then tree, read, write, rename/move with link rewriting, search, backlinks. Shared by the app, the HTTP MCP server and the stdio bridge. (Moving to the system trash is `fs:trash` in `main.js`.) |
 | `atomic.js` | core | Atomic writes: temp file in the same folder, flush, rename ([ADR 0008](../adr/0008-atomic-writes.md)). |

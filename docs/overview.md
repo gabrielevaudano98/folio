@@ -63,7 +63,7 @@ the person already uses (OneDrive, iCloud, Dropbox, git).
   1.1.0 to 1.5.1 between 19 and 27 November 2026, all marked pre-alpha.
 - **Built, not merged**: a Notion-parity pass on pages (three stacked pull requests) and Folio Sheets on Univer (a
   long-lived branch). Both are large and need review and merge decisions.
-- **Before a public release**: code signing on macOS and Windows, auto-update, the known data-loss bugs on `main` fixed, the
+- **Before a public release**: code signing on macOS and Windows (no certificates yet), the known data-loss bugs on `main` fixed, the
   responsiveness budget met, the meeting recorder measured on a real Windows call. These are in the *Public release*
   milestone.
 

@@ -77,7 +77,9 @@ function surfaceFor(type) {
 function surfaceCtx(type) {
   return {
     icons, keyLabel, toast, prompt, confirm: confirmSheet, showMenu,
-    onChange: (text) => onEditorChange(text, false, 'surface'),
+    // a surface that saves later (a sheet saves after a pause, or in slices) names the document it saved: when that is
+    // no longer the active tab, the text goes to its own tab, never into the one now shown
+    onChange: (text, path) => (path && path !== S.active ? backgroundChange(path, text) : onEditorChange(text, false, 'surface')),
     onStatus: (s) => { S.surfaceStatus = s; renderStatus(); },
     resolveImage: resolveImg,
     dataUrl: (src) => folio.dataUrl(src, S.active),
@@ -133,6 +135,7 @@ async function boot() {
   applyTheme(init.dark, init.accent);
   paintStaticIcons();
   initRecordButton();
+  initUpdates().catch(() => {});
   applyLayoutSettings();
 
   editor = createEditor($('#editor'), {
@@ -149,7 +152,9 @@ async function boot() {
     keyLabel,
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
-    onChange: (md) => onEditorChange(md, false, 'rich'),
+    // the page editor reports a change after a short pause: it names the page it holds (richPath), so a change that
+    // lands after the tab changed goes to that page, never into the document now shown
+    onChange: (md) => (richPath && richPath !== S.active ? backgroundChange(richPath, md) : onEditorChange(md, false, 'rich')),
     resolveImage: resolveImg,
     onRemoteBlocked: (n) => { remoteBlockedCount = n; renderRemoteNotice(); },
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
@@ -388,8 +393,8 @@ function setView(v, { persist = true } = {}) {
     return;
   }
   if (t && rich && editor) {
-    if (v === 'edit' && prev !== 'edit') rich.setMarkdown(t.text);
-    if (v !== 'edit' && prev === 'edit') editor.applyRemote(t.text);
+    if (v !== 'edit' && prev === 'edit') { rich.flush?.(); editor.applyRemote(t.text); } // the page's pending change reaches the tab before the other views take its text
+    if (v === 'edit' && prev !== 'edit') richShow().setMarkdown(t.text);
   }
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
   layoutPanes();
@@ -461,6 +466,12 @@ async function openFile(p, { line, background = false } = {}) {
 }
 function activate(p, { line } = {}) {
   const prev = activeTab();
+  if (prev && prev.path !== p) {
+    flushSurface();
+    // the tab being left is written now: autosave waits for a pause and then saves the active tab, so edits made just
+    // before switching would otherwise stay in memory until the tab is shown again or Folio closes
+    if (prev.text !== prev.saved) saveTab(prev);
+  }
   if (prev) {
     prev.scroll = editor.view.scrollDOM.scrollTop;
     prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
@@ -478,7 +489,7 @@ function activate(p, { line } = {}) {
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
   layoutPanes();
   if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
-  if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) rich.restore(t.rich); else rich.setMarkdown(t.text); } }
+  if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) richShow().restore(t.rich); else richShow().setMarkdown(t.text); } }
   else {
     const s = surfaceFor(type);
     if (s) { s.setText(t.text); s.setMode?.(v); }
@@ -502,6 +513,7 @@ function renderTabs() {
 }
 async function closeTab(p = S.active) {
   const t = tabOf(p); if (!t) return;
+  if (p === S.active) flushSurface();
   while (t.text !== t.saved) if (!(await saveTab(t))) return; // typing during the write saves again; a failed write keeps the tab open with its text (the toast offers Retry)
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
@@ -518,6 +530,20 @@ function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 const autosave = debounce(() => saveActive(), 650);
 const surfaceSoon = debounce((text) => curSurface()?.setText(text), 250);
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
+let richPath = null; // the page the page editor holds
+/** the page editor, about to be given the active tab's page */
+function richShow() { richPath = S.active; return rich; }
+/** a change a surface reports for a tab that is not the active one (see surfaceCtx onChange) */
+function backgroundChange(path, text) {
+  const t = tabOf(path); if (!t || t.dead || text === t.text) return;
+  t.text = text; renderTabsDirty();
+  saveTab(t);
+}
+/** a surface finishes what it has pending for the shown document (a sheet's delayed save) before the tab changes */
+function flushSurface() {
+  try { curSurface()?.flush?.(); } catch (e) { console.error('[surface] flush', e); }
+  try { if (curType() === 'md' && isRich()) rich.flush?.(); } catch (e) { console.error('[rich] flush', e); }
+}
 function onEditorChange(text, isRemote, from = 'source') {
   const t = activeTab(); if (!t) return;
   historySoon();
@@ -537,14 +563,16 @@ function setActiveText(text) {
   const t = activeTab(); if (!t) return;
   t.text = text;
   editor.applyRemote(text);
-  if (curType() === 'md') { if (isRich()) rich.setMarkdown(text, { keepHistory: true }); }
+  if (curType() === 'md') { if (isRich()) richShow().setMarkdown(text, { keepHistory: true }); }
   else curSurface()?.setText(text);
 }
 function renderTabsDirty() {
   for (const el of $$('#tabs .tab')) { const t = tabOf(el.dataset.tab); if (t) el.dataset.dirty = String(t.text !== t.saved); }
 }
 /** save a tab; resolves true when its text is on disk (or was already), false when the write failed (the tab keeps its text) */
-async function saveTab(t) {
+/** writes of one tab run one after another, each with the tab's text at that moment, so an older write can never land after a newer one */
+function saveTab(t) { return (t.saving = (t.saving || Promise.resolve()).then(() => saveTabNow(t))); }
+async function saveTabNow(t) {
   if (t.text === t.saved) return true;
   if (S.writesFrozen || t.dead) return false; // a tab of a folder that was closed or left is never written again
   const text = t.text, before = t.saved;
@@ -553,6 +581,7 @@ async function saveTab(t) {
 }
 /** save every open tab before they go away (close folder, switch folder, reload, quit); when some write fails, ask before dropping the unsaved text */
 async function saveAllOrAsk() {
+  flushSurface(); // a change still waiting for its pause (page editor, surfaces) reaches its tab first, so quitting or installing an update saves it
   const failed = [];
   for (const t of S.tabs.filter((x) => !x.dead)) {
     let ok = true;
@@ -1664,6 +1693,7 @@ function openSettings() {
         <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">${tr('app.based-on-folio-by-gabriele-vaudano-fre')}</span></div>
           <button class="btn" type="button" data-open-url="https://github.com/gabrielevaudano98/folio">${tr('app.source-code')}</button></div>
       </div></section>
+      <section class="group" id="set-updates"><h3>${tr('upd.title')}</h3><div class="rows" id="set-updates-rows"></div></section>
       <section class="group"><h3>${tr('app.ai-server')}</h3><div class="rows">
         <div class="row"><div class="row-main"><label class="row-title" for="set-port">${tr('app.port')}</label><span class="row-sub field-help" id="port-help">${tr('app.local-only-1024-to-65535')}</span></div>
           <input class="input" id="set-port" type="text" inputmode="numeric" name="port" autocomplete="off" value="${s.mcpPort}" style="width:7rem" aria-describedby="port-help"></div>
@@ -1672,7 +1702,40 @@ function openSettings() {
   $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth;
   if (!d.open) d.showModal();
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
+  paintUpdates();
   meeting().then((m) => m.renderSettings($('#set-features', d))).catch((e) => toast(e.message, { kind: 'error' }));
+}
+
+/* ============ updates (GitHub releases, see docs/explanation/updates.md) ============ */
+function paintUpdates() {
+  const el = $('#set-updates-rows'); if (!el) return;
+  const u = S.update || { phase: 'idle', mode: 'off' };
+  if (u.mode === 'off') { $('#set-updates').hidden = true; return; }
+  const text = { idle: tr('upd.idle'), none: tr('upd.none'), checking: tr('upd.checking'), available: tr('upd.available', { version: u.version || '' }), downloading: tr('upd.downloading', { percent: u.percent }), ready: tr('upd.ready', { version: u.version || '' }), error: tr('upd.error', { error: u.error || '' }) }[u.phase] || '';
+  const act = u.phase === 'ready' ? `<button class="btn" type="button" data-update="install">${tr('upd.install')}</button>`
+    : u.phase === 'available' ? (u.mode === 'install' ? `<button class="btn" type="button" data-update="download">${tr('upd.download')}</button>` : `<button class="btn" type="button" data-update="open">${tr('upd.open')}</button>`)
+    : `<button class="btn" type="button" data-update="check" ${u.phase === 'checking' || u.phase === 'downloading' ? 'disabled' : ''}>${tr('upd.check')}</button>`;
+  el.innerHTML = `
+    <div class="row"><div class="row-main"><span class="row-title" role="status" aria-live="polite">${esc(text)}</span><span class="row-sub">${esc(tr(u.mode === 'install' ? 'upd.help-install' : 'upd.help-notify'))}</span></div>${act}</div>
+    <div class="row"><div class="row-main"><span class="row-title">${tr('upd.auto')}</span><span class="row-sub">${tr('upd.auto-help')}</span></div><label class="switch"><input type="checkbox" role="switch" data-update-auto ${S.settings.autoUpdate === true ? 'checked' : ''} aria-label="${tr('upd.auto')}"></label></div>`;
+}
+async function initUpdates() {
+  S.update = await folio.update.state().catch(() => null);
+  let told = null;
+  folio.update.onState((u) => {
+    S.update = u; paintUpdates();
+    if (u.phase === 'available' && told !== u.version) { told = u.version; toast(tr('upd.available', { version: u.version || '' }), { action: [tr('upd.see'), openSettings] }); }
+  });
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-update]'); if (!b) return;
+    const k = b.dataset.update;
+    try { if (k === 'check') await folio.update.check(); else if (k === 'download') await folio.update.download(); else if (k === 'install') { if (await saveAllOrAsk()) await folio.update.install(); } else if (k === 'open') await folio.update.openRelease(); }
+    catch (er) { toast(er.message, { kind: 'error' }); }
+  });
+  document.addEventListener('change', async (e) => {
+    if (!e.target.matches('[data-update-auto]')) return;
+    S.settings.autoUpdate = await folio.update.setAuto(e.target.checked);
+  });
 }
 
 /* ============ meeting recorder (optional feature, loaded on demand) ============ */
@@ -2427,7 +2490,7 @@ function bindChrome() {
       lines.splice(at, 0, ...(b.where === 'above' ? [intoPage(body).trimEnd(), ''] : ['', intoPage(body).trimEnd()]));
       text = lines.join('\n');
       if (fm) { const cur = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)?.[0] || ''; text = mergeProps(cur, fm) + text.slice(cur.length); }
-      editor.applyRemote(text); tab.text = text; if (isRich()) rich.setMarkdown(text); renderPreview(); autosave(); return;
+      editor.applyRemote(text); tab.text = text; if (isRich()) richShow().setMarkdown(text); renderPreview(); autosave(); return;
     }
     const copy = e.target.closest('.copy-code');
     if (copy) { await folio.copy(copy.parentElement.querySelector('code')?.innerText || ''); copy.textContent = tr('app.copied'); setTimeout(() => (copy.textContent = tr('app.copy')), 1400); return; }

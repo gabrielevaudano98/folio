@@ -9,7 +9,7 @@ priority stays the same: an app people trust with their files.
 What a first release that is not pre-alpha needs.
 
 - **No known data-loss bug**: fast tab switch [#82](https://github.com/gabrielevaudano98/folio/issues/82); the page fixes from PR #77 [#81](https://github.com/gabrielevaudano98/folio/issues/81) (in *v1.6 Pages*).
-- **Signed builds**: macOS Developer ID and notarisation [#3](https://github.com/gabrielevaudano98/folio/issues/3), Windows signing [#4](https://github.com/gabrielevaudano98/folio/issues/4); **auto-update** from GitHub Releases [#2](https://github.com/gabrielevaudano98/folio/issues/2).
+- **Signed builds**: macOS Developer ID and notarisation [#3](https://github.com/gabrielevaudano98/folio/issues/3), Windows signing [#4](https://github.com/gabrielevaudano98/folio/issues/4); **auto-update** from GitHub Releases [#2](https://github.com/gabrielevaudano98/folio/issues/2) (built: installs on the Windows installer, notifies on macOS and portable; see [updates](explanation/updates.md)). No certificates are available, so #3 and #4 cannot be done now; they stay open until certificates exist.
 - **Responsiveness**: startup and opening a long page under the 100 ms budget [#90](https://github.com/gabrielevaudano98/folio/issues/90).
 - **Meeting recorder measured** on a real Windows call [#88](https://github.com/gabrielevaudano98/folio/issues/88).
 - Accessibility of the board canvas and the sheet grid [#6](https://github.com/gabrielevaudano98/folio/issues/6).

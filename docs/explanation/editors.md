@@ -49,8 +49,10 @@ swapped by `perDoc()` in `history.js`, so `Mod+Z` in one file never brings back 
    on autosaves (one per 3 minutes, the newest replacing the previous), before and after an AI edit, before a rename or
    move, before a restore, on close and when a version is named.
 
-Known weakness: changes from the page editor arrive 220 ms after the last keystroke and are applied to the tab that is
-active *then* ([#82](https://github.com/gabrielevaudano98/folio/issues/82)). A change must always name its document.
+Known weakness ([#82](https://github.com/gabrielevaudano98/folio/issues/82)): a change a surface reports after a pause is
+applied to the tab that is active *then*. The page editor is fixed (`rich.flush()` and saving the tab being left run
+before `activate()` switches, and its late change goes to `richPath`); the slides, board and sheet surfaces still do not
+name their document. A change must always name its document.
 
 ## Pages
 

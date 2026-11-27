@@ -36,7 +36,7 @@ function mcpTools() {
 /* ---------- IPC between the window and the main process ---------- */
 function ipc() {
   const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
-  const files = ['src/main/main.js', 'src/main/meeting/service.js'];
+  const files = ['src/main/main.js', 'src/main/meeting/service.js', 'src/main/updater.js'];
   const handled = new Map();
   for (const f of files) for (const m of read(f).matchAll(/(?:\bh|ipcMain\.(?:on|handle))\('([a-z0-9:-]+)'/g)) handled.set(m[1], f);
   const pre = read('src/main/preload.cjs');
@@ -54,7 +54,7 @@ function ipc() {
     const m = line.match(/^\s+([a-zA-Z]+):.*?\b(call|send|on)\('([a-z0-9:-]+)'/);
     if (m) api.push({ name: (group ? group + '.' : '') + m[1], channel: m[3], kind: kindOf(m[2]) });
   }
-  let o = head('IPC: window ↔ main process', 'src/main/preload.cjs, src/main/main.js and src/main/meeting/service.js');
+  let o = head('IPC: window ↔ main process', 'src/main/preload.cjs, src/main/main.js, src/main/meeting/service.js and src/main/updater.js');
   o += 'The window has no Node.js. Everything it can ask of the main process is this list, exposed as `window.folio` by the preload script. Requests are answered by `h()` handlers, which accept calls only from the app page; events go from the main process to the window.\n\n';
   o += '| `window.folio.…` | Kind | Channel | Handled in |\n|---|---|---|---|\n';
   for (const a of api) o += `| \`${a.name}\` | ${a.kind} | \`${a.channel}\` | ${a.kind === 'event' ? '—' : handled.has(a.channel) ? `\`${handled.get(a.channel)}\`` : '**missing**'} |\n`;
