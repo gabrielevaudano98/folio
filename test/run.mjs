@@ -13,6 +13,7 @@ run('test/i18n.test.mjs');
 run('test/git-log.test.mjs');
 run('test/security.test.mjs');
 run('scripts/docs-reference.mjs', '--check');
+run('test/docs-map.test.mjs');
 run('test/atomic.test.mjs');
 run('test/features.test.mjs');
 run('test/mic-watch.test.mjs');

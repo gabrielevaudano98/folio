@@ -1,76 +1,71 @@
 # Folio roadmap
 
-High-level plan. Each item is an issue on GitHub (labels `area:*`, milestones below). The top priority is quality: an app people trust with their files.
+The plan by milestone. Every open item is a GitHub issue; the milestone names match the ones on GitHub. For what is
+half-built right now (open pull requests, unmerged branches, known bugs) read [STATUS.md](STATUS.md) first. The top
+priority stays the same: an app people trust with their files.
 
-## v1.1 Quality
+## Now: Public release
 
-Make what exists trustworthy: fidelity, tests, signed builds, updates.
+What a first release that is not pre-alpha needs.
 
-- **Markdown fidelity corpus for the page editor** — Collect 50+ real-world Markdown files (GFM, footnotes, HTML, front matter, Obsidian syntax). For each: open in the Write view, make one edit, assert that only the edited lines change. Run in CI. Fix every lossy construct found.
-- **Auto-update from GitHub Releases** — Use electron-updater with the GitHub provider. Check on start and once a day, download in the background, offer "Restart to update". Respect a setting to turn it off.
-- **Sign and notarize the macOS build** — Add Developer ID certificate and notarization secrets to the Release workflow (already wired, see release.yml). Verify Gatekeeper opens the app without a warning.
-- **Sign the Windows installer** — Choose a code-signing route (Azure Trusted Signing or an OV certificate), add it to electron-builder, verify SmartScreen reputation.
-- **Render footnotes and maths in the page editor** — Footnotes and KaTeX maths are shown as source in the Write view. Draw them like callouts (decorations or node views) without changing the Markdown.
-- **Accessibility audit of the canvas and the grid** — Keyboard-only creation and connection of shapes, screen-reader names for shapes and cells, focus order in the inspector. WCAG 2.2 AA.
-- **Virtualize the sheet grid** — Render only visible rows and columns so a 10,000 row sheet scrolls at 60 fps; recalculate only dependants of an edited cell.
+- **No known data-loss bug**: fast tab switch [#82](https://github.com/gabrielevaudano98/folio/issues/82); the page fixes from PR #77 [#81](https://github.com/gabrielevaudano98/folio/issues/81) (in *v1.6 Pages*).
+- **Signed builds**: macOS Developer ID and notarisation [#3](https://github.com/gabrielevaudano98/folio/issues/3), Windows signing [#4](https://github.com/gabrielevaudano98/folio/issues/4); **auto-update** from GitHub Releases [#2](https://github.com/gabrielevaudano98/folio/issues/2).
+- **Responsiveness**: startup and opening a long page under the 100 ms budget [#90](https://github.com/gabrielevaudano98/folio/issues/90).
+- **Meeting recorder measured** on a real Windows call [#88](https://github.com/gabrielevaudano98/folio/issues/88).
+- Accessibility of the board canvas and the sheet grid [#6](https://github.com/gabrielevaudano98/folio/issues/6).
+- Release workflow without a third-party publish action [#83](https://github.com/gabrielevaudano98/folio/issues/83).
 
-## v1.2 Slides Studio (shipped in 1.2.0)
+## Now: v1.6 Pages: Notion parity
 
-PowerPoint and Google Slides capabilities with full user control, in plain slides-md, with links between Folio documents. Full plan and feature coverage: [SLIDES-PLAN.md](SLIDES-PLAN.md).
+Notion-grade page editing in plain Markdown. Built as three stacked pull requests:
+[#69](https://github.com/gabrielevaudano98/folio/pull/69) (chips, dates, callouts, page icon) →
+[#77](https://github.com/gabrielevaudano98/folio/pull/77) (data fixes, page actions, lock) →
+[#79](https://github.com/gabrielevaudano98/folio/pull/79) (search window, reminders, page appearance).
+Then wave 2 batch 2 [#85](https://github.com/gabrielevaudano98/folio/issues/85), the follow-ups [#86](https://github.com/gabrielevaudano98/folio/issues/86) and wave 3 [#87](https://github.com/gabrielevaudano98/folio/issues/87).
 
-- **P0** Model · **P1** Canvas · **P2** Arrange · **P3** Text in boxes
-- **P4** Cross-document links (link, value, embed, synced copy)
-- **P5** Insert · **P6** Format and picture tools · **P7** Themes and masters · **P8** Slide management
-- **P9** SmartArt and Designer · **P10** Transitions, animations, Morph · **P11** Interactivity and Zoom
-- **P12** Present and record · **P13** PPTX interop · **P14** MCP and AI · **P15** Polish
-- All phases done. Still open: 3D models, screen recording, background removal, per-word colour and WordArt, rulers.
+## Now: Sheets on Univer
 
-## v1.2 Pages Studio
+Folio Sheets on [Univer](https://github.com/dream-num/univer), built on the branch `feat/sheets-univer`: Excel-grade grid,
+pivots, charts, queries, scripts, Python, what-if, `.xlsx`/`.xlsm` round trip, a data engine process and new MCP tools.
+Merge checklist in [#84](https://github.com/gabrielevaudano98/folio/issues/84); on merge it closes [#7](https://github.com/gabrielevaudano98/folio/issues/7) (virtual grid), [#14](https://github.com/gabrielevaudano98/folio/issues/14) (cross-sheet references), [#15](https://github.com/gabrielevaudano98/folio/issues/15) (field
+types, validation, conditional formatting) and [#16](https://github.com/gabrielevaudano98/folio/issues/16) (import Excel and CSV). Afterwards: live sync and presence, an AI
+copilot (area 28), streaming export of very large workbooks.
 
-Notion, Google Docs, Word and Obsidian capabilities in plain Markdown: `/` and `@` menus, `[[` links and embeds, draggable blocks, callouts, maths, footnotes, comments and suggestions. Full plan: [PAGES-PLAN.md](PAGES-PLAN.md).
+## Next: v1.2 Editors (open after 1.5; the name is historical)
 
-- **D0** Fidelity foundation · **D1** Inline formatting · **D2** Blocks · **D3** `/` menu · **D4** New blocks
-- **D5** Links, mentions, chips · **D6** Tables · **D7** Navigation · **D8** Properties · **D9** Templates
-- **D10** Comments and suggestions · **D11** Paste, import, export · **D12** Backlinks · **D13** MCP · **D14** Polish
+- Slides: incremental lists [#9](https://github.com/gabrielevaudano98/folio/issues/9), rulers and guides [#92](https://github.com/gabrielevaudano98/folio/issues/92), per-word styling and WordArt [#93](https://github.com/gabrielevaudano98/folio/issues/93), screen recording,
+  screenshots and 3D [#94](https://github.com/gabrielevaudano98/folio/issues/94), video/GIF/image export [#97](https://github.com/gabrielevaudano98/folio/issues/97).
+- Boards: connector waypoints [#11](https://github.com/gabrielevaudano98/folio/issues/11), sequence diagrams [#12](https://github.com/gabrielevaudano98/folio/issues/12), images and pen [#13](https://github.com/gabrielevaudano98/folio/issues/13).
+- Charts: more types and axis titles [#17](https://github.com/gabrielevaudano98/folio/issues/17).
 
-## v1.2 Editors
+## Next: v1.3 AI-native
 
-Deeper visual editing for slides, boards and sheets.
-
-- **Edit slides directly on the stage** — Click a text block on the slide to edit it in place; drag images to swap sides; the Markdown updates. Keep the per-slide Markdown editor.
-- **Incremental lists and transitions in slides** — Support Marp fragmented lists (`*` bullets) in the presenter, and the `transition` directive, and export them to PowerPoint animations.
-- **Presenter view with notes on a second screen** — When two displays are connected, show the slide full screen on one and notes, timer and next slide on the other.
-- **Manual connector routing on boards** — Draggable waypoints on connectors, reconnect endpoints by dragging, store waypoints in board-md (`{via: 120,40 200,40}`).
-- **Sequence diagrams on boards** — Messages between lifelines ordered top to bottom, activation bars, return messages; written as `a ->> b "call"` in board-md.
-- **Images and freehand drawing on boards** — Drop images on the canvas (saved to assets/), and a pen tool whose strokes are stored as compact paths.
-- **Cross-sheet references and named ranges** — Support `=Rates!B2` and `=SUM(Costs!D2:D5)`, plus named ranges stored in the sheet comment.
-- **Field types, validation and conditional formatting** — Airtable-style column types (single select, checkbox, date, link), dropdown validation, and rules such as "value > 1000 is bold".
-- **Import Excel and CSV** — Open .xlsx and .csv as a new sheet-md file, keeping formulas, number formats and several sheets.
-- **More chart types and axis titles** — Donut, combo (bars and line), axis titles, value labels; same in PowerPoint export.
-
-## v1.3 AI-native
-
-Structured MCP tools and per-change review of AI edits.
-
-- **Accept or reject AI edits change by change** — Turn the Review sheet into a per-hunk review: accept, reject or edit each change an assistant made, like a tracked-changes view.
-- **Structured MCP tools for slides, boards and sheets** — Add tools such as add_slide, set_layout, add_shape, connect, set_cell and add_chart so assistants edit without rewriting whole files.
-- **Ask your AI from inside Folio** — A command palette entry that sends the selection to the user's connected assistant and shows the answer as a reviewable edit.
+- Accept or reject each AI change [#18](https://github.com/gabrielevaudano98/folio/issues/18) (assistants can already propose with `suggest_edit`).
+- Structured MCP tools for boards (slides done, sheets on the Univer branch) [#19](https://github.com/gabrielevaudano98/folio/issues/19).
+- Ask your AI from inside Folio [#20](https://github.com/gabrielevaudano98/folio/issues/20).
 
 ## Later
 
-Bigger bets after 1.3.
+Linux build [#23](https://github.com/gabrielevaudano98/folio/issues/23), meeting recorder on macOS [#89](https://github.com/gabrielevaudano98/folio/issues/89), picture background removal [#95](https://github.com/gabrielevaudano98/folio/issues/95), live captions [#96](https://github.com/gabrielevaudano98/folio/issues/96),
+branch clean-up [#91](https://github.com/gabrielevaudano98/folio/issues/91).
 
-- **Italian and other interface languages** — Externalize strings, ship Italian first.
-- **Version history with git** — Optional git-backed history per folder: timeline, diff, restore.
-- **Linux build** — AppImage and .deb from CI.
+## Shipped
 
-## Done in 1.0 and 1.1
+Releases are on [GitHub Releases](https://github.com/gabrielevaudano98/folio/releases); all are pre-alpha and unsigned.
 
-- Page editor (Word-style), slides-md with PowerPoint and PDF export, board-md canvas, sheet-md grid with formulas, charts in sheets, pages and slides.
-- MCP server with live, reversible AI edits; one-click connection to Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code.
-- CI with format, MCP and UI smoke tests; CodeQL; Dependabot; cubic and Claude reviews.
+- **1.5.1** (27 Nov 2026): the speech model uses more threads on bigger processors, at most 5.
+- **1.5.0** (27 Nov): one-click meeting recording from the sidebar; on Windows, an offer to record when another app starts
+  a call (reads the microphone consent store, off by default); image fixes.
+- **1.4.0–1.4.2** (21–22 Nov): web images in notes load only when asked; meeting recorder fixes (empty audio, no-sound warning).
+- **1.3.0–1.3.2** (21 Nov): **Pages Studio** (D0–D17, [plan](PAGES-PLAN.md)); English and Italian interface; meeting
+  recorder as an optional download (local Whisper, checked notes); Phase 2: lean installer (14 MB of app code), faster
+  start, atomic writes, crash recovery, this documentation set.
+- **1.2.0** (20 Nov): **Slides Studio** P0–P15 ([plan](SLIDES-PLAN.md)).
+- **1.1.0** (19 Nov) and 1.0: page editor, slides-md with PowerPoint and PDF export, board-md canvas, sheet-md grid,
+  charts, MCP server with live reversible AI edits, CI, CodeQL, Dependabot, AI reviews.
 
-## Unreleased
+## Done in 1.4.0
+
 - Web images in notes are opt-in. The preview and the editor no longer load them by themselves, so a note you did not write cannot tell that you opened it. A notice offers to load them for that note, or Settings loads them always; either way they go through the app's guarded fetch (public addresses only), and the page's security policy no longer allows `https:` images.
 
 ## Done in 1.2.3

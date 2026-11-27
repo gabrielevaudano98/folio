@@ -111,6 +111,9 @@ C4Container
 Rule: a **core** (`*-core.js`, `refs-syntax.js`, `notes-core.js`, `transcript.js`, `catalog.js`) is pure, has no DOM or
 Electron, and is tested in Node. A **surface** draws and edits it in the window.
 
+Every file, one line each: [source map](../reference/source-map.md). How the four editors, references, AI edits and undo
+work inside the window: [editors](../explanation/editors.md).
+
 ## 6. Runtime view
 
 **Opening and saving a page.** The window asks `fs:read` → `notes.resolve()` checks the path → text goes to CodeMirror and
@@ -157,6 +160,10 @@ drafts notes, the code checks every quote, the note is updated, the engine exits
 - **Errors**: IPC handlers throw plain-language messages that the window shows as toasts; a crashed window is reloaded.
 - **Design system**: `src/renderer/tokens.css` and the rules in `AGENTS.md`.
 - **Accessibility**: ARIA roles on menus and switches, visible focus, reduced motion, no meaning by colour alone.
+- **Internationalisation**: every interface string goes through i18next; English is the source, Italian complete
+  ([how-to](../how-to/add-ui-text.md)). The native menu uses the same catalogue (`tl()` in `main.js`).
+- **Testing**: round-trip tests for every format, MCP end to end, in-app tests that check the file on disk
+  ([testing](../explanation/testing.md)).
 
 ## 9. Architecture decisions
 
@@ -180,7 +187,14 @@ See [`docs/adr/`](../adr/README.md).
 - The audience Q&A page listens on all network interfaces while it is open, so anyone on the same network can send a
   question. It accepts only short text, keeps it in memory and serves no files; it closes when the presenter closes Q&A.
 - Windows keeps the `RunAsNode` fuse on for the stdio bridge.
-- Builds are not code-signed yet.
+- Builds are not code-signed yet, and there is no auto-update ([#2](https://github.com/gabrielevaudano98/folio/issues/2)–[#4](https://github.com/gabrielevaudano98/folio/issues/4)).
+- **A delayed page edit can land in the wrong tab** after a fast tab switch ([#82](https://github.com/gabrielevaudano98/folio/issues/82)).
+  Changes must name their document, not rely on "the active tab".
+- **Long-lived branches.** The Notion PR stack and `feat/sheets-univer` both diverge from `main` and touch `app.js`,
+  `page-ribbon.js` and the locales; merging them is planned in [STATUS](../STATUS.md#in-flight).
+- `app.js` (~2,600 lines) is the window's composition root and holds many features; split out a feature when it next
+  changes, as for `main.js`.
+- One maintainer; the docs, `AGENTS.md` and the issue tracker are written so that a person or an agent can take over.
 
 ## 12. Glossary
 
@@ -193,3 +207,10 @@ See [`docs/adr/`](../adr/README.md).
 | Bridge | The Folio binary run with `--mcp-stdio` by an AI app. |
 | Component | A file set an optional feature downloads (`catalog.js`). |
 | Worker | The meeting transcription process. |
+| Raw block | A part of a page the Write view cannot represent losslessly; shown drawn, edited as source. |
+| Chip | A decoration drawn over plain text (date, person, status, link); the file keeps the text. |
+| Placed object | A slide element with explicit geometry and an id (`::: box #id x= y=`). |
+| Reference | `[[Doc#part]]` link, `{{Doc#part}}` live value, `![[Doc#part]]` embed between documents. |
+| CriticMarkup | The plain-text syntax for comments and suggestions (`{++ ++}`, `{>> <<}`). |
+| Snapshot, version | A copy of a document kept in `.folio/history/`. |
+| Data engine | On the Univer branch: the separate process for sheet imports, queries, scripts and what-if. |
