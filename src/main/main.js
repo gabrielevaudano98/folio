@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer, Notification } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -9,13 +9,14 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { tl, setLocale } from '../renderer/i18n.js';
+import { tl, t, setLocale } from '../renderer/i18n.js';
 import { createNotes, NOTE_EXT } from './notes.js';
 import { createHistory } from './history.js';
 import { createGitLog } from './git-log.js';
 import { createAssets, isAssetPath } from './assets.js';
 import { duplicate } from './duplicate.js';
 import { assertUnlocked, isLockedPage } from './locks.js';
+import { createReminders } from './reminders.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
@@ -46,7 +47,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true, remoteImages: false,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
-  language: 'en', dateStyle: 'relative', lockedPages: {},
+  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {},
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
@@ -89,6 +90,22 @@ const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset 
 /* history must never get in the way of saving */
 const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); return false; } return null; }; // false: it could not be stored (null: nothing new to store)
 let win = null;
+/* reminders (D1, X13): fired while Folio is open; Done / Dismissed kept here per workspace, never in the page */
+const reminders = createReminders({
+  notes, isNote: (rel) => NOTE_EXT.includes(path.extname(rel).toLowerCase()),
+  states: () => (settings.workspace && settings.reminderStates?.[settings.workspace]) || {},
+  setStates: (m) => { if (!settings.workspace) return; settings.reminderStates = { ...(settings.reminderStates || {}), [settings.workspace]: m }; if (!Object.keys(m).length) delete settings.reminderStates[settings.workspace]; saveSettings(); },
+  onChange: () => win?.webContents.send('reminders:changed'),
+  onFire: (r) => {
+    win?.webContents.send('reminders:fired', r);
+    try {
+      if (!Notification.isSupported() || process.env.FOLIO_NO_OS_NOTIFY) return;
+      const n = new Notification({ title: t('rem.notify-title'), body: r.title || path.basename(r.rel).replace(/\.[^.]+$/, ''), silent: false });
+      n.on('click', () => { if (!win) return; if (win.isMinimized()) win.restore(); win.show(); win.focus(); win.webContents.send('reminders:open', r); });
+      n.show();
+    } catch (e) { console.error('[folio] notification', e.message); }
+  },
+});
 
 /* ---------------- window ---------------- */
 function themeColors() {
@@ -177,7 +194,9 @@ async function setWorkspace(dir) {
   saveSettings();
   await watcher?.close();
   watcher = null;
+  reminders.reset();
   if (!dir) return;
+  reminders.scanAll().catch((e) => console.error('[folio] reminders', e.message));
   assets.purgeTrash().catch(() => {}); // removed files older than 30 days leave the asset trash
   watcher = chokidar.watch(dir, {
     ignoreInitial: true, depth: 12,
@@ -190,9 +209,12 @@ async function setWorkspace(dir) {
       clearTimeout(structural);
       structural = setTimeout(() => win?.webContents.send('fs:tree-changed'), 150);
     }
-    if (evt === 'change' && NOTE_EXT.includes(path.extname(abs).toLowerCase())) {
+    if (evt === 'unlink' && NOTE_EXT.includes(path.extname(abs).toLowerCase())) reminders.update(notes.relOf(abs), null);
+    if ((evt === 'change' || evt === 'add') && NOTE_EXT.includes(path.extname(abs).toLowerCase())) {
       const text = await fs.readFile(abs, 'utf8').catch(() => null);
       if (text == null) return;
+      reminders.update(notes.relOf(abs), text);
+      if (evt === 'add') return;
       if (ownWrites.get(abs) === text) { ownWrites.delete(abs); return; }
       win?.webContents.send('fs:file-changed', { path: notes.relOf(abs), content: text });
     }
@@ -247,6 +269,7 @@ h('fs:write', async (rel, content) => {
   try { if (!(await history.list(rel)).length) { const was = await fs.readFile(abs, 'utf8').catch(() => null); if (was != null) await keep(rel, was, { reason: 'open', force: true }); } } catch {}
   await writeAtomic(abs, content);
   keep(rel, content, { reason: 'edit' });
+  reminders.update(notes.relOf(abs), content); // our own writes are not echoed by the watcher
   return true;
 });
 h('fs:create', async (rel, content = '') => {
@@ -277,6 +300,7 @@ h('fs:rename', async (from, to) => {
       if (moved.text !== text) { await keep(b, text, { reason: 'move', force: true }); ownWrites.set(notes.resolve(b), moved.text); await writeAtomic(notes.resolve(b), moved.text); changed.add(b); }
     } catch (e) { console.error('assets relocate', e.message); }
   }
+  reminders.rename(r.from, r.to);
   return { to: r.to, changed: [...changed] };
 });
 /* duplicate a note or a folder next to itself: new notes written atomically, the files they use copied into their own .asset */
@@ -320,6 +344,8 @@ h('fs:untrash', async (token) => {
 });
 h('fs:search', (q, opts) => notes.search(q, opts));
 h('fs:find', (q, opts) => notes.find(q, opts));
+h('reminders:list', () => reminders.list());
+h('reminders:set', (id, state) => { if (typeof id !== 'string' || ![null, 'done', 'dismissed'].includes(state ?? null)) throw new Error('Not a reminder state.'); reminders.setState(id, state ?? null); return true; });
 /* version history */
 h('history:list', (rel) => history.list(rel));
 h('history:get', (rel, id) => history.get(rel, id));

@@ -215,6 +215,20 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   }
   ok(`page corpus (${corpus.length} files): opening is byte-identical, editing a paragraph rewrites only that paragraph`);
 
+  // W2-B: a date mention with a time, an end or a reminder is plain text after the day link: lossless, editable, and rewriting
+  // the paragraph writes the same characters back (Folio writes →; a hand-typed -> is read, see FORMATS.md)
+  {
+    const page = '# Dates\n\nCall Ada [[2026-12-01]]{09:00 remind 30m} about **budget**.\n\n- [ ] Trip [[2026-12-03]]{→ 2026-12-05} and [[2026-12-01]]{09:00 → 10:30 remind}\n- [ ] Rent [[2026-12-01]]{remind 1d} [status:: Doing]\n\nNot a tail: [[2026-12-07]]{see notes} and [[Plan]]{x}.\n';
+    const { m, doc, kids } = open(page);
+    assert.equal(codec.save(m, doc), page); assert(!m.blocks.some((b) => b.raw), 'every block stays editable');
+    m.orig = null; assert.equal(codec.save(m, withKids(kids.map((k) => schema.nodeFromJSON(k.toJSON())))), page, 'serializing every block again gives the same text');
+    const next = kids.slice(); next[1] = para('Call Ada [[2026-12-01]]{09:30 remind 1h} about it.');
+    const o2 = open(page); assert.equal(codec.save(o2.m, withKids([o2.kids[0], next[1], ...o2.kids.slice(2)])), page.replace('[[2026-12-01]]{09:00 remind 30m} about **budget**.', '[[2026-12-01]]{09:30 remind 1h} about it.'));
+    const h = markdownIt.render('Due [[2026-12-01]]{09:00 remind 30m} and [[2026-12-07]]{see}');
+    assert(h.includes('wikilink-date is-remind') && h.includes('9:00') && !h.includes('remind 30m') && h.includes('{see}'), h);
+    ok('date mentions with time, end and reminder round-trip byte for byte, edit as text, and read as one date in the Read view');
+  }
+
   const obs = open(fx('pages/obsidian.md'));
   assert(!obs.m.blocks.some((b) => b.raw)); ok('an Obsidian page (footnotes, maths, callouts, comments) is fully editable');
   const html = open(fx('pages/html.md')).m.blocks.filter((b) => b.raw).map((b) => b.src);
@@ -469,6 +483,12 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.deepEqual((await ins('at', 'next friday'))[0], '[[2026-11-27]]'); assert.equal((await ins('at', 'tomorrow'))[0], '[[2026-11-21]]');
   assert.equal((await ins('at', 'domani'))[0], '[[2026-11-21]]'); assert.equal((await ins('at', 'tra 3 giorni'))[0], '[[2026-11-23]]'); assert.equal((await ins('at', '25 dec'))[0], '[[2026-12-25]]');
   ok('@ understands dates in English and Italian (tomorrow, next friday, domani, tra 3 giorni, 25 dec) and links the daily note');
+  assert.equal((await ins('at', 'tomorrow 9am'))[0], '[[2026-11-21]]{09:00}'); assert.equal((await ins('at', '3 dec - 5 dec'))[0], '[[2026-12-03]]{→ 2026-12-05}');
+  assert.deepEqual((await ins('at', 'remind tomorrow 9am')).slice(0, 1), ['[[2026-11-21]]{09:00 remind}']);
+  assert.deepEqual((await ins('at', 'ricordami domani alle 9')).slice(0, 1), ['[[2026-11-21]]{09:00 remind}']);
+  assert.equal((await ins('at', 'remind monday'))[0], '[[2026-11-23]]{remind}'); assert.equal((await mentionEntries('at', 'rem', ctx))[0].group, 'Reminders');
+  assert.ok((await ins('at', 'remind tomorrow 9am')).every((x) => !/\[\[[^\]]* \d/.test(x)), 'never a time inside the brackets');
+  ok('@tomorrow 9am adds the time, @3 dec - 5 dec a range, and @remind / @ricordami write a reminder after the day link');
   const at = await mentionEntries('at', 'ada', ctx); assert.equal(at[0].group, 'People');
   assert(!at.some((e) => e.insert === '[[2026-11-19]]')); ok('@ puts people first and does not list daily notes as pages');
   assert.deepEqual((await ins('at', 'done')).filter((x) => x.startsWith('[status')), ['[status:: Done]']); assert.equal((await ins('at', 'status')).filter((x) => x.startsWith('[status')).length, 4);
