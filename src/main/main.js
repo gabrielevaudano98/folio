@@ -316,6 +316,7 @@ h('fs:untrash', async (token) => {
   return e.rel;
 });
 h('fs:search', (q, opts) => notes.search(q, opts));
+h('fs:find', (q, opts) => notes.find(q, opts));
 /* version history */
 h('history:list', (rel) => history.list(rel));
 h('history:get', (rel, id) => history.get(rel, id));

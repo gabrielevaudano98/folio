@@ -24,6 +24,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `trash` | request | `fs:trash` | `src/main/main.js` |
 | `untrash` | request | `fs:untrash` | `src/main/main.js` |
 | `search` | request | `fs:search` | `src/main/main.js` |
+| `find` | request | `fs:find` | `src/main/main.js` |
 | `backlinks` | request | `fs:backlinks` | `src/main/main.js` |
 | `userName` | request | `app:user-name` | `src/main/main.js` |
 | `unlinked` | request | `fs:unlinked` | `src/main/main.js` |

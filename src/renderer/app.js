@@ -29,6 +29,7 @@ import { htmlToMarkdown } from './page-paste.js';
 import { pageSetup, pdfOptions, pageCss } from './page-docx.js';
 import { parseProps } from './page-props.js';
 import { clean as cleanCm } from './page-critic.js';
+import { createSearchWindow } from './search-window.js';
 import tokensCss from './tokens.css';
 import stylesCss from './styles.css';
 
@@ -472,7 +473,7 @@ function activate(p, { line } = {}) {
     prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
     prev.rich = docType(prev.path) === 'md' && isRich() ? rich.snapshot() : null;
   }
-  navRecord(p);
+  navRecord(p); searchWin.noteOpened(p);
   S.active = p;
   const t = activeTab();
   hideEmpty();
@@ -1422,6 +1423,7 @@ function toggleAllToggles(open) {
   rich.setToggles(open ?? c > 0);
 }
 function retargetTabs(from, to) {
+  searchWin.noteMoved(from, to);
   const lp = lockMap();
   if (Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
     const next = {}; for (const [k, v] of Object.entries(lp)) next[k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k] = v;
@@ -1876,7 +1878,8 @@ const COMMANDS = [
 
   { id: 'new-folder', title: 'New folder', run: () => newFolder(dirOf(S.active || '')) },
   { id: 'open-folder', title: 'Open folder…', key: 'Mod+O', run: chooseFolder },
-  { id: 'quick-open', title: 'Go to note…', key: 'Mod+P', run: () => openPalette('files') },
+  { id: 'quick-open', title: 'Search pages…', key: 'Mod+P', run: () => openSearch() },
+  { id: 'go-to-note', title: 'Go to note by name…', run: () => openSearch({ titleOnly: true }) },
   { id: 'search', title: 'Search all notes', key: 'Mod+Shift+F', run: focusSearch },
   { id: 'find', title: 'Find in note', key: 'Mod+F', run: () => (isRich() && curType() === 'md' ? rich.find(false) : editor.run('find')) },
   { id: 'replace', title: 'Find and replace in note', key: 'Mod+H', run: () => (isRich() && curType() === 'md' ? rich.find(true) : editor.run('find')) },
@@ -1988,6 +1991,16 @@ function insertMd(md) {
   if (isRich()) { rich.editor.chain().focus().insertContent(md, { contentType: 'markdown' }).run(); return; }
   editor.insert(md);
 }
+/* the search window (Ctrl+P): recent pages, titles and content, preview; Title only is the old Go to note */
+const searchWin = createSearchWindow({
+  workspace: () => S.workspace, files: () => S.files, isOpen: (p) => !!tabOf(p), stem, dirOf, dirs: () => allDirs(), icons,
+  typeIcon: (p) => typeIcon(docTypeAny(p)), textOf, render: (m) => render(m), absUrl: (rel) => folio.absUrl(normalize(rel)),
+  find: (q, o) => folio.find(q, o), get isMac() { return S.platform === 'darwin'; },
+  open: (p, o) => openFile(p, o).catch((e) => toast(e.message, { kind: 'error' })),
+  commands: (v) => { openPalette('commands'); const i = $('#palette-input'); i.value = v; updatePalette(); },
+  create: async (q) => { try { const p = await folio.create(q.endsWith('.md') ? q : q + '.md', `# ${q.split('/').pop()}\n\n`); await refreshTree(); openFile(p); } catch (e) { toast(e.message, { kind: 'error' }); } },
+});
+function openSearch(o) { if ($('#palette') && !$('#palette').hidden) closePalette(); return searchWin.open(o); }
 let pal = { mode: 'commands', items: [], sel: 0, opener: null };
 function openPalette(mode = 'commands', move = null) {
   pal = { mode, items: [], sel: 0, opener: document.activeElement, move };
@@ -2536,7 +2549,7 @@ function bindChrome() {
   // empty states
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
-    if (b) { const act = b.dataset.act; if (act === 'choose') chooseFolder(); if (act === 'new') newNote(); if (act === 'ai') openAiSheet(); if (act === 'quick-open') openPalette('files'); }
+    if (b) { const act = b.dataset.act; if (act === 'choose') chooseFolder(); if (act === 'new') newNote(); if (act === 'ai') openAiSheet(); if (act === 'quick-open') openSearch(); }
     const r = e.target.closest('[data-recent]'); if (r) switchWorkspace(r.dataset.recent).catch((er) => toast(er.message, { kind: 'error' }));
   });
 
@@ -2602,10 +2615,11 @@ function bindChrome() {
   document.addEventListener('keydown', (e) => {
     const m = e.metaKey || e.ctrlKey;
     if (m && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openPalette('commands'); }
+    else if (m && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openSearch(); } // also the menu's accelerator; opening twice only refocuses
     if (m && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); insertRef('link'); }
     if (m && e.altKey && e.shiftKey && e.code === 'KeyT') { e.preventDefault(); toggleAllToggles(); } // B8: Notion's Ctrl+Alt+T is Insert template here
     else if (m && e.altKey && !e.shiftKey && e.code === 'KeyT' && curType() === 'md') { e.preventDefault(); insertTemplateCmd(); } // shown in the palette, was never bound
-    if (m && e.key === 'Enter' && curType() === 'slides') { e.preventDefault(); curSurface()?.present(); }
+    if (m && e.key === 'Enter' && curType() === 'slides' && !searchWin.isOpen()) { e.preventDefault(); curSurface()?.present(); }
     if (e.key === 'Escape' && app.classList.contains('focus') && $('#palette').hidden) toggleFocus();
   });
 }

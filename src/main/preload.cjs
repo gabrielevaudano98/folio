@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('folio', {
   trash: (p) => call('fs:trash', p),
   untrash: (t) => call('fs:untrash', t),
   search: (q, o) => call('fs:search', q, o),
+  find: (q, o) => call('fs:find', q, o),
   backlinks: (p) => call('fs:backlinks', p),
   userName: () => call('app:user-name'),
   unlinked: (p) => call('fs:unlinked', p),
