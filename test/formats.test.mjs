@@ -21,7 +21,7 @@ import { findMatches, replaceAll } from '../src/renderer/page-find.js';
 import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
-import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved, RESOLVED as RESOLVED_MARK } from '../src/renderer/page-critic.js';
+import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved, RESOLVED as RESOLVED_MARK } from '../src/renderer/page-critic.js';
 import { readAppearance, setAppearance, setCover, coverOf, ownedKeys } from '../src/renderer/page-appearance.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag, setTypeOverrides, inferType } from '../src/renderer/page-props.js';
 import { reactionOf, splitThread, myReaction, commentParts, mentionAt } from '../src/renderer/page-reactions.js';

@@ -22,7 +22,7 @@ import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
-import { writeAtomic, writeAtomicSync } from './atomic.js';
+import { writeAtomic, writeAtomicSync, writeNew } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
 if (process.env.FOLIO_FAKE_AUDIO_FILE) app.commandLine.appendSwitch('use-file-for-fake-audio-capture', process.env.FOLIO_FAKE_AUDIO_FILE); // tests: the fake microphone speaks this wav
@@ -308,10 +308,10 @@ h('fs:duplicate', async (rel, suffix) => {
   guardAsset(rel);
   return duplicate({ notes, assets, from: rel, suffix, write: async (r, text) => {
     const abs = notes.resolve(r, { mustBeNote: true });
-    if (fss.existsSync(abs)) throw new Error('A note with that name already exists.');
     ownWrites.set(abs, text);
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await writeAtomic(abs, text);
+    // exclusive: a note another program or an AI created at this very name a moment ago is never replaced
+    try { await writeNew(abs, text); } catch (e) { ownWrites.delete(abs); throw e.code === 'EEXIST' ? new Error('A note with that name already exists.') : e; }
     keep(notes.relOf(abs), text, { reason: 'created', force: true });
   } });
 });

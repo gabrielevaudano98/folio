@@ -77,6 +77,8 @@ export async function writeNew(file, data) {
   catch (e) {
     if (e.code === 'EEXIST') throw e;
     const nf = await fs.open(file, 'wx'); // no hard links here: exclusive create still never replaces a file
-    try { await nf.writeFile(data, typeof data === 'string' ? 'utf8' : undefined); await nf.sync(); } finally { await nf.close().catch(() => {}); }
+    try { await nf.writeFile(data, typeof data === 'string' ? 'utf8' : undefined); await nf.sync(); }
+    catch (err) { await nf.close().catch(() => {}); await fs.rm(file, { force: true }).catch(() => {}); throw err; } // the name was ours alone: a half-written file is not left under it
+    finally { await nf.close().catch(() => {}); }
   } finally { await fs.rm(tmp, { force: true }).catch(() => {}); }
 }

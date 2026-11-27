@@ -46,7 +46,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     const resolved = items.filter((x) => x.kind === 'thread' && x.resolved), threads = items.filter((x) => x.kind === 'thread' && !x.resolved), changes = items.filter((x) => x.kind !== 'thread' && x.kind !== 'hl');
     if (!resolved.length) showResolved = false;
     if (pref() === 'auto' && (threads.length || changes.length) && pane.hidden && !focusDraft) { show(true, false); autoShown = true; }
-    else if (autoShown && !threads.length && !changes.length && !pane.hidden && !focusDraft) { show(false, false); autoShown = false; }
+    else if (autoShown && !threads.length && !changes.length && !resolved.length && !pane.hidden && !focusDraft) { show(false, false); autoShown = false; }
     onCount?.(threads.length + changes.length);
     const list = items.filter((x) => x.kind !== 'hl' && (showResolved || !x.resolved) && (filter === 'all' || (filter === 'comments') === (x.kind === 'thread')));
     const act = activeIndex();
@@ -124,7 +124,9 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   };
   const dropComment = (x, k) => {
     const tr = editor.state.tr;
-    if (x.comments.length === 1) deleteThread(editor.state, x, tr); else tr.delete(x.comments[k].pos, x.comments[k].pos + 1);
+    // the last comment someone wrote takes the whole thread with it: a `[resolved]` marker or a reaction alone is not a thread
+    const written = splitThread(x.comments).messages.filter(({ c }) => !isResolvedMarker(c));
+    if (x.comments.length === 1 || (written.length === 1 && written[0].k === k)) deleteThread(editor.state, x, tr); else tr.delete(x.comments[k].pos, x.comments[k].pos + 1);
     editor.view.dispatch(tr);
   };
 
