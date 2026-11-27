@@ -30,8 +30,9 @@ UI tests start the real app with `FOLIO_SHOT` pointing to a JSON list of steps; 
 
 - `workspace(name, port)`: a temporary copy of `test/fixture/` and a settings folder with its own MCP port;
 - `runApp(w, steps)`: starts Electron and collects the values the steps log;
-- steps: `{ js, wait, log }` to run code in the window, `{ size }`, `{ out }` for a screenshot; helpers `open(file)`,
-  `pick(id)`, `step(expr)`, `log(expr)`, `errors` (console errors seen by the page).
+- steps: `{ js, wait, log }` to run code in the window, `{ size }`, `{ out }` for a screenshot, and others such as
+  `{ dark }`, `{ metrics }`, `{ quit }` (see `devShot` in `main.js`); helpers `open(file)`, `step(expr)`, `log(expr)`,
+  `errors` (console errors seen by the page) and, for slides, `pick(id)` (select an object on the canvas).
 
 A good UI test does the gesture, then reads **the file on disk** (`w.read('Name.md')`), because the file is the
 document. Give each test file its own port so they can run in parallel.
@@ -50,17 +51,21 @@ document. Give each test file its own port so they can run in parallel.
 
 | Workflow | When | What |
 |---|---|---|
-| `ci.yml` | Push to `main`, pull requests, manual | `npm ci`, `xvfb-run -a npm test`, attribution check (AGPL 7(b)); on push also packages Windows and macOS, checks Electron fuses and talks MCP to the packaged binary, uploads the installers as artifacts |
-| `release.yml` | Push to `main` that changes `package.json` (or `release.yml`), manual | Tests again, builds Windows (NSIS x64/arm64, portable) and macOS (universal DMG and ZIP), publishes a GitHub release `v<version>` ([how-to](../how-to/release.md)) |
-| `codeql.yml` | Push to `main`, pull requests | GitHub CodeQL security analysis |
+| `ci.yml` | Push to `main`, pull requests **targeting `main`**, manual | `npm ci`, `xvfb-run -a npm test`, attribution check (AGPL 7(b)); on push also packages Windows and macOS, checks Electron fuses and talks MCP to the packaged binary, uploads the installers as artifacts |
+| `release.yml` | Push to `main` that changes `package.json` (or `release.yml`), a `v*` tag, manual | Tests again, builds Windows (NSIS x64/arm64, portable) and macOS (universal DMG and ZIP), publishes a GitHub release `v<version>` ([how-to](../how-to/release.md)) |
+| `codeql.yml` | Push to `main`, pull requests targeting `main`, weekly (Monday 04:23 UTC) | GitHub CodeQL security analysis |
 | `roadmap.yml` | Push to `main` changing `.github/roadmap.json` | Creates labels, milestones and issues listed there (skips titles that exist) |
 | `claude.yml` | `@claude` in an issue or a PR | Claude Code answers, reviews or opens a fix (needs `ANTHROPIC_API_KEY`) |
 
-Dependabot (`.github/dependabot.yml`) opens weekly updates for npm and GitHub Actions.
+A pull request whose base is another branch (a stacked PR) gets **no** test run; run the suite locally.
+
+Dependabot (`.github/dependabot.yml`) opens npm updates weekly (editor and build packages grouped, at most 5 open pull
+requests) and GitHub Actions updates monthly. `main` has no branch protection.
 
 ## Review
 
 Pull requests are reviewed by the maintainer and by AI reviewers: [cubic](https://cubic.dev) reads `cubic.yaml` (deeper
-"ultrareview" when `src/main/**`, `src/mcp/**` or a format parser changes) and `AGENTS.md`; CodeAnt also comments.
+"ultrareview" when `src/main/**`, `src/mcp/**` or a format parser changes) and `AGENTS.md`; CodeAnt AI (a GitHub app,
+no config in the repository) also comments; Claude Code answers when mentioned as `@claude`.
 Their comments are suggestions; the maintainer decides. The PR template (`.github/PULL_REQUEST_TEMPLATE.md`) asks for
 the invariants each change keeps.

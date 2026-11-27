@@ -30,7 +30,7 @@ It is open source (AGPL-3.0 with an attribution term), local-first, and has no a
    reading a log afterwards. Assistants can also *propose* changes as tracked suggestions.
 3. **Office-grade editing on top of plain text.** The visual editors must never damage the text: opening a file never
    rewrites it, and editing one part changes only that part. This is the hardest engineering constraint in Folio and
-   it is enforced by tests.
+   it is enforced by tests; the few known exceptions are tracked as bugs in [STATUS.md](STATUS.md#known-bugs-on-main).
 
 ## What you can do today (version 1.5.1, pre-alpha)
 
@@ -47,7 +47,7 @@ optional **meeting recorder** (Windows) that transcribes a call on the computer 
 ## How AI fits in
 
 Folio runs a small MCP server on the computer. One click in **Connect AI Assistants** configures Claude Desktop, Cursor,
-VS Code, Windsurf or LM Studio; Claude Code gets a ready command. The assistant then has 40 tools: list, read and search
+VS Code, Windsurf or LM Studio; Claude Code gets a ready command. The assistant then has 41 tools ([list](reference/mcp-tools.md)): list, read and search
 notes; edit a section; suggest a change; read a spreadsheet's computed values; place and style objects on a slide;
 compare and restore versions. Assistants only see the open folder, and a switch makes them read-only.
 
@@ -63,7 +63,7 @@ the person already uses (OneDrive, iCloud, Dropbox, git).
   1.1.0 to 1.5.1 between 19 and 27 November 2026, all marked pre-alpha.
 - **Built, not merged**: a Notion-parity pass on pages (three stacked pull requests) and Folio Sheets on Univer (a
   long-lived branch). Both are large and need review and merge decisions.
-- **Before a public release**: code signing on macOS and Windows, auto-update, two data-loss bugs on `main` fixed, the
+- **Before a public release**: code signing on macOS and Windows, auto-update, the known data-loss bugs on `main` fixed, the
   responsiveness budget met, the meeting recorder measured on a real Windows call. These are in the *Public release*
   milestone.
 
@@ -73,8 +73,8 @@ the person already uses (OneDrive, iCloud, Dropbox, git).
 |---|---|---|
 | One maintainer | Bus factor of one; large branches wait on one person | These docs, `AGENTS.md` for AI agents, issue-tracked status |
 | Long-lived branches | Pages and Sheets work grows apart from `main` | Merge order decision tracked in [#84](https://github.com/gabrielevaudano98/folio/issues/84) |
-| Unsigned builds | Windows SmartScreen and macOS Gatekeeper warn on first open | Signing wired in CI, needs certificates ([#3](https://github.com/gabrielevaudano98/folio/issues/3), [#4](https://github.com/gabrielevaudano98/folio/issues/4)) |
-| Electron footprint | ~600 MB memory at rest measured on Linux | Measured budgets; a Tauri port was costed (45–77 person-days) and not recommended for now ([ADR 0001](adr/0001-electron.md)) |
+| Unsigned builds | Windows SmartScreen and macOS Gatekeeper warn on first open | macOS signing and notarisation are wired in the release workflow and wait for secrets ([#3](https://github.com/gabrielevaudano98/folio/issues/3)); Windows signing is not set up yet ([#4](https://github.com/gabrielevaudano98/folio/issues/4)) |
+| Electron footprint | ~600 MB memory at rest measured on Linux | Measured budgets; a Tauri port was costed at 45–77 person-days in the project notes (`TAURI-ANALYSIS.md`, 21 Nov 2026) and not recommended for now; [ADR 0001](adr/0001-electron.md) says to revisit only if memory at rest becomes the main complaint |
 | Data integrity in a visual editor over plain text | One bad save loses trust | Round-trip tests for every format, atomic writes, version history, undo |
 | AGPL-3.0 | Anyone who distributes or serves a modified Folio must publish its source | Chosen on purpose: changes come back to the project |
 

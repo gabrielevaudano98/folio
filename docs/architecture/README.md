@@ -195,6 +195,7 @@ See [`docs/adr/`](../adr/README.md).
 - `app.js` (~2,600 lines) is the window's composition root and holds many features; split out a feature when it next
   changes, as for `main.js`.
 - One maintainer; the docs, `AGENTS.md` and the issue tracker are written so that a person or an agent can take over.
+- CI runs only for pull requests based on `main`, so stacked pull requests are untested in CI; `main` has no branch protection.
 
 ## 12. Glossary
 

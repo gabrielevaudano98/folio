@@ -1,8 +1,9 @@
 # Add interface text or a language
 
 Every sentence Folio shows goes through [i18next](https://www.i18next.com) (`src/renderer/i18n.js`). English
-(`src/renderer/locales/en.js`) is the source catalogue; Italian (`locales/it.js`) lists what it translates, and any key it
-leaves out falls back to English, then to the key itself.
+(`src/renderer/locales/en.js`) is the source catalogue. At run time a missing key falls back to English, then to the key
+itself, but **Italian must be complete**: `test/i18n.test.mjs` fails when an English key has no Italian text. Other
+languages may be partial.
 
 ## Add a string
 
@@ -32,4 +33,12 @@ leaves out falls back to English, then to the key itself.
 
 1. Create `locales/<code>.js` exporting an object like `it.js` (only the keys you translate).
 2. Register it in `LOCALES` in `i18n.js` (`{ name: 'Deutsch', dict: de }`).
-3. Run `node test/i18n.test.mjs` and check the Settings picker, the native menu and the slide, board and sheet editors.
+3. Run `node test/i18n.test.mjs` (its completeness checks name `LOCALES.it`; decide whether the new language must be
+   complete too) and check the Settings picker, the native menu and the slide, board and sheet editors.
+
+Not covered by a language file today:
+
+- natural-language dates in the `@` menu understand English and Italian only (`chrono-node` `en` and `it` in
+  `page-mentions.js`; `longDay` formats with `en-GB`);
+- the meeting language setting offers Detect, Italian and English (`meeting.js`, `meeting/service.js`);
+- the starter text of a new board or sheet (`NEW_BOARD`, `NEW_SHEET` in `app.js`) is English.

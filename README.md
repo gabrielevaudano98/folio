@@ -75,7 +75,7 @@ Apri **AI → Connect AI Assistants…** (`⌘⇧A`) oppure clicca il riquadro i
 
 Il bridge stdio usa l'eseguibile stesso di Folio (`--mcp-stdio`), quindi **non serve installare Node**. Se Folio è aperto, le chiamate passano dall'app (evidenziazioni live, undo, nota aperta); se è chiuso, lavora direttamente sull'ultima cartella aperta.
 
-**Strumenti MCP:** 40 strumenti, tra cui `list_notes`, `read_note`, `search_notes`, `get_outline`, `read_section`/`replace_section`, `edit_note` (trova/sostituisci esatto), `suggest_edit` e `add_comment` (proposte da accettare o rifiutare), `get_sheet_values`, la cronologia delle versioni e gli strumenti per le slide oggetto per oggetto. Elenco completo: [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md).
+**Strumenti MCP:** 41 strumenti, tra cui `list_notes`, `read_note`, `search_notes`, `get_outline`, `read_section`/`replace_section`, `edit_note` (trova/sostituisci esatto), `suggest_edit` e `add_comment` (proposte da accettare o rifiutare), `get_sheet_values`, la cronologia delle versioni e gli strumenti per le slide oggetto per oggetto. Elenco completo: [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md).
 
 **Sicurezza:** server solo su `127.0.0.1` con token e controllo Host/Origin; nessun accesso fuori dalla cartella aperta; scrittura solo su `.md/.markdown/.mdx/.txt`; interruttore "Let AI edit notes" per la sola lettura.
 
@@ -94,7 +94,7 @@ npm run dist:win       # su Windows → installer x64/arm64 + portable
 Il workflow `.github/workflows/release.yml` compila **macOS (.dmg universale)** e **Windows (.exe)** e pubblica una release quando un merge su `main` cambia la versione in `package.json` (vedi [docs/how-to/release.md](docs/how-to/release.md)).
 
 ### Firma
-Senza certificati l'app non è firmata: su macOS la prima apertura va fatta con clic destro → Apri; su Windows SmartScreen chiede conferma. Per distribuirla aggiungi i secret indicati nel workflow (certificato Developer ID + notarizzazione Apple; certificato code signing per Windows).
+Senza certificati l'app non è firmata: su macOS la prima apertura va fatta con clic destro → Apri; su Windows SmartScreen chiede conferma. Per macOS il workflow di release è pronto: aggiungi i secret indicati in `release.yml` (certificato Developer ID e notarizzazione Apple). La firma per Windows non è ancora configurata (issue #4).
 
 ## Struttura
 

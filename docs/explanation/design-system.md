@@ -37,7 +37,7 @@ defines a raw value for these. Groups:
 | Motion | `--ease-out/in/in-out`, `--dur-micro/short/long` | Reduced to none under `prefers-reduced-motion`. |
 | Layout | `--sidebar-w`, `--outline-w`, `--dock-w-review`, `--titlebar-h`, `--statusbar-h` | |
 | Code | `--syn-keyword`, `--syn-string`, `--syn-number`, `--syn-type`, `--syn-title` | Greys and weights. |
-| Content colours | `--content-gray`, `--content-brown`, `--content-orange`, `--content-yellow`, `--content-green`, `--content-blue`, `--content-purple`, `--content-pink`, `--content-red` and `-bg` variants | **Only for what an author colours in a page** (`[text]{color=red}`, callouts, chips). The interface itself never uses them. |
+| Content colours | `--content-gray`, `--content-brown`, `--content-orange`, `--content-yellow`, `--content-green`, `--content-blue`, `--content-purple`, `--content-pink`, `--content-red` and `-bg` variants | **Only for what an author colours in a page** (`[text]{color=red}`, callouts, chips). The interface itself must not use them; on `main` a few rules still do (find highlight, review switch, tag star, avatar), PR #77 removes them and adds `test/tokens.test.mjs`. |
 
 Slide decks are a separate world: a deck's theme (fonts, colours, backgrounds) comes from its template and front matter,
 not from `tokens.css`, because a deck is content.
@@ -67,8 +67,8 @@ not from `tokens.css`, because a deck is content.
 
 ## Accessibility
 
-Target WCAG 2.2 AA. Menus, switches and listboxes carry ARIA roles; the slide canvas is operable from the keyboard with
-names announced (`test/a11y-canvas.test.mjs`); the shell is checked with axe-core (`test/a11y-ui.test.mjs`). Known gaps:
+No formal WCAG level has been adopted yet; WCAG 2.2 AA is the aim. Menus, switches and listboxes carry ARIA roles; the slide canvas is operable from the keyboard with
+names announced (`test/a11y-canvas.test.mjs`); the shell is checked with axe-core for serious and critical violations (`test/a11y-ui.test.mjs`). Known gaps:
 the board canvas and the sheet grid ([#6](https://github.com/gabrielevaudano98/folio/issues/6)).
 
 ## How to check a change

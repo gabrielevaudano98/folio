@@ -45,8 +45,9 @@ swapped by `perDoc()` in `history.js`, so `Mod+Z` in one file never brings back 
 2. The tab keeps `text` (current) and `saved` (on disk). `onEditorChange()` updates `text` and schedules `autosave`
    (650 ms debounce), which calls `saveTab()` → `window.folio.write` → atomic write in the main process.
 3. The watcher sends `fs:file-changed` for changes made outside Folio; the tab reloads, or warns when it had unsaved edits.
-4. Before an AI edit, a rename, a template, Replace all and on close, the main process takes a version snapshot
-   (`.folio/history/`).
+4. The main process keeps version snapshots in `.folio/history/` (`src/main/history.js`): on the first save of a file,
+   on autosaves (one per 3 minutes, the newest replacing the previous), before and after an AI edit, before a rename or
+   move, before a restore, on close and when a version is named.
 
 Known weakness: changes from the page editor arrive 220 ms after the last keystroke and are applied to the tab that is
 active *then* ([#82](https://github.com/gabrielevaudano98/folio/issues/82)). A change must always name its document.
@@ -62,7 +63,10 @@ The page editor must handle any Markdown a person or another tool wrote, and Tip
    source.
 3. On save, the new document is diffed by blocks (`diffArrays`) and only changed blocks are re-serialized; every other
    byte, spacing included, stays as written. `tidy()` puts back conventions the serializer escapes (`[[links]]`,
-   `[key:: value]`, `[!callout]`).
+   `[key:: value]`, `[!callout]`). When the blocks can no longer be matched (the editor reshaped the document), the
+   whole body is serialized again.
+4. Loading text into the editor (`setMarkdown`) emits no change, and `onEditorChange` ignores text equal to the tab's,
+   so opening a page writes nothing. Known exceptions on `main` are tracked in [STATUS](../STATUS.md#known-bugs-on-main).
 
 Everything Folio adds to CommonMark (footnotes, maths, colour and alignment `[text]{color=…}`, hidden `%%comments%%`,
 toggles as `<details>`, columns, callouts, CriticMarkup) has a reader and a writer in `page-syntax.js` and an extension
@@ -81,8 +85,8 @@ and suggestions (`page-critic.js`, `page-review.js`), tables (`page-table.js`), 
 A deck is a superset of [Marp](https://marp.app): `---` between slides, HTML-comment directives, `![bg]` backgrounds.
 `slides-core.js` splits and renders slides at 1280 × 720 units in real DOM (text stays selectable and accessible).
 **Placed objects** (`::: box #id x= y= w= h= …`) are parsed by `slides-objects.js`; every object has a stable id that
-animations, Morph, links and MCP tools use. `slides-canvas.js` turns a drag, resize or rotate into **one** call to
-`ctx.edit(fn)` that rewrites the object's attribute line. Motion lines (`<!-- transition: … -->`, `animate:`) are in
+animations, Morph, links and MCP tools use. `slides-canvas.js` turns a drag, resize or rotate into **one** call to the
+`edit(fn)` callback `slides.js` gives it, which rewrites the object's attribute line. Motion lines (`<!-- transition: … -->`, `animate:`) are in
 `slides-motion.js`, played by `slides-present.js` and written to PowerPoint XML by `slides-pptx-motion.js`.
 
 PowerPoint export (`slides-pptx.js`) renders each slide off-screen, measures every element and hands pptxgenjs exact

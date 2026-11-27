@@ -57,7 +57,7 @@ Releases are on [GitHub Releases](https://github.com/gabrielevaudano98/folio/rel
 - **1.5.0** (27 Nov): one-click meeting recording from the sidebar; on Windows, an offer to record when another app starts
   a call (reads the microphone consent store, off by default); image fixes.
 - **1.4.0–1.4.2** (21–22 Nov): web images in notes load only when asked; meeting recorder fixes (empty audio, no-sound warning).
-- **1.3.0–1.3.2** (21 Nov): **Pages Studio** (D0–D17, [plan](PAGES-PLAN.md)); English and Italian interface; meeting
+- **1.3.0–1.3.2** (21 Nov): **Pages Studio** (D0–D16 and attachments in `.asset/`, [plan](PAGES-PLAN.md)); English and Italian interface; meeting
   recorder as an optional download (local Whisper, checked notes); Phase 2: lean installer (14 MB of app code), faster
   start, atomic writes, crash recovery, this documentation set.
 - **1.2.0** (20 Nov): **Slides Studio** P0–P15 ([plan](SLIDES-PLAN.md)).

@@ -1,8 +1,8 @@
 # Source map
 
 Every file under `src/`, what it does, and whether it is a **core** (pure: no DOM, no Electron, tested in Node) or a
-**surface** (draws and edits in the window). `test/docs-map.test.mjs` fails when a file in `src/` is missing from this
-page, so this list cannot fall out of date unnoticed. For the processes these files run in, see
+**surface** (draws and edits in the window). `test/docs-map.test.mjs` fails when a file in `src/` has no row of its own
+in the table of its folder, so this list cannot fall out of date unnoticed. For the processes these files run in, see
 [process model](../explanation/process-model.md); for how the editors fit together, see [editors](../explanation/editors.md).
 
 Sizes are approximate (November 2026) and only there to show where the weight is.
@@ -17,7 +17,7 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 | `boot.js` | entry | One binary, two jobs: starts the app (`main.js`), or the stdio MCP bridge when run with `--mcp-stdio`. |
 | `main.js` | composition root (~800 lines) | Settings (`settings.json`, batched atomic writes), window and its lockdown, workspace and file watcher (chokidar), every IPC handler (`h()`), renderer round-trips for app-only MCP tools, the MCP HTTP server on 127.0.0.1, one-click connection to AI apps, native menu, lifecycle and crash recovery. |
 | `preload.cjs` | bridge | The window's only door to the system: exposes `window.folio` (requests and events). See [IPC](ipc.md). |
-| `notes.js` | core (Node fs) | Every file operation: `resolve()` checks that a path stays inside the workspace, then tree, read, write, rename/move with link rewriting, search, backlinks, trash. Shared by the app, the HTTP MCP server and the stdio bridge. |
+| `notes.js` | core (Node fs) | Every file operation: `resolve()` checks that a path stays inside the workspace, then tree, read, write, rename/move with link rewriting, search, backlinks. Shared by the app, the HTTP MCP server and the stdio bridge. (Moving to the system trash is `fs:trash` in `main.js`.) |
 | `atomic.js` | core | Atomic writes: temp file in the same folder, flush, rename ([ADR 0008](../adr/0008-atomic-writes.md)). |
 | `assets.js` | core (Node fs) | The hidden `.asset/` folder beside each page: content-hashed copies of pictures and attachments, unused/missing checks, refusal of folders that link outside. |
 | `history.js` | core (Node fs) | Version history in `<workspace>/.folio/history/`: content-addressed gzip objects plus an index per document. |
@@ -62,13 +62,13 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `markdown.js` | core-ish | Markdown to sanitised HTML (markdown-it + DOMPurify) for the Read view and exports, with source-line anchors and AI-edit marks; Mermaid, KaTeX, charts. |
 | `history.js` | core | Per-document undo stacks for the surfaces and the file-action undo stack. |
 | `history-view.js` | surface | Version history as a mode: compare, restore, name a version. |
-| `i18n.js` | core | i18next set-up and `t()`; language remembered in local storage. See [add interface text](../how-to/add-ui-text.md). |
+| `i18n.js` | shared | i18next set-up and `t()`; language remembered in local storage. See [add interface text](../how-to/add-ui-text.md). |
 | `locales/en.js` | data | English catalogue, the source of truth for every string the app shows. |
 | `locales/it.js` | data | Italian catalogue; missing keys fall back to English. |
 | `icons.js` | data | Folio's own line icons (16 px grid, `currentColor`). No icon font, no emoji. |
 | `fuzzy.js` | core | Fuzzy matching for the palette and the `/`, `@`, `[[` menus. |
 | `refs-syntax.js` | core | Reference syntax between documents: `[[Doc#part]]`, `{{Doc#part}}`, `![[Doc#part]]`; rename rewriting; unlinked mentions. |
-| `refs.js` | surface helper | Resolves a reference to a value or an embed and fills placeholders in rendered HTML. |
+| `refs.js` | core | Resolves a reference to a value or an embed and fills placeholders in rendered HTML; also imported by `main/mcp-tools.js` for `resolve_ref`. |
 | `chart.js` | core | One chart spec (```` ```chart ````) drawn as SVG in pages, slides and sheets. |
 | `callouts.js` | core | Callout types (GitHub and Obsidian), aliases, Notion-style icon and colour. |
 | `tokens.css` | design tokens | Every colour, font, radius, shadow and motion value. See [design system](../explanation/design-system.md). |
@@ -90,7 +90,7 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `page-table.js` | core + surface | GFM tables: grips, insert/move/sort, paste from spreadsheets, "Open as sheet". |
 | `page-ui.js` | surface | Callout menus and fold, collapsible headings, live TOC, breadcrumb, page break. |
 | `page-ribbon.js` | surface | The page ribbon: compact one-row layout and full Word-style tabs. |
-| `inserts.js` | data | Everything you can insert, in one registry read by the `/` menu, `@` menu and palette. |
+| `inserts.js` | data + logic | Everything you can insert, in one registry read by the `/` menu, `@` menu and palette. |
 | `page-mentions.js` | core | What the `[[`, `@`, `#` and `:` pickers offer (pages, people, dates, tags, emoji). |
 | `page-props.js` | core | YAML front matter as typed properties; edits rewrite only that property's lines. |
 | `page-props-ui.js` | surface | The Properties panel above the title. |
@@ -102,7 +102,7 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `page-info.js` | core | The Info tab: counts, reading time, file facts. |
 | `page-help.js` | core | The help sheet: shortcuts and syntax. |
 | `page-templates.js` | core | Templates: variables, prompts, merge into a page. |
-| `page-paste.js` | core | HTML from Word, Google Docs, Notion and the web to clean Markdown (turndown). |
+| `page-paste.js` | surface helper | Paste and import: HTML from Word, Google Docs, Notion and the web to clean Markdown (turndown), as a TipTap extension. |
 | `page-docx.js` | surface helper | Word export (docx) with real Word structure, tracked changes for suggestions; PDF page setup. |
 
 ### Slides (`.slides.md`)
