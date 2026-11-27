@@ -333,6 +333,7 @@ h('fs:broken-links', (rel) => notes.brokenLinks(rel));
 h('fs:list', () => notes.list({ limit: 5000 }));
 h('fs:save-image', (noteRel, name, bytes) => assets.save(noteRel, name, bytes));
 h('fs:pick-image', async (noteRel) => {
+  if (!app.isPackaged && process.env.FOLIO_PICK_IMAGE) return assets.importFile(noteRel, process.env.FOLIO_PICK_IMAGE); // tests: stands in for the dialog
   const r = await dialog.showOpenDialog(win, { title: tl('dlg', 'Insert image'), properties: ['openFile'], filters: [{ name: tl('dlg', 'Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   return assets.importFile(noteRel, r.filePaths[0]);

@@ -22,6 +22,7 @@ import { sections, moveSection, shiftSection } from '../src/renderer/page-outlin
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
 import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved, RESOLVED as RESOLVED_MARK } from '../src/renderer/page-critic.js';
+import { readAppearance, setAppearance, setCover, coverOf, ownedKeys } from '../src/renderer/page-appearance.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag, setTypeOverrides, inferType } from '../src/renderer/page-props.js';
 import { reactionOf, splitThread, myReaction, commentParts, mentionAt } from '../src/renderer/page-reactions.js';
 import { findMentions, linkMention, linkAllMentions } from '../src/renderer/refs-syntax.js';
@@ -862,6 +863,35 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.ok(!/<img\b[^>]*\ssrc="/.test(html) && !/srcset/.test(html), html);
   assert.ok(html.includes('data-src="https://example.com/a.png"') && html.includes('data-src="file:///etc/a.png"') && html.includes('data-src="pics/a.png"'), html);
   ok('slide text pictures keep their address in data-src, so the view checks it before anything is requested');
+}
+
+
+{ // W2-C: page appearance keys: each one adds or removes only its own line; CRLF stays CRLF; defaults leave no trace
+  for (const eol of ['\n', '\r\n']) {
+    const body = `# Title${eol}${eol}Text${eol}`;
+    const fmOf = (extra) => `---${eol}title: Hi${eol}${extra}tags: [a]${eol}---${eol}`;
+    const base = fmOf('') + body;
+    for (const [key, val, line] of [['font', 'serif', 'font: serif'], ['font', 'mono', 'font: mono'], ['small-text', true, 'small-text: true'], ['full-width', true, 'full-width: true'], ['toc', true, 'toc: true'], ['cover', '.asset/ab12cd34-pic.png', 'cover: .asset/ab12cd34-pic.png'], ['cover', 'gradient-3', 'cover: gradient-3']]) {
+      const on = setAppearance(base, key, val);
+      assert.equal(on, base.replace(`tags: [a]${eol}`, `tags: [a]${eol}${line}${eol}`), `${key} adds only its line`);
+      assert.equal(setAppearance(on, key, key === 'font' ? '' : false), base, `${key} removed restores the file byte for byte`);
+    }
+    const cov = setAppearance(base, 'cover', '.asset/x.png'); const moved = setAppearance(cov, 'cover-y', 30);
+    assert.equal(moved, cov.replace(`cover: .asset/x.png${eol}`, `cover: .asset/x.png${eol}cover-y: 30${eol}`));
+    assert.equal(setAppearance(moved, 'cover-y', 50), cov, 'the default position removes cover-y');
+    assert.equal(setCover(moved, ''), base, 'removing the cover takes cover-y with it');
+    assert.equal(setCover(moved, 'gradient-2'), moved.replace('cover: .asset/x.png', 'cover: gradient-2').replace(`cover-y: 30${eol}`, ''), 'a new cover resets its position');
+    // a page with no front matter gets one and loses it again
+    const bare = `# T${eol}`; const on = setAppearance(bare, 'toc', true);
+    assert.equal(setAppearance(on, 'toc', false), bare, 'a page with no front matter returns to none');
+  }
+  const a = readAppearance('---\nfont: mono\nsmall-text: true\nfull-width: true\ntoc: true\ncover: .asset/p.png\ncover-y: 20\n---\nx\n');
+  assert.deepEqual([a.font, a.small, a.full, a.toc, a.cover?.kind, a.coverY], ['mono', true, true, true, 'asset', 20]);
+  assert.equal(readAppearance('---\ncover: https://example.com/a.png\n---\n').cover, null, 'a web address is never a cover');
+  assert.equal(coverOf('.asset/../../etc/passwd'), null); assert.equal(coverOf('pics/a.png'), null); assert.equal(coverOf('gradient-9'), null);
+  assert.equal(readAppearance('---\nfont: comic\nsmall-text: false\n---\n').font, '', 'values it does not know are ignored');
+  assert.deepEqual([...ownedKeys('---\nfont: serif\ncover: https://x.y/z.png\ncover-y: 5\nowner: Ada\ntoc: true\n---\n')].sort(), ['font', 'toc'], 'only understood keys are hidden from the properties');
+  ok('page appearance: font, small-text, full-width, toc, cover and cover-y each change only their own line (LF and CRLF), defaults leave no trace, web covers are refused');
 }
 
 console.log(`\n${n} format checks passed`);
