@@ -8,8 +8,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-lock-ui-'));
 const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud'), pages = path.join(ws, 'pages');
 fs.mkdirSync(pages, { recursive: true }); fs.mkdirSync(ud);
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47614, lockedPages: { '/elsewhere/ws': { 'pages/a.md': true } } }));
-const SRC = '---\nstatus: draft\n---\n# Lock\n\nAlpha line\n\nBeta {==word==}{>>Ann, 2026-11-20 10:00: Note<<}\n\n<details>\n<summary>One</summary>\n\nfirst\n\n</details>\n\n<details open>\n<summary>Two</summary>\n\nsecond\n\n</details>\n\n```js\nconst a = 1;\n```\n';
-fs.writeFileSync(path.join(pages, 'a.md'), SRC);
+const SRC = '---\nstatus: draft\nup: "[[c]]"\n---\n# Lock\n\nAlpha line\n\nBeta {==word==}{>>Ann, 2026-11-20 10:00: Note<<}\n\n<details>\n<summary>One</summary>\n\nfirst\n\n</details>\n\n<details open>\n<summary>Two</summary>\n\nsecond\n\n</details>\n\n```js\nconst a = 1;\n```\n';
+fs.writeFileSync(path.join(pages, 'a.md'), SRC); fs.writeFileSync(path.join(pages, 'c.md'), '# C\n');
 const P = "document.querySelector('.rich-prose')";
 const caretAtEnd = `(() => { const p = ${P}; p.focus(); const el = p.querySelector(':scope > p'); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()`;
 const type = (t) => `document.execCommand('insertText', false, ${JSON.stringify(t)}); true`;
@@ -55,6 +55,14 @@ const steps = [
   { js: "[...document.querySelectorAll('#menu .menu-item')].find((b) => b.textContent.trim().startsWith('Rename')).click(); true", wait: 500 },
   { js: "const i = document.querySelector('#prompt-input'); i.value = 'b'; i.form.requestSubmit(); true", wait: 1500 },
   { js: "folio.init().then((i) => [Object.keys((i.settings.lockedPages || {})[i.settings.workspace] || {}), !document.querySelector('.rich-lock').hidden])", log: true, wait: 100 },
+  // 6. a link property still opens its page on a locked page (plain click)
+  { js: "document.querySelector('.props .prop-link').click(); true", wait: 1200 },
+  { js: "document.querySelector('.rich-prose h1')?.textContent.trim() || ''", log: true, wait: 100 },
+  // 7. trashing a locked page drops its lock (a new page at that path opens unlocked); Undo brings the lock back
+  { js: "document.querySelector('[data-file=\"pages/b.md\"]').click(); true", wait: 900 },
+  { js: "folio.read('pages/b.md')", log: true, wait: 100 },
+  { js: "window.__folioRun('trash'); true", wait: 500 }, { js: "document.querySelector('#sheet-prompt [data-yes]').click(); true", wait: 1500 },
+  { js: "folio.init().then((i) => Object.keys((i.settings.lockedPages || {})[i.settings.workspace] || {}))", log: true, wait: 100 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -65,8 +73,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nlock, code tools, toggles ui'); if (process.env.DEBUG) console.log(logs);
-  assert.equal(logs.length, 16, out.slice(-1500));
-  const [tools, wrapped, copied, sameFile, open1, open2, open3, lock, still, panels, stillAfter, noTyped, typed, menu, moved, errors] = logs;
+  assert.equal(logs.length, 19, out.slice(-1500));
+  const [tools, wrapped, copied, sameFile, open1, open2, open3, lock, still, panels, stillAfter, noTyped, typed, menu, moved, linkTab, final, afterTrash, errors] = logs;
   assert.deepEqual(errors, [], 'no renderer errors');
   assert.deepEqual(tools, ['copy', 'wrap']); assert.equal(wrapped, true); assert.equal(copied, true); assert.equal(sameFile, true);
   console.log('  ✓ a code block has Copy (toast: Copied) and Wrap (view only, file untouched)');
@@ -78,8 +86,10 @@ child.on('exit', () => {
   console.log('  ✓ on a locked page the properties are disabled and the review pane offers no action; forced ones change nothing');
   assert(menu.includes('Unlock page'), 'the sidebar menu offers Unlock page on a locked page');
   assert.deepEqual(moved, [['pages/b.md'], true]);
+  assert.equal(linkTab, 'C', 'a plain click on a link property opens the page on a locked page');
+  assert.deepEqual(afterTrash, [], 'a trashed page takes its lock along');
   const settings = JSON.parse(fs.readFileSync(path.join(ud, 'settings.json'), 'utf8'));
-  assert.deepEqual(settings.lockedPages, { '/elsewhere/ws': { 'pages/a.md': true }, [ws]: { 'pages/b.md': true } }, 'the lock is kept in the settings file, per workspace folder, keyed by path');
-  assert.equal(typed, true); const final = fs.readFileSync(path.join(pages, 'b.md'), 'utf8'); assert(final.includes('Alpha line typed') && !final.includes('LOCKED'));
+  assert.deepEqual(settings.lockedPages, { '/elsewhere/ws': { 'pages/a.md': true } }, 'locks are kept per workspace folder; the other folder’s lock is untouched');
+  assert.equal(typed, true); assert(final.includes('Alpha line typed') && !final.includes('LOCKED'));
   console.log('  ✓ Unlock makes the page editable again; the lock moves with a rename and lives only in the settings file');
 });

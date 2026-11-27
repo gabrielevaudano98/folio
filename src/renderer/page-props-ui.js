@@ -90,8 +90,8 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
     const rm = e.target.closest('[data-remove]');
     if (rm) { const key = keyOf(rm); const p = propOf(key); const list = p.value.filter((_, i) => i !== +rm.dataset.remove); commit((t) => setProp(t, key, list, p.type)); return; }
     const tag = e.target.closest('[data-tag]'); if (tag) { onTag?.(tag.dataset.tag); return; }
-    const link = e.target.closest('.prop-link');
-    if (link) { if (e.ctrlKey || e.metaKey) onLink?.(link.dataset.link); else { link.hidden = true; const i = link.parentElement.querySelector('input'); i.hidden = false; i.focus(); } return; }
+    const link = e.target.closest('.prop-link'); // on a locked page a plain click opens the page: there is nothing to edit
+    if (link) { if (e.ctrlKey || e.metaKey || locked()) onLink?.(link.dataset.link); else { link.hidden = true; const i = link.parentElement.querySelector('input'); i.hidden = false; i.focus(); } return; }
     const key = e.target.closest('.prop-key');
     if (key && !key.closest('.is-new')) openMenu(key);
   });

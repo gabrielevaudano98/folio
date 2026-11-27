@@ -15,7 +15,7 @@ import { createHistory } from './history.js';
 import { createGitLog } from './git-log.js';
 import { createAssets, isAssetPath } from './assets.js';
 import { duplicate } from './duplicate.js';
-import { lockedTarget } from './locks.js';
+import { assertUnlocked, isLockedPage } from './locks.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
@@ -265,7 +265,10 @@ h('fs:rename', async (from, to) => {
   const r = await notes.move(from, to);
   const pairs = isDir ? (await notes.allFiles()).filter((f) => f.startsWith(r.to + '/')).map((f) => [r.from + f.slice(r.to.length), f]) : [[r.from, r.to]];
   const changed = new Set();
-  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b, (f, text) => keep(f, text, { reason: 'before-rename', force: true })).catch(() => [])) changed.add(c); }
+  // a locked page keeps its old link (X3); a moved page's own links still follow it. Locks are still keyed by the old path here.
+  const oldOf = (f) => (f === r.to || f.startsWith(r.to + '/') ? r.from + f.slice(r.to.length) : f);
+  const lockSkip = (f, was) => !pairs.some(([, b]) => b === f) && (isLockedPage(settings.lockedPages, settings.workspace, oldOf(f)) || isLockedPage(settings.lockedPages, settings.workspace, was));
+  for (const [a, b] of pairs) { history.rename(a, b).catch(() => {}); for (const c of await notes.rewriteAfterMove(a, b, (f, text) => keep(f, text, { reason: 'before-rename', force: true }), { skip: lockSkip }).catch(() => [])) changed.add(c); }
   /* a page (or a folder of pages) moved: files a page uses that did not move with it are copied into its new .asset, references follow */
   for (const [a, b] of pairs) {
     if (path.dirname(a) === path.dirname(b)) continue;
@@ -533,16 +536,10 @@ const appBackend = {
     if (!tool) throw new Error(`Unknown tool ${name}`);
     if (tool.write && !settings.allowWrite) throw new Error('Folio is set to read-only for AI assistants. The user can allow edits in Folio → AI.');
     if (!settings.workspace) throw new Error('No folder is open in Folio. Ask the user to open one.');
-    if (tool.write) { // X3: a page the person locked takes no AI edit, and is not moved
-      for (const p of [args.path, args.from]) {
-        let rel = null; try { rel = typeof p === 'string' && p.trim() ? notes.relOf(notes.resolve(p)) : null; } catch { /* the tool reports a bad path itself */ }
-        const hit = lockedTarget(settings.lockedPages, settings.workspace, rel);
-        if (hit) throw new Error(`${hit} is locked in Folio. The user can unlock it from the page menu (Unlock page).`);
-      }
-    }
+    assertUnlocked(tool, args, { notes, lockedPages: settings.lockedPages, workspace: settings.workspace }); // X3: a locked page takes no AI edit and is not moved
     logActivity({ client: ctx.client, tool: name, path: args.path || args.from || args.query || '' });
     return runTool(notes, name, args, {
-      history, client: ctx.client,
+      history, client: ctx.client, isLocked: (rel) => isLockedPage(settings.lockedPages, settings.workspace, rel),
       onWrite: async (r) => {
         if (r.before != null) await keep(r.path, r.before, { reason: 'before-ai', force: true });
         const aiKept = (await keep(r.path, r.after, { by: ctx.client || 'AI', reason: 'ai', force: true })) !== false;

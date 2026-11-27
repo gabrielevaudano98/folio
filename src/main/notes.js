@@ -223,14 +223,16 @@ export function createNotes(getRoot) {
   }
   /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten, with `.failed`
    * listing the files that could not be updated (one failure does not stop the others) */
-  async function rewriteAfterMove(from, to, onBefore) {
+  /** after a move, links to the moved file follow; `skip(rel)` leaves a file as it is (a locked page keeps its old link) */
+  async function rewriteAfterMove(from, to, onBefore, { skip } = {}) {
     const { files, texts } = await allTexts();
     const before = files.map((f) => (f === to ? from : f));
-    const changed = []; changed.failed = [];
+    const changed = []; changed.failed = []; changed.skipped = [];
     for (let i = 0; i < files.length; i++) {
       if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
       const next = rewriteRefs(texts[i], before[i], from, to, before);
       if (next === texts[i]) continue;
+      if (skip?.(files[i], before[i])) { changed.skipped.push(files[i]); continue; }
       try { if (onBefore) await onBefore(files[i], texts[i]); await writeAtomic(resolve(files[i]), next); changed.push(files[i]); } catch { changed.failed.push(files[i]); }
     }
     return changed;

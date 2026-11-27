@@ -1473,12 +1473,17 @@ async function trashRaw(p) {
     if (t.text !== t.saved) throw new Error(`Could not save “${stem(q)}”, so it was not moved. Your changes are still open.`);
   }
   const { token } = await folio.trash(p);
+  // a trashed page takes its lock along, so a new page at the same path opens unlocked; Undo puts the lock back
+  const lp = lockMap(); const locks = Object.keys(lp).filter((k) => k === p || k.startsWith(p + '/'));
+  if (locks.length) { const next = { ...lp }; for (const k of locks) delete next[k]; saveLocks(next); }
   for (const q of open) await closeTab(q);
   await refreshTree();
-  return { token, open, active };
+  return { token, open, active, locks };
 }
 async function untrashRaw(rec) {
-  await folio.untrash(rec.token); await refreshTree();
+  await folio.untrash(rec.token);
+  if (rec.locks?.length) { const next = { ...lockMap() }; for (const k of rec.locks) next[k] = true; saveLocks(next); }
+  await refreshTree();
   for (const q of rec.open) await openFile(q, { background: true });
   if (rec.active) await openFile(rec.active);
 }
