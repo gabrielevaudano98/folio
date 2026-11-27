@@ -28,17 +28,17 @@ export async function copyName(rel, suffix, taken, isDir = false) {
   throw new NotesError('Could not find a free name for the copy.');
 }
 
-/**
- * Duplicate `from` (a note or a folder). Returns { to, isDir, pages: [copied notes], assets: [new asset files], skipped }.
- * `write(rel, text)` writes one new note (the app adds its watcher and history bookkeeping); by default an atomic write.
- * On a failure nothing is left behind.
- */
 /** remove a folder tree only where it is empty, deepest first; a folder that still holds something is kept with it */
 async function rmEmptyTree(abs) {
   let entries; try { entries = await fs.readdir(abs, { withFileTypes: true }); } catch { return; }
   for (const e of entries) if (e.isDirectory() && !e.isSymbolicLink()) await rmEmptyTree(path.join(abs, e.name));
   await fs.rmdir(abs).catch(() => {});
 }
+/**
+ * Duplicate `from` (a note or a folder). Returns { to, isDir, pages: [copied notes], assets: [new asset files], skipped }.
+ * `write(rel, text)` writes one new note (the app adds its watcher and history bookkeeping); by default an atomic write.
+ * On a failure nothing is left behind.
+ */
 export async function duplicate({ notes, assets, from, suffix, write, limit = MAX_DUPLICATE }) {
   const abs = notes.resolve(from, { notRoot: true });
   const st = await fs.stat(abs).catch(() => null);
@@ -89,6 +89,7 @@ export async function duplicate({ notes, assets, from, suffix, write, limit = MA
     // undo only what this call made: its pages and copied files, then the folders left empty (a file another program put in there meanwhile stays, and so does its folder)
     for (const p of made) await fs.unlink(notes.resolve(p)).catch(() => {});
     for (const p of copied) await fs.unlink(notes.resolve(p, { allowAsset: true })).catch(() => {});
+    for (const d of new Set(copied.map((p) => path.posix.dirname(p)))) await fs.rmdir(notes.resolve(d, { allowAsset: true })).catch(() => {}); // an attachment folder this call made and left empty
     if (isDir && ownDir) await rmEmptyTree(notes.resolve(to, { notRoot: true }));
     throw e;
   }

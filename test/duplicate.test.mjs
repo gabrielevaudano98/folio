@@ -133,9 +133,9 @@ try {
   w('F/a.md', '# a'); w('F/b.md', '# b');
   let n2 = 0; const failing = (rel, text) => { if (++n2 === 2) { fs.writeFileSync(path.join(ws, 'F copy', 'theirs.md'), 'theirs'); throw new Error('disk full'); } return w(rel, text); };
   await assert.rejects(duplicate({ notes, assets, from: 'F', suffix: 'copy', write: async (rel, text) => failing(rel, text) }), /disk full/);
-  assert.equal(r('F copy/theirs.md'), 'theirs'); assert(!has('F copy/a.md'), 'the page this call wrote is removed');
+  assert.deepEqual(fs.readdirSync(path.join(ws, 'F copy')), ['theirs.md'], 'the page this call wrote is removed, the other file stays'); assert.equal(r('F copy/theirs.md'), 'theirs');
   ok('failure half way: only the files this call made are removed; a file put there meanwhile stays'); }
-{ // an attachment whose name has a # or a ? is found through its encoded reference and copied
+if (process.platform !== 'win32') { // (a ? cannot be in a Windows file name) an attachment whose name has a # or a ? is found through its encoded reference and copied
   w('P/page.md', '# P\n\n![x](.asset/a%23b%3F.png)\n'); w('P/.asset/a#b?.png', 'PNGDATA');
   const res = await duplicate({ notes, assets, from: 'P/page.md', suffix: 'copy' });
   assert.equal(res.assets.length, 1, 'the attachment is copied, not shared'); assert(has(res.assets[0]) && r(res.assets[0]) === 'PNGDATA' && !r('P/page copy.md').includes('a%23b%3F'), 'the copy points at its own file');

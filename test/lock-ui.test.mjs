@@ -42,7 +42,7 @@ const steps = [
   { js: `${disk}.then((t) => t === window.__before)`, log: true, wait: 100 },
   // the source view is locked too: Mod+B dispatches straight to the editor, so a locked page drops that change as well
   { js: "window.__folioRun('mode-split'); true", wait: 800 },
-  { js: "const c = document.querySelector('.cm-content'); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', keyCode: 66, ctrlKey: true, metaKey: true, bubbles: true, cancelable: true })); true", wait: 1500 },
+  { js: `const c = document.querySelector('.cm-content'); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', keyCode: 66, ${process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true })); true`, wait: 1500 },
   { js: "[document.querySelector('.cm-content').textContent.includes('**'), document.querySelector('.cm-content').getAttribute('contenteditable')]", log: true, wait: 100 },
   { js: `${disk}.then((t) => t === window.__before)`, log: true, wait: 100 },
   { js: "window.__folioRun('mode-edit'); true", wait: 800 },

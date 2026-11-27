@@ -25,6 +25,8 @@ const SKIP = new Set(['node_modules', '.git', '.folio', '.obsidian', 'dist', 'bu
 /* a reference to an asset inside any text: `.asset/x.png`, `../.asset/x.png`, `sub/assets/x.png`.
    Works for images, links, slide `src=`, `poster=`, front matter fonts and wiki embeds, because it only looks at the path. */
 const REF = /(?<![\w.%/:-])((?:(?:\.\.?|[\w%~-][\w%.~-]*)\/)*)(\.asset|assets)\/((?:[^\s()"'<>[\]|,{}\\]|\([^\s()"'<>[\]|,{}\\]*\))+)/g; // balanced (1) in a name, as CommonMark allows
+/** a relative path as it is written in a Markdown reference: URI-encoded, and # and ? escaped too, because refsIn reads them back as part of the file name */
+const encodeRef = (p) => encodeURI(p).replace(/#/g, '%23').replace(/\?/g, '%3F');
 export function refsIn(text) {
   const out = [];
   for (const m of String(text).matchAll(REF)) {
@@ -265,7 +267,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
       if (!inside(src) || !(await exists(src))) continue;
       let target = done.get(src);
       if (!target) { target = await place(assetDirOf(newDir), path.basename(src), { src }); done.set(src, target); copied++; }
-      out += text.slice(last, r.start) + encodeURI(path.relative(newDir, target).split(path.sep).join('/')); last = r.end;
+      out += text.slice(last, r.start) + encodeRef(path.relative(newDir, target).split(path.sep).join('/')); last = r.end;
     }
     return { text: out + text.slice(last), copied };
   }
@@ -307,7 +309,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
           target = await placeCopy(assetDirOf(newDir), real); done.set(src, target); copied.push(rel(target));
         }
         const to = path.relative(newDir, target).split(path.sep).join('/');
-        out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeURI(to).replace(/#/g, '%23').replace(/\?/g, '%3F')); last = r.end;
+        out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeRef(to)); last = r.end;
       }
     } catch (e) { // nothing half done: the copies made so far go again
       for (const p of copied) await fs.unlink(path.join(root(), p)).catch(() => {});
@@ -331,7 +333,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
           while (await exists(d) && !(await sameContent(d, src))) d = path.join(dir, `${path.basename(src, path.extname(src))}-${++n}${path.extname(src)}`);
           dest = d; plan.set(src, dest);
         }
-        const target = encodeURI(path.relative(noteDir(files[i]), dest).split(path.sep).join('/'));
+        const target = encodeRef(path.relative(noteDir(files[i]), dest).split(path.sep).join('/'));
         out += texts[i].slice(last, r.start) + target; last = r.end; changed = true;
       }
       if (changed) edits.set(files[i], out + texts[i].slice(last));
