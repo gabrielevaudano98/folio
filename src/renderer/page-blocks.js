@@ -5,7 +5,7 @@ import { t as tr, tl } from './i18n.js';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { INSERTS, remember } from './inserts.js';
+import { INSERTS, remember, turnIdOfNode } from './inserts.js';
 
 const ITEM = new Set(['listItem', 'taskItem']);
 
@@ -316,7 +316,7 @@ export const BlockHandles = Extension.create({
         // the block menu
         const items = () => {
           const key = (k) => (k ? `<kbd>${opts.keyLabel(k)}</kbd>` : '');
-          const turns = TURN_IDS.map((id) => INSERTS.find((i) => i.id === id)).map((i) => `<button type="button" role="menuitem" class="block-mi block-turn" data-turn="${i.id}" aria-label="${i.label}"><span class="block-mi-ic" aria-hidden="true">${i.badge ? `<b>${i.badge}</b>` : opts.icons[i.icon] || ''}</span>${SHORT[i.id]}</button>`).join('');
+          const turns = TURN_IDS.map((id) => INSERTS.find((i) => i.id === id)).map((i) => `<button type="button" role="menuitem" class="block-mi block-turn" data-turn="${i.id}" aria-label="${i.label}"><span class="block-mi-ic" aria-hidden="true">${i.badge ? `<b>${i.badge}</b>` : opts.icons[i.icon] || ''}</span>${SHORT[i.id]}<span class="block-mi-check" aria-hidden="true">${opts.icons.check || ''}</span></button>`).join('');
           const R = blockRange(view.state);
           return (R ? `<div class="block-mh block-mh-count">${tr('blk.n-blocks', { n: R.n })}</div>` : `<div class="block-mh">${tr('blk.turn-into')}</div><div class="block-turns" role="group" aria-label="${tr('blk.turn-into')}">${turns}</div>`) + `<div class="block-sep" role="separator"></div>
             <button type="button" role="menuitem" class="block-mi" data-act="duplicate"><span>${tr('blk.duplicate')}</span>${key('Mod+D')}</button>
@@ -340,7 +340,7 @@ export const BlockHandles = Extension.create({
           const h = menu.offsetHeight;
           menu.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - menu.offsetWidth - 8))}px`;
           menu.style.top = `${anchor.bottom + 6 + h > innerHeight - 8 ? Math.max(8, anchor.top - h - 6) : anchor.bottom + 6}px`;
-          const cur = b.node.type.name === 'heading' ? 'h' + b.node.attrs.level : { paragraph: 'text', blockquote: 'quote', codeBlock: 'code', bulletList: 'bullet', orderedList: 'ordered', taskList: 'task' }[b.node.type.name];
+          const cur = turnIdOfNode(b.node);
           menu.querySelector(`[data-turn="${cur}"]`)?.setAttribute('aria-current', 'true');
           (focusTurn ? menu.querySelector('.block-turn') : menu.querySelector('[data-act="duplicate"]'))?.focus();
         };

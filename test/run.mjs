@@ -15,6 +15,7 @@ run('test/git-log.test.mjs');
 run('test/security.test.mjs');
 run('scripts/docs-reference.mjs', '--check');
 run('test/atomic.test.mjs');
+run('test/tokens.test.mjs');
 run('test/features.test.mjs');
 run('test/meeting.test.mjs'); // end to end; skips itself unless FOLIO_MEETING_E2E=1
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/stdio-binary.test.mjs');
@@ -36,6 +37,7 @@ if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || proces
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/chips-ui.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/dates-ui.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/blocks-ui.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/turn-ui.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/tables-ui.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/embed-ui.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/review-ui.test.mjs');

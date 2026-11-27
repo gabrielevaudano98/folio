@@ -5,7 +5,7 @@ import { Editor, Extension, InputRule } from '@tiptap/core';
 import katex from 'katex';
 import Typography from '@tiptap/extension-typography';
 import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
-import { filterInserts, runInsert, INSERTS } from './inserts.js';
+import { filterInserts, runInsert, INSERTS, turnIdAtSelection } from './inserts.js';
 import { mentionEntries, TAG, FIELD, statusClass } from './page-mentions.js';
 import { highlight } from './fuzzy.js';
 import { BlockHandles, blockCmd, currentBlock } from './page-blocks.js';
@@ -81,6 +81,8 @@ const CodeHighlight = Extension.create({
 });
 const FolioCodeBlock = CodeBlock.extend({
   addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null }; },
+  /* Mod+Alt+C is the Format painter; TipTap's default would also toggle a code block. Code stays on the / menu, the ribbon and ``` */
+  addKeyboardShortcuts() { const k = { ...this.parent?.() }; delete k['Mod-Alt-c']; return k; },
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('div'); dom.className = 'rich-code';
@@ -684,13 +686,15 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   const iconOf = (it) => (it.swatch !== undefined ? `<span class="slash-swatch${it.bg ? ' is-bg' : ''}" data-c="${it.swatch}">A</span>` : it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
   const paint = () => {
     let html = '', group = null;
+    const curTurn = insertMenu && props?.editor ? turnIdAtSelection(props.editor.state) : null;
     items.forEach((x, i) => {
       if (x.group !== group) { if (group !== null) html += '</div>'; group = x.group; html += `<div class="slash-group" role="group" aria-label="${tl('grp', group)}"><div class="slash-head" aria-hidden="true">${tl('grp', group)}</div>`; }
       /* the hint on the right: the Markdown you could type instead (Notion: "#", "##", "-", "[]"), else the shortcut */
       const mdh = typeof x.item.md === 'string' && /^(#{1,6}|-|1\.|>|- \[ \]|\$\$|```) ?$/.test(x.item.md) ? x.item.md.trim().replace('- [ ]', '[]') : '';
       const k = mdh ? `<kbd class="slash-md">${mdh.replace(/</g, '&lt;')}</kbd>` : x.item.key ? `<kbd>${opts.keyLabel(x.item.key)}</kbd>` : '';
       const turnTag = x.mode === 'turn' && x.group !== 'Turn into' ? `<span class="slash-turn"> · ${tr('blk.turn-into')}</span>` : '';
-      html += `<div class="slash-item${x.item.danger ? ' is-danger' : ''}" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}${turnTag}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${k}</div>`;
+      const isCur = x.mode === 'turn' && curTurn && x.item.id === curTurn;
+      html += `<div class="slash-item${x.item.danger ? ' is-danger' : ''}${isCur ? ' is-current' : ''}" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"${isCur ? ' aria-current="true"' : ''}><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}${turnTag}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${isCur ? `<span class="slash-check" aria-hidden="true">${icons.check}</span>` : ''}${k}</div>`;
     });
     if (group !== null) html += '</div>';
     list.innerHTML = html || (props?.loading ? '' : '<div class="slash-empty">' + tr('rich.no-matches-keep-typing-or-press-esc') + '</div>');
@@ -884,7 +888,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       CodeHighlight,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
-      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
+      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock, check: icons.check } }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply), onDate: onDate ? (el, day, apply, open) => onDate(el, day, apply, open) : null, dayLabel: (d) => formatDay(d, { style: dateStyle(), lang: locale() }), dayTitle: (d) => fullDay(d, locale()), dayTense: (d) => dayTense(d) }),
       Markdown.configure({ markedOptions: { gfm: true } }),
