@@ -136,6 +136,7 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 | Editing a property rewrites CRLF front matter as LF (F3) | Unrelated bytes change (invariant 1) | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
+| The same delayed-change problem in the slides, board and sheet surfaces: a change they report after a pause is applied to whichever tab is then active (the page editor is fixed). Found in review of the #82 fix; not reproduced yet | Possible data loss | Needs surfaces to name their document, as `d6ca0df` does for sheets | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
 | Startup and opening a long page go over the 100 ms budget | Responsiveness | — | [#90](https://github.com/gabrielevaudano98/folio/issues/90) |
 
 ## Not started

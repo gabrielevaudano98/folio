@@ -570,7 +570,9 @@ function renderTabsDirty() {
   for (const el of $$('#tabs .tab')) { const t = tabOf(el.dataset.tab); if (t) el.dataset.dirty = String(t.text !== t.saved); }
 }
 /** save a tab; resolves true when its text is on disk (or was already), false when the write failed (the tab keeps its text) */
-async function saveTab(t) {
+/** writes of one tab run one after another, each with the tab's text at that moment, so an older write can never land after a newer one */
+function saveTab(t) { return (t.saving = (t.saving || Promise.resolve()).then(() => saveTabNow(t))); }
+async function saveTabNow(t) {
   if (t.text === t.saved) return true;
   if (S.writesFrozen || t.dead) return false; // a tab of a folder that was closed or left is never written again
   const text = t.text, before = t.saved;
