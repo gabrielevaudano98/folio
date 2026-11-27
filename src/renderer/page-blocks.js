@@ -340,7 +340,10 @@ export const BlockHandles = Extension.create({
           const h = menu.offsetHeight;
           menu.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - menu.offsetWidth - 8))}px`;
           menu.style.top = `${anchor.bottom + 6 + h > innerHeight - 8 ? Math.max(8, anchor.top - h - 6) : anchor.bottom + 6}px`;
-          const cur = turnIdOfNode(b.node);
+          // a list item, or the text line that opens one, has its list's type
+          const isItem = (n) => /^(listItem|taskItem)$/.test(n?.type?.name || ''); const $b = view.state.doc.resolve(b.pos);
+          const cur = isItem(b.node) ? turnIdOfNode($b.parent)
+            : b.node?.type?.name === 'paragraph' && isItem($b.parent) && $b.index() === 0 && $b.depth > 0 ? turnIdOfNode($b.node($b.depth - 1)) : turnIdOfNode(b.node);
           menu.querySelector(`[data-turn="${cur}"]`)?.setAttribute('aria-current', 'true');
           (focusTurn ? menu.querySelector('.block-turn') : menu.querySelector('[data-act="duplicate"]'))?.focus();
         };

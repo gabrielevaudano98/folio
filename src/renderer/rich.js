@@ -1177,7 +1177,8 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n), onType: (k, t) => onPropType?.(k, t),
     tags: () => (mentions ? mentions()?.tags?.() : []) || [],
     get: () => model?.fm || '',
-    set: (fm) => { if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
+    locked: () => !!editor.storage.pageLock?.on,
+    set: (fm) => { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
   });
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {
@@ -1298,6 +1299,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       editor.storage.pageLock = { on: !!on };
       host.classList.toggle('is-locked', !!on); host.querySelector('.rich-lock').hidden = !on;
       editor.setEditable(!on && !host.classList.contains('is-viewing'));
+      props.render(); review.render(); // their controls follow the lock
     },
     /** B8: open or close every toggle in one transaction (one undo step); returns how many changed */
     setToggles(open) {
@@ -1375,6 +1377,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     review: () => review,
     /* put a filled template in this page: its properties join the page's, its body goes at the cursor (or at pos) */
     insertTemplate(text, pos = null) {
+      if (editor.storage.pageLock?.on) return false;
       const { fm, body: raw } = splitTemplate(text); const body = text.startsWith('```template-button') ? raw : intoPage(raw);
       if (fm) { const merged = mergeProps(model?.fm || '', fm); if (merged !== (model?.fm || '')) { const old = model.fm; model.fm = merged; model.text = merged + model.text.slice(old.length); props.render(); } }
       const nodes = body.trim() ? codec.load(body).json.content : [];

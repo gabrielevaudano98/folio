@@ -21,7 +21,7 @@ import { findMatches, replaceAll } from '../src/renderer/page-find.js';
 import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
-import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved } from '../src/renderer/page-critic.js';
+import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved, RESOLVED as RESOLVED_MARK } from '../src/renderer/page-critic.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag, setTypeOverrides, inferType } from '../src/renderer/page-props.js';
 import { reactionOf, splitThread, myReaction, commentParts, mentionAt } from '../src/renderer/page-reactions.js';
 import { findMentions, linkMention, linkAllMentions } from '../src/renderer/refs-syntax.js';
@@ -237,6 +237,8 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     const edited = open(lit); const doc2 = withKids([mk([schema.text('Bold', [bold.create()]), schema.text(' title <em> & &amp;')])]);
     const saved = codec.save(edited.m, doc2); assert.equal(saved, '<details>\n<summary><strong>Bold</strong> title &lt;em> & &amp;amp;</summary>\n\nBody text\n\n</details>\n');
     const back = open(saved); assert.equal(back.kids[0].child(0).textContent, 'Bold title <em> & &amp;'); assert.deepEqual(back.kids[0].child(0).child(0).marks.map((x) => x.type.name), ['bold']); assert.equal(codec.save(back.m, back.doc), saved);
+    const cm = codec.save(edited.m, withKids([mk([schema.text('B', [bold.create()]), schema.text(' <!-- note --> 1 < 2')])])); assert.equal(cm, '<details>\n<summary><strong>B</strong> &lt;!-- note --> 1 &lt; 2</summary>\n\nBody text\n\n</details>\n');
+    { const b2 = open(cm); assert.equal(b2.kids[0].child(0).textContent, 'B <!-- note --> 1 < 2'); assert.equal(codec.save(b2.m, b2.doc), cm); assert.doesNotMatch(markdownIt.render(cm), /<!-- note/); }
     const hd = codec.save(edited.m, withKids([mk([schema.text('Big', [italic.create()])], 2)])); assert.equal(hd, '<details>\n<summary><h2><em>Big</em></h2></summary>\n\nBody text\n\n</details>\n');
     assert.equal(open(hd).kids[0].child(0).child(0).marks[0].type.name, 'italic');
     // hand-written HTML Folio would write differently stays literal text, byte for byte
@@ -432,6 +434,9 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     assert.match(res, new RegExp('\\{==Liability is capped\\.==\\}\\{>>Check with legal\\.<<\\}' + mk.source)); assert.equal(res.replace(mk, ''), src);
     const th = docReview(st.doc)[3]; assert.equal(th.resolved, true); assert.equal(th.comments[0].text, 'Check with legal.');
     assert.equal(resolveThread(st, th).docChanged, false, 'resolving twice adds nothing');
+    { let d = EditorState.create({ doc: r.doc }); d = d.apply(d.tr.insert(docReview(d.doc)[3].end, d.schema.nodes.criticComment.create({ body: commentBody('Bob', '') })));
+      assert.equal(resolveThread(d, docReview(d.doc)[3], d.tr, 'Bob').docChanged, false, 'a thread with an empty draft reply is not resolved (Resolve all skips it)'); }
+    assert.equal(parseComment(commentBody('A'.repeat(60), RESOLVED_MARK, '2026-11-27 10:00')).text, RESOLVED_MARK, 'a long author name is cut so the marker still parses');
     const reo = open(res); assert.equal(codec.save(reo.m, reo.doc), res); assert.equal(docReview(reo.doc).at(-1).resolved, true, 'resolved survives a reload');
     let s2 = EditorState.create({ doc: reo.doc }); s2 = s2.apply(reopenThread(s2, docReview(s2.doc).at(-1))); assert.equal(codec.save(reo.m, s2.doc), src); assert.equal(docReview(s2.doc).at(-1).resolved, false);
     s2 = EditorState.create({ doc: reo.doc }); s2 = s2.apply(s2.tr.insert(docReview(s2.doc).at(-1).end, s2.schema.nodes.criticComment.create({ body: commentBody('Ada', 'Not yet', '2026-11-27 11:00') })));

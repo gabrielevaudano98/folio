@@ -1389,8 +1389,14 @@ async function movePath(from, to, isDir) {
     updateHistoryButtons();
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
-/* X3: locked pages live in the app settings (workspace-relative path), never in the .md */
-const isLocked = (p) => !!p && !!S.settings.lockedPages?.[p];
+/* X3: locked pages live in the app settings, per workspace folder (relative paths inside it), never in the .md */
+const lockMap = () => { const m = S.workspace && S.settings.lockedPages?.[S.workspace]; return m && typeof m === 'object' ? m : {}; };
+const isLocked = (p) => !!p && lockMap()[p] === true;
+function saveLocks(map) {
+  const all = {}; for (const [k, v] of Object.entries(S.settings.lockedPages || {})) if (v && typeof v === 'object' && k !== S.workspace) all[k] = v;
+  if (Object.keys(map).length) all[S.workspace] = map;
+  S.settings.lockedPages = all; saveSetting({ lockedPages: all });
+}
 let lockApplied = false;
 function applyLock() {
   const on = curType() === 'md' && isLocked(S.active);
@@ -1400,10 +1406,10 @@ function applyLock() {
   if (editor && editor.view.state.readOnly !== on) editor.setReadOnly(on);
 }
 function setPageLock(p, on) {
-  if (!p) return;
-  const lp = { ...(S.settings.lockedPages || {}) };
+  if (!p || !S.workspace) return;
+  const lp = { ...lockMap() };
   if (on) lp[p] = true; else delete lp[p];
-  S.settings.lockedPages = lp; saveSetting({ lockedPages: lp });
+  saveLocks(lp);
   if (p === S.active) applyLock();
   toast(tr(on ? 'app.page-locked' : 'app.page-unlocked'));
 }
@@ -1416,10 +1422,10 @@ function toggleAllToggles(open) {
   rich.setToggles(open ?? c > 0);
 }
 function retargetTabs(from, to) {
-  const lp = S.settings.lockedPages;
-  if (lp && Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
+  const lp = lockMap();
+  if (Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
     const next = {}; for (const [k, v] of Object.entries(lp)) next[k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k] = v;
-    S.settings.lockedPages = next; saveSetting({ lockedPages: next });
+    saveLocks(next);
   }
   nav.list = nav.list.map((x) => (x === from || x.startsWith(from + '/') ? to + x.slice(from.length) : x));
   for (const t of S.tabs) {

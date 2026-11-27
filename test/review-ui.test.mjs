@@ -37,6 +37,7 @@ const steps = [
   { js: "document.querySelector('#dock-tab-review').click(); true", wait: 600 },
   { js: "document.querySelector('.rv-card.rv-thread [data-act=resolve]').click(); true", wait: 2500 },
   { js: "[document.querySelectorAll('.rv-card.rv-thread').length, document.querySelector('[data-rv=resolved]')?.textContent.trim() || '']", log: true, wait: 100 },
+  { js: "folio.read('pages/r.md')", log: true, wait: 100 },
   { js: "document.querySelector('[data-rv=resolved]').click(); true", wait: 400 },
   { js: "[document.querySelectorAll('.rv-card.rv-thread').length, document.querySelectorAll('.rv-card.is-resolved').length, (document.querySelector('.rv-card.is-resolved .rv-resolved-by span')?.textContent || '').split(' · ')[0], [...document.querySelectorAll('.rv-card.is-resolved .rv-comment p')].map((x) => x.textContent)]", log: true, wait: 100 },
   { js: "document.querySelector('.rv-card.is-resolved [data-act=delThread]').click(); true", wait: 2500 },
@@ -54,8 +55,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nreview ui (D16)'); if (process.env.DEBUG) console.log(JSON.stringify(logs, null, 1));
-  assert.equal(logs.length, 11, out.slice(-1500));
-  const [al, unal, hov, accepted, info, tab, resolvedHidden, resolvedShown, deleted, thumbs, errors] = logs; assert.deepEqual(errors, []);
+  assert.equal(logs.length, 12, out.slice(-1500));
+  const [al, unal, hov, accepted, info, tab, resolvedHidden, resolvedFile, resolvedShown, deleted, thumbs, errors] = logs; assert.deepEqual(errors, []);
   assert(al.aligned && al.n === 2 && al.gap > 100, JSON.stringify(al));
   assert(al.tops[1] - al.tops[0] > al.gap * 0.5, `the second card sits well below the first: ${JSON.stringify(al)}`);
   assert.equal(unal, false);
@@ -68,6 +69,7 @@ child.on('exit', () => {
   assert.deepEqual(tab, ['true', false, true]);
   console.log('  ✓ the Info tab lists words, headings, tasks, comments, path, size and when the file changed');
   assert.deepEqual(resolvedHidden, [1, 'Show 1 resolved']);
+  assert(/Check this/.test(resolvedFile) && /\{>>Tester, \d{4}-\d{2}-\d{2} \d{2}:\d{2}: \[resolved\]<<\}/.test(resolvedFile), 'after Resolve the file keeps the thread and its [resolved] reply:\n' + resolvedFile);
   assert.deepEqual(resolvedShown, [2, 1, 'Resolved by Tester', ['Check this']]);
   assert.deepEqual(deleted, [1, false]);
   { const f = fs.readFileSync(path.join(pages, 'r.md'), 'utf8'); assert(!/Check this|\[resolved\]/.test(f) && /First line here/.test(f) && /And this<</.test(f), f); }

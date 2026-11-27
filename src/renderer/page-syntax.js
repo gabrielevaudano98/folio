@@ -214,7 +214,7 @@ function closeOf(src, open, close, from) {
 const SUMMARY_MARKS = [['link', 'a'], ['bold', 'strong'], ['italic', 'em'], ['strike', 's'], ['underline', 'u'], ['highlight', 'mark'], ['superscript', 'sup'], ['subscript', 'sub'], ['code', 'code']];
 const SUMMARY_RANK = new Map(SUMMARY_MARKS.map(([m], i) => [m, i]));
 const SUMMARY_TAG = new Map(SUMMARY_MARKS.map(([m, t]) => [t, m]));
-const escSummary = (s) => s.replace(/&(?=#?\w+;)/g, '&amp;').replace(/<(?=\/?[a-z])/gi, '&lt;');
+const escSummary = (s) => s.replace(/&(?=#?\w+;)/g, '&amp;').replace(/</g, '&lt;'); // every <: a tag, a comment (<!--) or <? stays text in the Read view
 const unescSummary = (s) => s.replace(/&lt;/g, '<').replace(/&amp;/g, '&');
 const markKey = (m) => (m.type === 'link' ? `link ${m.attrs?.href || ''}` : m.type);
 /** text nodes (JSON) of a toggle title as the HTML inside <summary> */

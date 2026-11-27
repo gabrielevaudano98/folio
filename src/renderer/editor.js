@@ -291,18 +291,21 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
     }),
   ];
   const view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions }) });
+  let locked = false; // a new or restored state starts from `extensions`, so the page lock is put back after it
+  const lockExt = () => [EditorState.readOnly.of(locked), EditorView.editable.of(!locked)];
+  const relock = () => { if (view.state.readOnly !== locked) view.dispatch({ effects: lockComp.reconfigure(lockExt()) }); };
   return {
     view,
     setDoc(text, { keepHistory = false } = {}) {
       if (keepHistory) {
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, annotations: remoteAnn.of(true) });
       } else {
-        view.setState(EditorState.create({ doc: text, extensions }));
+        view.setState(EditorState.create({ doc: text, extensions })); relock();
       }
     },
     /** the editor state of this document, with its undo history, to put back when the tab is shown again */
     snapshot() { return view.state; },
-    restore(state) { view.setState(state); },
+    restore(state) { view.setState(state); relock(); },
     undo() { return cmUndo(view); },
     redo() { return cmRedo(view); },
     canUndo() { return undoDepth(view.state) > 0; },
@@ -332,7 +335,7 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
     focus() { view.focus(); },
     setLive(on) { view.dispatch({ effects: liveComp.reconfigure(on ? livePlugin(resolveImage) : []) }); },
     /** a locked page (X3) cannot be typed into in the source view either */
-    setReadOnly(on) { view.dispatch({ effects: lockComp.reconfigure([EditorState.readOnly.of(!!on), EditorView.editable.of(!on)]) }); },
+    setReadOnly(on) { locked = !!on; view.dispatch({ effects: lockComp.reconfigure(lockExt()) }); },
     setSpellcheck(on) { view.dispatch({ effects: spellComp.reconfigure(EditorView.contentAttributes.of({ spellcheck: on ? 'true' : 'false' })) }); },
   };
 }

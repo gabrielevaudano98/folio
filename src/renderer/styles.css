@@ -2058,4 +2058,7 @@ img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; out
 .rich-lock[hidden] { display: none; }
 .rich-lock-badge { display: inline-flex; align-items: center; gap: var(--space-3xs); }
 .rich-lock-badge svg { width: 14px; height: 14px; }
-.is-locked .ribbon, .is-locked .page-head { pointer-events: none; opacity: 0.55; }
+.is-locked .ribbon { pointer-events: none; opacity: 0.55; }
+/* a locked page shows its properties and comments but offers nothing that would change them */
+.is-locked .props :is(.page-head-actions, .props-add, .prop-chip-x) { display: none; }
+.review-pane.is-locked :is([data-act], [data-rv="acceptAll"], [data-rv="rejectAll"], .rv-mode, .rv-reply, .rv-draft) { display: none; }

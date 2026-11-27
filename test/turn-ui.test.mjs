@@ -10,7 +10,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-turn-ui-'));
 const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud');
 fs.mkdirSync(path.join(ws, 'docs'), { recursive: true }); fs.mkdirSync(path.join(ws, 'other')); fs.mkdirSync(ud);
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47619, expanded: ['docs', 'other'] }));
-fs.writeFileSync(path.join(ws, 'main.md'), '## Title\n\nAlpha line\n');
+fs.writeFileSync(path.join(ws, 'main.md'), '## Title\n\nAlpha line\n\n- [ ] task one\n- [ ] task two\n');
 fs.writeFileSync(path.join(ws, 'r1.md'), 'one\n'); fs.writeFileSync(path.join(ws, 'r2.md'), 'two\n');
 fs.writeFileSync(path.join(ws, 'docs', 'a.md'), 'a\n'); fs.writeFileSync(path.join(ws, 'other', 'b.md'), 'b\n');
 fs.mkdirSync(path.join(ws, 'other', 'sub'));
@@ -44,6 +44,11 @@ const steps = [
   { js: `(() => { const a = ${P}.querySelectorAll(':scope > p')[0]; const r = a.getBoundingClientRect(); a.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.left + 10, clientY: r.top + 5 })); return true; })()`, wait: 300 },
   { js: "document.querySelector('.block-grip').click(); true", wait: 400 },
   { js: "[...document.querySelectorAll('.block-turn[aria-current=\"true\"]')].map((n) => n.dataset.turn + '|' + !!n.querySelector('.block-mi-check svg'))", log: true, wait: 100 },
+  // block menu on a checklist item: the list's type (Checklist) is current
+  { js: "document.querySelector('.block-grip').click(); document.querySelector('.block-menu')?.hidden ?? true", wait: 300 },
+  { js: `(() => { const a = ${P}.querySelectorAll('li')[1]; const r = a.getBoundingClientRect(); a.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.left + 30, clientY: r.top + 5 })); return true; })()`, wait: 300 },
+  { js: "document.querySelector('.block-grip').click(); true", wait: 400 },
+  { js: "[...document.querySelectorAll('.block-turn[aria-current=\"true\"]')].map((n) => n.dataset.turn)", log: true, wait: 100 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
@@ -54,8 +59,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nturn ui'); if (process.env.DEBUG) console.log(logs, out.slice(-800));
-  assert.equal(logs.length, 6, out.slice(-1500));
-  const [d1, d2, painter, slash, block, errors] = [logs[0], logs[1], logs[2], logs[3], logs[4], logs[5]];
+  assert.equal(logs.length, 7, out.slice(-1500));
+  const [d1, d2, painter, slash, block, listBlock, errors] = logs;
   assert.deepEqual(errors, []);
   assert(fs.existsSync(path.join(ws, 'docs', 'r1.md')) && !fs.existsSync(path.join(ws, 'r1.md')), 'r1.md should be in docs/');
   console.log('  ✓ a note dropped on a note row goes into that note\'s folder, not the root');
@@ -64,4 +69,5 @@ child.on('exit', () => {
   assert.deepEqual(painter, [true, 0]); console.log('  ✓ Mod+Alt+C turns on the Format painter only: no code block appears');
   assert.deepEqual(slash, ['Heading 2 · Turn into|true']); console.log('  ✓ the / menu marks the current block type (Heading 2) with a check and aria-current');
   assert.deepEqual(block, ['text|true']); console.log('  ✓ the block menu marks the current type (Text) with a check and aria-current');
+  assert.deepEqual(listBlock, ['task']); console.log('  ✓ on a list item the block menu marks its list type (Checklist)');
 });

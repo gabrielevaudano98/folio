@@ -6,6 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer, TOOLS, SERVER_INFO } from '../src/main/mcp-tools.js';
 import { SLIDE_TOOLS } from '../src/main/mcp-slides.js';
+import { lockedTarget } from '../src/main/locks.js';
 
 let n = 0; const ok = (m) => { n++; console.log('  ✓', m); };
 console.log('\nmcp gating');
@@ -34,4 +35,12 @@ assert(SLIDE_TOOLS.length > 0 && SLIDE_TOOLS.every((t) => TOOLS.includes(t)), 'e
 const dup = TOOLS.map((t) => t.name).filter((x, i, arr) => arr.indexOf(x) !== i);
 assert.deepEqual(dup, [], 'tool names are unique');
 ok('slide tools are registered and tool names are unique');
+const locks = { '/ws/a': { 'pages/x.md': true }, 'pages/y.md': true };
+assert.equal(lockedTarget(locks, '/ws/a', 'pages/x.md'), 'pages/x.md');
+assert.equal(lockedTarget(locks, '/ws/a', 'pages'), 'pages/x.md', 'moving a folder that holds a locked page is refused');
+assert.equal(lockedTarget(locks, '/ws/a', 'pages/x.md.bak'), null);
+assert.equal(lockedTarget(locks, '/ws/b', 'pages/x.md'), null, 'a lock in one folder does not lock the same path in another');
+assert.equal(lockedTarget(locks, '/ws/a', 'pages/y.md'), null, 'an old flat entry locks nothing');
+assert.equal(lockedTarget(locks, '/ws/a', null), null);
+ok('locked pages are kept per workspace folder and refuse MCP writes to the page or its folder');
 console.log(`\n${n} mcp gating checks passed`);

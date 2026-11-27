@@ -22,12 +22,12 @@ const convert = (v, t) => {
   return one === true ? 'true' : one === false ? 'false' : String(one ?? '');
 };
 
-export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType }) {
+export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType, locked = () => false }) {
   const box = document.createElement('section'); box.className = 'props'; box.setAttribute('aria-label', tl('props', 'Properties'));
   page.prepend(box);
   let open = true, adding = null;
   const ic = (n) => icons[n] || '';
-  const commit = (fn) => { const before = get(); const after = fn(before); if (after !== before) set(after); render(); };
+  const commit = (fn) => { if (locked()) return render(); const before = get(); const after = fn(before); if (after !== before) set(after); render(); };
 
   const valueHtml = (p) => {
     const id = `prop-${p.key.replace(/\W+/g, '-')}`;
@@ -60,6 +60,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
       <button type="button" class="props-add"${open || !p.props.length ? '' : ' hidden'}>${ic('plus')}<span>${tr('props.add-property')}</span></button>
       <datalist id="prop-tag-list"></datalist>`;
     if (adding) { const k = box.querySelector('.prop-new-key'); k.focus(); k.select(); }
+    if (locked()) box.querySelectorAll('input, .prop-key, .page-icon').forEach((el) => { el.disabled = true; }); // X3: read, not changed
   }
 
   const keyOf = (el) => el.closest('.prop-row')?.dataset.key;
@@ -85,7 +86,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
     if (e.target.closest('.props-head')) { open = !open; render(); return; }
     const pi = e.target.closest('.page-icon, .props-icon-add');
     if (pi) { const had = !!e.target.closest('.page-icon'); const back = () => box.querySelector('.page-icon, .props-icon-add')?.focus(); openEmojiPicker(pi, { onPick: (em) => { commit((t) => setProp(t, ICON_KEY, em, 'text')); back(); }, onRemove: had ? () => { commit((t) => removeProp(t, ICON_KEY)); back(); } : null }); return; }
-    if (e.target.closest('.props-add')) { open = true; adding = newKey(get()); render(); return; }
+    if (e.target.closest('.props-add')) { if (locked()) return; open = true; adding = newKey(get()); render(); return; }
     const rm = e.target.closest('[data-remove]');
     if (rm) { const key = keyOf(rm); const p = propOf(key); const list = p.value.filter((_, i) => i !== +rm.dataset.remove); commit((t) => setProp(t, key, list, p.type)); return; }
     const tag = e.target.closest('[data-tag]'); if (tag) { onTag?.(tag.dataset.tag); return; }
@@ -143,5 +144,5 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   }
 
   render();
-  return { render, pickIcon() { const b = box.querySelector('.page-icon, .props-icon-add'); if (b) b.click(); }, add() { open = true; adding = newKey(get()); render(); }, el: box };
+  return { render, pickIcon() { const b = box.querySelector('.page-icon, .props-icon-add'); if (b) b.click(); }, add() { if (locked()) return; open = true; adding = newKey(get()); render(); }, el: box };
 }

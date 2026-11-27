@@ -98,6 +98,7 @@ export function threadResolved(comments) {
 /** resolve a thread losslessly: a [resolved] reply goes after its last comment; the comments and the highlight stay */
 export function resolveThread(state, t, tr = state.tr, author = '') {
   if (threadResolved(t.comments)) return tr;
+  if (!String(t.comments.at(-1)?.text ?? '').trim()) return tr; // a reply still being written (empty draft) is finished first, never sealed
   tr.insert(tr.mapping.map(t.end), state.schema.nodes.criticComment.create({ body: commentBody(author, RESOLVED) }));
   return tr;
 }

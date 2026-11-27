@@ -4,7 +4,8 @@ const META = /^([^,:\n]{1,48}), (\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?): ([\s\S]
 /** a comment's author, time and text */
 export function parseComment(body) { const m = META.exec(body); return m ? { author: m[1].trim(), date: m[2], text: m[3] } : { author: '', date: '', text: body }; }
 export const stamp = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-export const commentBody = (author, text, date = stamp()) => (author ? `${author.replace(/[,:\n]/g, ' ').trim()}, ${date}: ${text}` : text).replace(/<</g, '‹‹');
+/** a comment's text with its author and time; the author is cut to the 48 characters parseComment reads back */
+export const commentBody = (author, text, date = stamp()) => { const a = String(author || '').replace(/[,:\n]/g, ' ').trim().slice(0, 48).trim(); return (a ? `${a}, ${date}: ${text}` : text).replace(/<</g, '‹‹'); };
 
 /* code spans and fences are never markup: blank them out (same length) before matching */
 export function maskCode(text) {

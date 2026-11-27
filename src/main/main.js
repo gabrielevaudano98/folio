@@ -15,6 +15,7 @@ import { createHistory } from './history.js';
 import { createGitLog } from './git-log.js';
 import { createAssets, isAssetPath } from './assets.js';
 import { duplicate } from './duplicate.js';
+import { lockedTarget } from './locks.js';
 import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
@@ -532,6 +533,13 @@ const appBackend = {
     if (!tool) throw new Error(`Unknown tool ${name}`);
     if (tool.write && !settings.allowWrite) throw new Error('Folio is set to read-only for AI assistants. The user can allow edits in Folio → AI.');
     if (!settings.workspace) throw new Error('No folder is open in Folio. Ask the user to open one.');
+    if (tool.write) { // X3: a page the person locked takes no AI edit, and is not moved
+      for (const p of [args.path, args.from]) {
+        let rel = null; try { rel = typeof p === 'string' && p.trim() ? notes.relOf(notes.resolve(p)) : null; } catch { /* the tool reports a bad path itself */ }
+        const hit = lockedTarget(settings.lockedPages, settings.workspace, rel);
+        if (hit) throw new Error(`${hit} is locked in Folio. The user can unlock it from the page menu (Unlock page).`);
+      }
+    }
     logActivity({ client: ctx.client, tool: name, path: args.path || args.from || args.query || '' });
     return runTool(notes, name, args, {
       history, client: ctx.client,

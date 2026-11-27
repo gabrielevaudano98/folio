@@ -34,13 +34,14 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   const ic = (n) => icons[n] || '';
 
   const visible = () => !pane.hidden;
+  const locked = () => !!editor.storage.pageLock?.on; // X3: a locked page is read here, never changed
   const mode = () => (!editor.isEditable ? 'view' : editor.storage.suggestMode?.on ? 'suggest' : 'edit');
   const show = (on, persist = true) => { if (persist) autoShown = false; pane.hidden = !on; if (persist) savePref(on ? 'auto' : 'hidden'); if (dock) { const ev = new CustomEvent('review-toggle', { detail: on }); ev.auto = !persist; dock.dispatchEvent(ev); } onToggle?.(on); };
   const sel = () => editor.state.selection;
   const activeIndex = () => { const { from, to } = sel(); return items.findIndex((x) => (x.kind === 'thread' ? (from <= x.end && to >= x.from) : from <= x.to && to >= x.from)); };
 
   function render() {
-    items = docReview(editor.state.doc);
+    items = docReview(editor.state.doc); pane.classList.toggle('is-locked', locked());
     // resolved threads stay in the file but leave the margin unless asked for (Show resolved)
     const resolved = items.filter((x) => x.kind === 'thread' && x.resolved), threads = items.filter((x) => x.kind === 'thread' && !x.resolved), changes = items.filter((x) => x.kind !== 'thread' && x.kind !== 'hl');
     if (!resolved.length) showResolved = false;
@@ -135,8 +136,10 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     if (rv === 'resolved') { showResolved = !showResolved; render(); return; }
     if (rv === 'align') { aligned = !aligned; try { localStorage.setItem(ALIGN, aligned ? 'on' : 'off'); } catch { /* no storage */ } render(); return; }
     if (rv === 'close') { show(false); editor.commands.focus(); return; }
+    if ((rv === 'acceptAll' || rv === 'rejectAll') && locked()) return;
     if (rv === 'acceptAll' || rv === 'rejectAll') { api.all(rv === 'acceptAll'); return; }
     const b = e.target.closest('[data-act]');
+    if (b && locked()) return;
     if (b) {
       const x = items[+b.dataset.i]; if (!x) return;
       const act = b.dataset.act;
@@ -192,6 +195,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     }
   });
   pane.addEventListener('keydown', (e) => {
+    if (locked()) return;
     const ta = e.target.closest('textarea[data-edit]');
     if (ta && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveDraft(items[+ta.dataset.edit], ta.value); }
     if (ta && e.key === 'Escape') { e.preventDefault(); const x = items[+ta.dataset.edit]; dropComment(x, x.comments.length - 1); editor.commands.focus(); }
@@ -242,6 +246,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     show(on = true) { show(on); if (on) render(); },
     /* Docs: select text and comment; with no selection the word at the cursor is used */
     comment() {
+      if (locked()) return false;
       let { from, to, empty, $from } = sel();
       if (empty) { const t = $from.parent.textContent; let a = $from.parentOffset, b = a; while (a > 0 && /[\p{L}\p{N}_]/u.test(t[a - 1])) a--; while (b < t.length && /[\p{L}\p{N}_]/u.test(t[b])) b++; from = $from.start() + a; to = $from.start() + b; }
       if (editor.state.doc.resolve(from).parent.type.spec.code) return false;
@@ -253,6 +258,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
       return true;
     },
     mode(m) {
+      if (m === 'suggest' && locked()) return false;
       if (m === 'view') { editor.storage.suggestMode.on = false; editor.setEditable(false); }
       else { editor.setEditable(!editor.storage.pageLock?.on); editor.storage.suggestMode.on = m === 'suggest'; }
       host.classList.toggle('is-suggesting', m === 'suggest'); host.classList.toggle('is-viewing', m === 'view');
@@ -268,15 +274,17 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     },
     /* accept or reject the change at the cursor, then move to the next one (Word) */
     settleHere(ok) {
+      if (locked()) return false;
       const list = items.filter((x) => x.kind === 'ins' || x.kind === 'del' || x.kind === 'sub'); if (!list.length) return false;
       const { from } = sel(); const x = list.find((c) => from >= c.from && from <= c.to) || list.find((c) => c.from >= from) || list[0];
       editor.view.dispatch(settle(editor.state, x, ok)); setTimeout(() => api.step(1), 150); return true;
     },
     all(ok) {
+      if (locked()) return 0;
       const list = docReview(editor.state.doc).filter((x) => x.kind === 'ins' || x.kind === 'del' || x.kind === 'sub');
       const tr = editor.state.tr; for (const x of list) settle(editor.state, x, ok, tr); editor.view.dispatch(tr); editor.commands.focus(); return list.length;
     },
-    resolveAll() { const tr = editor.state.tr; for (const t of docReview(editor.state.doc).filter((x) => x.kind === 'thread' && !x.resolved)) resolveThread(editor.state, t, tr, author()); if (tr.docChanged) editor.view.dispatch(tr); },
+    resolveAll() { if (locked()) return; const tr = editor.state.tr; for (const t of docReview(editor.state.doc).filter((x) => x.kind === 'thread' && !x.resolved)) resolveThread(editor.state, t, tr, author()); if (tr.docChanged) editor.view.dispatch(tr); },
     render,
     counts() { const r = docReview(editor.state.doc); return { comments: r.filter((x) => x.kind === 'thread' && !x.resolved).length, resolved: r.filter((x) => x.kind === 'thread' && x.resolved).length, changes: r.filter((x) => ['ins', 'del', 'sub'].includes(x.kind)).length }; },
   };
