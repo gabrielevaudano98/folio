@@ -11,6 +11,7 @@ const clock = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s 
 
 export function createMeeting(ui) {
   const { esc, toast, confirm, prompt, openFile, refreshTree, openSettings } = ui;
+  const setFeature = (f) => { feature = f; ui.onFeature?.(f); }; // the sidebar's record button follows what Settings changes
   let feature = null, host = null, progress = {}, rec = null, bar = null, state = null;
 
   /* ---------------- Settings section ---------------- */
@@ -53,19 +54,20 @@ export function createMeeting(ui) {
         ${f.enabled && f.notes.ready ? `<div class="row"><div class="row-main"><span class="row-title" id="feat-auto">${tr('mtg.auto-notes')}</span><span class="row-sub">${tr('mtg.auto-notes-sub')}</span></div><label class="switch"><input type="checkbox" role="switch" data-feat="auto" aria-labelledby="feat-auto" ${f.autoNotes ? 'checked' : ''}></label></div>` : ''}
         ${f.enabled ? `<div class="row"><div class="row-main"><label class="row-title" for="feat-lang">${tr('mtg.language')}</label><span class="row-sub">${tr('mtg.language-sub')}</span></div>
           <select class="select" id="feat-lang" data-feat="lang">${[['', tr('mtg.detect')], ['it', 'Italiano'], ['en', 'English']].map(([v, l]) => `<option value="${v}" ${f.language === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
+        ${f.enabled && req.ready && f.detectSupported ? `<div class="row"><div class="row-main"><span class="row-title" id="feat-detect">${tr('mtg.detect-calls')}</span><span class="row-sub">${tr('mtg.detect-calls-sub')}</span></div><label class="switch"><input type="checkbox" role="switch" data-feat="detect" aria-labelledby="feat-detect" ${f.detectCalls ? 'checked' : ''}></label></div>` : ''}
         ${unsaved}
         ${f.enabled && req.ready ? `<div class="row"><div class="row-main"><span class="row-title">${tr('mtg.record')}</span><span class="row-sub">${tr('mtg.record-sub')}</span></div><button class="btn btn-primary" type="button" data-feat="start" ${f.session ? 'disabled' : ''}>${f.session ? tr('mtg.recording-btn') : tr('mtg.start')}</button></div>` : ''}
       </div>
       ${f.enabled ? `<details class="feature-licenses"><summary>${tr('mtg.licenses')}</summary><ul>${lic}</ul></details>` : ''}`;
   }
   const paint = () => { if (host?.isConnected && feature) { const focus = document.activeElement?.dataset?.feat; host.innerHTML = sectionHtml(); host.removeAttribute('aria-busy'); if (focus) host.querySelector(`[data-feat="${focus}"]`)?.focus(); } };
-  async function refresh() { [feature] = await folio.features.list(); paint(); return feature; }
+  async function refresh() { setFeature((await folio.features.list())[0]); paint(); return feature; }
 
   async function onClick(e) {
     const b = e.target.closest('[data-feat]'); if (!b || b.type === 'checkbox') return;
     const a = b.dataset.feat;
     try {
-      if (a === 'install') { b.disabled = true; progress = {}; const p = folio.features.install('meeting-recorder', b.dataset.part); setTimeout(refresh, 50); feature = (await p)[0]; progress = {}; paint(); }
+      if (a === 'install') { b.disabled = true; progress = {}; const p = folio.features.install('meeting-recorder', b.dataset.part); setTimeout(refresh, 50); setFeature((await p)[0]); progress = {}; paint(); }
       else if (a === 'cancel') await folio.features.cancel();
       else if (a === 'remove') { if (await confirm({ title: tr('mtg.remove-title'), body: tr('mtg.remove-body'), action: tr('mtg.remove'), danger: true })) { await folio.features.uninstall('meeting-recorder', b.dataset.part); openSettings(); } }
       else if (a === 'recover') { const p = await folio.meeting.recover(b.dataset.work); await refreshTree(); toast(tr('mtg.transcript-saved'), { action: [tr('mtg.open'), () => openFile(p)] }); await refresh(); }
@@ -76,9 +78,10 @@ export function createMeeting(ui) {
   async function onChange(e) {
     const el = e.target.closest('[data-feat]'); if (!el) return;
     try {
-      if (el.dataset.feat === 'enable') { [feature] = await folio.features.set('meeting-recorder', { enabled: el.checked }); paint(); }
-      if (el.dataset.feat === 'auto') { [feature] = await folio.features.set('meeting-recorder', { autoNotes: el.checked }); }
-      if (el.dataset.feat === 'lang') { [feature] = await folio.features.set('meeting-recorder', { language: el.value }); }
+      if (el.dataset.feat === 'enable') { setFeature((await folio.features.set('meeting-recorder', { enabled: el.checked }))[0]); paint(); }
+      if (el.dataset.feat === 'auto') { setFeature((await folio.features.set('meeting-recorder', { autoNotes: el.checked }))[0]); }
+      if (el.dataset.feat === 'detect') { setFeature((await folio.features.set('meeting-recorder', { detectCalls: el.checked }))[0]); }
+      if (el.dataset.feat === 'lang') { setFeature((await folio.features.set('meeting-recorder', { language: el.value }))[0]); }
     } catch (er) { toast(er.message, { kind: 'error' }); }
   }
   folio.features.onProgress((p) => { progress = p || {}; if (!Object.keys(progress).length) return refresh(); if (!host?.isConnected) return; for (const part of ['required', 'notes']) {
@@ -149,8 +152,14 @@ export function createMeeting(ui) {
   });
   folio.meeting.onStopRequest(({ reason }) => { toast(reason, { kind: 'error' }); stop(); });
 
-  async function start() {
-    if (rec) return;
+  let starting = false; // set before the first await: two quick clicks (or a click and a notification) must not start two sessions, the second would stop the first
+  async function start(o = {}) {
+    if (rec || starting) return;
+    starting = true;
+    try { await startNow(o); } finally { starting = false; }
+  }
+  /** `title` given (a call the app noticed) or `quick` (the sidebar button): no question about the title, the note can be renamed after */
+  async function startNow({ title: given, quick } = {}) {
     try {
       const f = await refresh();
       if (f.session) return toast(tr('mtg.still-saving'));
@@ -160,7 +169,7 @@ export function createMeeting(ui) {
         if (!ok) return;
         await folio.features.set('meeting-recorder', { noticeSeen: true });
       }
-      const title = await prompt({ title: tr('mtg.record'), label: tr('mtg.title'), value: '', hint: tr('mtg.title-hint'), action: tr('mtg.start'), allowEmpty: true, validate: false });
+      const title = quick || typeof given === 'string' ? given || '' : await prompt({ title: tr('mtg.record'), label: tr('mtg.title'), value: '', hint: tr('mtg.title-hint'), action: tr('mtg.start'), allowEmpty: true, validate: false });
       if (title === null) return;
       state = { phase: 'starting', started: new Date().toISOString() }; paintBar();
       await folio.meeting.start({ title });
@@ -195,5 +204,5 @@ export function createMeeting(ui) {
       if (r?.path) toast(tr('mtg.meeting-saved'), { action: [tr('mtg.open'), () => openFile(r.path)] });
     } catch (e) { toast(e.message, { kind: 'error' }); }
   }
-  return { renderSettings, start, stop, toggle: () => (rec ? stop() : start()), recording: () => !!rec };
+  return { renderSettings, start, stop, toggle: () => (rec ? stop() : start()), quickToggle: () => (state?.phase === 'starting' ? undefined : rec || state?.phase === 'recording' ? stop() : start({ quick: true })), recording: () => !!rec };
 }

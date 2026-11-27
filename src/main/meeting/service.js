@@ -11,6 +11,7 @@ import { renderMeeting, fileName, lines as numberLines } from './transcript.js';
 import { draftNotes } from './notes-engine.js';
 import { t } from '../../renderer/i18n.js';
 import { writeAtomic, writeNew } from '../atomic.js';
+import { createMicWatch, createEpisodes } from './mic-watch.js';
 
 const FEATURE = 'meeting-recorder';
 const RATE = 16000;
@@ -34,7 +35,7 @@ function wavPcm(buf) {
   throw new Error('no data chunk');
 }
 
-export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin, settings, saveSettings, notes, workerPath, env = process.env }) {
+export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin, settings, saveSettings, notes, workerPath, notify = null, execReg = null, detect = {}, platform = process.platform, env = process.env }) {
   const platformKey = `${process.platform}-${process.arch}`;
   const root = componentsRoot(app, env);
   const workDir = path.join(root, '..', 'meetings');
@@ -68,6 +69,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
       id: FEATURE, name: f.name, description: f.description,
       supported: featureSupported(FEATURE, process.platform, platformKey, env),
       enabled: !!st.enabled, noticeSeen: !!st.noticeSeen, autoNotes: st.autoNotes !== false, language: st.language || '',
+      detectSupported: detectSupported(), detectCalls: st.detectCalls === true,
       required: { ready: f.required.every((id) => s[id].state === 'ready'), bytes: downloadBytes(f.required, platformKey), components: f.required.map(comp) },
       notes: { ready: f.notes.every((id) => s[id].state === 'ready'), bytes: downloadBytes(f.notes, platformKey), components: f.notes.map(comp) },
       busy: installer.busy(), session: session ? publicSession() : null, unsaved: await unsaved(),
@@ -82,9 +84,11 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
     const st = state();
     if (typeof patch?.enabled === 'boolean') st.enabled = patch.enabled;
     if (typeof patch?.autoNotes === 'boolean') st.autoNotes = patch.autoNotes;
+    if (typeof patch?.detectCalls === 'boolean') st.detectCalls = patch.detectCalls;
     if (patch?.noticeSeen === true) st.noticeSeen = true;
     if (typeof patch?.language === 'string' && ['', 'it', 'en'].includes(patch.language)) st.language = patch.language; // '' = detect
     saveSettings();
+    syncWatch();
     return describe();
   });
   h('features:install', async (id, which) => {
@@ -99,11 +103,33 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
     check(id);
     if (session) throw new Error(t('mtg.err-stop-first'));
     for (const c of part(which)) await installer.uninstall(c);
+    syncWatch();
     return describe();
   });
 
-  /* ---------- the recording session ---------- */
   let session = null;
+  /* ---------- offering to record when a call starts (Windows, off until the person turns it on) ---------- */
+  const detectSupported = () => platform === 'win32' && !!execReg && !!notify; // `detect`: timings, tests only
+  const watch = detectSupported() ? createMicWatch({
+    exec: execReg, isBusy: () => !!session, own: [path.basename(process.execPath), app.getName?.()].filter(Boolean),
+    onCall: ({ app: who }) => offer(who), intervalMs: detect.intervalMs, episodes: createEpisodes(detect),
+  }) : null;
+  const wanted = () => !!watch && !!state().enabled && state().detectCalls === true;
+  function syncWatch() { if (!watch) return; if (wanted()) watch.start(); else watch.stop(); }
+  async function offer(who) {
+    if (session || !wanted()) return;
+    const folderOpen = () => { try { notes.root(); return true; } catch { return false; } }; // no folder: a recording could not be saved, so nothing to offer
+    if (!folderOpen()) return;
+    const ready = detect.ready ? await detect.ready() : (await describe())[0].required.ready;
+    if (!ready || session || !wanted() || !folderOpen()) return; // nothing to record with yet, or the person's situation changed while we checked
+    notify({
+      title: t('mtg.detect-title', { app: who }), body: t('mtg.detect-body'),
+      onClick: () => { const w = getWin(); if (!w) return; if (w.isMinimized()) w.restore(); w.show(); w.focus(); send('meeting:auto-start', { title: t('mtg.auto-title', { app: who }) }); },
+    });
+  }
+  syncWatch();
+
+  /* ---------- the recording session ---------- */
   const publicSession = () => ({ id: session.id, title: session.title, phase: session.phase, started: session.started.toISOString(), path: session.path || null, error: session.error || null, progress: session.progress || null, segments: session.segments.length });
   const phase = (p, extra = {}) => { if (!session) return; Object.assign(session, { phase: p }, extra); send('meeting:state', publicSession()); };
 
@@ -153,7 +179,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
     const asr = COMPONENTS[asrId], dir = (c) => installer.pathOf(c);
     await fs.mkdir(workDir, { recursive: true });
     const workFile = path.join(workDir, `${id}.jsonl`);
-    const clean = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80) || `Meeting ${started.toLocaleDateString()}`;
+    const clean = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Meeting'; // the file name already carries the date and time
     await fs.writeFile(workFile, JSON.stringify({ type: 'meta', id, title: clean, started: started.toISOString(), asr: asrId }) + '\n');
     session = { id, title: clean, started, workFile, asrId, segments: [], phase: 'starting', peak: { worker: 0, app: 0 }, ready: null };
     send('meeting:state', publicSession());

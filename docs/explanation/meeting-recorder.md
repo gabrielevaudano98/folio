@@ -17,6 +17,18 @@ The meeting recorder is an optional feature: nothing is downloaded and nothing r
 6. If the notes model is installed, llama.cpp's server starts, reads the numbered transcript and proposes a summary,
    decisions, action items and open questions. Then it stops.
 
+## Starting with one click
+
+The microphone button in the sidebar starts a recording without asking for a title (the note is named *Meeting* with the date and time
+in its file name; rename it afterwards). It shows only when the recorder is on and its speech model is downloaded.
+
+**Offer to record when a call starts** (Windows, off by default) watches for calls. Windows records, for every app, when it
+opened and closed the microphone (the keys behind *Settings > Privacy > Microphone*). Every 4 seconds Folio asks `reg query`
+for them. When an app other than Folio has held the microphone for 8 seconds, Folio shows one notification for that call; a
+short blip (dictation, a notification sound) is ignored, and muting inside a call does not count as a new call (a call
+ends after 30 seconds without the microphone). Folio offers only while a folder is open (a recording needs somewhere to be saved). Clicking the notification starts the recording; ignoring it does nothing.
+Nothing is listened to or stored by the watcher: it reads app names and timestamps only.
+
 ## Why the notes quote the transcript
 
 A small local model writes fluent notes but invents details: owners, dates, questions nobody asked. So the model only
@@ -29,6 +41,7 @@ you can check it.
 - Use headphones. Without them your microphone also hears the others; Folio drops lines that repeat what the other side
   said at the same moment, but real echo cancellation is not there yet.
 - Windows only for now (the computer's sound is captured with Windows loopback).
+- Call detection sees which app has the microphone, not whether it is a meeting: a voice recorder or dictation held for more than 8 seconds also triggers it. Turn it off in Settings if that bothers you.
 - Tell everyone you are recording, and check that your organisation allows it.
 - Memory: up to 3 GB for the worker and 4 GB for the whole app while it runs; none when idle. Each note records what was
   measured (`worker_peak_mb`, `app_peak_mb`, `transcription_speed`).

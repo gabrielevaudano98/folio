@@ -95,5 +95,6 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `meeting.onState` | event | `meeting:state` | — |
 | `meeting.onSegment` | event | `meeting:segment` | — |
 | `meeting.onStopRequest` | event | `meeting:stop-request` | — |
+| `meeting.onAutoStart` | event | `meeting:auto-start` | — |
 
 Handled but not exposed by name in the preload (used through a generic helper or by the menu): `app:close-ready`, `history:usage`, `assets:reveal`.

@@ -132,6 +132,7 @@ async function boot() {
   if (init.platform === 'darwin') document.documentElement.classList.add('vibrant');
   applyTheme(init.dark, init.accent);
   paintStaticIcons();
+  initRecordButton();
   applyLayoutSettings();
 
   editor = createEditor($('#editor'), {
@@ -1681,7 +1682,23 @@ function meeting() {
     $, esc, toast, confirm: confirmSheet, prompt, openSettings,
     openFile: (p) => openFile(p).catch((e) => toast(e.message, { kind: 'error' })),
     refreshTree: () => refreshTree().catch(() => {}),
+    onFeature: paintRecordButton,
   })));
+}
+/** the sidebar's record button: one click starts, one click stops; shown only when the recorder is on and its speech model is downloaded */
+function paintRecordButton(f) {
+  const b = $('#btn-record'); if (!b) return;
+  b.hidden = !(f?.supported && f.enabled && f.required?.ready);
+  if (!b.innerHTML) { b.innerHTML = icons.mic; b.onclick = () => b.getAttribute('aria-disabled') === 'true' || meeting().then((m) => m.quickToggle()).catch((e) => toast(e.message, { kind: 'error' })); }
+}
+function initRecordButton() {
+  folio.meeting.onState((s) => { // always listening (cheap), so the button is right even before the recorder code is loaded
+    const b = $('#btn-record'); if (!b) return; const live = s?.phase === 'recording', starting = s?.phase === 'starting';
+    b.dataset.recording = live; b.setAttribute('aria-disabled', starting); // the name says the action; while the engine loads there is nothing to stop yet
+    const l = tr(starting ? 'mtg.starting' : live ? 'mtg.stop-recording' : 'mtg.record'); b.setAttribute('aria-label', l); b.dataset.tip = l;
+  });
+  folio.meeting.onAutoStart(({ title }) => meeting().then((m) => m.start({ title })).catch((e) => toast(e.message, { kind: 'error' })));
+  if (S.platform === 'win32') setTimeout(() => folio.features.list().then(([f]) => paintRecordButton(f)).catch(() => {}), 1500); // after startup, so it costs nothing there
 }
 
 /* ============ link health: every broken reference in the workspace, grouped by page ============ */
