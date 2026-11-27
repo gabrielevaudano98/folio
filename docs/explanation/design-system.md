@@ -22,7 +22,7 @@ The tokens file starts with its design brief, written with the [Hallmark](https:
 
 ## Tokens (`src/renderer/tokens.css`)
 
-Every colour, font, size, space, radius, shadow, duration and z-index is a CSS custom property here. No other file
+Every colour, font, size, space, radius, shadow, duration and z-index added to the interface should use a CSS custom property from this file. Existing exceptions are listed below.
 defines a raw value for these. Groups:
 
 | Group | Tokens (examples) | Notes |
