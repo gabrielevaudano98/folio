@@ -1289,7 +1289,7 @@ audio.rich-media-el { height: 40px; }
 .rich-chip.is-date { font-variant-numeric: tabular-nums; }
 .rich-chip.is-date.is-today { color: var(--color-ink); font-weight: var(--weight-medium); }
 .rich-chip.is-date.is-past { color: var(--color-muted); }
-li[data-checked="false"] .rich-chip.is-date.is-past, li[data-checked="false"] .rich-chip.is-date.is-today { color: var(--color-ink); font-weight: var(--weight-bold); }
+li[data-checked="false"] .rich-chip.is-date.is-past, li[data-checked="false"] .rich-chip.is-date.is-today { color: var(--content-red); }
 /* source view and Read view keep their simple chips */
 .rich-wikilink:not(.rich-chip).is-person, .rich-wikilink:not(.rich-chip).is-date, .wikilink-date { text-decoration: none; padding: 0 0.15em; border-radius: var(--radius-xs); color: var(--color-ink-2); }
 .wikilink-date::before { content: "@"; opacity: 0.45; }
