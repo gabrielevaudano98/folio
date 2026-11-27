@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-27T13:33:28Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-27T18:49:01Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
+- Last checkpoint: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests
 
 ## Resume in a new session
 
@@ -71,11 +71,17 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    (`kept`, `KEEP_HIDDEN=2`, `KEEP_TEXT=8 MB`, `forget` on tab close), saves routed by tab object (`backgroundChange`
    in app.js), `drawQuietly`. Tests: test/sheets-tabs.test.mjs, test/tab-switch-save.test.mjs.
 
+15. ~~**Values kept between sessions**~~ DONE (README §8 "Large sheets"): src/sheets/ui/value-cache.js, hooked in surface.js
+   (`applyValues` on load, `storeValues` 2.5 s after the worker's results stop). File format unchanged. First open of the
+   50k-row workbook after a previous one: numbers at once (was ~10 s). Known cost: a small workbook reloaded while the big
+   one is hidden waits >3 s for its formulas (worker queue). Decided not to touch the ~3 s recalculation (Univer's dependency tree).
+
 Open next (not started): live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 5044a36 wip: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
+- 341dcf0 wip: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests
+- a3ea89e wip: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
 - d6ca0df wip: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
 - 7a36a37 wip: Excel check passed on Windows (Folio-Compat.xlsx)
 - 988613e wip: stability pass: edits 200 ms -> 1 ms (no file re-parse per edit), worker results/cell editor/chart drawing no longer count as edits, duplicate sheet names refused, worker heartbeat, hidden editor skipped for visual docs; stress, fuzz and real-download tests (opt-in); full suite green

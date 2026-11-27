@@ -24,6 +24,7 @@ import { createProtection } from './protection.js';
 import { createExtensions } from './extensions.js';
 import { createOpLog } from '../core/collab.js';
 import { engine } from './engine-client.js';
+import { applyValues, storeValues } from './value-cache.js';
 import { locale } from '../../renderer/i18n.js';
 
 const CSS_ID = 'folio-univer-css';
@@ -292,6 +293,7 @@ export function mountSheet(host, ctx) {
       if (replace) { leave(); if (unitId) { api.disposeUnit(unitId); unitId = null; } }
       oplog = createOpLog({ actor });
       loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook', share: true });
+      try { applyValues(t, loaded.data); } catch { /* a cache that cannot be read is no cache */ }
       dirty = new Set(['*']); saveCache = new Map();
       if (U.worker) { const mine = loaded; U.workerBaseline(t).then((b) => { if (b && loaded === mine) mine.provideBaseline(b); }); }
       sheetMeta = {}; saveMs = 0;
@@ -312,6 +314,12 @@ export function mountSheet(host, ctx) {
   }
   // every save names the document it belongs to (docTab, set at load): a save that lands after the tab changed goes
   // to that document, never to the one now shown
+  // once the worker's results stop arriving and nothing is pending, keep the values for the next open of this text
+  let settleTimer = null;
+  function settleSoon() {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { if (!pending && !sliced && loaded) { try { storeValues(text, surface.liveSnapshot()); } catch { /* storage full */ } } }, 2500);
+  }
   function writeText(out) { if (out === text) return; text = out; ctx.onChange(out, docTab); }
   let saveTimer = 0, saveMs = 0;
   // sheets changed since the last save (by their mutations' subUnitId; '*' when a change is not tied to one sheet);
@@ -349,7 +357,7 @@ export function mountSheet(host, ctx) {
     if (c.type !== 2 || loading || drawing || NOT_A_CHANGE.test(c.id)) return;
     // formula results the worker sends back (set-range-values marked fromSync): not an edit, so no save, no entry in
     // the operation log (results are excluded from collaboration) and no onEdit hook; charts still follow them
-    if (options?.fromSync) { charts.refreshSoon(); return; }
+    if (options?.fromSync) { charts.refreshSoon(); settleSoon(); return; }
     // the cell editor is a document of its own (doc.mutation.* on every keystroke): only the workbook's changes count
     if (c.params?.unitId && c.params.unitId !== unitId) return;
     oplog.record(c, options);
@@ -451,6 +459,6 @@ export function mountSheet(host, ctx) {
     selectAtLine() {},
     setDark(on) { U.setDark(on); charts.refresh(); },
     surface,
-    dispose() { kept.clear(); U.dispose(); },
+    dispose() { clearTimeout(settleTimer); kept.clear(); U.dispose(); },
   };
 }

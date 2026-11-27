@@ -185,7 +185,7 @@ the five MCP tools), `test/sheets-components-ui.test.mjs` (4: Settings → data 
   `drawQuietly`, which restores the undo stacks so Ctrl+Z never undoes a chart box. Saving never blocks typing: a
   workbook whose save takes more than 40 ms is saved in slices of ~8 ms (`fromUniverAsync`, the same steps as
   `fromUniver`), reading Univer's live model; an edit during the save makes it give up and start again, and
-  `saveNow()` takes over from it. 200,000 rows open, save and come back byte for byte (no argument spreads that
+  `saveNow()` takes over from it. The values of a big workbook (5,000+ formulas) are kept in the window's storage (`ui/value-cache.js`, last 3 texts, ≤4 MB, keyed by a hash of the exact file text, so nothing outside the file can be stale): reopening the 50k-row workbook shows its numbers at once instead of after ~10 s, and the worker still recomputes everything and agrees (checked in `test/sheets-stress.test.mjs`). Cost seen in the same run: a small workbook reloaded from disk waits behind the hidden big one in the worker (its formulas took more than 3 s to appear). 200,000 rows open, save and come back byte for byte (no argument spreads that
   overflow the stack).
 - **Shared formulas** are only how Univer holds a run of formulas in memory: the file always lists each formula, and
   code that reads Univer data itself (export, scripts, version compare) never sees `si` cells (`expandSharedFormulas`).

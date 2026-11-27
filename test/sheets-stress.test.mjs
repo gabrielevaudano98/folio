@@ -32,6 +32,8 @@ const steps = [
   ev('setup', `${lt}; return ${mem}`),
   ev('open big', `const t=performance.now(); ${open('sheets/Big.sheet.md')}; ${until(`${S}?.read?.('Summary!B2')?.[0]?.[0]>0`, 180000)}; return {ms:Math.round(performance.now()-t), total:${S}.read('Summary!B2')[0][0], heap:${mem}}`, 500),
   ev('long tasks while opening', ltSum),
+  // values kept from the last open: the grid shows numbers at once, the worker then confirms them
+  ev('cached reopen', `const total=${S}.read('Summary!B2')[0][0]; await new Promise(r=>setTimeout(r,4500)); document.querySelector('[data-close="sheets/Big.sheet.md"]').click(); ${until("!document.querySelector('[data-close=\"sheets/Big.sheet.md\"]')", 30000)}; await new Promise(r=>setTimeout(r,1500)); const t=performance.now(); ${open('sheets/Big.sheet.md')}; ${until(`${S}?.read?.('Summary!B2')?.[0]?.[0]>0`, 180000)}; const first=Math.round(performance.now()-t); const shown=${S}.read('Summary!B2')[0][0]; await new Promise(r=>setTimeout(r,12000)); return {firstValueMs:first, shown, same:shown===total, after:${S}.read('Summary!B2')[0][0]===total}`, 500),
   // 300 edits: each one changes a Qty and waits for the Summary to recompute
   ev('300 edits', `const s=${S}; const times=[], recalc=[]; let before=s.read('Summary!B2')[0][0];
     for(let k=0;k<300;k++){ const r=2+Math.floor(Math.random()*${ROWS}); const t=performance.now(); await s.write('Data', 'D'+r, [[(k%11)+20]]); times.push(performance.now()-t);
