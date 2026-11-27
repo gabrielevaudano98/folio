@@ -133,7 +133,7 @@ export async function remindEntries(q, now = new Date(), { lang = 'en', label = 
   if (rest == null && !REMIND_WORDS.some((wd) => wd.startsWith(t))) return [];
   const ref = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
   let rows = [];
-  if (!rest) { const tom = addDays(ref, 1); rows = [{ day: ymd(tom), date: tom, time: '09:00' }, { day: ymd(ref), date: ref, time: `${pad(Math.min(23, now.getHours() + 1))}:00` }]; }
+  if (!rest) { const tom = addDays(ref, 1); rows = [{ day: ymd(tom), date: tom, time: '09:00' }]; if (now.getHours() < 23) rows.push({ day: ymd(ref), date: ref, time: `${pad(now.getHours() + 1)}:00` }); } // no "today" row once no later hour is left
   else { const w = await chronoWhen(rest, now, lang); if (w) rows = [{ day: w.day, date: w.date, time: w.time }]; }
   const dl = (d) => (label ? label(d) : d);
   return rows.map((r) => {

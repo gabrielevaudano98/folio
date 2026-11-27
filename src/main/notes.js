@@ -211,6 +211,7 @@ export function createNotes(getRoot) {
     if (st.size > CACHE_FILE_MAX * 4) return { m: st.mtimeMs, s: st.size, text: '', low: '', icon: '' }; // a huge file is listed, not searched
     const text = await fs.readFile(abs, 'utf8').catch(() => '');
     const e = { m: st.mtimeMs, s: st.size, text, low: text.toLowerCase(), icon: iconOf(text) };
+    const prev = textCache.map.get(abs); if (prev) { textCache.bytes -= prev.text.length * 4; textCache.map.delete(abs); } // a concurrent find may have stored it meanwhile
     if (st.size <= CACHE_FILE_MAX && textCache.bytes + text.length * 4 <= CACHE_MAX) { textCache.map.set(abs, e); textCache.bytes += text.length * 4; }
     return e;
   }

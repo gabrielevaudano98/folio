@@ -37,7 +37,8 @@ export function snippetOf(line, terms, width = 140) {
     const first = marks[0]?.[0] ?? 0;
     let from = Math.max(0, first - Math.floor(width / 3));
     if (from > 0) { const sp = text.indexOf(' ', from); if (sp > 0 && sp < first) from = sp + 1; }
-    const to = Math.min(text.length, from + width);
+    if (from > 0 && /[\uDC00-\uDFFF]/.test(text[from])) from++; // never cut an emoji in half
+    let to = Math.min(text.length, from + width); if (to < text.length && /[\uDC00-\uDFFF]/.test(text[to])) to--;
     text = (from > 0 ? '…' : '') + text.slice(from, to) + (to < text.length ? '…' : '');
     const shift = (from > 0 ? 1 : 0) - from;
     marks = marks.map(([a, b]) => [a + shift, b + shift]).filter(([a, b]) => a >= 0 && b <= text.length);
@@ -127,7 +128,7 @@ export function rankResults(files, q, content, { sort = 'best', now = Date.now()
 export function recencyGroups(items, now = Date.now(), { limit = 40 } = {}) {
   const d = new Date(now); const today = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const yesterday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1).getTime();
-  const week = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 7).getTime();
+  const week = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 8).getTime();
   const groups = { today: [], yesterday: [], week: [], older: [] };
   const sorted = items.filter((x) => x.time).sort((a, b) => b.time - a.time).slice(0, limit);
   for (const it of sorted) groups[it.time >= today ? 'today' : it.time >= yesterday ? 'yesterday' : it.time >= week ? 'week' : 'older'].push(it);

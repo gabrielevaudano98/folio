@@ -105,7 +105,7 @@ export function openDatePicker(anchor, when, { onPick, onOpenNote } = {}) {
       if (!w.endDay && !$('.date-end-on').checked) return pick(b.dataset.day);
       if (target === 'start') { w.day = b.dataset.day; if (!w.endDay || w.endDay < w.day) w.endDay = w.day; target = 'end'; input.value = formatDay(w.day, { style: 'full', lang }); }
       else { if (b.dataset.day < w.day) { w.endDay = w.day; w.day = b.dataset.day; } else w.endDay = b.dataset.day; target = 'start'; input.value = formatDay(w.day, { style: 'full', lang }); }
-      endInput.value = formatDay(w.endDay, { style: 'full', lang }); draw(); return live();
+      endInput.value = formatDay(w.endDay, { style: 'full', lang }); focus = parseDay(b.dataset.day).date; draw(true); return live(); // the grid is rebuilt: keep the focus on the day just chosen
     }
     if (b.dataset.add != null) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + +b.dataset.add, 12); return pick(isoDay(d)); }
     if (b.dataset.nav != null) { const n = +b.dataset.nav; view = n ? new Date(view.getFullYear(), view.getMonth() + n, 1, 12) : new Date(now.getFullYear(), now.getMonth(), 1, 12); if (!n) focus = new Date(now); return draw(); }

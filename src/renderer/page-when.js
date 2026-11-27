@@ -111,7 +111,7 @@ function visible(text) {
   const blank = (s) => s.replace(/[^\n]/g, ' ');
   return String(text)
     .replace(/^---\r?\n[\s\S]*?\r?\n---(?=\r?\n|$)/, blank)
-    .replace(/^( {0,3})(```+|~~~+)[^\n]*\n[\s\S]*?(?:\n {0,3}\2[^\n]*|$)/gm, blank)
+    .replace(/^( {0,3})(```+|~~~+)[^\n]*\n[\s\S]*?(?:\n {0,3}\2[^\n]*|(?![\s\S]))/gm, blank)
     .replace(/`[^`\n]*`/g, blank);
 }
 /** every date mention with a valid brace group or none: [{ index, src, line (1-based), …when }] */
@@ -120,7 +120,9 @@ export function findWhen(text) {
   MENTION.lastIndex = 0; let m;
   while ((m = MENTION.exec(vis))) {
     if (!isDay(m[1])) continue;
-    let s = m[0]; let w = parseMention(s);
+    let bs = 0; while (m.index - 1 - bs >= 0 && src[m.index - 1 - bs] === '\\') bs++;
+    if (bs % 2) continue; // an escaped bracket is literal text, an example, not a mention
+    let s = src.slice(m.index, m.index + m[0].length); let w = parseMention(s); // parsed from the page itself: blanked code must not make a bad group look valid
     if (!w && m[2]) { s = `[[${m[1]}]]`; w = parseMention(s); } // braces that are not a date tail stay ordinary text
     if (!w) continue;
     const line = vis.slice(0, m.index).split('\n').length;

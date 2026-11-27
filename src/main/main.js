@@ -90,18 +90,20 @@ const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset 
 /* history must never get in the way of saving */
 const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); return false; } return null; }; // false: it could not be stored (null: nothing new to store)
 let win = null;
+const liveWin = () => !!win && !win.isDestroyed() && !win.webContents.isDestroyed();
 /* reminders (D1, X13): fired while Folio is open; Done / Dismissed kept here per workspace, never in the page */
 const reminders = createReminders({
   notes, isNote: (rel) => NOTE_EXT.includes(path.extname(rel).toLowerCase()),
   states: () => (settings.workspace && settings.reminderStates?.[settings.workspace]) || {},
   setStates: (m) => { if (!settings.workspace) return; settings.reminderStates = { ...(settings.reminderStates || {}), [settings.workspace]: m }; if (!Object.keys(m).length) delete settings.reminderStates[settings.workspace]; saveSettings(); },
-  onChange: () => win?.webContents.send('reminders:changed'),
+  onChange: () => { if (liveWin()) win.webContents.send('reminders:changed'); },
   onFire: (r) => {
-    win?.webContents.send('reminders:fired', r);
+    const fromWorkspace = settings.workspace;
+    try { if (liveWin()) win.webContents.send('reminders:fired', r); } catch (e) { console.error('[folio] reminder send', e.message); }
     try {
       if (!Notification.isSupported() || process.env.FOLIO_NO_OS_NOTIFY) return;
       const n = new Notification({ title: t('rem.notify-title'), body: r.title || path.basename(r.rel).replace(/\.[^.]+$/, ''), silent: false });
-      n.on('click', () => { if (!win) return; if (win.isMinimized()) win.restore(); win.show(); win.focus(); win.webContents.send('reminders:open', r); });
+      n.on('click', () => { if (!liveWin() || settings.workspace !== fromWorkspace) return; /* another workspace is open now: r.rel would point at a different note */ if (win.isMinimized()) win.restore(); win.show(); win.focus(); win.webContents.send('reminders:open', r); });
       n.show();
     } catch (e) { console.error('[folio] notification', e.message); }
   },

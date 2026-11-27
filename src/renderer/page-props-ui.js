@@ -48,12 +48,12 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   function render() {
     const all = parseProps(get()); const iconProp = all.props.find((x) => x.key === ICON_KEY && !x.readOnly && typeof x.value === 'string' && x.value.trim());
-    const own = ownedKeys(get()); const ap = readAppearance(get()); const cover = ap.cover; if (!cover) repo = false;
+    const own = ownedKeys(get()); const ap = readAppearance(get()); const cover = ap.cover; if (!cover || cover.kind !== 'asset') repo = false;
     const p = { ...all, props: all.props.filter((x) => x !== iconProp && !own.has(x.key)) }; // appearance keys (font, cover…) are not properties
     box.classList.toggle('is-empty', !p.props.length && !adding);
     box.classList.toggle('has-icon', !!iconProp);
     box.classList.toggle('has-cover', !!cover);
-    box.innerHTML = `${cover ? `<div class="page-cover${repo ? ' is-repositioning' : ''}" data-kind="${cover.kind}"${repo ? ` title="${esc(tr('cover.drag-hint'))}"` : ''}>
+    box.innerHTML = `${cover ? `<div class="page-cover${repo ? ' is-repositioning' : ''}" data-kind="${cover.kind}"${repo ? ` title="${esc(tr('cover.drag-hint'))}" tabindex="0" aria-label="${esc(tr('cover.drag-hint'))}"` : ''}>
         <div class="page-cover-actions"><button type="button" class="page-cover-btn" data-cover="change">${esc(tr('cover.change'))}</button>${cover.kind === 'asset' ? `<button type="button" class="page-cover-btn" data-cover="reposition" aria-pressed="${repo}">${esc(tr(repo ? 'cover.done' : 'cover.reposition'))}</button>` : ''}<button type="button" class="page-cover-btn" data-cover="remove">${esc(tr('cover.remove'))}</button></div></div>` : ''}${iconProp ? `<button type="button" class="page-icon" aria-label="${esc(tr('icon.change'))}" title="${esc(tr('icon.change'))}">${esc(iconProp.value.trim())}</button>` : ''}
       <div class="page-head-actions">${cover ? '' : `<button type="button" class="props-cover-add">${ic('image') || ic('plus')}<span>${esc(tr('cover.add'))}</span></button>`}${iconProp ? '' : `<button type="button" class="props-icon-add">${ic('smile') || ic('plus')}<span>${esc(tr('icon.add'))}</span></button>`}</div>
       ${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
@@ -122,6 +122,13 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
     const up = () => { end(); if (y !== y0) commit((t) => setAppearance(t, 'cover-y', y)); };
     const cancel = () => { end(); img.style.objectPosition = `50% ${y0}%`; }; // an interrupted drag is aborted, never saved half-way
     c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', cancel);
+  });
+  /* the same, from the keyboard: Up and Down move the picture in steps of 5 */
+  box.addEventListener('keydown', (e) => {
+    const c = e.target.closest?.('.page-cover.is-repositioning'); if (!c || e.target !== c || locked() || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const y = Math.min(100, Math.max(0, readAppearance(get()).coverY + (e.key === 'ArrowUp' ? 5 : -5)));
+    commit((t) => setAppearance(t, 'cover-y', y)); setTimeout(() => box.querySelector('.page-cover.is-repositioning')?.focus(), 0);
   });
   box.addEventListener('change', (e) => {
     const t = e.target;

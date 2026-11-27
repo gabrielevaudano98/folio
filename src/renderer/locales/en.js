@@ -1807,7 +1807,7 @@ export default {
   "cover.remove": "Remove cover",
   "cover.reposition": "Reposition",
   "cover.done": "Done",
-  "cover.drag-hint": "Drag the picture up or down",
+  "cover.drag-hint": "Drag the picture up or down, or use the Up and Down keys",
   "cover.choose": "Choose a cover",
   "cover.gradients": "Gradients",
   "cover.gradient-n": "Gradient {n}",

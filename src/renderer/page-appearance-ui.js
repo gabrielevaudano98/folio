@@ -50,7 +50,7 @@ export function openAppearance(anchor, { get, apply, locked = () => false }) {
     e.preventDefault(); all[(i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length].focus();
   });
   place(pop, anchor);
-  pop.querySelector('[aria-checked="true"].ap-font, button:not([disabled])')?.focus({ preventScroll: true });
+  (pop.querySelector('[aria-checked="true"].ap-font:not([disabled])') || pop.querySelector('button:not([disabled])'))?.focus({ preventScroll: true });
   return pop;
 }
 

@@ -189,7 +189,7 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
     const t = state.push('html_inline', '', 0);
     const target = m[1].trim();
     const day = DAY.test(target) && !m[2];
-    const tail = day ? tailLength(src.slice(m[0].length)) : 0; const w = tail ? parseMention(src.slice(0, m[0].length + tail)) : null; // [[2026-12-01]]{09:00 remind}
+    const tail = day ? tailLength(src.slice(m[0].length)) : 0; const w = tail ? parseMention(`[[${target}]]` + src.slice(m[0].length, m[0].length + tail)) : null; // the trimmed day, so [[ 2026-12-01 ]]{09:00} still reads // [[2026-12-01]]{09:00 remind}
     const due = w?.remind != null && (startOf(w) <= new Date() || dayTense(w.day) === 'today');
     const label = w ? whenLabel(w, (d) => formatDay(d, datePrefs)) : day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim();
     t.content = `<a class="wikilink${day ? ' wikilink-date' : ''}${w?.remind != null ? ' is-remind' : ''}${due ? ' is-due' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(label)}</a>`;

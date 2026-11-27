@@ -13,7 +13,7 @@ fs.mkdirSync(pages, { recursive: true }); fs.mkdirSync(ud);
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47613 }));
 const pad = (n) => String(n).padStart(2, '0'); const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const now = new Date(); const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1); const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-const soon = new Date(now.getTime() + 75000); soon.setSeconds(0, 0); // the next whole minute that is at least 15 s away
+const soon = new Date(now.getTime() + 90000); soon.setSeconds(0, 0); // the next whole minute that is at least 30 s away: slow runs still read the list before it fires
 const soonMs = soon.getTime() - now.getTime();
 const a = `# Plan\n\n- [ ] Call Ada [[${key(tomorrow)}]] end\n\nOther text stays.\n`;
 fs.writeFileSync(path.join(pages, 'a.md'), a);
@@ -37,11 +37,12 @@ const steps = [
   { js: list + ".concat([[document.querySelector('#reminders-list .rem-more')?.textContent || '']])", log: true, wait: 600 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
+process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true })); // after the last assertion, however it ends
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
 const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: ud, FOLIO_SHOT: stepsFile, FOLIO_NO_OS_NOTIFY: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let out = ''; child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
 const timer = setTimeout(() => child.kill(), 180000);
-child.on('exit', () => {
+child.on('close', () => { // 'close': after the output is fully drained
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nreminders ui'); if (process.env.DEBUG) console.log(JSON.stringify(logs, null, 1));

@@ -24,7 +24,7 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
   let byFile = new Map(); // rel -> reminders of that page
   let since = clock.now(); // reminders due after this moment fire; earlier ones are overdue
   const fired = new Set(); // id@time, so an unchanged reminder fires once
-  let timer = null, gen = 0;
+  let timer = null, gen = 0, touched = null; // touched: pages the watcher reported while a scan is reading the workspace
 
   const all = () => [...byFile.entries()].flatMap(([rel, list]) => list.map((r) => ({ ...r, rel, id: reminderId(rel, r.key) })));
   const stateOf = (id) => states()?.[id] || null;
@@ -57,6 +57,7 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
     const before = JSON.stringify(byFile.get(rel) || []);
     const found = text != null && isNote(rel) && String(text).includes('remind') ? scanReminders(text) : [];
     if (found.length) byFile.set(rel, found); else byFile.delete(rel);
+    touched?.add(rel); // a scan in flight must not overwrite this newer reading
     // a reminder added for a time a moment ago (typed just in time) still fires
     const now = clock.now(); if (found.some((r) => r.at <= now && r.at > now - GRACE && r.at <= since)) since = Math.min(since, now - GRACE);
     if (JSON.stringify(found) !== before) { onChange(); }
@@ -65,23 +66,26 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
 
   /** the whole workspace, again (on open). Older states of reminders that no longer exist are dropped. */
   async function scanAll() {
-    const g = ++gen; const next = new Map();
-    let files = []; try { files = (await notes.allFiles()).filter(isNote); } catch { files = []; }
+    const g = ++gen; const next = new Map(); const mine = (touched = new Set()); let complete = true;
+    let files = []; try { files = (await notes.allFiles()).filter(isNote); } catch { files = []; complete = false; }
     for (let i = 0; i < files.length; i++) {
-      const text = await notes.read(files[i]).catch(() => null);
+      const text = await notes.read(files[i]).catch(() => { complete = false; return null; });
       if (g !== gen) return; // a newer scan (another workspace) took over
       if (text && text.includes('remind')) { const found = scanReminders(text); if (found.length) next.set(files[i], found); }
       if (i % 50 === 49) await new Promise((r) => setImmediate(r));
     }
-    byFile = next; since = Math.max(since, 0);
-    const ids = new Set(all().map((r) => r.id)); const st = states() || {};
-    const kept = Object.fromEntries(Object.entries(st).filter(([id]) => ids.has(id)));
-    if (Object.keys(kept).length !== Object.keys(st).length) setStates(kept);
+    for (const rel of mine) { if (byFile.has(rel)) next.set(rel, byFile.get(rel)); else next.delete(rel); } // pages the watcher updated while we read
+    touched = null; byFile = next; since = Math.max(since, 0);
+    if (complete) { // only a scan that read everything may conclude that a reminder is gone
+      const ids = new Set(all().map((r) => r.id)); const st = states() || {};
+      const kept = Object.fromEntries(Object.entries(st).filter(([id]) => ids.has(id)));
+      if (Object.keys(kept).length !== Object.keys(st).length) setStates(kept);
+    }
     onChange(); tick();
   }
 
   /** a new workspace: forget everything, announce only what comes due from now on */
-  function reset() { gen++; byFile = new Map(); fired.clear(); since = clock.now(); if (timer) clock.clearTimeout(timer); timer = null; onChange(); }
+  function reset() { gen++; touched = null; byFile = new Map(); fired.clear(); since = clock.now(); if (timer) clock.clearTimeout(timer); timer = null; onChange(); }
 
   /** done / dismissed / null (back to the list) */
   function setState(id, state) {

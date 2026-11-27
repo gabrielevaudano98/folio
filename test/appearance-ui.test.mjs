@@ -59,11 +59,12 @@ const steps = [
   view('edit'), { js: click('[data-cover="remove"]'), wait: 1200 }, { js: read, log: true, wait: 100 }, // 15: back to the original
   { js: 'window.__folioErrors || []', log: true, wait: 100 },                                         // 16
 ];
+process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true })); // after the last assertion, however it ends
 const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));
 const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: ud, FOLIO_SHOT: stepsFile, FOLIO_PICK_IMAGE: png }, stdio: ['ignore', 'pipe', 'pipe'] });
 let out = ''; child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
 const timer = setTimeout(() => child.kill(), 120000);
-child.on('exit', () => {
+child.on('close', () => { // 'close': after the output is fully drained
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nappearance ui'); if (process.env.DEBUG) console.log(logs);

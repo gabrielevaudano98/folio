@@ -827,7 +827,7 @@ async function renderReminders() {
   sec.hidden = !reminderList.length;
   const open = remindersOpen(); $('#reminders-head').setAttribute('aria-expanded', String(open)); box.hidden = !open;
   const overdue = reminderList.filter((r) => r.state === 'overdue').length; const badge = $('#reminders-badge');
-  badge.hidden = !overdue; badge.textContent = overdue ? String(overdue) : ''; badge.setAttribute('aria-label', tr('app.reminders-overdue', { n: overdue }));
+  badge.hidden = !overdue; badge.textContent = overdue ? String(overdue) : ''; $('#reminders-badge-sr').textContent = overdue ? tr('app.reminders-overdue', { n: overdue }) : ''; // a span cannot carry an aria-label: the count is read from hidden text
   const shown = reminderList.filter((r) => showDoneReminders || r.state !== 'done'); const done = reminderList.length - reminderList.filter((r) => r.state !== 'done').length;
   box.innerHTML = shown.map((r) => `<div class="rem-item is-${r.state}" role="listitem" data-id="${esc(r.id)}">
       <button type="button" class="rem-open" data-open="${esc(r.rel)}" data-line="${r.line}" title="${esc(r.rel)}"><span class="rem-title">${esc(r.title || stem(r.rel))}</span><span class="rem-meta"><span class="rem-when">${esc(reminderWhen(r))}</span>${r.state === 'overdue' ? ` · <span class="rem-late">${tr('app.reminder-overdue')}</span>` : ''} · ${esc(stem(r.rel))}</span></button>

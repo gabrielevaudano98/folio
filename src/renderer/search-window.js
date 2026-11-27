@@ -121,7 +121,7 @@ export function createSearchWindow(deps) {
   async function update() {
     const raw = root.querySelector('#search-input').value;
     const q = parseQuery(raw);
-    if (!q.terms.length) { st.q = q; st.items = recentItems(); draw(); return; }
+    if (!q.terms.length) { seq++; st.q = q; st.items = recentItems(); draw(); return; }
     if (!st.titleOnly && deps.workspace() && st.contentQ !== `${st.folder}\u0000${q.raw}`) {
       const mine = ++seq;
       let rows = [];
@@ -210,7 +210,7 @@ export function createSearchWindow(deps) {
       const tpl = document.createElement('template');
       try { tpl.innerHTML = deps.render(text); } catch { tpl.innerHTML = `<pre>${esc(text.slice(0, 4000))}</pre>`; }
       for (const el of tpl.content.querySelectorAll('[srcset]')) el.removeAttribute('srcset');
-      for (const el of tpl.content.querySelectorAll('script, iframe, object, embed')) el.remove();
+      for (const el of tpl.content.querySelectorAll('script, iframe, object, embed, .page-cover-read')) el.remove(); // the cover band is empty here: the preview shows the text only
       for (const m of tpl.content.querySelectorAll('video, audio')) { m.removeAttribute('src'); m.removeAttribute('data-src'); }
       for (const img of tpl.content.querySelectorAll('img')) {
         const src = img.getAttribute('src') || ''; img.removeAttribute('src'); img.loading = 'lazy';

@@ -89,8 +89,8 @@ assert.deepEqual(hits.map((r) => r.path).sort(), ['n0.md', 'n1000.md', 'n500.md'
 assert.equal(hits.find((r) => r.path === 'proj/Plan.md').snippets[0].text, 'The beta ships in March.');
 assert.deepEqual((await notes.find('beta', { folder: 'proj' })).map((r) => r.path), ['proj/Plan.md']);
 assert.deepEqual((await notes.find('"ships in march"')).map((r) => r.path), ['proj/Plan.md']);
-assert.ok(warm < 1500, `warm search took ${warm} ms (cold ${cold} ms)`);
-fs.writeFileSync(path.join(ws, 'Diary.md'), 'Now the beta is here too.\n', { flag: 'w' });
+assert.ok(warm < cold, `the second search must be served from memory: ${warm} ms vs the first ${cold} ms`);
+fs.writeFileSync(path.join(ws, 'Diary.md'), 'Nothing about the beta\n', { flag: 'w' });
 fs.utimesSync(path.join(ws, 'Diary.md'), new Date(), new Date(Date.now() + 5000));
 fs.rmSync(path.join(ws, 'n0.md'));
 assert.deepEqual((await notes.find('beta')).map((r) => r.path).sort(), ['Diary.md', 'n1000.md', 'n500.md', 'proj/Plan.md']);

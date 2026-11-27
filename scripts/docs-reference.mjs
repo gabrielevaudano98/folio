@@ -48,7 +48,7 @@ function ipc() {
     const kindOf = (fn) => (fn === 'on' ? 'event' : fn === 'send' ? 'message' : 'request');
     const inline = line.match(/^\s{2}([a-zA-Z]+): \{(.+)\},?\s*$/); // a namespace on one line: qa: { start: …, poll: … }
     if (inline) {
-      for (const m of inline[2].matchAll(/([a-zA-Z]+): \([^)]*\) => (call|send|on)\('([a-z0-9:-]+)'/g)) api.push({ name: `${inline[1]}.${m[1]}`, channel: m[3], kind: kindOf(m[2]) });
+      for (const m of inline[2].matchAll(/([a-zA-Z]+): (?:\([^)]*\) => )?(call|send|on)\('([a-z0-9:-]+)'/g)) api.push({ name: `${inline[1]}.${m[1]}`, channel: m[3], kind: kindOf(m[2]) });
       continue;
     }
     const m = line.match(/^\s+([a-zA-Z]+):.*?\b(call|send|on)\('([a-z0-9:-]+)'/);
