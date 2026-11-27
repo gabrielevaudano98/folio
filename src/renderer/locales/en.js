@@ -162,6 +162,7 @@ export default {
   'app.copy-link': 'Copy link',
   'app.duplicated-what': 'Duplicated as “{what}”.',
   'app.duplicate-not-saved': 'Could not save “{name}”, so nothing was duplicated. Your changes are still open.',
+  'app.move-not-saved': 'Could not save “{name}”, so nothing was moved. Your changes are still open.',
   'app.move-name-to': 'Move “{name}” to…',
   'app.move-to-hint': 'Type to find a folder. Enter moves it there; links in other pages follow.',
   'app.top-of-the-folder': 'Top of the folder',

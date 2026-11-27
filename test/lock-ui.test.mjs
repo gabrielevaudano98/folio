@@ -40,6 +40,12 @@ const steps = [
   { js: caretAtEnd, wait: 100 }, { js: type(' LOCKED'), wait: 1200 },
   { js: "window.__folioRun('expand-toggles'); true", wait: 1000 },
   { js: `${disk}.then((t) => t === window.__before)`, log: true, wait: 100 },
+  // the source view is locked too: Mod+B dispatches straight to the editor, so a locked page drops that change as well
+  { js: "window.__folioRun('mode-split'); true", wait: 800 },
+  { js: "const c = document.querySelector('.cm-content'); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', keyCode: 66, ctrlKey: true, metaKey: true, bubbles: true, cancelable: true })); true", wait: 1500 },
+  { js: "[document.querySelector('.cm-content').textContent.includes('**'), document.querySelector('.cm-content').getAttribute('contenteditable')]", log: true, wait: 100 },
+  { js: `${disk}.then((t) => t === window.__before)`, log: true, wait: 100 },
+  { js: "window.__folioRun('mode-edit'); true", wait: 800 },
   // the properties and the review pane offer no change either, and a forced one is not saved
   { js: "[document.querySelector('.props .prop-input')?.disabled, !!document.querySelector('.review-pane.is-locked'), getComputedStyle(document.querySelector('.rv-card [data-act=resolve]')).display]", log: true, wait: 100 },
   { js: "(() => { const i = document.querySelector('.props .prop-input'); i.disabled = false; i.value = 'changed'; i.dispatchEvent(new Event('change', { bubbles: true })); document.querySelector('.rv-card [data-act=resolve]').click(); return true; })()", wait: 1200 },
@@ -73,8 +79,8 @@ child.on('exit', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nlock, code tools, toggles ui'); if (process.env.DEBUG) console.log(logs);
-  assert.equal(logs.length, 19, out.slice(-1500));
-  const [tools, wrapped, copied, sameFile, open1, open2, open3, lock, still, panels, stillAfter, noTyped, typed, menu, moved, linkTab, final, afterTrash, errors] = logs;
+  assert.equal(logs.length, 21, out.slice(-1500));
+  const [tools, wrapped, copied, sameFile, open1, open2, open3, lock, still, srcLocked, srcDisk, panels, stillAfter, noTyped, typed, menu, moved, linkTab, final, afterTrash, errors] = logs;
   assert.deepEqual(errors, [], 'no renderer errors');
   assert.deepEqual(tools, ['copy', 'wrap']); assert.equal(wrapped, true); assert.equal(copied, true); assert.equal(sameFile, true);
   console.log('  ✓ a code block has Copy (toast: Copied) and Wrap (view only, file untouched)');
@@ -82,6 +88,8 @@ child.on('exit', () => {
   console.log('  ✓ expand all opens every toggle in the file, collapse all closes them, one Undo reverts the last action');
   assert.deepEqual(lock, [true, 'false']); assert.equal(still, true); assert.equal(noTyped, false);
   console.log('  ✓ a locked page shows the Locked badge and ignores typing');
+  assert.deepEqual(srcLocked, [false, 'false'], 'Mod+B in the source view of a locked page changes nothing'); assert.equal(srcDisk, true);
+  console.log('  ✓ the source view of a locked page ignores Mod+B too');
   assert.deepEqual(panels, [true, true, 'none']); assert.equal(stillAfter, true, 'a forced property edit or Resolve does not reach the file');
   console.log('  ✓ on a locked page the properties are disabled and the review pane offers no action; forced ones change nothing');
   assert(menu.includes('Unlock page'), 'the sidebar menu offers Unlock page on a locked page');

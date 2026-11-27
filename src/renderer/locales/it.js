@@ -158,6 +158,7 @@ export default {
   'app.copy-link': 'Copia link',
   'app.duplicated-what': 'Duplicato come «{what}».',
   'app.duplicate-not-saved': 'Impossibile salvare «{name}», quindi non è stato duplicato nulla. Le modifiche sono ancora aperte.',
+  'app.move-not-saved': 'Impossibile salvare «{name}», quindi non è stato spostato nulla. Le modifiche sono ancora aperte.',
   'app.move-name-to': 'Sposta «{name}» in…',
   'app.move-to-hint': 'Scrivi per trovare una cartella. Invio la sposta lì; i link nelle altre pagine seguono.',
   'app.top-of-the-folder': 'Livello principale della cartella',

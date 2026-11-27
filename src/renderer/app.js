@@ -881,6 +881,7 @@ function pickTemplate({ title = tr('app.insert-template'), note = tr('app.templa
 }
 async function applyTemplate(t, pos = null) {
   if (!t || curType() !== 'md') return;
+  if (isLocked(S.active)) { toast(tr('app.this-page-is-locked'), { kind: 'error' }); return; }
   const text = await askFilled(t, { title: stem(S.active || 'Untitled') }); if (text == null) return;
   rememberTemplate(t);
   if (isRich()) { rich.insertTemplate(text, pos); return; }
@@ -1382,6 +1383,12 @@ async function moveRaw(from, to) {
 }
 async function movePath(from, to, isDir) {
   try {
+    // links and attachment paths are rewritten on disk in other pages: an open page with unsaved text would save its old paths back over them
+    if (isRich()) rich.flush?.();
+    for (const t of S.tabs.filter((x) => !x.dead && x.text !== x.saved)) {
+      await saveTab(t).catch(() => {});
+      if (t.text !== t.saved) throw new Error(tr('app.move-not-saved', { name: stem(t.path) }));
+    }
     const n = await moveRaw(from, to);
     actions.push({ scope: S.workspace, label: `${dirOf(from) === dirOf(to) ? 'renamed' : 'moved'} ${isDir ? base(from) : stem(from)}`, undo: () => moveRaw(to, from), redo: () => moveRaw(from, to) });
     const what = isDir ? base(from) : stem(from);
@@ -1440,6 +1447,7 @@ function retargetTabs(from, to) {
 /* [PAGE ACTIONS]: duplicate, move to…, copy link (sidebar menu, ••• menu, palette) */
 async function duplicatePath(p, isDir) {
   try {
+    if (isRich()) rich.flush?.(); // typing still in the 220 ms debounce is in the tab's text before it is compared with the file
     for (const t of S.tabs.filter((x) => (x.path === p || x.path.startsWith(p + '/')) && x.text !== x.saved)) { // the copy has what is on screen
       await saveTab(t).catch(() => {});
       if (t.text !== t.saved) throw new Error(tr('app.duplicate-not-saved', { name: stem(t.path) }));

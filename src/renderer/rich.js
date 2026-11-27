@@ -924,8 +924,10 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   let emitTimer;
   function emit() {
     clearTimeout(emitTimer);
-    emitTimer = setTimeout(() => onChange?.(api.getMarkdown()), 220);
+    emitTimer = setTimeout(() => { emitTimer = null; onChange?.(api.getMarkdown()); }, 220);
   }
+  /** hand over a change still waiting in the 220 ms debounce now, so the tab's text is what is on screen */
+  function flushChange() { if (emitTimer) { clearTimeout(emitTimer); emitTimer = null; onChange?.(api.getMarkdown()); } }
 
   host.querySelector('.rich-unlock').addEventListener('click', () => onUnlock?.());
   const LOCK_OK = /^(find|reviewPane|prevChange|nextChange|app:(focus|outline|help|link-health|daily-note))$/;
@@ -1290,6 +1292,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
 
   ready = true;
   const api = {
+    flush: flushChange,
     /** the person allowed web images: try again every one that was held back */
     refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,

@@ -292,7 +292,8 @@ export function createEditor(parent, { onChange, onCursor, onScroll, onPasteImag
   ];
   const view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions }) });
   let locked = false; // a new or restored state starts from `extensions`, so the page lock is put back after it
-  const lockExt = () => [EditorState.readOnly.of(locked), EditorView.editable.of(!locked)];
+  // readOnly only stops typing and the built-in commands: Mod+B, a template or insert() dispatch straight to the view, so a locked page also drops every change that is not an outside reload (remoteAnn)
+  const lockExt = () => [EditorState.readOnly.of(locked), EditorView.editable.of(!locked), ...(locked ? [EditorState.transactionFilter.of((tr) => (tr.docChanged && !tr.annotation(remoteAnn) ? [] : tr))] : [])];
   const relock = () => { if (view.state.readOnly !== locked) view.dispatch({ effects: lockComp.reconfigure(lockExt()) }); };
   return {
     view,
