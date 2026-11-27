@@ -96,6 +96,9 @@ Il workflow `.github/workflows/release.yml` compila **macOS (.dmg universale)** 
 ### Firma
 Senza certificati l'app non è firmata: su macOS la prima apertura va fatta con clic destro → Apri; su Windows SmartScreen chiede conferma. Per macOS il workflow di release è pronto: aggiungi i secret indicati in `release.yml` (certificato Developer ID e notarizzazione Apple). La firma per Windows non è ancora configurata (issue #4).
 
+### Aggiornamenti
+Folio controlla le release su GitHub (Impostazioni → Aggiornamenti; si può spegnere). L'installer Windows scarica e installa l'aggiornamento da solo, anche senza firma. Su macOS (senza firma Developer ID il sistema rifiuta gli aggiornamenti automatici) e nel portable Folio avvisa e apre la pagina della release. Dettagli in [docs/explanation/updates.md](docs/explanation/updates.md).
+
 ## Struttura
 
 ```

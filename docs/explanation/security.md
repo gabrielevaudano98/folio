@@ -10,4 +10,5 @@ The full policy and its known limits are in [`SECURITY.md`](../../SECURITY.md). 
 - **The window has no Node.js**: `sandbox: true`, `contextIsolation: true`, and only the preload API.
 - **AI access is local and authenticated**: 127.0.0.1, bearer token, Host and Origin checks, and a read-only switch.
 - **Downloaded components are pinned** by address and SHA-256 ([ADR 0005](../adr/0005-optional-components-are-downloaded.md)).
+- **Updates come from this repository's GitHub releases** and are checked against the SHA-512 in the release's `latest.yml`; the check can be switched off and nothing downloads without a click ([updates](updates.md)). Unsigned macOS builds cannot install updates, only announce them.
 - **Electron fuses** disable `NODE_OPTIONS`, inspector flags and, on macOS and Linux, run-as-node.

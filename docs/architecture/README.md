@@ -187,7 +187,7 @@ See [`docs/adr/`](../adr/README.md).
 - The audience Q&A page listens on all network interfaces while it is open, so anyone on the same network can send a
   question. It accepts only short text, keeps it in memory and serves no files; it closes when the presenter closes Q&A.
 - Windows keeps the `RunAsNode` fuse on for the stdio bridge.
-- Builds are not code-signed yet, and there is no auto-update ([#2](https://github.com/gabrielevaudano98/folio/issues/2)–[#4](https://github.com/gabrielevaudano98/folio/issues/4)).
+- Builds are not code-signed ([#3](https://github.com/gabrielevaudano98/folio/issues/3), [#4](https://github.com/gabrielevaudano98/folio/issues/4)); updates come from GitHub releases ([#2](https://github.com/gabrielevaudano98/folio/issues/2), [updates](../explanation/updates.md)): installed on Windows, a notice on macOS.
 - **A delayed page edit can land in the wrong tab** after a fast tab switch ([#82](https://github.com/gabrielevaudano98/folio/issues/82)).
   Changes must name their document, not rely on "the active tab".
 - **Long-lived branches.** The Notion PR stack and `feat/sheets-univer` both diverge from `main` and touch `app.js`,

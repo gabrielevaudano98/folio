@@ -19,14 +19,14 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 
 | Area | On `main` | In flight | Main gaps |
 |---|---|---|---|
-| App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Auto-update, Linux build |
+| App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Linux build |
 | Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 on the PR stack | Data bugs fixed only on #77 ([#81](https://github.com/gabrielevaudano98/folio/issues/81)) |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
 | AI / MCP | 41 tools, HTTP and stdio, one-click connect | Sheet tools on the Univer branch | Per-change review of AI edits, ask-AI from inside Folio |
 | Meeting recorder (optional, Windows) | Shipped (1.5.x): one-click, call detection | — | Real-call measurements on Windows ([#88](https://github.com/gabrielevaudano98/folio/issues/88)) |
-| Release | Tests and CodeQL on pull requests to `main`; Windows and macOS packages on every push to `main`; a release when `package.json` changes | 5 Dependabot PRs | Code signing, notarisation, auto-update |
+| Release | Tests and CodeQL on pull requests to `main`; Windows and macOS packages on every push to `main`; a release when `package.json` changes | 5 Dependabot PRs | Code signing and notarisation (no certificates available) |
 
 Quality bar on `main`: `npm test` green (formats, MCP end to end, security, atomic writes, components, UI tests under
 xvfb). The two performance budgets that are over: the longest task at startup and when opening a 400-section page
@@ -99,9 +99,9 @@ Before it can merge ([#84](https://github.com/gabrielevaudano98/folio/issues/84)
 - Its ADR `0011-sheets-on-univer-with-a-data-engine.md` collides with `main`'s ADR 0011 (call detection): renumber it 0012.
 - It removes `src/renderer/sheet.js` and `sheet-xlsx.js` and adds about 3,500 lines to `package-lock.json`: check the
   installer size and startup budgets ([budget](performance/budget.md)) and the licences of every new package.
-- It carries a fix for a data-loss bug that also exists on `main` (see below); land that fix first, on its own. The fix
-  (`d6ca0df`, completed by `a3ea89e`) is mixed with Univer code, so port the `activate()` part by hand rather than
-  cherry-pick.
+- Its fix for the tab-switch data-loss bug ([#82](https://github.com/gabrielevaudano98/folio/issues/82)) is now on `main`
+  for pages (the page editor's delayed change and the left tab's save); the sheet half (a Univer sheet's delayed save naming
+  its document) is still only in `d6ca0df`. Expect a small conflict in `app.js` `activate()` and `rich.js`.
 - It adds 67 files under `src/` (`src/sheets/**`, `src/main/sheets-engine.js`, `src/renderer/sheets-components.js`): each
   needs its own line in the [source map](reference/source-map.md) (`test/docs-map.test.mjs`). It adds 4 MCP tools, so
   re-run `node scripts/docs-reference.mjs` and update the tool counts here, in [overview](overview.md) and in README.
@@ -131,13 +131,11 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 
 | Bug | Impact | Where the fix is | Issue |
 |---|---|---|---|
-| Typing in a page (Write view) and switching to a slides, board or sheet tab within 220 ms of the last keystroke (tab click, link, back/forward, or an AI `open_note`) writes the page's text into that file about 650 ms later, and the page loses those last keystrokes. Reproduced on 1.5.1, script in the issue. The overwritten file is normally still in version history | **Data loss** | `feat/sheets-univer` commit `d6ca0df` (flush pending edits and save the left tab before switching) | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
 | Bold, italic, link or code in a toggle title are lost on save (F1) | Data loss | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | Resolve removes a comment thread (F2); on `main` this is the intended design ("the comments go, the text stays"), PR #77 keeps resolved threads instead | Feature gap, can surprise | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | Editing a property rewrites CRLF front matter as LF (F3) | Unrelated bytes change (invariant 1) | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| A tab you leave with unsaved text is written only when it is shown again, closed or Folio quits (autosave saves the active tab) | Crash window | Part of the `d6ca0df` port | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
 | Startup and opening a long page go over the 100 ms budget | Responsiveness | — | [#90](https://github.com/gabrielevaudano98/folio/issues/90) |
 
 ## Not started
@@ -145,8 +143,9 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 Each is an open issue with its milestone. The ones that matter most for a first public release are in bold.
 
 - Release workflow without a third-party publish action ([#83](https://github.com/gabrielevaudano98/folio/issues/83)).
-- **Signed and notarised builds** for macOS ([#3](https://github.com/gabrielevaudano98/folio/issues/3)) and Windows
-  ([#4](https://github.com/gabrielevaudano98/folio/issues/4)); **auto-update** ([#2](https://github.com/gabrielevaudano98/folio/issues/2)).
+- Signed and notarised builds for macOS ([#3](https://github.com/gabrielevaudano98/folio/issues/3)) and Windows
+  ([#4](https://github.com/gabrielevaudano98/folio/issues/4)): **not possible for now, there are no certificates**; kept open only for the day they exist.
+- Auto-update ([#2](https://github.com/gabrielevaudano98/folio/issues/2)) is built, see [updates](explanation/updates.md); it needs a manual check on Windows after the first release that carries `latest.yml`.
 - Accessibility audit of the board canvas and the sheet grid ([#6](https://github.com/gabrielevaudano98/folio/issues/6)).
 - AI: accept or reject each AI change ([#18](https://github.com/gabrielevaudano98/folio/issues/18)); structured board
   and sheet tools ([#19](https://github.com/gabrielevaudano98/folio/issues/19)); ask your AI from inside Folio ([#20](https://github.com/gabrielevaudano98/folio/issues/20)).

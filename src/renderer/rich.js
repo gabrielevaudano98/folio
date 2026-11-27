@@ -752,11 +752,13 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   });
 
   const codec = createPageCodec(editor.markdown);
-  let emitTimer;
+  let emitTimer = 0;
   function emit() {
     clearTimeout(emitTimer);
-    emitTimer = setTimeout(() => onChange?.(api.getMarkdown()), 220);
+    emitTimer = setTimeout(() => { emitTimer = 0; onChange?.(api.getMarkdown()); }, 220);
   }
+  /** report a change still waiting for its pause now (the app calls this before the tab changes) */
+  function flushEmit() { if (!emitTimer) return; clearTimeout(emitTimer); emitTimer = 0; onChange?.(api.getMarkdown()); }
 
   const run = (id, btn) => {
     if (!id) return false;
@@ -1139,6 +1141,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     },
     /** the visual editor state of this document, with its undo history; `md` says which text it matches */
     snapshot() { return { state: editor.view.state, md: api.getMarkdown(), model }; },
+    flush: flushEmit,
     restore(snap) {
       model = snap.model; silent = true;
       try { editor.view.updateState(snap.state); } finally { silent = false; }
