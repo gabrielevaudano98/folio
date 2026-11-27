@@ -5,7 +5,7 @@
 This is the page to read first when you pick Folio up: what ships, what is half-built and where, what is broken, what
 comes next, and what only a person can do. It is written by hand; update it in the same pull request that changes the
 picture (merging a branch, closing a milestone, finding a bug). The live list of work is
-[GitHub Issues](https://github.com/gabrielevaudano98/folio/issues); every line below that is not done links to one.
+[GitHub Issues](https://github.com/gabrielevaudano98/folio/issues); open work below links to an issue where one exists.
 
 - [At a glance](#at-a-glance)
 - [What ships on main](#what-ships-on-main)
