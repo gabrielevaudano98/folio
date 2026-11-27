@@ -276,7 +276,9 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     await ensureDir(dir);
     const [realDir, realRoot] = await Promise.all([fs.realpath(dir), fs.realpath(root())]);
     if (realDir !== realRoot && !realDir.startsWith(realRoot + path.sep)) throw new NotesError('The asset folder leads outside the workspace through a link.');
-    const name = path.basename(src).replace(/^[0-9a-f]{8}-(?=.)/, ''); const ext = path.extname(name); const stem = name.slice(0, name.length - ext.length);
+    let name = path.basename(src).replace(/^[0-9a-f]{8}-(?=.)/, '');
+    if (/[#?%()\s"'<>[\]|,{}\\]/.test(name)) name = safeName(name); // a name a reference could not carry as written gets a plain one
+    const ext = path.extname(name); const stem = name.slice(0, name.length - ext.length);
     const h = (await hashFile(src)).slice(0, 8);
     for (let i = 1; i < 1000; i++) {
       const target = path.join(dir, `${h}-${stem}${i > 1 ? '-' + i : ''}${ext}`);
@@ -292,17 +294,23 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     const oldDir = noteDir(fromRel), newDir = noteDir(toRel);
     const realRoot = await fs.realpath(root());
     let out = '', last = 0; const done = new Map(); const copied = [];
-    for (const r of refsIn(text)) {
-      const src = path.resolve(oldDir, r.decoded);
-      if (!inside(src) || isNote(src)) continue;
-      let target = done.get(src);
-      if (!target) {
-        const real = await fs.realpath(src).catch(() => null); // a file that is a link out of the workspace is not copied
-        if (!real || (real !== realRoot && !real.startsWith(realRoot + path.sep)) || !(await fs.stat(real)).isFile()) continue;
-        target = await placeCopy(assetDirOf(newDir), real); done.set(src, target); copied.push(rel(target));
+    try {
+      for (const r of refsIn(text)) {
+        // the same checks as every other path: inside the workspace, nothing hidden (`../%2Egit/assets/x` is refused) but `.asset`
+        let src; try { src = notes.contain(path.resolve(oldDir, r.decoded), { allowAsset: true }); } catch { continue; }
+        if (isNote(src) && r.dir !== ASSET_DIR) continue; // a note in a legacy `assets` folder is a page; any file in `.asset` is an attachment
+        let target = done.get(src);
+        if (!target) {
+          const real = await fs.realpath(src).catch(() => null); // a file that is a link out of the workspace is not copied
+          if (!real || (real !== realRoot && !real.startsWith(realRoot + path.sep)) || !(await fs.stat(real)).isFile()) continue;
+          target = await placeCopy(assetDirOf(newDir), real); done.set(src, target); copied.push(rel(target));
+        }
+        const to = path.relative(newDir, target).split(path.sep).join('/');
+        out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeURI(to)); last = r.end;
       }
-      const to = path.relative(newDir, target).split(path.sep).join('/');
-      out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeURI(to)); last = r.end;
+    } catch (e) { // nothing half done: the copies made so far go again
+      for (const p of copied) await fs.unlink(path.join(root(), p)).catch(() => {});
+      throw e;
     }
     return { text: out + text.slice(last), copied };
   }

@@ -1,13 +1,14 @@
 // Folio X1: duplicate a page or a folder. Unique localised names, the files a page uses copied (never shared) and
 // re-pointed, [[links]] kept, folders copied recursively, the workspace boundary respected, nothing left on failure.
 import assert from 'node:assert/strict';
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import fs from 'node:fs'; import fsp from 'node:fs/promises'; import os from 'node:os'; import path from 'node:path';
 import { createNotes } from '../src/main/notes.js';
 import { createAssets, refsIn } from '../src/main/assets.js';
 import { duplicate, copyName, cleanSuffix } from '../src/main/duplicate.js';
 
 let n = 0; const ok = (m) => { n++; console.log('  ✓', m); };
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-dup-'));
+const out = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-dup-out-'));
 const notes = createNotes(() => ws);
 const assets = createAssets(notes);
 const w = (rel, t) => { fs.mkdirSync(path.dirname(path.join(ws, rel)), { recursive: true }); fs.writeFileSync(path.join(ws, rel), t); };
@@ -15,6 +16,7 @@ const r = (rel) => fs.readFileSync(path.join(ws, rel), 'utf8');
 const has = (rel) => fs.existsSync(path.join(ws, rel));
 const png = (k) => Buffer.from([137, 80, 78, 71, k, k, k, k]);
 console.log('\nduplicate');
+try {
 
 { const taken = new Set(['Plan copy.md', 'Docs/Deck copy.slides.md', 'Docs/Deck copy 2.slides.md']);
   const t = async (p) => taken.has(p);
@@ -71,12 +73,19 @@ console.log('\nduplicate');
   await assert.rejects(duplicate({ notes, assets, from: 'Docs/.asset', suffix: 'copy' }), /Hidden/);
   await assert.rejects(duplicate({ notes, assets, from: '', suffix: 'copy' }), /required/);
   w('pic.png', 'x'); await assert.rejects(duplicate({ notes, assets, from: 'pic.png', suffix: 'copy' }), /Only notes/);
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-dup-out-')); fs.writeFileSync(path.join(out, 'secret.png'), 'secret');
-  fs.mkdirSync(path.join(ws, 'L/.asset'), { recursive: true }); fs.symlinkSync(path.join(out, 'secret.png'), path.join(ws, 'L/.asset/11111111-s.png'));
-  w('L/p.md', '![](.asset/11111111-s.png)\n');
-  const res = await duplicate({ notes, assets, from: 'L/p.md', suffix: 'copy' });
-  assert.equal(res.assets.length, 0); assert.equal(r('L/p copy.md'), '![](.asset/11111111-s.png)\n');
-  assert.equal(fs.readdirSync(path.join(ws, 'L/.asset')).length, 1, 'a file that leads out of the workspace is not copied in');
+  fs.writeFileSync(path.join(out, 'secret.png'), 'secret');
+  let linkable = true; try { fs.symlinkSync(path.join(out, 'secret.png'), path.join(ws, 'probe-link')); fs.unlinkSync(path.join(ws, 'probe-link')); } catch (e) { if (e.code !== 'EPERM') throw e; linkable = false; } // Windows without the link privilege
+  if (linkable) {
+    fs.mkdirSync(path.join(ws, 'L/.asset'), { recursive: true }); fs.symlinkSync(path.join(out, 'secret.png'), path.join(ws, 'L/.asset/11111111-s.png'));
+    w('L/p.md', '![](.asset/11111111-s.png)\n');
+    const res = await duplicate({ notes, assets, from: 'L/p.md', suffix: 'copy' });
+    assert.equal(res.assets.length, 0); assert.equal(r('L/p copy.md'), '![](.asset/11111111-s.png)\n');
+    assert.equal(fs.readdirSync(path.join(ws, 'L/.asset')).length, 1, 'a file that leads out of the workspace is not copied in');
+  }
+  // a crafted reference cannot reach a hidden folder: `%2E` decodes to a dot, and .git stays out of reach
+  w('.git/assets/secret.bin', 'git secret'); w('H/p.md', '![](../%2Egit/assets/secret.bin) and ![](../.git/assets/secret.bin)\n');
+  const hid = await duplicate({ notes, assets, from: 'H/p.md', suffix: 'copy' });
+  assert.equal(hid.assets.length, 0); assert.equal(r('H/p copy.md'), r('H/p.md')); assert(!has('H/.asset'), 'nothing from .git is copied into the visible folder');
   ok('workspace boundary: paths outside, hidden folders, non-notes and linked files outside are refused or left alone'); }
 
 { w('F/a.md', '![](.asset/x.png)'); w('F/b.md', '# b'); fs.mkdirSync(path.join(ws, 'F/.asset')); fs.writeFileSync(path.join(ws, 'F/.asset/x.png'), png(5));
@@ -91,5 +100,35 @@ console.log('\nduplicate');
   assert(!has('F copy'));
   ok('failure: nothing is left behind; a folder over the limit is refused before anything is written'); }
 
-fs.rmSync(ws, { recursive: true, force: true });
+{ // any file in .asset is an attachment, a note-type file included; a name a reference cannot carry gets a plain one
+  w('M/p.md', '# p'); fs.mkdirSync(path.join(ws, 'M/.asset')); fs.writeFileSync(path.join(ws, 'M/.asset/1a2b3c4d-notes.md'), 'attached text');
+  fs.writeFileSync(path.join(ws, 'M/.asset/a#b (1).png'), png(6));
+  w('M/p.md', '[n](.asset/1a2b3c4d-notes.md) ![](.asset/a#b%20(1).png)\n');
+  const res = await duplicate({ notes, assets, from: 'M/p.md', suffix: 'copy' });
+  assert.equal(res.assets.length, 2, JSON.stringify(res.assets));
+  const refs = refsIn(r('M/p copy.md'));
+  assert.equal(refs.length, 2); assert(refs.every((x) => x.decoded !== '.asset/1a2b3c4d-notes.md' && has('M/' + x.decoded)), JSON.stringify(refs));
+  assert.equal(fs.readFileSync(path.join(ws, 'M', refs[0].decoded), 'utf8'), 'attached text');
+  assert.match(refs[1].decoded, /^\.asset\/[0-9a-f]{8}-a-b-1\.png$/); assert.deepEqual(fs.readFileSync(path.join(ws, 'M', refs[1].decoded)), png(6));
+  ok('a .asset/*.md attachment is copied too; a file name with # ( ) or spaces gets a plain name the reference can carry'); }
+
+{ // a copy that fails half way takes back the files it already made
+  w('R/p.md', '# p'); const a1 = await assets.save('R/p.md', 'One.png', png(7)); const a2 = await assets.save('R/p.md', 'Two.png', png(8));
+  w('R/p.md', `![](${a1}) ![](${a2})\n`);
+  const before = fs.readdirSync(path.join(ws, 'R/.asset')).sort(); const orig = fsp.copyFile; let calls = 0;
+  fsp.copyFile = async (...a) => { if (++calls === 2) throw new Error('copy failed'); return orig(...a); };
+  try { await assert.rejects(duplicate({ notes, assets, from: 'R/p.md', suffix: 'copy' }), /copy failed/); } finally { fsp.copyFile = orig; }
+  assert.deepEqual(fs.readdirSync(path.join(ws, 'R/.asset')).sort(), before, 'no orphan copy stays'); assert(!has('R/p copy.md'));
+  // a folder another writer makes between the name check and the copy is never removed
+  w('S/a.md', '# a'); const mk = fsp.mkdir; let raced = false;
+  fsp.mkdir = async (p, o) => { if (!raced && path.basename(p) === 'S copy') { raced = true; await mk(p); fs.writeFileSync(path.join(p, 'theirs.md'), 'theirs'); } return mk(p, o); };
+  try { await assert.rejects(duplicate({ notes, assets, from: 'S', suffix: 'copy' }), /EEXIST/); } finally { fsp.mkdir = mk; }
+  assert.equal(r('S copy/theirs.md'), 'theirs', 'the other writer’s folder is left alone');
+  // a folder nested deeper than the walk goes is refused, not copied in part
+  let deep = 'D'; for (let i = 0; i < 14; i++) deep += '/d' + i; w(deep + '/leaf.md', '# leaf');
+  await assert.rejects(duplicate({ notes, assets, from: 'D', suffix: 'copy' }), /nested too deeply/); assert(!has('D copy'));
+  ok('failure half way: copied files are removed, a folder made by someone else is kept, a too deep folder is refused'); }
+} finally {
+  fs.rmSync(ws, { recursive: true, force: true }); fs.rmSync(out, { recursive: true, force: true });
+}
 console.log(`  ${n} checks passed`);

@@ -53,7 +53,7 @@ export async function duplicate({ notes, assets, from, suffix, write, limit = MA
   if (!isDir) pages.push([src, to]);
   else {
     const walk = async (dirAbs, rel, depth) => {
-      if (depth > 12) return;
+      if (depth > 12) throw new NotesError('That folder is nested too deeply to duplicate in full.');
       const entries = await fs.readdir(dirAbs, { withFileTypes: true });
       for (const e of entries) {
         if (e.name.startsWith('.') || SKIP.has(e.name)) continue; // .asset: only the files the pages use are copied, below
@@ -67,10 +67,10 @@ export async function duplicate({ notes, assets, from, suffix, write, limit = MA
     await walk(abs, '', 0);
   }
 
-  const made = []; const copied = [];
+  const made = []; const copied = []; let ownDir = false;
   try {
     if (isDir) {
-      await fs.mkdir(notes.resolve(to, { notRoot: true }));
+      await fs.mkdir(notes.resolve(to, { notRoot: true })); ownDir = true; // not recursive: the name is ours only when this call made it
       for (const d of dirs) if (!/(^|\/)assets$/.test(d)) await fs.mkdir(notes.resolve(to + d), { recursive: true }); // empty folders come along; a legacy picture folder does not
     }
     for (const [a, b] of pages) {
@@ -80,7 +80,7 @@ export async function duplicate({ notes, assets, from, suffix, write, limit = MA
       await write(b, r.text); made.push(b);
     }
   } catch (e) {
-    if (isDir) await fs.rm(notes.resolve(to, { notRoot: true }), { recursive: true, force: true }).catch(() => {});
+    if (isDir) { if (ownDir) await fs.rm(notes.resolve(to, { notRoot: true }), { recursive: true, force: true }).catch(() => {}); } // a folder someone else made in the meantime is left alone
     else for (const p of made) await fs.unlink(notes.resolve(p)).catch(() => {});
     for (const p of copied) await fs.unlink(notes.resolve(p, { allowAsset: true })).catch(() => {});
     throw e;
