@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-27T18:49:01Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-27T19:53:53Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests
+- Last checkpoint: sheets: measured calculation cost per formula count, 'Calculating…' note for recalculations over 0.4 s, docs
 
 ## Resume in a new session
 
@@ -76,11 +76,18 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    50k-row workbook after a previous one: numbers at once (was ~10 s). Known cost: a small workbook reloaded while the big
    one is hidden waits >3 s for its formulas (worker queue). Decided not to touch the ~3 s recalculation (Univer's dependency tree).
 
+16. ~~**Where the calculation time goes**~~ DONE (README §8): measured per formula count (2k → 50 ms … 100k → 3.5 s per edit),
+   profiled (Univer re-reads every formula per recalculation; no upstream fix in 1.6.2), "Calculating…" note after 0.4 s
+   (src/sheets/ui/surface.js `busyEl`, test in sheets-ui). Window thread during edits is fine (3 long tasks in 12 edits).
+   If this must get faster: an own incremental recalculation or an AST cache in Univer's generator, both with a fuzz
+   comparison against full recalculation before shipping.
+
 Open next (not started): live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 341dcf0 wip: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests
+- cb92ee7 wip: sheets: measured calculation cost per formula count, 'Calculating…' note for recalculations over 0.4 s, docs
+- aa7abfc wip: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests
 - a3ea89e wip: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
 - d6ca0df wip: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
 - 7a36a37 wip: Excel check passed on Windows (Folio-Compat.xlsx)

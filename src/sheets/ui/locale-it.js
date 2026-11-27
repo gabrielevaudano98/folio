@@ -94,6 +94,7 @@ export default {
   "CHF Swiss franc": "CHF Franco svizzero",
   "Calculate now": "Calcola ora",
   "Calculation": "Calcolo",
+  "Calculating…": "Calcolo in corso…",
   "Calibri": "Calibri",
   "Cell size": "Dimensioni cella",
   "Cell styles": "Stili cella",

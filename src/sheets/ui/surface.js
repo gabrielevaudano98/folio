@@ -59,6 +59,18 @@ export function mountSheet(host, ctx) {
     onWorkerFailed: () => { try { localStorage.setItem('folio.sheets.worker', 'off'); } catch { /* private storage */ } ctx.toast(L('Formulas could not be computed in the background. Close and reopen the workbook to compute them here.'), { kind: 'error' }); } });
   const { api } = U;
 
+  // a recalculation that takes longer than ~0.4 s (big workbooks: Univer re-reads every formula) says so, so stale totals
+  // are not mistaken for a broken sheet; short ones never flash it
+  const busyEl = document.createElement('div');
+  busyEl.className = 'xs-busy'; busyEl.setAttribute('role', 'status'); busyEl.hidden = true; busyEl.textContent = L('Calculating…');
+  host.querySelector('.xs-main').append(busyEl);
+  let busyTimer = null, busyGuard = null, calcs = 0;
+  try {
+    const fm = api.getFormula();
+    fm.calculationStart?.(() => { calcs++; clearTimeout(busyTimer); busyTimer = setTimeout(() => { busyEl.hidden = false; }, 400); clearTimeout(busyGuard); busyGuard = setTimeout(() => { calcs = 0; busyEl.hidden = true; }, 120_000); });
+    fm.calculationEnd?.(() => { calcs = Math.max(0, calcs - 1); if (calcs === 0) { clearTimeout(busyTimer); clearTimeout(busyGuard); busyEl.hidden = true; } });
+  } catch { /* the indicator is a courtesy */ }
+
   /* ---------- state ---------- */
   let text = null;          // the text last loaded or written
   let loaded = null;        // what toUniver() returned for it

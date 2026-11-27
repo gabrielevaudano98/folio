@@ -78,7 +78,7 @@ const steps = [
     const hidden = new Set(ws.getFilter?.()?.getFilteredOutRows?.() || []); const d = ws.getRange('D2:D4').getRawValues().map((x) => x[0]);
     const visible = d.reduce((a, v, i) => a + (hidden.has(i + 1) ? 0 : v), 0);
     const dv = [String(await ws.getRange('D2').getValidatorStatus()), String(await ws.getRange('D3').getValidatorStatus())];
-    return { worker: s.univerWorker(), udf, plainF, tree: tree && typeof tree === 'object' ? 'ok' : String(tree), subtotal: ws.getRange('J4').getRawValue() === visible, dv }`, 6000),
+    return { busy: (() => { const e = document.querySelector('.surface-sheet:not([hidden]) .xs-busy'); return e ? (e.hidden ? 'hidden' : 'shown') + ':' + e.getAttribute('role') : 'missing'; })(), worker: s.univerWorker(), udf, plainF, tree: tree && typeof tree === 'object' ? 'ok' : String(tree), subtotal: ws.getRange('J4').getRawValue() === visible, dv }`, 6000),
   // 15 AI assistants (MCP) get the values Folio shows and run queries, goal seek, Refresh all and macros
   tool('get_sheet_values', { path: 'sheets/Mcp.sheet.md' }),
   tool('run_sheet_query', { path: 'sheets/Mcp.sheet.md', fql: 'query Big = from sheet "Orders" | where Qty > 5 | select Region, Qty' }),
@@ -116,7 +116,7 @@ assert.equal(ribbon.heights.length, 1, `ribbon heights ${ribbon.heights}`); ok('
 assert.deepEqual([ribbon.fs, ribbon.fs2, ribbon.sizeBox], [13, 13, '13']); ok('a font size typed in the box applies; one out of range (999) is refused');
 assert.deepEqual([ribbon.matches, ribbon.font], [1, 'System']); ok('the font box filters as you type and Escape gives back the font in use');
 assert.equal(ribbon.cur, 'Currency€1.20'); ok('the Number format list previews the active cell in each format');
-assert.deepEqual(worker, { worker: true, udf: 15, plainF: 8, tree: 'ok', subtotal: true, dv: ['invalid', 'valid'] }, JSON.stringify(worker)); ok('formulas are computed in a Web Worker: custom functions, the formula audit, validation formulas and SUBTOTAL under a filter work through it');
+assert.deepEqual(worker, { busy: 'hidden:status', worker: true, udf: 15, plainF: 8, tree: 'ok', subtotal: true, dv: ['invalid', 'valid'] }, JSON.stringify(worker)); ok('a short calculation never flashes the "Calculating…" note; formulas are computed in a Web Worker: custom functions, the formula audit, validation formulas and SUBTOTAL under a filter work through it');
 assert.equal(mValues[0].rows[4].values[3], 41); assert.equal(mValues[0].rows[1].text[2], '3.5'); ok('MCP get_sheet_values: the values Folio computes, with their shown text');
 assert.deepEqual(mQuery.results.Big.data, [['Region', 'Qty'], ['US', 12], ['EU', 6]]); ok('MCP run_sheet_query runs FQL on the workbook without writing');
 assert(mGoal.found && Math.abs(mGoal.value - (4 + 9 / 3.5)) < 1e-6, JSON.stringify(mGoal)); ok('MCP sheet_goal_seek finds the input (B2 = 6.571 makes the total 50) and writes nothing');

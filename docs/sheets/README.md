@@ -187,5 +187,14 @@ the five MCP tools), `test/sheets-components-ui.test.mjs` (4: Settings → data 
   `fromUniver`), reading Univer's live model; an edit during the save makes it give up and start again, and
   `saveNow()` takes over from it. The values of a big workbook (5,000+ formulas) are kept in the window's storage (`ui/value-cache.js`, last 3 texts, ≤4 MB, keyed by a hash of the exact file text, so nothing outside the file can be stale): reopening the 50k-row workbook shows its numbers at once instead of after ~10 s, and the worker still recomputes everything and agrees (checked in `test/sheets-stress.test.mjs`). Cost seen in the same run: a small workbook reloaded from disk waits behind the hidden big one in the worker (its formulas took more than 3 s to appear). 200,000 rows open, save and come back byte for byte (no argument spreads that
   overflow the stack).
+- **Calculation time grows with the formulas in the workbook, not with what is on screen.** Univer 1.6 (the latest
+  release) reads every formula again at each recalculation (profiled: building the dependency tree is ~60 % of an edit, 3 s
+  of it at 100k formulas), so loading only the visible part would not help. Measured on the formula engine alone
+  (headless, one edit): 2k formulas 50 ms · 10k 0.3 s · 25k 0.85 s · 50k 1.8 s · 100k 3.5 s; opening costs ~2.5× that. The
+  window is never held by it (worker); a recalculation that lasts more than 0.4 s shows "Calculating…" at the bottom right
+  of the grid (`.xs-busy`, hides itself after 2 min if the end never comes) so old totals are not taken for a fault. Not
+  done on purpose: reusing Univer's parsed formulas between recalculations by patching its internals (a stale value
+  would be a wrong number). For tables of 50k rows or more the intended route is a query or data model (FQL, DuckDB), whose
+  results are values, with formulas on the summaries.
 - **Shared formulas** are only how Univer holds a run of formulas in memory: the file always lists each formula, and
   code that reads Univer data itself (export, scripts, version compare) never sees `si` cells (`expandSharedFormulas`).
