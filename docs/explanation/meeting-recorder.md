@@ -42,6 +42,7 @@ you can check it.
   said at the same moment, but real echo cancellation is not there yet.
 - Windows only for now (the computer's sound is captured with Windows loopback).
 - Call detection sees which app has the microphone, not whether it is a meeting: a voice recorder or dictation held for more than 8 seconds also triggers it. Turn it off in Settings if that bothers you.
+- CPU: the speech model uses 2 threads on a small PC, one more per 4 usable threads on a bigger one, never more than 5 (more than 16 usable threads gets 5). It is slower than using the whole processor on purpose, so a call app running next to Folio keeps most of the machine; the note still appears after Stop, usually within the wait Folio allows (about 4 seconds of work per second of audio).
 - Tell everyone you are recording, and check that your organisation allows it.
 - Memory: up to 3 GB for the worker and 4 GB for the whole app while it runs; none when idle. Each note records what was
   measured (`worker_peak_mb`, `app_peak_mb`, `transcription_speed`).
