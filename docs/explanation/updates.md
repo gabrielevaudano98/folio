@@ -29,8 +29,9 @@ a Developer ID signature; both the signing step and the flag are needed together
 - Nothing is downloaded without a click (`autoDownload` is off). A downloaded update also installs when Folio quits
   (Windows installer only).
 - Every Folio release is still marked pre-alpha on GitHub, so `allowPrerelease` is on; downgrades are off.
-- The release page link is built from the checked version number (`releaseUrl()`), never from text in the downloaded
-  metadata.
+- The release page link is built from a version number that must match a strict `x.y.z[-pre]` pattern (checked when the
+  event arrives and again in `releaseUrl()`); any other text from the downloaded metadata is ignored, so it cannot
+  become part of the address.
 - The window only calls `update:*` handlers declared with `h()` in `updater.js` ([IPC](../reference/ipc.md)).
 
 ## What is not tested
