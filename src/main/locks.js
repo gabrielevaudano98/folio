@@ -17,9 +17,9 @@ export function lockedTarget(lockedPages, workspace, rel, { fold = foldsCase() }
   const m = locksOf(lockedPages, workspace); const f = (x) => (fold ? x.toLowerCase() : x); const r = f(rel);
   return Object.keys(m).find((k) => m[k] === true && (f(k) === r || f(k).startsWith(r + '/'))) || null;
 }
-/** the lockedPages of a settings.json, or {} when it cannot be read */
+/** the lockedPages of a settings.json; {} only when the file does not exist yet. Any other failure (unreadable, corrupt) throws, so a write is refused rather than let through unlocked */
 export function readLockedPages(settingsFile) {
-  try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).lockedPages || {}; } catch { return {}; }
+  try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')).lockedPages || {}; } catch (e) { if (e?.code === 'ENOENT') return {}; throw e; }
 }
 /**
  * The MCP gate: a write tool may not touch a locked page or a folder holding one. Throws with a message for the assistant.

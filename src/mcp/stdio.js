@@ -53,7 +53,7 @@ const backend = {
     const tool = TOOLS.find((t) => t.name === name);
     if (readBridge().allowWrite === false && tool?.write) throw new Error('Folio is set to read-only for AI assistants.');
     // Folio is closed: the page locks come from its settings.json, next to the bridge file, keyed by the folder in use
-    const lockedPages = bridgePath ? readLockedPages(path.join(path.dirname(bridgePath), 'settings.json')) : {};
+    const lockedPages = bridgePath && tool?.write ? readLockedPages(path.join(path.dirname(bridgePath), 'settings.json')) : {};
     const workspace = rootOverride || readBridge().workspace;
     assertUnlocked(tool, args, { notes, lockedPages, workspace });
     return runTool(notes, name, args, { history, client: ctx?.client, isLocked: (rel) => isLockedPage(lockedPages, workspace, rel), onWrite: async (r) => { try { if (r.before != null) await history.snapshot(r.path, r.before, { reason: 'before-ai', force: true }); await history.snapshot(r.path, r.after, { by: ctx?.client || 'AI', reason: 'ai', force: true }); } catch {} } });

@@ -58,7 +58,7 @@ const steps = [
   // 6. a link property still opens its page on a locked page (plain click)
   { js: "document.querySelector('.props .prop-link').click(); true", wait: 1200 },
   { js: "document.querySelector('.rich-prose h1')?.textContent.trim() || ''", log: true, wait: 100 },
-  // 7. trashing a locked page drops its lock (a new page at that path opens unlocked); Undo brings the lock back
+  // 7. trashing a locked page drops its lock (a new page at that path opens unlocked)
   { js: "document.querySelector('[data-file=\"pages/b.md\"]').click(); true", wait: 900 },
   { js: "folio.read('pages/b.md')", log: true, wait: 100 },
   { js: "window.__folioRun('trash'); true", wait: 500 }, { js: "document.querySelector('#sheet-prompt [data-yes]').click(); true", wait: 1500 },

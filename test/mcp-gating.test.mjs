@@ -6,7 +6,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer, TOOLS, SERVER_INFO } from '../src/main/mcp-tools.js';
 import { SLIDE_TOOLS } from '../src/main/mcp-slides.js';
-import { lockedTarget, assertUnlocked, isLockedPage } from '../src/main/locks.js';
+import os from 'node:os';
+import path from 'node:path';
+import { lockedTarget, assertUnlocked, isLockedPage, readLockedPages } from '../src/main/locks.js';
 
 let n = 0; const ok = (m) => { n++; console.log('  ✓', m); };
 console.log('\nmcp gating');
@@ -50,4 +52,13 @@ assert.throws(() => assertUnlocked({ write: true }, { path: 'pages/x.md' }, { no
 assert.throws(() => assertUnlocked({ write: true }, { from: 'pages' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }), /locked/);
 assert.doesNotThrow(() => assertUnlocked({ write: false }, { path: 'pages/x.md' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }));
 ok('locked pages are kept per workspace folder and refuse MCP writes to the page or its folder');
+{
+  // the settings file: missing = no locks yet; unreadable or corrupt = refuse (a write must not slip through unlocked)
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-locks-')); const f = path.join(d, 'settings.json');
+  assert.deepEqual(readLockedPages(f), {});
+  fs.writeFileSync(f, '{ not json'); assert.throws(() => readLockedPages(f));
+  fs.writeFileSync(f, JSON.stringify({ lockedPages: { '/ws': { 'a.md': true } } })); assert.deepEqual(readLockedPages(f), { '/ws': { 'a.md': true } });
+  fs.rmSync(d, { recursive: true, force: true });
+  ok('a missing settings.json means no locks; a corrupt one throws so the write is refused');
+}
 console.log(`\n${n} mcp gating checks passed`);
