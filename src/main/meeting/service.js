@@ -12,6 +12,7 @@ import { draftNotes } from './notes-engine.js';
 import { t } from '../../renderer/i18n.js';
 import { writeAtomic, writeNew } from '../atomic.js';
 import { createMicWatch, createEpisodes } from './mic-watch.js';
+import { asrThreads } from './threads.js';
 
 const FEATURE = 'meeting-recorder';
 const RATE = 16000;
@@ -222,7 +223,7 @@ export function createFeatures({ app, net, utilityProcess, MessageChannelMain, h
       const { port1, port2 } = new MessageChannelMain();
       worker.postMessage({ type: 'init', sherpaDir: dir('sherpa-runtime'), vad: path.join(dir('silero-vad'), 'silero_vad.onnx'),
         asr: { type: asr.modelType, encoder: path.join(dir(asrId), 'encoder.int8.onnx'), decoder: path.join(dir(asrId), 'decoder.int8.onnx'), joiner: path.join(dir(asrId), 'joiner.int8.onnx'), tokens: path.join(dir(asrId), 'tokens.txt'), maxTokensPerSecond: asr.maxTokensPerSecond },
-        language: state().language || '', threads: asr.threads, maxSegmentSec: asr.maxSegmentSec }, [port1]);
+        language: state().language || '', threads: asrThreads(asr.threads, os.availableParallelism?.() || os.cpus().length), maxSegmentSec: asr.maxSegmentSec }, [port1]);
       session.port = port2;
     });
     try { await ready; } catch (e) { const s = session; session = null; try { s.worker.kill(); } catch {} await fs.rm(workFile, { force: true }); send('meeting:state', null); throw e; }

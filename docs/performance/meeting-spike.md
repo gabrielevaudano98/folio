@@ -18,6 +18,8 @@ the target Windows laptop** (see "What to measure on Windows").
 | Word error rate on the synthetic clip | 20.6 % (one sentence repeated) | 14.0 % |
 | Names and numbers in the clip | "Marco", "3 GB", "Teams", "eco", "DOCS" right | "Michael", "6 gigabit" wrong |
 
+The 2 threads above are the floor. Since 1.5.1 a bigger processor gets one more per 4 usable threads, up to 5 (`src/main/meeting/threads.js`); the numbers in this table were measured on 2 vCPUs and do not show that speedup.
+
 Notes model, Qwen3-1.7B Q4_K_M through `llama-server` (one slot, 4,096-token context, 2 threads):
 
 | What | Value |
