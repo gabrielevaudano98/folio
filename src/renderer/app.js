@@ -1391,8 +1391,11 @@ async function movePath(from, to, isDir) {
 }
 /* X3: locked pages live in the app settings (workspace-relative path), never in the .md */
 const isLocked = (p) => !!p && !!S.settings.lockedPages?.[p];
+let lockApplied = false;
 function applyLock() {
   const on = curType() === 'md' && isLocked(S.active);
+  if (on === lockApplied) return; // reconfiguring the source editor on every activation ended slide text editing
+  lockApplied = on;
   if (rich) rich.setLocked(on);
   editor?.setReadOnly(on);
 }
