@@ -75,6 +75,7 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
       if (i % 50 === 49) await new Promise((r) => setImmediate(r));
     }
     for (const rel of mine) { if (byFile.has(rel)) next.set(rel, byFile.get(rel)); else next.delete(rel); } // pages the watcher updated while we read
+    if (g !== gen) return;
     touched = null; byFile = next; since = Math.max(since, 0);
     if (complete) { // only a scan that read everything may conclude that a reminder is gone
       const ids = new Set(all().map((r) => r.id)); const st = states() || {};
