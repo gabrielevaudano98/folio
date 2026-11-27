@@ -93,7 +93,7 @@ export default {
   'upd.help-install': 'Updates come from the releases of Folio on GitHub. Your notes are saved before Folio restarts.',
   'upd.help-notify': 'This build cannot install updates by itself. Folio tells you when a new version is out and opens its page on GitHub.',
   'upd.auto': 'Check for updates automatically',
-  'upd.auto-help': 'Asks GitHub for the newest release when Folio starts and every few hours. Nothing else is sent.',
+  'upd.auto-help': 'Off by default. When on, Folio asks GitHub for the newest release when it starts and every few hours. Nothing else is sent.',
   'app.add-button': 'Add button',
   'app.add-link': 'Add link',
   'app.address': 'Address',

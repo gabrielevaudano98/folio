@@ -89,7 +89,7 @@ export default {
   'upd.help-install': 'Gli aggiornamenti arrivano dalle release di Folio su GitHub. Le note vengono salvate prima del riavvio.',
   'upd.help-notify': 'Questa versione non può installare gli aggiornamenti da sola. Folio ti avvisa quando esce una nuova versione e apre la sua pagina su GitHub.',
   'upd.auto': 'Controlla automaticamente gli aggiornamenti',
-  'upd.auto-help': 'Chiede a GitHub l’ultima release all’avvio di Folio e ogni poche ore. Non viene inviato altro.',
+  'upd.auto-help': 'Spento di default. Se attivo, Folio chiede a GitHub l’ultima release all’avvio e ogni poche ore. Non viene inviato altro.',
   'app.add-button': 'Aggiungi pulsante',
   'app.add-link': 'Aggiungi link',
   'app.address': 'Indirizzo',

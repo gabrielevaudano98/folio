@@ -43,11 +43,11 @@ C4Context
   Rel(aud, folio, "Sends questions", "HTTP on the local network, only while Q&A is open")
   Rel(ai, folio, "MCP tools", "HTTP on 127.0.0.1 or stdio")
   Rel(folio, fs, "Reads and writes")
-  Rel(folio, dl, "Downloads pinned files; asks for the newest release", "HTTPS, when a feature is turned on; the update check can be switched off")
+  Rel(folio, dl, "Downloads pinned files; asks for the newest release", "HTTPS, when a feature is turned on or the person checks for updates")
 ```
 
 Outside Folio's scope: sync (use any sync client on the folder), accounts, a cloud service. Folio sends nothing to a
-server; the only network traffic is the optional component download, the update check against this repository's GitHub releases (switchable in Settings; an update downloads only when the person clicks) and what the person's documents link to.
+server; the only network traffic is the optional component download, the update check against this repository's GitHub releases (only when the person asks or turns on automatic checks in Settings; an update downloads only when the person clicks) and what the person's documents link to.
 
 ## 4. Solution strategy
 

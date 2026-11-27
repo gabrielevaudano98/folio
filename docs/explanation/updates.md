@@ -22,10 +22,10 @@ a Developer ID signature; both the signing step and the flag are needed together
 
 ## How it behaves
 
-- A check runs 15 seconds after start and every six hours, unless **Check for updates automatically** is off in
-  Settings (`autoUpdate` in `settings.json`, on by default). It asks GitHub for `latest.yml` / `latest-mac.yml` of the
-  newest release and sends nothing else; **Check now** does the same on demand. This is the only network call Folio makes
-  without being asked, so it is documented in [security](security.md) and can be switched off.
+- **Opt-in.** Folio makes no update request until the person asks: **Check now** in Settings → Updates checks once.
+  Turning on **Check for updates automatically** (`autoUpdate` in `settings.json`, off by default) makes a check run
+  15 seconds after start and every six hours. A check asks GitHub for `latest.yml` / `latest-mac.yml` of the newest
+  release and sends nothing else. See [security](security.md).
 - Nothing is downloaded without a click (`autoDownload` is off). A downloaded update also installs when Folio quits
   (Windows installer only).
 - Every Folio release is still marked pre-alpha on GitHub, so `allowPrerelease` is on; downgrades are off.

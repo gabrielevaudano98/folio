@@ -1717,7 +1717,7 @@ function paintUpdates() {
     : `<button class="btn" type="button" data-update="check" ${u.phase === 'checking' || u.phase === 'downloading' ? 'disabled' : ''}>${tr('upd.check')}</button>`;
   el.innerHTML = `
     <div class="row"><div class="row-main"><span class="row-title" role="status" aria-live="polite">${esc(text)}</span><span class="row-sub">${esc(tr(u.mode === 'install' ? 'upd.help-install' : 'upd.help-notify'))}</span></div>${act}</div>
-    <div class="row"><div class="row-main"><span class="row-title">${tr('upd.auto')}</span><span class="row-sub">${tr('upd.auto-help')}</span></div><label class="switch"><input type="checkbox" role="switch" data-update-auto ${S.settings.autoUpdate !== false ? 'checked' : ''} aria-label="${tr('upd.auto')}"></label></div>`;
+    <div class="row"><div class="row-main"><span class="row-title">${tr('upd.auto')}</span><span class="row-sub">${tr('upd.auto-help')}</span></div><label class="switch"><input type="checkbox" role="switch" data-update-auto ${S.settings.autoUpdate === true ? 'checked' : ''} aria-label="${tr('upd.auto')}"></label></div>`;
 }
 async function initUpdates() {
   S.update = await folio.update.state().catch(() => null);
