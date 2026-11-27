@@ -1397,6 +1397,32 @@ function retargetTabs(from, to) {
   }
   renderTabs(); renderStatus(); persistTabs();
 }
+/* [PAGE ACTIONS]: duplicate, move to…, copy link (sidebar menu, ••• menu, palette) */
+async function duplicatePath(p, isDir) {
+  try {
+    for (const t of S.tabs.filter((x) => (x.path === p || x.path.startsWith(p + '/')) && x.text !== x.saved)) { // the copy has what is on screen
+      await saveTab(t).catch(() => {});
+      if (t.text !== t.saved) throw new Error(tr('app.duplicate-not-saved', { name: stem(t.path) }));
+    }
+    const r = await folio.duplicate(p, tr('app.copy-suffix'));
+    if (isDir) S.expanded.add(r.to);
+    await refreshTree();
+    if (!isDir) await openFile(r.to);
+    let rec = null;
+    actions.push({ scope: S.workspace, label: `duplicated ${isDir ? base(p) : stem(p)}`,
+      undo: async () => { rec = await trashRaw(r.to); if (r.assets.length) await folio.assetsRemove(r.assets, false); },
+      redo: async () => { await untrashRaw(rec); if (r.assets.length) await folio.assetsRestore(r.assets); await refreshTree(); if (!isDir) await openFile(r.to); } });
+    toast(tr('app.duplicated-what', { what: isDir ? base(r.to) : stem(r.to) }), { action: [tr('app.undo'), () => fileUndo('undo')] });
+    updateHistoryButtons();
+  } catch (e) { toast(e.message, { kind: 'error' }); }
+}
+function allDirs(nodes = S.tree || [], out = []) { for (const n of nodes) if (n.type === 'dir') { out.push(n.path); allDirs(n.children, out); } return out; }
+/** Move to…: the quick switcher, listing the folders the item can go to */
+function moveToPicker(p, isDir) {
+  if (!p) return;
+  openPalette('move', { p, isDir });
+}
+function copyPageLink(p) { if (p) copyRef(p, '', 'link'); }
 /** move to the Trash, keeping a copy so the move can be undone; unsaved edits are saved first so they come back too */
 async function trashRaw(p) {
   const open = S.tabs.filter((t) => t.path === p || t.path.startsWith(p + '/')).map((t) => t.path);
@@ -1856,6 +1882,9 @@ const COMMANDS = [
   { id: 'reveal', title: 'Show in folder', run: () => folio.reveal(S.active || '') },
   { id: 'rename', title: 'Rename note…', run: () => S.active && renamePath(S.active, false) },
   { id: 'trash', title: 'Move note to Trash', run: () => S.active && trashPath(S.active, false) },
+  { id: 'duplicate', title: 'Duplicate note', run: () => S.active && duplicatePath(S.active, false) },
+  { id: 'move-to', title: 'Move note to…', run: () => S.active && moveToPicker(S.active, false) },
+  { id: 'copy-page-link', title: 'Copy link to note', run: () => copyPageLink(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
@@ -1916,12 +1945,12 @@ function insertMd(md) {
   editor.insert(md);
 }
 let pal = { mode: 'commands', items: [], sel: 0, opener: null };
-function openPalette(mode = 'commands') {
-  pal = { mode, items: [], sel: 0, opener: document.activeElement };
+function openPalette(mode = 'commands', move = null) {
+  pal = { mode, items: [], sel: 0, opener: document.activeElement, move };
   const input = $('#palette-input');
   input.value = mode === 'commands' ? '>' : '';
-  input.placeholder = tr(mode === 'commands' ? 'app.type-a-command' : 'app.go-to-note');
-  $('#palette-hint').textContent = mode === 'commands' ? 'Delete the > to search notes instead.' : 'Type > for commands.';
+  input.placeholder = mode === 'move' ? tr('app.move-name-to', { name: move.isDir ? base(move.p) : stem(move.p) }) : tr(mode === 'commands' ? 'app.type-a-command' : 'app.go-to-note');
+  $('#palette-hint').textContent = mode === 'move' ? tr('app.move-to-hint') : mode === 'commands' ? 'Delete the > to search notes instead.' : 'Type > for commands.';
   $('#palette').hidden = false;
   $$('#app, .toasts').forEach((e) => (e.inert = true));
   input.focus();
@@ -1930,9 +1959,16 @@ function openPalette(mode = 'commands') {
 function closePalette() { $('#palette').hidden = true; $$('#app, .toasts').forEach((e) => (e.inert = false)); pal.opener?.focus?.(); }
 function updatePalette() {
   const raw = $('#palette-input').value;
-  const isCmd = raw.startsWith('>');
+  const isCmd = pal.mode !== 'move' && raw.startsWith('>');
   const q = isCmd ? raw.slice(1).trim() : raw.trim();
-  if (isCmd) {
+  if (pal.mode === 'move') {
+    const { p, isDir } = pal.move; const root = S.workspace ? S.workspace.split(/[\\/]/).filter(Boolean).pop() : tr('app.workspace-folder');
+    const dirs = ['', ...allDirs()].filter((d) => d !== dirOf(p) && !(isDir && (d === p || d.startsWith(p + '/'))));
+    pal.items = dirs.map((d) => ({ d, label: d || root, f: q ? fuzzy(q, d || root) : { score: 0, marks: [] } })).filter((x) => x.f)
+      .sort((a, b) => b.f.score - a.f.score).slice(0, 80)
+      .map(({ d, label, f }) => ({ html: `${icons.folder}<span class="palette-title">${highlight(label, f.marks)}</span>${d ? '' : `<span class="palette-sub">${esc(tr('app.top-of-the-folder'))}</span>`}`,
+        run: () => { if (d) S.expanded.add(d); return movePath(p, (d ? d + '/' : '') + base(p), isDir); } }));
+  } else if (isCmd) {
     pal.items = COMMANDS.map((c) => ({ c, f: fuzzy(q, c.title) || (c.en && c.en !== c.title ? fuzzy(q, c.en) : null) })).filter((x) => x.f).sort((a, b) => b.f.score - a.f.score)
       .map(({ c, f }) => ({ html: `<span class="palette-title">${highlight(c.title, f.marks)}</span>${c.key ? `<kbd>${esc(keyLabel(c.key))}</kbd>` : ''}`, run: c.run }));
   } else {
@@ -2314,6 +2350,8 @@ function bindChrome() {
     const v = views[(i + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; setView(v); $(`#view-switch [data-view="${v}"]`).focus();
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
+    ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
+      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
     { label: tr('app.import-word-or-html'), run: importDocument }, '-',
@@ -2342,12 +2380,17 @@ function bindChrome() {
     const at = { x: e.clientX, y: e.clientY };
     if (f) { const p = f.dataset.file; showMenu(null, [
       { label: tr('app.open'), run: () => openFile(p) }, '-',
+      { label: tr('app.duplicate'), run: () => duplicatePath(p, false) },
+      { label: tr('app.move-to'), run: () => moveToPicker(p, false) },
+      { label: tr('app.copy-link'), run: () => copyPageLink(p) }, '-',
       { label: tr('app.rename'), run: () => renamePath(p, false) },
       { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) },
       { label: tr('app.copy-relative-path'), run: () => folio.copy(p) }, '-',
       { label: tr('app.move-to-trash'), danger: true, run: () => trashPath(p, false) }], at); }
     else if (d) { const p = d.dataset.dir; showMenu(null, [
       { label: tr('app.new-note-here'), run: () => newNote(p) }, { label: tr('app.new-folder-here'), run: () => newFolder(p) }, '-',
+      { label: tr('app.duplicate'), run: () => duplicatePath(p, true) },
+      { label: tr('app.move-to'), run: () => moveToPicker(p, true) }, '-',
       { label: tr('app.rename'), run: () => renamePath(p, true) },
       { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) }, '-',
       { label: tr('app.move-to-trash'), danger: true, run: () => trashPath(p, true) }], at); }

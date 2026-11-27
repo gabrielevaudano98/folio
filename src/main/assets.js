@@ -270,6 +270,43 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
   }
   const assetDirOf = (dir) => path.join(dir, ASSET_DIR);
 
+  /* ---- duplicating pages ---- */
+  /** a fresh copy of a file in `dir`: `<hash>-<name>`, or `<hash>-<name>-2`… when that name is taken, so the copy never shares a file */
+  async function placeCopy(dir, src) {
+    await ensureDir(dir);
+    const [realDir, realRoot] = await Promise.all([fs.realpath(dir), fs.realpath(root())]);
+    if (realDir !== realRoot && !realDir.startsWith(realRoot + path.sep)) throw new NotesError('The asset folder leads outside the workspace through a link.');
+    const name = path.basename(src).replace(/^[0-9a-f]{8}-(?=.)/, ''); const ext = path.extname(name); const stem = name.slice(0, name.length - ext.length);
+    const h = (await hashFile(src)).slice(0, 8);
+    for (let i = 1; i < 1000; i++) {
+      const target = path.join(dir, `${h}-${stem}${i > 1 ? '-' + i : ''}${ext}`);
+      if (await exists(target)) continue;
+      const tmp = path.join(dir, `.tmp-${crypto.randomBytes(6).toString('hex')}`);
+      try { await fs.copyFile(src, tmp); await fs.rename(tmp, target); } catch (e) { await fs.unlink(tmp).catch(() => {}); throw e; }
+      return target;
+    }
+    throw new NotesError('Could not store the file (name clash).');
+  }
+  /** a page was duplicated: every file it uses gets its own new copy next to the copy, and its references follow (text returned, not written) */
+  async function copyFor(fromRel, toRel, text) {
+    const oldDir = noteDir(fromRel), newDir = noteDir(toRel);
+    const realRoot = await fs.realpath(root());
+    let out = '', last = 0; const done = new Map(); const copied = [];
+    for (const r of refsIn(text)) {
+      const src = path.resolve(oldDir, r.decoded);
+      if (!inside(src) || isNote(src)) continue;
+      let target = done.get(src);
+      if (!target) {
+        const real = await fs.realpath(src).catch(() => null); // a file that is a link out of the workspace is not copied
+        if (!real || (real !== realRoot && !real.startsWith(realRoot + path.sep)) || !(await fs.stat(real)).isFile()) continue;
+        target = await placeCopy(assetDirOf(newDir), real); done.set(src, target); copied.push(rel(target));
+      }
+      const to = path.relative(newDir, target).split(path.sep).join('/');
+      out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeURI(to)); last = r.end;
+    }
+    return { text: out + text.slice(last), copied };
+  }
+
   /** move every `assets/` folder to `.asset` and rewrite the references; originals go to the asset trash. onBefore(rel, text) lets the caller snapshot first. */
   async function migrateLegacy({ onBefore } = {}) {
     const { files, texts } = await readAll(); const plan = new Map(); const edits = new Map();
@@ -297,5 +334,5 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     return { notes: edits.size, files: plan.size, changed: [...edits.keys()] };
   }
 
-  return { save, importFile, refsOf, stillUsed, remove, restore, purgeTrash, usage, orphans, heal, relocate, migrateLegacy, assetDir, isAssetPath };
+  return { save, importFile, refsOf, stillUsed, remove, restore, purgeTrash, usage, orphans, heal, relocate, copyFor, migrateLegacy, assetDir, isAssetPath };
 }
