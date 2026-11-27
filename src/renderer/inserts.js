@@ -78,6 +78,18 @@ const database = (kanban) => ({
   },
 });
 
+/* the "Turn into" id of a block node (Notion marks the current type with a check) */
+export function turnIdOfNode(node) {
+  const n = node?.type?.name;
+  if (n === 'heading') return 'h' + node.attrs.level;
+  return { paragraph: 'text', blockquote: 'quote', codeBlock: 'code', bulletList: 'bullet', orderedList: 'ordered', taskList: 'task' }[n] || null;
+}
+/* the type of the block holding the caret: the innermost heading, code, quote or list it sits in, else text */
+export function turnIdAtSelection(state) {
+  const $f = state.selection.$from;
+  for (let d = $f.depth; d >= 0; d--) { const id = turnIdOfNode($f.node(d)); if (id && id !== 'text') return id; }
+  return 'text';
+}
 export const INSERTS = [
   { id: 'text', label: tl('ins', 'Text'), cat: 'Basic', badge: 'T', key: 'Mod+Alt+0', desc: tl('ins', 'Plain paragraph'), aliases: ['paragraph', 'p', 'plain', 'normal'], md: '', turn: (e) => e.chain().focus().setParagraph().run() },
   heading(1), heading(2), heading(3), heading(4), heading(5), heading(6),
