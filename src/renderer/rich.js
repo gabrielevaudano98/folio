@@ -14,6 +14,8 @@ import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
 import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
 import { FindReplace, mountFindBar } from './page-find.js';
 import { mountProps } from './page-props-ui.js';
+import { readAppearance } from './page-appearance.js';
+import { mountToc } from './page-appearance-ui.js';
 import { mountReview } from './page-review.js';
 import { SuggestMode } from './page-critic.js';
 import { SmartPaste, insertMarkdown, insertPlainText } from './page-paste.js';
@@ -924,7 +926,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   let emitTimer;
   function emit() {
     clearTimeout(emitTimer);
-    emitTimer = setTimeout(() => onChange?.(api.getMarkdown()), 220);
+    emitTimer = setTimeout(() => { onChange?.(api.getMarkdown()); toc?.refresh(readAppearance(model?.fm || '').toc); }, 220);
   }
 
   host.querySelector('.rich-unlock').addEventListener('click', () => onUnlock?.());
@@ -1178,8 +1180,17 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     tags: () => (mentions ? mentions()?.tags?.() : []) || [],
     get: () => model?.fm || '',
     locked: () => !!editor.storage.pageLock?.on,
-    set: (fm) => { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
+    resolveImage, pickCover: () => onPickImage?.(),
+    set: (fm) => setFm(fm),
   });
+  /* per-page appearance (page-appearance.js): font, small text and full width as attributes of the page, the floating contents */
+  function setFm(fm) { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); applyAppearance(); }
+  const toc = mountToc(host.querySelector('.rich-scroll'), { root: () => editor.view.dom });
+  function applyAppearance() {
+    const a = readAppearance(model?.fm || '');
+    for (const [k, v] of [['font', a.font], ['small-text', a.small], ['full-width', a.full]]) { if (v) page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = v === true ? 'true' : v; else delete page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())]; }
+    toc.refresh(a.toc);
+  }
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {
     const v = styleSel.value, c = editor.chain().focus();
@@ -1291,6 +1302,9 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   ready = true;
   const api = {
     /** the person allowed web images: try again every one that was held back */
+    /** the front matter block of the page, and a way to change it (Appearance): fn gets it and returns the new one */
+    getFm() { return model?.fm || ''; },
+    editFm(fn) { const old = model?.fm || ''; const next = fn(old); if (next !== old) { setFm(next); props.render(); } },
     refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,
     /** redraw chips after a setting that changes how they read (date format, language) */
@@ -1326,7 +1340,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       // a loaded document starts with a clean history, so Undo never reaches into the previous tab
       if (!keepHistory) { const st = editor.state; editor.view.updateState(EditorState.create({ schema: st.schema, doc: st.doc, plugins: st.plugins })); }
       host.querySelector('.rich-scroll').scrollTop = 0;
-      props.render(); review.render();
+      props.render(); review.render(); applyAppearance();
       syncToolbar();
     },
     /** the visual editor state of this document, with its undo history; `md` says which text it matches */
@@ -1334,6 +1348,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     restore(snap) {
       model = snap.model; silent = true;
       try { editor.view.updateState(snap.state); } finally { silent = false; }
+      props.render(); applyAppearance();
       syncToolbar();
     },
     undo() { return editor.commands.undo(); },

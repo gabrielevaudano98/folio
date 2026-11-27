@@ -13,6 +13,7 @@ import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import { icons } from './icons.js';
+import { owns, coverOf } from './page-appearance.js';
 import { parseCallout, CALLOUT_TYPES } from './callouts.js';
 import { mediaKind, webProvider } from './page-syntax.js';
 import container from 'markdown-it-container';
@@ -264,9 +265,13 @@ export function render(text) {
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
   // the page icon (front matter `icon:`) is drawn large above the page, as in the Write view, not listed with the properties
   const oneEmoji = (v) => { const s = String(v).trim(); return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].length === 1 && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s); };
-  const icon = meta?.find(([k, v]) => k === 'icon' && oneEmoji(v)); const rest = (meta || []).filter((x) => x !== icon);
+  const icon = meta?.find(([k, v]) => k === 'icon' && oneEmoji(v));
+  const coverKv = meta?.find(([k, v]) => k === 'cover' && coverOf(v)); const hasCover = !!coverKv; const cover = coverKv ? coverOf(coverKv[1]) : null;
+  const coverY = Math.min(100, Math.max(0, Number(meta?.find(([k, v]) => k === 'cover-y' && Number.isFinite(Number(v)) && v !== '')?.[1] ?? 50)));
+  const rest = (meta || []).filter((x) => x !== icon && !owns(x[0], x[1], hasCover)); // appearance keys (font, cover…) are not listed
   if (rest.length) html = `<dl class="frontmatter" data-line="0">${rest.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
   if (icon) html = `<div class="page-icon-read" aria-hidden="true">${escape(icon[1].trim())}</div>` + html;
+  if (cover) html = `<div class="page-cover-read" data-cover="${escape(cover.value)}" data-cover-y="${coverY}" aria-hidden="true"></div>` + html;
   return DOMPurify.sanitize(html, {
     ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align', 'data-host', 'controls', 'preload', 'data-author', 'data-date', 'data-text'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],

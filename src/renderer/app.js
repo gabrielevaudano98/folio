@@ -28,6 +28,8 @@ import { mountHistory } from './history-view.js';
 import { htmlToMarkdown } from './page-paste.js';
 import { pageSetup, pdfOptions, pageCss } from './page-docx.js';
 import { parseProps } from './page-props.js';
+import { readAppearance, setAppearance } from './page-appearance.js';
+import { openAppearance, mountToc, paintCover } from './page-appearance-ui.js';
 import { clean as cleanCm } from './page-critic.js';
 import tokensCss from './tokens.css';
 import stylesCss from './styles.css';
@@ -612,6 +614,7 @@ async function renderPreview() {
     else resolveImg(src).then((u) => { if (u) m.src = u; });
   }
   el.replaceChildren(tpl.content);
+  applyPreviewAppearance(el, t.text);
   if (blocked.length) {
     const bar = document.createElement('div'); bar.className = 'remote-bar'; bar.setAttribute('role', 'status');
     bar.innerHTML = `<span>${esc(tr('app.remote-images-blocked', { n: blocked.length }))}</span><button type="button" class="btn">${esc(tr('app.load-remote-images'))}</button>`;
@@ -633,6 +636,25 @@ async function renderPreview() {
   hydrateCharts(el, readRelative);
   hydrateRefs(el, refEnv());
   hydrateBreadcrumbs(el, t.path);
+}
+/* per-page appearance in the Read view: font, small text and full width as attributes of the page, its cover, the floating contents */
+let previewToc = null;
+function applyPreviewAppearance(el, text) {
+  const a = readAppearance(text);
+  for (const [k, v] of [['font', a.font], ['smallText', a.small], ['fullWidth', a.full]]) { if (v) el.dataset[k] = v === true ? 'true' : v; else delete el.dataset[k]; }
+  for (const c of el.querySelectorAll('.page-cover-read')) paintCover(c, a.cover, a.coverY, resolveImg);
+  previewToc ||= mountToc($('#pane-preview'), { root: () => $('#preview') });
+  previewToc.refresh(a.toc);
+}
+/** change one appearance option of the open page, in whichever view shows it */
+function setPageAppearance(key, value) {
+  const t = activeTab(); if (!t || curType() !== 'md' || isLocked(S.active)) return;
+  if (isRich()) { rich.editFm((fm) => setAppearance(fm, key, value)); return; }
+  const text = setAppearance(t.text, key, value); if (text === t.text) return;
+  t.text = text; editor.applyRemote(text); autosave(); setSaveState('edited'); renderTabsDirty(); renderPreview(); renderStatus();
+}
+function openPageAppearance(anchor) {
+  openAppearance(anchor, { get: () => (isRich() ? rich.getFm() : activeTab()?.text || ''), apply: setPageAppearance, locked: () => isLocked(S.active) });
 }
 /* open an attached file (relative to the page) with the system's app, or a web address in the browser */
 function openMedia(src) {
@@ -2401,7 +2423,7 @@ function bindChrome() {
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
     ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
       { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }] : []),
-    ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
+    ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('appearance.menu'), run: () => openPageAppearance($('#btn-more')) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
     { label: tr('app.import-word-or-html'), run: importDocument }, '-',
