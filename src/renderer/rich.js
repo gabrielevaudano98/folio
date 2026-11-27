@@ -1152,7 +1152,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n), onType: (k, t) => onPropType?.(k, t),
     tags: () => (mentions ? mentions()?.tags?.() : []) || [],
     get: () => model?.fm || '',
-    set: (fm) => { if (!model) model = codec.load(''); const old = model.fm; model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
+    set: (fm) => { if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
   });
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {

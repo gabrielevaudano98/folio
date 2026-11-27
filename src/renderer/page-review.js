@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { splitThread, myReaction, commentParts, mentionAt, QUICK } from './page-reactions.js';
 import { atEntries, isPerson } from './page-mentions.js';
 import { resolveTarget } from './refs-syntax.js';
-import { docReview, settle, resolveThread, commentBody } from './page-critic.js';
+import { docReview, settle, resolveThread, reopenThread, deleteThread, isResolvedMarker, commentBody } from './page-critic.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const PREF = 'folio.page.review';
@@ -26,7 +26,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   scroll.replaceWith(main); main.append(scroll);
   const pane = document.createElement('aside'); pane.className = 'review-pane'; pane.setAttribute('aria-label', 'Comments and suggestions'); pane.hidden = true;
   (dock || main).append(pane);
-  let autoShown = false, filter = 'all', items = [], timer = 0, focusDraft = false, pickerFor = -1;
+  let autoShown = false, filter = 'all', items = [], timer = 0, focusDraft = false, pickerFor = -1, showResolved = false;
   /* Google Docs: each card sits beside the line it is about (Beside text), or all of them stack in a list */
   const ALIGN = 'folio.page.review.align';
   let aligned = (() => { try { return localStorage.getItem(ALIGN) !== 'off'; } catch { return true; } })();
@@ -41,14 +41,17 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
 
   function render() {
     items = docReview(editor.state.doc);
-    const threads = items.filter((x) => x.kind === 'thread'), changes = items.filter((x) => x.kind !== 'thread' && x.kind !== 'hl');
+    // resolved threads stay in the file but leave the margin unless asked for (Show resolved)
+    const resolved = items.filter((x) => x.kind === 'thread' && x.resolved), threads = items.filter((x) => x.kind === 'thread' && !x.resolved), changes = items.filter((x) => x.kind !== 'thread' && x.kind !== 'hl');
+    if (!resolved.length) showResolved = false;
     if (pref() === 'auto' && (threads.length || changes.length) && pane.hidden && !focusDraft) { show(true, false); autoShown = true; }
     else if (autoShown && !threads.length && !changes.length && !pane.hidden && !focusDraft) { show(false, false); autoShown = false; }
     onCount?.(threads.length + changes.length);
-    const list = items.filter((x) => x.kind !== 'hl' && (filter === 'all' || (filter === 'comments') === (x.kind === 'thread')));
+    const list = items.filter((x) => x.kind !== 'hl' && (showResolved || !x.resolved) && (filter === 'all' || (filter === 'comments') === (x.kind === 'thread')));
     const act = activeIndex();
     pane.innerHTML = `<div class="rv-head">
         <div class="rv-title"><span class="rv-count">${threads.length} ${threads.length === 1 ? 'comment' : 'comments'} · ${changes.length} ${changes.length === 1 ? 'suggestion' : 'suggestions'}</span></div>
+        ${resolved.length ? `<button type="button" class="btn btn-quiet rv-resolved" data-rv="resolved" aria-pressed="${showResolved}">${esc(showResolved ? t('review.hideResolved') : t('review.showResolved', { n: resolved.length }))}</button>` : ''}
         <button type="button" class="btn btn-quiet rv-align" data-rv="align" aria-pressed="${aligned}" title="${esc(t('review.besideTextTip'))}">${esc(t('review.besideText'))}</button>
       </div>
       <div class="rv-tools">
@@ -82,17 +85,21 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   function card(x, i, active) {
     if (x.kind === 'thread') {
       const { messages, reactions } = splitThread(x.comments), me = author();
-      const comments = messages.map(({ c, k }) => {
+      const last = [...x.comments].reverse().find((c) => isResolvedMarker(c));
+      const comments = messages.filter(({ c }) => !isResolvedMarker(c)).map(({ c, k }) => {
         if (!c.text && k === x.comments.length - 1) return `<div class="rv-draft"><textarea rows="2" placeholder="Add a comment" aria-label="Comment" data-edit="${i}"></textarea><div class="rv-row"><button type="button" class="btn btn-primary" data-act="save" data-i="${i}">Comment</button><button type="button" class="btn" data-act="cancel" data-i="${i}">Cancel</button></div></div>`;
         return `<div class="rv-comment"><span class="rv-avatar" aria-hidden="true">${esc(initials(c.author))}</span><div class="rv-body"><div class="rv-meta"><b>${esc(c.author || 'Comment')}</b><span>${esc(when(c.date))}</span><button type="button" class="rv-del" data-act="delComment" data-i="${i}" data-k="${k}" aria-label="Delete this comment">${ic('trash')}</button></div><p>${commentHtml(c.text)}</p></div></div>`;
       }).join('');
       const chips = reactions.length || pickerFor === i ? `<div class="rv-reactions" role="group" aria-label="${esc(t('review.reactions'))}">${reactions.map((r) => { const mine = myReaction(r, me) >= 0; return `<button type="button" class="rv-react${mine ? ' is-mine' : ''}" data-act="react" data-i="${i}" data-emoji="${esc(r.emoji)}" aria-pressed="${mine}" aria-label="${esc(t('review.reactedBy', { emoji: r.emoji, who: r.authors.filter(Boolean).join(', ') || '?' }))}" data-tip="${esc(r.authors.filter(Boolean).join(', '))}"><span aria-hidden="true">${esc(r.emoji)}</span><span class="rv-count">${r.authors.length}</span></button>`; }).join('')}${pickerFor === i ? QUICK.map((e) => `<button type="button" class="rv-react rv-pick" data-act="react" data-i="${i}" data-emoji="${esc(e)}" aria-label="${esc(t('review.react', { emoji: e }))}">${esc(e)}</button>`).join('') : ''}</div>` : '';
       const drafting = x.comments.some((c) => !c.text);
-      return `<article class="rv-card rv-thread${active ? ' is-active' : ''}" data-i="${i}" tabindex="0">
+      const del = `<button type="button" class="rb" data-act="delThread" data-i="${i}" aria-label="${esc(t('review.deleteThread'))}" data-tip="${esc(t('review.deleteThreadTip'))}">${ic('trash')}</button>`;
+      const state = x.resolved ? `<div class="rv-row rv-resolved-by"><span>${esc(last?.author ? t('review.resolvedBy', { who: last.author }) : t('review.resolved'))}${last?.date ? ` · ${esc(when(last.date))}` : ''}</span><button type="button" class="btn btn-quiet" data-act="reopen" data-i="${i}">${esc(t('review.reopen'))}</button>${del}</div>` : '';
+      return `<article class="rv-card rv-thread${active ? ' is-active' : ''}${x.resolved ? ' is-resolved' : ''}" data-i="${i}" tabindex="0">
         ${x.quote ? `<blockquote class="rv-quote">${esc(short(x.quote))}</blockquote>` : ''}
+        ${state}
         ${comments}
         ${drafting ? '' : chips}
-        ${drafting ? '' : `<div class="rv-row rv-reply"><input type="text" placeholder="Reply" aria-label="Reply" data-reply="${i}" autocomplete="off"><button type="button" class="rb" data-act="pick" data-i="${i}" aria-label="${esc(t('review.addReaction'))}" aria-expanded="${pickerFor === i}" data-tip="${esc(t('review.addReaction'))}">☺</button><button type="button" class="rb" data-act="resolve" data-i="${i}" aria-label="Resolve" data-tip="Resolve: the comments go, the text stays">${ic('check')}</button></div>`}
+        ${drafting ? '' : `<div class="rv-row rv-reply"><input type="text" placeholder="Reply" aria-label="Reply" data-reply="${i}" autocomplete="off"><button type="button" class="rb" data-act="pick" data-i="${i}" aria-label="${esc(t('review.addReaction'))}" aria-expanded="${pickerFor === i}" data-tip="${esc(t('review.addReaction'))}">☺</button>${x.resolved ? '' : `<button type="button" class="rb" data-act="resolve" data-i="${i}" aria-label="${esc(t('review.resolve'))}" data-tip="${esc(t('review.resolveTip'))}">${ic('check')}</button>${del}`}</div>`}
       </article>`;
     }
     const what = x.kind === 'ins' ? `Add <ins class="critic-ins">${esc(short(x.text))}</ins>` : x.kind === 'del' ? `Delete <del class="critic-del">${esc(short(x.text))}</del>` : `Replace <del class="critic-del">${esc(short(x.old))}</del> with <ins class="critic-ins">${esc(short(x.new))}</ins>`;
@@ -116,7 +123,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
   };
   const dropComment = (x, k) => {
     const tr = editor.state.tr;
-    if (x.comments.length === 1) resolveThread(editor.state, x, tr); else tr.delete(x.comments[k].pos, x.comments[k].pos + 1);
+    if (x.comments.length === 1) deleteThread(editor.state, x, tr); else tr.delete(x.comments[k].pos, x.comments[k].pos + 1);
     editor.view.dispatch(tr);
   };
 
@@ -125,6 +132,7 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
     const ms = e.target.closest('[data-mode-set]'); if (ms) { api.mode(ms.dataset.modeSet); return; }
     const f = e.target.closest('[data-filter]'); if (f) { filter = f.dataset.filter; render(); return; }
     const rv = e.target.closest('[data-rv]')?.dataset.rv;
+    if (rv === 'resolved') { showResolved = !showResolved; render(); return; }
     if (rv === 'align') { aligned = !aligned; try { localStorage.setItem(ALIGN, aligned ? 'on' : 'off'); } catch { /* no storage */ } render(); return; }
     if (rv === 'close') { show(false); editor.commands.focus(); return; }
     if (rv === 'acceptAll' || rv === 'rejectAll') { api.all(rv === 'acceptAll'); return; }
@@ -133,7 +141,9 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
       const x = items[+b.dataset.i]; if (!x) return;
       const act = b.dataset.act;
       if (act === 'accept' || act === 'reject') { editor.view.dispatch(settle(editor.state, x, act === 'accept')); editor.commands.focus(); }
-      else if (act === 'resolve') { editor.view.dispatch(resolveThread(editor.state, x)); editor.commands.focus(); }
+      else if (act === 'resolve') { editor.view.dispatch(resolveThread(editor.state, x, editor.state.tr, author())); editor.commands.focus(); }
+      else if (act === 'reopen') { editor.view.dispatch(reopenThread(editor.state, x)); editor.commands.focus(); }
+      else if (act === 'delThread') { editor.view.dispatch(deleteThread(editor.state, x)); editor.commands.focus(); }
       else if (act === 'delComment') dropComment(x, +b.dataset.k);
       else if (act === 'pick') { pickerFor = pickerFor === +b.dataset.i ? -1 : +b.dataset.i; render(); }
       else if (act === 'react') { toggleReaction(x, b.dataset.emoji); pickerFor = -1; }
@@ -266,9 +276,9 @@ export function mountReview(host, editor, { icons, author = () => '', keyLabel =
       const list = docReview(editor.state.doc).filter((x) => x.kind === 'ins' || x.kind === 'del' || x.kind === 'sub');
       const tr = editor.state.tr; for (const x of list) settle(editor.state, x, ok, tr); editor.view.dispatch(tr); editor.commands.focus(); return list.length;
     },
-    resolveAll() { const tr = editor.state.tr; for (const t of docReview(editor.state.doc).filter((x) => x.kind === 'thread')) resolveThread(editor.state, t, tr); editor.view.dispatch(tr); },
+    resolveAll() { const tr = editor.state.tr; for (const t of docReview(editor.state.doc).filter((x) => x.kind === 'thread' && !x.resolved)) resolveThread(editor.state, t, tr, author()); if (tr.docChanged) editor.view.dispatch(tr); },
     render,
-    counts() { const r = docReview(editor.state.doc); return { comments: r.filter((x) => x.kind === 'thread').length, changes: r.filter((x) => ['ins', 'del', 'sub'].includes(x.kind)).length }; },
+    counts() { const r = docReview(editor.state.doc); return { comments: r.filter((x) => x.kind === 'thread' && !x.resolved).length, resolved: r.filter((x) => x.kind === 'thread' && x.resolved).length, changes: r.filter((x) => ['ins', 'del', 'sub'].includes(x.kind)).length }; },
   };
   render();
   return api;

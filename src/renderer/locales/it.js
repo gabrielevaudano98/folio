@@ -16,6 +16,8 @@ export default {
   'links.linkAll': 'Collega tutto ({n})', 'links.linked': '“{name}” collegato {n} volte.', 'links.undo': 'Annulla',
   'links.title': 'Controllo dei link', 'links.summary': '{n} riferimenti rotti in {files} pagine.', 'links.none': 'Ogni riferimento punta a una pagina che esiste.', 'links.line': 'riga {n}', 'links.create': 'Crea pagina', 'links.created': 'Creata {name}.',
   'review.reactions': 'Reazioni', 'review.reactedBy': '{emoji} da {who}', 'review.react': 'Reagisci con {emoji}', 'review.addReaction': 'Aggiungi una reazione', 'review.people': 'Persone',
+  'review.resolve': 'Risolvi', 'review.resolveTip': 'Risolvi: la discussione è segnata come risolta e nascosta; resta nel file', 'review.reopen': 'Riapri', 'review.resolved': 'Risolta', 'review.resolvedBy': 'Risolta da {who}',
+  'review.deleteThread': 'Elimina discussione', 'review.deleteThreadTip': 'Elimina: i commenti spariscono, il testo resta', 'review.showResolved_one': 'Mostra {n} risolta', 'review.showResolved_other': 'Mostra {n} risolte', 'review.hideResolved': 'Nascondi risolte',
   // index.html (data-i18n / data-i18n-attr)
   'ui.workspace': 'Area di lavoro',
   'ui.new-note': 'Nuova nota',
@@ -891,7 +893,7 @@ export default {
   'rib.reject': 'Rifiuta',
   'rib.reject-all': 'Rifiuta tutto',
   'rib.reject-the-change-at-the-cursor-and-go-to-the-next-one': 'Rifiuta la modifica sotto il cursore e passa alla successiva',
-  'rib.remove-every-comment-the-text-stays': 'Rimuovi tutti i commenti; il testo resta',
+  'rib.mark-every-comment-resolved-they-stay-in-the-file': 'Segna tutti i commenti come risolti; restano nel file',
   'rib.replace': 'Sostituisci',
   'rib.reset-zoom': 'Reimposta zoom',
   'rib.resolve-all': 'Risolvi tutti',

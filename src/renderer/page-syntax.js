@@ -208,16 +208,57 @@ function closeOf(src, open, close, from) {
   for (let m = re.exec(src); m; m = re.exec(src)) { depth += m[0].toLowerCase().startsWith(close.replace(/\\/g, '').slice(0, 3)) ? -1 : 1; if (!depth) return m; }
   return null;
 }
+/* formatting in a toggle title: <summary> is HTML, so marks are written as inline HTML tags, which GitHub and the Read
+   view show formatted. Only these exact tags are read, nested in this order; anything else in a title stays literal
+   text, and a title is only read as formatted when writing it back gives exactly the same characters (lossless). */
+const SUMMARY_MARKS = [['link', 'a'], ['bold', 'strong'], ['italic', 'em'], ['strike', 's'], ['underline', 'u'], ['highlight', 'mark'], ['superscript', 'sup'], ['subscript', 'sub'], ['code', 'code']];
+const SUMMARY_RANK = new Map(SUMMARY_MARKS.map(([m], i) => [m, i]));
+const SUMMARY_TAG = new Map(SUMMARY_MARKS.map(([m, t]) => [t, m]));
+const escSummary = (s) => s.replace(/&(?=#?\w+;)/g, '&amp;').replace(/<(?=\/?[a-z])/gi, '&lt;');
+const unescSummary = (s) => s.replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+const markKey = (m) => (m.type === 'link' ? `link ${m.attrs?.href || ''}` : m.type);
+/** text nodes (JSON) of a toggle title as the HTML inside <summary> */
+export function summaryHtml(nodes) {
+  const texts = (nodes || []).filter((n) => n.text);
+  if (!texts.some((n) => (n.marks || []).some((m) => SUMMARY_RANK.has(m.type)))) return texts.map((n) => n.text).join('');
+  let out = ''; const stack = [];
+  for (const n of texts) {
+    const want = (n.marks || []).filter((m) => SUMMARY_RANK.has(m.type)).sort((a, b) => SUMMARY_RANK.get(a.type) - SUMMARY_RANK.get(b.type));
+    let k = 0; while (k < stack.length && k < want.length && markKey(stack[k]) === markKey(want[k])) k++;
+    while (stack.length > k) out += `</${SUMMARY_MARKS[SUMMARY_RANK.get(stack.pop().type)][1]}>`;
+    for (const m of want.slice(k)) { const tag = SUMMARY_MARKS[SUMMARY_RANK.get(m.type)][1]; out += m.type === 'link' ? `<a href="${String(m.attrs?.href || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">` : `<${tag}>`; stack.push(m); }
+    out += escSummary(n.text);
+  }
+  while (stack.length) out += `</${SUMMARY_MARKS[SUMMARY_RANK.get(stack.pop().type)][1]}>`;
+  return out;
+}
+/** the HTML inside <summary> as text nodes (JSON) with marks; literal text when it is not exactly what summaryHtml writes */
+export function summaryNodes(src) {
+  if (!src) return [];
+  const literal = [{ type: 'text', text: src }];
+  if (!/<(?:a href="[^"]*"|strong|em|s|u|mark|sup|sub|code)>/.test(src)) return literal;
+  const out = []; const stack = []; const re = /<a href="([^"]*)">|<\/?(a|strong|em|s|u|mark|sup|sub|code)>/g; let at = 0, m;
+  const push = (t) => { if (t) out.push({ type: 'text', text: unescSummary(t), ...(stack.length ? { marks: stack.map((x) => ({ ...x })) } : {}) }); };
+  while ((m = re.exec(src))) {
+    push(src.slice(at, m.index)); at = m.index + m[0].length;
+    const tag = m[1] != null ? 'a' : m[2]; const type = SUMMARY_TAG.get(tag);
+    if (m[0][1] === '/') { if (stack.at(-1)?.type !== type) return literal; stack.pop(); }
+    else stack.push(type === 'link' ? { type, attrs: { href: m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&') } } : { type });
+  }
+  push(src.slice(at));
+  if (stack.length || !out.length || summaryHtml(out) !== src) return literal;
+  return out;
+}
 export const Details = BaseDetails.extend({
   addAttributes() { return { ...this.parent?.(), heading: { default: 0, parseHTML: (el) => +el.getAttribute('data-heading') || 0, renderHTML: (a) => (a.heading ? { 'data-heading': a.heading } : {}) } }; },
   parseMarkdown: (token, h) => h.createNode('details', { open: token.open, heading: token.heading }, [
-    h.createNode('detailsSummary', null, token.summary ? [{ type: 'text', text: token.summary }] : []),
+    h.createNode('detailsSummary', null, summaryNodes(token.summary)),
     h.createNode('detailsContent', null, token.tokens?.length ? h.parseChildren(token.tokens) : [{ type: 'paragraph' }]),
   ]),
   renderMarkdown: (node, h) => {
     const [summary, content] = node.content || [];
     const level = node.attrs?.heading || 0;
-    const title = (summary?.content || []).map((t) => t.text || '').join('');
+    const title = summaryHtml(summary?.content);
     const body = content ? h.renderChildren(content.content || [], '\n\n') : '';
     return `<details${node.attrs?.open ? ' open' : ''}>\n<summary>${level ? `<h${level}>${title}</h${level}>` : title}</summary>\n\n${body.trim()}\n\n</details>`;
   },
