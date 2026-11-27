@@ -2161,7 +2161,7 @@ img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; out
 .page-cover:hover .page-cover-actions, .page-cover-actions:focus-within, .page-cover.is-repositioning .page-cover-actions { opacity: 1; }
 .page-cover-btn { height: 24px; padding: 0 8px; border: 0; border-radius: var(--radius-xs); background: transparent; font-size: var(--text-xs); color: var(--color-muted); }
 .page-cover-btn:hover, .page-cover-btn[aria-pressed="true"] { background: var(--color-hover); color: var(--color-ink); }
-.page-cover.is-repositioning { cursor: grab; }
+.page-cover.is-repositioning { cursor: grab; touch-action: none; }
 .page-cover.is-repositioning .page-cover-img { cursor: grab; }
 .props-cover-add { display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-top: 2px; padding: 0 8px 0 6px; border: 0; border-radius: var(--radius-xs); background: transparent; font-size: var(--text-xs); color: var(--color-faint); opacity: 0; transition: opacity var(--dur-micro) var(--ease-out); }
 .props-cover-add .icon { width: 13px; height: 13px; }
@@ -2194,8 +2194,8 @@ img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; out
 .page-toc-rail { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 8px 6px; }
 .page-toc-rail i { display: block; width: var(--w, 14px); height: 2px; border-radius: 1px; background: var(--color-rule-strong); }
 .page-toc-rail i.is-current { background: var(--color-ink); }
-.page-toc-list { position: absolute; top: 0; right: 0; width: 220px; max-height: min(60vh, 520px); margin: 0; padding: var(--space-3xs); overflow: auto; list-style: none; border-radius: var(--radius-lg); background: var(--color-paper); box-shadow: var(--shadow-pop); opacity: 0; visibility: hidden; transition: opacity var(--dur-short) var(--ease-out); scrollbar-width: thin; }
-.page-toc-in:hover .page-toc-list, .page-toc-in:focus-within .page-toc-list { opacity: 1; visibility: visible; }
+.page-toc-list { position: absolute; top: 0; right: 0; width: 220px; max-height: min(60vh, 520px); margin: 0; padding: var(--space-3xs); overflow: auto; list-style: none; border-radius: var(--radius-lg); background: var(--color-paper); box-shadow: var(--shadow-pop); opacity: 0; pointer-events: none; transition: opacity var(--dur-short) var(--ease-out); scrollbar-width: thin; } /* transparent, not display/visibility-hidden: the buttons stay in the tab order and reach screen readers; focus reveals the list */
+.page-toc-in:hover .page-toc-list, .page-toc-in:focus-within .page-toc-list { opacity: 1; pointer-events: auto; }
 .page-toc-in:hover .page-toc-rail, .page-toc-in:focus-within .page-toc-rail { visibility: hidden; }
 .page-toc-list li { padding-left: calc(var(--d, 0) * 12px); }
 .page-toc-list button { display: block; width: 100%; padding: 4px var(--space-xs); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--color-muted); font: inherit; font-size: var(--text-sm); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

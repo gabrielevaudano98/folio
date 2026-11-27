@@ -118,8 +118,10 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
     const y0 = readAppearance(get()).coverY, h = c.getBoundingClientRect().height || 1, from = e.clientY; let y = y0;
     try { c.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer cannot be captured */ }
     const move = (ev) => { y = Math.min(100, Math.max(0, Math.round(y0 - ((ev.clientY - from) / h) * 100))); img.style.objectPosition = `50% ${y}%`; };
-    const up = () => { c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up); if (y !== y0) commit((t) => setAppearance(t, 'cover-y', y)); };
-    c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+    const end = () => { c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', cancel); };
+    const up = () => { end(); if (y !== y0) commit((t) => setAppearance(t, 'cover-y', y)); };
+    const cancel = () => { end(); img.style.objectPosition = `50% ${y0}%`; }; // an interrupted drag is aborted, never saved half-way
+    c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', cancel);
   });
   box.addEventListener('change', (e) => {
     const t = e.target;
