@@ -24,6 +24,12 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `trash` | request | `fs:trash` | `src/main/main.js` |
 | `untrash` | request | `fs:untrash` | `src/main/main.js` |
 | `search` | request | `fs:search` | `src/main/main.js` |
+| `find` | request | `fs:find` | `src/main/main.js` |
+| `reminders.list` | request | `reminders:list` | `src/main/main.js` |
+| `reminders.set` | request | `reminders:set` | `src/main/main.js` |
+| `reminders.onChanged` | event | `reminders:changed` | — |
+| `reminders.onFired` | event | `reminders:fired` | — |
+| `reminders.onOpen` | event | `reminders:open` | — |
 | `backlinks` | request | `fs:backlinks` | `src/main/main.js` |
 | `userName` | request | `app:user-name` | `src/main/main.js` |
 | `unlinked` | request | `fs:unlinked` | `src/main/main.js` |
@@ -86,6 +92,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `update.install` | request | `update:install` | `src/main/updater.js` |
 | `update.openRelease` | request | `update:open-release` | `src/main/updater.js` |
 | `update.setAuto` | request | `update:set-auto` | `src/main/updater.js` |
+| `update.onState` | event | `update:state` | — |
 | `onSwitched` | event | `workspace:switched` | — |
 | `onBeforeClose` | event | `app:before-close` | — |
 | `features.list` | request | `features:list` | `src/main/meeting/service.js` |

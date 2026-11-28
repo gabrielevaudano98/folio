@@ -93,6 +93,7 @@ export const icons = {
   paste: p('<rect x="3.25" y="2.75" width="9.5" height="11.5" rx="1.5"/><path d="M6 2.75V2h4v.75M6 1.75h4v2H6z"/>'),
   scissors: p('<circle cx="4.25" cy="11.5" r="2"/><circle cx="11.75" cy="11.5" r="2"/><path d="m5.75 10.25 6-8M10.25 10.25l-6-8"/>'),
   header: p('<rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5"/><path d="M1.75 6.5h12.5" stroke-width="2.5"/><path d="M6 6.5v6.75M10 6.5v6.75"/>'),
+  bell: p('<path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1.25 1.25H2.75z"/><path d="M6.5 14.25h3"/>'),
   calendar: p('<rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1.75"/><path d="M2.25 6.75h11.5M5.5 1.75v3M10.5 1.75v3"/>'),
   user: p('<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c.5-2.4 2.4-3.75 5-3.75s4.5 1.35 5 3.75"/>'),
   tag: p('<path d="M2.25 2.75h5.1l6.4 6.4-4.6 4.6-6.4-6.4z"/><circle cx="5.25" cy="5.75" r=".9" fill="currentColor" stroke="none"/>'),
