@@ -250,7 +250,8 @@ const Decorate = Extension.create({
             const title = embed ? tl('rich', 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open') : kind === 'missing' ? tl('rich', 'No page with this name yet. Ctrl or ⌘ click to create it') : tl('rich', 'Ctrl or ⌘ click to open');
             if (!embed && !code) {
               const day = kind === 'date' && DAY_ONLY.test(target.trim()) && !m[1].includes('|');
-              const tail = day ? tailLength(n.text.slice(m.index + m[0].length)) : 0; // [[2026-12-01]]{09:00 remind}: one chip
+              let bs = 0; while (m.index - 1 - bs >= 0 && n.text[m.index - 1 - bs] === '\\') bs++; // an escaped bracket is literal text, as in the Read view and the scanner
+              const tail = day && !(bs % 2) ? tailLength(n.text.slice(m.index + m[0].length)) : 0; // [[2026-12-01]]{09:00 remind}: one chip
               const w = tail ? parseMention(n.text.slice(m.index, m.index + m[0].length + tail)) : null;
               let cls = `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}${day ? ' is-' + (opts.dayTense?.(target.trim()) || 'future') : ''}`;
               if (w?.remind != null) { cls += ' is-remind'; if ((startOf(w) || remindAt(w)) <= (opts.now?.() || new Date()) || opts.dayTense?.(w.day) === 'today') cls += ' is-due'; } // Notion: red on the day and after

@@ -87,6 +87,8 @@ export function atTime(day, time) {
 export function remindAt(w) {
   if (!w || w.remind == null) return null;
   const base = atTime(w.day, w.time || ALL_DAY_AT); const off = offsetMinutes(w.remind); if (!base || off == null) return null;
+  const cal = w.remind === '0' ? null : OFFSET.exec(String(w.remind));
+  if (cal && (cal[2] === 'd' || cal[2] === 'w')) { base.setDate(base.getDate() - +cal[1] * (cal[2] === 'w' ? 7 : 1)); return base; } // calendar days: same local time across a clock change
   return new Date(base.getTime() - off * 60000);
 }
 /** the start of a mention (its time, or the start of the day) */

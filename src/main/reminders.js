@@ -67,7 +67,7 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
   /** the whole workspace, again (on open). Older states of reminders that no longer exist are dropped. */
   async function scanAll() {
     const g = ++gen; const next = new Map(); const mine = (touched = new Set()); let complete = true;
-    let files = []; try { files = (await notes.allFiles()).filter(isNote); } catch { files = []; complete = false; }
+    let files = []; try { const all = await notes.allFiles(); if (all.length >= 20000) complete = false; files = all.filter(isNote); } catch { files = []; complete = false; } // a capped listing is not the whole workspace
     for (let i = 0; i < files.length; i++) {
       const text = await notes.read(files[i]).catch(() => { complete = false; return null; });
       if (g !== gen) return; // a newer scan (another workspace) took over
@@ -100,7 +100,12 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
     for (const [rel, items] of [...byFile]) {
       const nrel = rel === from ? to : rel.startsWith(from + '/') ? to + rel.slice(from.length) : null; if (!nrel) continue;
       byFile.delete(rel); byFile.set(nrel, items);
-      for (const r of items) { const a = reminderId(rel, r.key); if (st[a]) { st[reminderId(nrel, r.key)] = st[a]; delete st[a]; moved = true; } }
+    }
+    // states are keyed by path: move every one under the old path, also when the watcher already moved the entry
+    for (const id of Object.keys(st)) {
+      const i = id.lastIndexOf('::'); if (i < 0) continue; const rel = id.slice(0, i), key = id.slice(i + 2);
+      const nrel = rel === from ? to : rel.startsWith(from + '/') ? to + rel.slice(from.length) : null; if (!nrel) continue;
+      st[reminderId(nrel, key)] = st[id]; delete st[id]; moved = true;
     }
     if (moved) setStates(st); onChange();
   }

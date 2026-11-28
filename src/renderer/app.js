@@ -823,7 +823,9 @@ let reminderList = [], showDoneReminders = false;
 const reminderWhen = (r) => whenLabel(r, (d) => formatDay(d, { style: datePrefs.style, lang: locale() }));
 async function renderReminders() {
   const sec = $('#section-reminders'), box = $('#reminders-list'); if (!sec || !box) return;
-  try { reminderList = S.workspace && folio.reminders ? await folio.reminders.list() : []; } catch { reminderList = []; }
+  const ws = S.workspace;
+  try { reminderList = ws && folio.reminders ? await folio.reminders.list() : []; } catch { reminderList = []; }
+  if (ws !== S.workspace) return; // another workspace opened while the list was pending: its answer is not ours
   sec.hidden = !reminderList.length;
   const open = remindersOpen(); $('#reminders-head').setAttribute('aria-expanded', String(open)); box.hidden = !open;
   const overdue = reminderList.filter((r) => r.state === 'overdue').length; const badge = $('#reminders-badge');
