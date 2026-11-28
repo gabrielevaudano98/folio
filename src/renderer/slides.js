@@ -1,6 +1,6 @@
 // Folio — slides surface: thumbnails, stage, per-slide Markdown, presenter, PDF and PowerPoint export.
 import { t as tr, tl } from './i18n.js';
-import { setFlag, addComment, removeComment, sectionsOf, SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES, relocateSlide } from './slides-core.js';
+import { setFlag, addComment, removeComment, sectionsOf, SIZES, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES, relocateSlide } from './slides-core.js';
 import { createEditor } from './editor.js';
 import { perDoc } from './history.js';
 import slidesCss from './slides.css';
