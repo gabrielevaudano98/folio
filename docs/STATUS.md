@@ -1,6 +1,6 @@
 # Project status
 
-**As of 27 November 2026 · `main` at 1.5.1 (pre-alpha) plus the new app icon (#80) · maintainer: Gabriele Vaudano.**
+**As of 28 November 2026 · `main` at 1.6.0 (pre-alpha) · maintainer: Gabriele Vaudano.**
 
 This is the page to read first when you pick Folio up: what ships, what is half-built and where, what is broken, what
 comes next, and what only a person can do. It is written by hand; update it in the same pull request that changes the

@@ -53,7 +53,8 @@ branch clean-up [#91](https://github.com/gabrielevaudano98/folio/issues/91).
 
 Releases are on [GitHub Releases](https://github.com/gabrielevaudano98/folio/releases); all are pre-alpha and unsigned.
 
-- **1.5.1** (27 Nov 2026): the speech model uses more threads on bigger processors, at most 5.
+- **1.6.0** (28 Nov 2026): Notion-parity pass on pages (reminders, search window, page appearance, locks, page dates and icon, duplicate); opt-in automatic update checks from GitHub Releases (#82).
+- **1.5.1** (27 Nov): the speech model uses more threads on bigger processors, at most 5.
 - **1.5.0** (27 Nov): one-click meeting recording from the sidebar; on Windows, an offer to record when another app starts
   a call (reads the microphone consent store, off by default); image fixes.
 - **1.4.0–1.4.2** (21–22 Nov): web images in notes load only when asked; meeting recorder fixes (empty audio, no-sound warning).
