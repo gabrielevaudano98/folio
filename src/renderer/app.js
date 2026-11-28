@@ -418,11 +418,14 @@ function setView(v, { persist = true } = {}) {
 }
 
 /* ============ workspace ============ */
+/** N5 (Notion, browsers): the tabs closed in this folder, newest first, for Reopen closed tab */
+const closedTabs = [];
 async function loadWorkspace(dir, { restore = false } = {}) {
   if (dir !== S.workspace) resetRemote(); // grants and fetched web images never follow you into another folder, however the folder changed
   S.workspace = dir;
   folio.propTypes().then(setTypeOverrides).catch(() => setTypeOverrides({}));
   actions.clear(); nav.list = []; nav.i = -1; // file actions and history belong to one folder
+  closedTabs.length = 0; // a closed tab is a path in this folder: never reopen another folder's file with the same name
   $('#workspace-name').textContent = dir.split(/[\\/]/).filter(Boolean).pop();
   $('#tree').innerHTML = Array.from({ length: 7 }, (_, i) => `<div class="skeleton-row" style="--w:${[62, 48, 70, 40, 56, 66, 44][i]}%;--d:${i % 3 === 2 ? 1 : 0}"></div>`).join('');
   await refreshTree();
@@ -541,8 +544,6 @@ async function closeTab(p = S.active) {
   } else renderTabs();
   persistTabs();
 }
-/** N5 (Notion, browsers): the tabs closed in this session, newest first, for Reopen closed tab */
-const closedTabs = [];
 function reopenClosedTab() {
   while (closedTabs.length) { const p = closedTabs.shift(); if (S.files.includes(p) && !tabOf(p)) return openFile(p); } // a page moved or deleted since is skipped
   toast(tr('app.no-closed-tab'));
