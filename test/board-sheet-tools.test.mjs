@@ -72,5 +72,8 @@ await assert.rejects(run('add_shape', { path: 'b.board.md', id: 'bk', label: 'a\
 await assert.rejects(run('add_shape', { path: 'b.board.md', id: 'bd', shape: 'class', body: ['x', ' ]'] }), /body line/);
 await assert.rejects(run('add_sheet', { path: 's.sheet.md', name: '   ' }), /needs a name/);
 await assert.rejects(run('add_sheet', { path: 's.sheet.md', name: ' Costs ' }), /already exists/);
+await assert.rejects(run('add_sheet', { path: 's.sheet.md', name: 'Wide', rows: [new Array(300).fill('x')] }), /limited to/);
+await assert.rejects(run('update_shape', { path: 'b.board.md', id: 'api', body: new Array(201).fill('x') }), /200 lines/);
+await assert.rejects(run('update_shape', { path: 'b.board.md', id: 'api', label: 'a\rb' }), /carriage return/);
 ok('huge addresses, backslash labels and a body line that would close the block are refused');
 console.log(`\n${n} board and sheet tool checks passed`);

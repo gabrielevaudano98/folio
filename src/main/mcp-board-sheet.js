@@ -52,8 +52,8 @@ const cleanStyle = (target, patch) => { for (const [k, v] of Object.entries(patc
 const shapeOf = (m, id) => { const n = m.nodes.find((x) => x.id === id); if (!n) throw new Error(`No shape "${id}". Use get_board to see the ids.`); return n; };
 // a CRLF file is edited as LF and written back as CRLF, so untouched lines keep their endings
 const lf = (t) => ({ text: t.replace(/\r\n/g, '\n'), back: (x) => (t.includes('\r\n') ? x.replace(/\r?\n/g, '\r\n') : x) });
-const safeLabel = (s) => { if (s != null && /\\/.test(s)) throw new Error('A label cannot contain a backslash (board-md cannot store it reliably).'); return s; };
-const safeBody = (lines) => { for (const l of lines || []) if (l.trim() === ']' || /[\r\n]/.test(l)) throw new Error('A body line cannot be "]" or contain a line break.'); return lines || []; };
+const safeLabel = (s) => { if (s != null && (/\\/.test(s) || /\r/.test(s))) throw new Error('A label cannot contain a backslash or a carriage return (board-md cannot store them reliably; a line break is fine).'); return s; };
+const safeBody = (lines) => { if ((lines || []).length > 200) throw new Error('A body is limited to 200 lines.'); for (const l of lines || []) if (l.trim() === ']' || /[\r\n]/.test(l) || l.length > 500) throw new Error('A body line cannot be "]", longer than 500 characters, or contain a line break.'); return lines || []; };
 const cellText = (v) => (v === null || v === undefined ? '' : String(v));
 
 async function editBoard(notes, a, wrote, verb, fn) {
@@ -132,6 +132,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       need(a.path, /\.sheet\.md$/i, '.sheet.md notes');
       if (/[\r\n]/.test(a.name)) throw new Error('A sheet name is one line.');
       a.name = a.name.trim(); if (!a.name) throw new Error('A sheet needs a name.');
+      if (a.rows && (a.rows.length > MAX_ROWS || a.rows.some((r) => r.length > MAX_COLS))) throw new Error(`A sheet is limited to ${MAX_ROWS} rows and ${MAX_COLS} columns.`);
       let existing = null; try { existing = await notes.read(a.path); } catch { /* new note */ }
       const { text: src, back } = lf(existing ?? '');
       const blocks = existing == null ? [] : parseWorkbook(src);
