@@ -20,9 +20,11 @@ export function startTextEdit({ el, body, onChange, onEnd, onLink, barSelector =
   });
   const bar = document.querySelector(barSelector);
   const flush = () => { clearTimeout(timer); onChange(editor.getMarkdown()); };
-  function end() {
+  /** finish editing; `write: false` drops the text instead of reporting it (the caller places it itself) */
+  function end({ write = true } = {}) {
     if (ended) return; ended = true;
-    flush(); el.removeEventListener('focusout', onOut); el.removeEventListener('keydown', onKey, true);
+    if (write) flush(); else clearTimeout(timer);
+    el.removeEventListener('focusout', onOut); el.removeEventListener('keydown', onKey, true);
     editor.destroy(); delete el.dataset.editing; el.classList.remove('is-editing'); onEnd();
   }
   function onOut(e) { const to = e.relatedTarget; if (to && (el.contains(to) || to.closest?.(barSelector) || to.closest?.('#menu'))) return; setTimeout(() => { if (!el.contains(document.activeElement) && !document.activeElement?.closest?.(barSelector)) end(); }, 0); }

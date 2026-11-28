@@ -68,9 +68,27 @@ then, so a fast switch could write one document's text into another file. The ru
   explicit save (`saveActive()`, with `keepEditing` so the cell or text box stays open). A surface given another
   document in `setText()` also flushes what the previous one still held, to the previous one.
 - **The tab being left is saved** at once, not when it is shown again, closed or at quit.
-- A pending edit remembers what it was typed for (the slide for notes, the selected node or lines for a board label),
-  so it never lands on another slide or node when the selection changed meanwhile.
-- Text typed in the code pane reaches the surface after 250 ms only if its tab is still the active one.
+- A pending edit remembers what it was typed for, by an identity that survives edits elsewhere: notes and a slide's
+  text box keep their slide (found again with `relocateSlide()` in `slides-core.js`: the same text, else the same place
+  when the slide count is unchanged, else the same first heading) and the box's id; a board label keeps the node id, or
+  for a line its two ends and which of the lines between them it is (not its index, which deleting another line
+  changes). Choosing another slide, from any source, writes pending notes first.
+- **The same document changed from outside** (the code pane in split view, an AI edit, the file on disk) while
+  something typed in the surface still waits: the outside change is loaded, then the pending typing is applied to it by
+  that identity, so both are kept. On the very same notes, label or text box the typing wins, because it is what the
+  person sees and is still writing. When its slide or box is gone, the typed text is copied to the clipboard with a
+  notice instead of landing elsewhere. A sheet cell being typed in is known by its address and is written when its
+  editor is left.
+- **Undo and redo** first write what is still pending, as a step of its own, so Undo takes it back instead of the timer
+  putting it back on the restored document.
+- **Split view:** text typed in the code pane reaches the surface after 250 ms, only if its tab is still the active one,
+  and at once when the surface is touched (pointer, key, focus) or flushed, so the surface never commits an edit on top
+  of text older than the code pane's. Pending surface work is written when focus leaves it (notes, label field, text
+  box, cell).
+- The board's format panel is redrawn on every change; the field being typed in keeps its focus, caret and text.
+- Narration recorded while presenting is added to the slides it was recorded on, found again in the deck as it is
+  after the clips are saved; a slide that is gone gets none (with a notice), and nothing is added when another document
+  was opened meanwhile.
 
 `test/tab-switch-save.test.mjs` edits each editor and switches within its delay, then compares both files on disk byte
 for byte.

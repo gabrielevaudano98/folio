@@ -478,8 +478,9 @@ export function mountSheet(host, ctx) {
   });
 
   /* ---------- toolbar ---------- */
-  const doUndo = () => { if (!undo.length) return; redo.push(text); load(undo.pop()); render(); ctx.onChange(text, doc); };
-  const doRedo = () => { if (!redo.length) return; undo.push(text); load(redo.pop()); render(); ctx.onChange(text, doc); };
+  // a cell still being typed in is written first, as a step of its own, so Undo takes it back
+  const doUndo = () => { flushPending(); if (!undo.length) return; redo.push(text); load(undo.pop()); render(); ctx.onChange(text, doc); };
+  const doRedo = () => { flushPending(); if (!redo.length) return; undo.push(text); load(redo.pop()); render(); ctx.onChange(text, doc); };
   host.querySelector('.sf-toolbar').addEventListener('click', (e) => {
     const b = e.target.closest('[data-s],[data-sv]'); if (!b) return;
     const a = b.dataset.s, [r0, c0, r1, c1] = range();

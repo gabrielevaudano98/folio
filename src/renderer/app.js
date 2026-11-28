@@ -549,9 +549,13 @@ function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 
 /* ============ editing & saving ============ */
 const autosave = debounce(() => { const t = activeTab(); if (t) saveTab(t); }, 650); // a pause in typing: what is still being typed (a cell, a label) stays open
-// the code pane's text reaches the surface after a pause, only while its tab is still shown: the next tab has its own
-// text already, and must not be given this one
-const surfaceSoon = debounce((text, tab) => { if (tab === activeTab()) curSurface()?.setText(text); }, 250);
+// split view: the code pane's text reaches the surface after a pause (parsing a deck on every key is too slow), only
+// while its tab is still shown (the next tab has its own text already). It is handed over at once when the surface is
+// touched or flushed, so the surface never commits an edit on top of text older than the code pane's
+let codeAhead = null; // the tab whose code-pane text the surface has not been given yet
+const surfaceSoonT = debounce(() => flushSurfaceSoon(), 250);
+function surfaceSoon(text, tab) { codeAhead = tab; surfaceSoonT(); }
+function flushSurfaceSoon() { const t = codeAhead; codeAhead = null; if (t && t === activeTab() && curType() !== 'md') curSurface()?.setText(t.text); }
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
 let richTab = null; // the tab whose page the page editor holds
 /** the page editor, about to be given the active tab's page */
@@ -566,6 +570,7 @@ function backgroundChange(t, text) {
  *  label or cell still being typed) before the tab changes, the view changes or the tabs are saved. `keepEditing`: an
  *  explicit save, after which the person goes on typing in the same cell or text box */
 function flushSurface({ keepEditing = false } = {}) {
+  flushSurfaceSoon(); // the surface first takes what the code pane holds, so what it flushes lands on the newest text
   try { if (curType() !== 'md') curSurface()?.flush?.({ keepEditing }); } catch (e) { console.error('[surface] flush', e); }
   try { if (curType() === 'md' && isRich()) rich.flush?.(); } catch (e) { console.error('[rich] flush', e); }
 }
@@ -2570,6 +2575,8 @@ function bindTooltips() {
 
 /* ============ bindings ============ */
 function bindChrome() {
+  // split view: touching the surface hands it the code pane's newest text first (see surfaceSoon)
+  for (const ev of ['pointerdown', 'keydown', 'focusin']) $('#pane-surface').addEventListener(ev, () => { if (codeAhead) flushSurfaceSoon(); }, true);
   bindTooltips();
   $('#btn-new').onclick = () => newNote();
   $('#btn-sidebar').onclick = toggleSidebar;

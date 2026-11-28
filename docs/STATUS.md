@@ -101,7 +101,7 @@ Before it can merge ([#84](https://github.com/gabrielevaudano98/folio/issues/84)
   installer size and startup budgets ([budget](performance/budget.md)) and the licences of every new package.
 - Its fix for the tab-switch data-loss bug ([#82](https://github.com/gabrielevaudano98/folio/issues/82)) is on `main`
   for pages and for the light slides, board and sheet surfaces. On `main` a surface names its document by the tab
-  object (`ctx.onChange(text, tab)`, `flush({ keepEditing })`), as `a3ea89e` does; the Univer surface must follow
+  object (`ctx.onChange(text, tab)`, `flush({ keepEditing })`), as [PR #121](https://github.com/gabrielevaudano98/folio/pull/121) does; the Univer surface must follow
   the same contract. Expect a small conflict in `app.js` (`surfaceCtx`, `backgroundChange`, `flushSurface`).
 - It adds 67 files under `src/` (`src/sheets/**`, `src/main/sheets-engine.js`, `src/renderer/sheets-components.js`): each
   needs its own line in the [source map](reference/source-map.md) (`test/docs-map.test.mjs`). It adds 4 MCP tools, so

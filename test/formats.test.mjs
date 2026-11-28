@@ -5,7 +5,7 @@ import { parseBoard, serializeBoard, splitBoardDoc, joinBoardDoc, applyEdgeStyle
 import { parseWorkbook, serializeWorkbook, evaluator, shiftFormula } from '../src/renderer/sheet-core.js';
 import { findRefs, resolveTarget, rewriteRefs } from '../src/renderer/refs-syntax.js';
 import { resolveRef } from '../src/renderer/refs.js';
-import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter, zoomTarget } from '../src/renderer/slides-core.js';
+import { parseDeck, splitSlides, joinDeck, setDirective, setNotes, parseFrontmatter, zoomTarget, relocateSlide } from '../src/renderer/slides-core.js';
 import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, addObject, nextId, geometry, alignPatches, distributePatches, zPatches, retarget, nextGroup, locked, groupOf, setObjectBody, inlineSafe, textStyle, linePoints, linePath, parseFill, fillCss, fillSvg, adjustCss, frameCss, safeColor, replaceImageSrc, pathBlock, polygonsBlock, simplify, pointsPath, parsePoints } from '../src/renderer/slides-objects.js';
 import { getSchema } from '@tiptap/core';
 import { MarkdownManager } from '@tiptap/markdown';
@@ -70,6 +70,13 @@ assert.equal(deck.slides[3].layout, 'image-right'); ok('layout directives do not
 const fm = parseFrontmatter(deckText);
 assert.equal(joinDeck(fm.raw, splitSlides(fm.body)), deckText); ok('slides-md split and join are byte-identical');
 assert.match(setDirective('## A', 'layout', 'quote'), /<!-- layout: quote -->/); assert.match(setNotes('## A\n', 'Say hi'), /<!--\nSay hi\n-->/); ok('directives and notes are written as Marp comments');
+{ // a slide is found again after the deck changed elsewhere (pending notes, a text box, narration: issue #82)
+  const b = ['\n# A\n', '\n# B\n', '\n# C\n'];
+  assert.equal(relocateSlide(b, ['\n# New\n', ...b], 1), 2); assert.equal(relocateSlide(b, [b[0], b[2]], 1), -1);
+  assert.equal(relocateSlide(b, [b[0], '\n# B\n\nmore\n', b[2]], 1), 1); assert.equal(relocateSlide(b, ['\n# X\n', '\n# B\n\nmore\n'], 1), 1);
+  assert.equal(relocateSlide(b, [b[2], b[0], b[1]], 1), 2); assert.equal(relocateSlide(b, b, 5), -1);
+  ok('relocateSlide finds a slide by its text, its place or its heading, and says when it is gone');
+}
 assert.match(deck.slides[1].notes, /problem/); ok('HTML comments become speaker notes');
 
 // placed objects (slides-md v2)

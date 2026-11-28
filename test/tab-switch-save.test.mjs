@@ -5,7 +5,7 @@
 // compares both files on disk byte for byte.
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import path from 'node:path';
-import { workspace, runApp, errors } from './harness.mjs';
+import { workspace, runApp, errors, log } from './harness.mjs';
 import { parseWorkbook, serializeWorkbook } from '../src/renderer/sheet-core.js';
 import { splitSlides, joinDeck, setNotes, parseFrontmatter } from '../src/renderer/slides-core.js';
 import { setObjectBody } from '../src/renderer/slides-objects.js';
@@ -16,14 +16,19 @@ const orig = { pitch: w.read('Pitch.slides.md'), motion: w.read('Motion.slides.m
 const target = '# Target\n\nNothing here may change.\n';
 put('Target.md', target);
 put('Rename.md', '# Note\n\nhello\n');
-for (const n of [2, 3, 4, 5, 6]) put(`Deck${n}.slides.md`, orig.pitch);
-for (const n of [2, 3]) { put(`Board${n}.board.md`, orig.board); put(`Sheet${n}.sheet.md`, orig.sheet); }
+for (const n of [2, 3, 4, 5, 6, 7, 8, 9]) put(`Deck${n}.slides.md`, orig.pitch);
+for (const n of [2, 3]) put(`Sheet${n}.sheet.md`, orig.sheet);
+for (const n of [2, 3, 4, 5, 6, 7]) put(`Board${n}.board.md`, orig.board);
 
 // what each file must hold afterwards, from the pure cores (the surfaces write through the same functions)
 const withNotes = (t, notes) => { const fm = parseFrontmatter(t); const list = splitSlides(fm.body); list[0] = setNotes(list[0], notes); return joinDeck(fm.raw, list); };
 const withBox = (t, body) => { const fm = parseFrontmatter(t); const list = splitSlides(fm.body); list[0] = setObjectBody(list[0], 0, body); return joinDeck(fm.raw, list); };
 const withCell = (t, v) => { const b = parseWorkbook(t); b.filter((x) => x.type === 'sheet')[0].rows[1][1] = v; return serializeWorkbook(b); };
 const withLabel = (t, v) => t.replace('api: component "Orders API"', `api: component "${v}"`);
+const notesAt = (t, i, notes) => { const fm = parseFrontmatter(t); const list = splitSlides(fm.body); list[i] = setNotes(list[i], notes); return joinDeck(fm.raw, list); };
+// an AI assistant's edit to the document that is open, through the same MCP tool table the assistants use
+const aiEdit = (file, oldText, newText) => ({ name: 'edit_note', args: { path: file, edits: [{ oldText, newText }] } });
+const insertSlide = ['<!-- layout: title -->\n# Folio', '## Inserted\n\n---\n\n<!-- layout: title -->\n# Folio'];
 
 const before = { roadmap: w.read('Roadmap.md') };
 const note = w.read('Onboarding.md');
@@ -73,8 +78,44 @@ const r = await runApp(w, [{ size: [1300, 900], wait: 1200 },
   { js: "document.querySelector('#view-switch [data-view=\"split\"]').click();1", wait: 1200 },
   { js: "document.querySelector('#editor .cm-content').focus();document.execCommand('insertText',false,'ZZ');1", wait: 0 },
   { js: `${click('Deck6.slides.md')};1`, wait: 1200 },
-  { js: `${notes('Six')};1`, wait: 1200 },
+  { js: `window.__folioSurface.gotoSlide(0);${notes('Six')};1`, wait: 1200 },
   { js: "document.querySelector('#view-switch [data-view=\"visual\"]').click();1", wait: 800 },
+  // the same document changed from outside while something typed in the surface still waits (review of PR #121)
+  // notes typed for slide 2, and an AI edit inserts a slide before it within the 350 ms: the notes stay on that slide
+  { js: `${click('Deck7.slides.md')};1`, wait: 2000 },
+  { js: 'window.__folioSurface.gotoSlide(1);1', wait: 400 },
+  { js: `${notes('Moved notes')};1`, tool: aiEdit('Deck7.slides.md', ...insertSlide), wait: 1500 },
+  // split view: text typed in the code pane, then a visual edit within 250 ms: the visual edit lands on the newest text
+  { js: `${click('Deck8.slides.md')};1`, wait: 2000 },
+  { js: 'window.__folioSurface.gotoSlide(0);1', wait: 300 },
+  { js: "document.querySelector('#view-switch [data-view=\"split\"]').click();1", wait: 1200 },
+  { js: "{const c=document.querySelector('#editor .cm-content');c.focus();c.dispatchEvent(new KeyboardEvent('keydown',{key:'End',ctrlKey:true,bubbles:true,cancelable:true}));document.execCommand('insertText',false,'ZZ')};1", wait: 0 },
+  { js: `{const n=${shown('.sl-notes')};n.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));n.focus();n.value='Split notes';n.dispatchEvent(new Event('input',{bubbles:true}));n.blur()};1`, wait: 1200 },
+  { js: "document.querySelector('#view-switch [data-view=\"visual\"]').click();1", wait: 800 },
+  // notes typed, then another slide chosen from the code pane (split view scrolling) before their pause
+  { js: `${click('Deck9.slides.md')};1`, wait: 2000 },
+  { js: 'window.__folioSurface.gotoSlide(0);1', wait: 300 },
+  { js: `${notes('First notes')}; window.__folioSurface.selectAtLine(15); 1`, wait: 1200 },
+  // board: a label typed in the format panel, then Undo at once: Undo takes the label back (the timer does not re-apply it)
+  { js: `${click('Board4.board.md')};1`, wait: 2000 },
+  { js: "window.__folioSurface.gotoNode('api');1", wait: 400 },
+  { js: `${label('Undo me')}; window.__folioSurface.undo(); 1`, wait: 1200 },
+  // board: a label typed on the canvas, and an AI edit to another node meanwhile: both are kept
+  { js: `${click('Board5.board.md')};1`, wait: 2000 },
+  { js: "window.__folioSurface.gotoNode('api');1", wait: 400 },
+  { js: `${shown('.bd-canvas')}.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));${shown('.bd-editor')}.value='Kept label';1`, tool: aiEdit('Board5.board.md', '"Customer"', '"Client"'), wait: 1500 },
+  { js: 'document.activeElement?.blur();1', wait: 1000 },
+  // board: a line's label typed, and an AI edit deletes an earlier line within 300 ms: the label stays on its own line
+  { js: `${click('Board6.board.md')};1`, wait: 2000 },
+  { js: `${shown('.b-edge[data-e="2"]')}.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0}));1`, wait: 400 },
+  { js: `{const l=${shown('[data-e-label]')};l.focus();l.value='SQL v2';l.dispatchEvent(new Event('input',{bubbles:true}))};1`, tool: aiEdit('Board6.board.md', 'user -> web "browses"\n', ''), wait: 1500 },
+  // board: the format panel is redrawn after the label's pause; the field keeps focus, so later keys still count
+  { js: `${click('Board7.board.md')};1`, wait: 2000 },
+  { js: "window.__folioSurface.gotoNode('api');1", wait: 400 },
+  { js: `${label('Ab')};1`, wait: 700 },
+  log("({ focused: !!document.activeElement?.matches('[data-n-label]'), value: document.activeElement?.value })"),
+  { js: "{const l=document.activeElement;l.value='Abc';l.dispatchEvent(new Event('input',{bubbles:true}))};1", wait: 700 },
+  { js: 'document.activeElement?.blur();1', wait: 600 },
   // a page renamed while open keeps saving into itself (changes name their tab, which a rename keeps, not its old path)
   { js: `${click('Rename.md')};1`, wait: 1800 },
   { js: "window.__folioRun('rename');1", wait: 600 },
@@ -83,6 +124,7 @@ const r = await runApp(w, [{ size: [1300, 900], wait: 1200 },
   errors,
   // quitting at once: the notes still waiting for their pause are saved before Folio closes
   { js: `${click('Deck4.slides.md')};1`, wait: 2000 },
+  { js: 'window.__folioSurface.gotoSlide(0);1', wait: 300 },
   { js: `${notes('Before quitting')};1`, wait: 0 },
   { quit: true, wait: 4000 },
 ]);
@@ -107,6 +149,15 @@ ok('a cell typed in just before switching to another sheet goes to its own sheet
 const five = w.read('Deck5.slides.md'); assert.ok(five.includes('ZZ')); assert.equal(five.replace('ZZ', ''), orig.pitch);
 assert.equal(w.read('Deck6.slides.md'), withNotes(orig.pitch, 'Six'));
 ok('text typed in the code pane just before switching stays in its deck; the next deck keeps its own text');
+const ai7 = orig.pitch.replace(...insertSlide);
+assert.equal(w.read('Deck7.slides.md'), notesAt(ai7, 2, 'Moved notes')); ok('notes still waiting when an AI edit inserts a slide before theirs stay on their slide, and the AI edit is kept');
+assert.equal(w.read('Deck8.slides.md'), withNotes(orig.pitch + 'ZZ', 'Split notes')); ok('a visual edit right after typing in the code pane keeps what was typed there');
+assert.equal(w.read('Deck9.slides.md'), withNotes(orig.pitch, 'First notes')); ok('notes still waiting when another slide is chosen go to the slide they were typed for');
+assert.equal(w.read('Board4.board.md'), orig.board); ok('Undo right after typing a label takes the label back, and it does not come back');
+assert.equal(w.read('Board5.board.md'), withLabel(orig.board, 'Kept label').replace('"Customer"', '"Client"')); ok('a label being typed on the canvas and an AI edit made meanwhile are both kept');
+assert.equal(w.read('Board6.board.md'), orig.board.replace('user -> web "browses"\n', '').replace('api -> db "SQL"', 'api -> db "SQL v2"')); ok('a line label still waiting stays on its own line when an earlier line is deleted');
+assert.deepEqual(r.js.find((x) => x && typeof x === 'object' && 'focused' in x), { focused: true, value: 'Ab' });
+assert.equal(w.read('Board7.board.md'), withLabel(orig.board, 'Abc')); ok('the label field keeps focus when the panel is redrawn, so keys typed after the pause still count');
 assert.ok(!fs.existsSync(path.join(w.ws, 'Rename.md'))); assert.equal(w.read('Renamed.md'), '# Typed Note\n\nhello\n');
 ok('a page renamed while open goes on saving what is typed into it');
 assert.equal(w.read('Deck4.slides.md'), withNotes(orig.pitch, 'Before quitting')); ok('quitting right after typing saves what was still waiting');
