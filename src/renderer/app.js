@@ -545,7 +545,7 @@ async function closeTab(p = S.active) {
   persistTabs();
 }
 function reopenClosedTab() {
-  while (closedTabs.length) { const p = closedTabs.shift(); if (S.files.includes(p) && !tabOf(p)) return openFile(p); } // a page moved or deleted since is skipped
+  while (closedTabs.length) { const p = closedTabs.shift(); if (S.files.includes(p) && !tabOf(p)) return openFile(p).catch(() => reopenClosedTab()); } // a page moved or deleted since is skipped
   toast(tr('app.no-closed-tab'));
 }
 function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }

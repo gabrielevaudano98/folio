@@ -50,7 +50,7 @@ const stepsFile = path.join(tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON
 const child = spawn(electron, ['.', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])], { env: { ...process.env, FOLIO_USER_DATA: ud, FOLIO_SHOT: stepsFile }, stdio: ['ignore', 'pipe', 'pipe'] });
 let out = ''; child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
 const timer = setTimeout(() => child.kill(), 90000);
-child.on('exit', () => {
+child.on('close', () => { // 'close': after the output is fully drained
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nquick wins ui'); if (process.env.DEBUG) console.log(logs, out.slice(-800));
@@ -64,4 +64,5 @@ child.on('exit', () => {
   assert(tabsOpen.includes('other.md') && !tabsClosed.includes('other.md') && tabsReopened.includes('other.md') && tabsReopened.length === 2, JSON.stringify([tabsOpen, tabsClosed, tabsReopened]));
   console.log('  ✓ Reopen closed tab brings back the tab closed last');
   assert.deepEqual([modeBefore, modeAfter], ['light', 'dark']); console.log('  ✓ the light/dark command switches the appearance');
+  fs.rmSync(tmp, { recursive: true, force: true });
 });
