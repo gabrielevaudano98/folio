@@ -24,6 +24,7 @@ import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
 import { createUpdater } from './updater.js';
+import { createRequests } from './ai-requests.js';
 import electronUpdater from 'electron-updater';
 import { writeAtomic, writeAtomicSync, writeNew } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
@@ -45,6 +46,7 @@ if (process.env.FOLIO_USER_DATA) app.setPath('userData', process.env.FOLIO_USER_
 
 /* ---------------- settings ---------------- */
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
+const requests = createRequests();
 const BRIDGE_FILE = () => path.join(app.getPath('userData'), 'mcp-bridge.json');
 const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
@@ -197,6 +199,7 @@ if (isWin) systemPreferences.on?.('accent-color-changed', () => win?.webContents
 let watcher = null;
 const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own echo
 async function setWorkspace(dir) {
+  requests.clear(); // a request belongs to the folder it was written in
   await clearTrashed();
   settings.workspace = dir;
   if (dir) settings.recent = [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8);
@@ -590,6 +593,7 @@ const appBackend = {
         win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans, aiKept });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
+      requests: { pending: () => requests.pending(), finish: (id, reply) => { const r = requests.finish(id, reply); win?.webContents.send('ai:request-done', { ...r, client: ctx.client }); return r; } },
       openNote: () => askRenderer('open-note'),
       showNote: (a) => { win?.show(); win?.focus(); return askRenderer('show-note', a); },
     });
@@ -656,6 +660,7 @@ async function restartMcp() {
 }
 h('mcp:status', () => mcpStatus());
 h('mcp:token', () => settings.token);
+h('ai:ask', (_e, r) => ({ ...requests.add(r), pending: requests.count() }));
 h('mcp:rotate-token', () => { settings.token = crypto.randomBytes(24).toString('hex'); saveSettings(); return settings.token; });
 
 /* ---------------- connections to AI clients ---------------- */
