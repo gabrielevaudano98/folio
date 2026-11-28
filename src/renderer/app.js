@@ -916,8 +916,9 @@ function saveFavs(list) {
 }
 let favQueue = Promise.resolve();
 function toggleFav(p) {
-  if (!p) return;
-  favQueue = favQueue.then(() => { // one at a time, each from the settings the previous one saved: two quick stars never overwrite each other
+  if (!p) return; const ws = S.workspace;
+  favQueue = favQueue.then(() => { if (S.workspace !== ws) return; // another folder was opened meanwhile: its favourites are not ours to change
+    // one at a time, each from the settings the previous one saved: two quick stars never overwrite each other
     const on = isFav(p);
     toast(tr(on ? 'app.fav-removed' : 'app.fav-added', { name: stem(p) }));
     return saveFavs(on ? favList().filter((x) => x !== p) : [...favList(), p]);
