@@ -76,6 +76,14 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `connections` | request | `connections:list` | `src/main/main.js` |
 | `install` | request | `connections:install` | `src/main/main.js` |
 | `uninstall` | request | `connections:remove` | `src/main/main.js` |
+| `sheets` | request | `sheets:call` | **missing** |
+| `sheetsImport` | request | `sheets:import` | **missing** |
+| `sheetsComponents` | request | `sheets:components` | **missing** |
+| `sheetsInstall` | request | `sheets:install` | **missing** |
+| `sheetsUninstall` | request | `sheets:uninstall` | **missing** |
+| `sheetsCancelInstall` | request | `sheets:cancel-install` | **missing** |
+| `onSheetsProgress` | event | `sheets:progress` | — |
+| `onSheetsInstallProgress` | event | `sheets:install-progress` | — |
 | `answer` | message | `ai:answer` | `src/main/main.js` |
 | `closeOk` | message | `app:close-ok` | `src/main/main.js` |
 | `closeCancel` | message | `app:close-cancel` | `src/main/main.js` |

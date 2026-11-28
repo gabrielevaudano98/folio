@@ -24,6 +24,7 @@ import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { mayOpenWithSystem } from './open-guard.js';
 import { createFeatures } from './meeting/service.js';
+import { createSheetsEngine } from './sheets-engine.js';
 import { createUpdater } from './updater.js';
 import { createRequests } from './ai-requests.js';
 import electronUpdater from 'electron-updater';
@@ -263,6 +264,8 @@ const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, 
   execReg: process.platform === 'win32' ? (args) => new Promise((res, rej) => execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe'), args, { windowsHide: true, timeout: 5000, maxBuffer: 1 << 20 }, (e, out) => (e ? rej(e) : res(out)))) : null });
 // updates from GitHub releases: a check at startup and every six hours (Settings → Updates switches it off)
 const updater = createUpdater({ app, shell, h, getWin: () => win, settings, saveSettings, autoUpdater: electronUpdater.autoUpdater });
+// Folio Sheets' data engine: imports, exports, queries, scripts, Python, what-if (src/sheets/engine/worker.js)
+const sheetsEngine = createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin: () => win, notes, enginePath: path.join(__dirname, 'sheets-engine.cjs'), wasmPath: path.join(__dirname, 'quickjs.wasm') });
 h('workspace:choose', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;
@@ -602,6 +605,7 @@ const appBackend = {
         win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans, aiKept });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
+      sheets: (method, payload, notePath) => sheetsEngine.callFor(method, payload, { note: notes.relOf(notes.resolve(notePath)) }),
       requests: { pending: () => requests.pending(), finish: (id, reply) => { const r = requests.finish(id, reply); win?.webContents.send('ai:request-done', { ...r, client: ctx.client }); return r; } },
       openNote: () => askRenderer('open-note'),
       showNote: (a) => { win?.show(); win?.focus(); return askRenderer('show-note', a); },
@@ -871,7 +875,10 @@ async function devShot(w) {
         const m = app.getAppMetrics().map((x) => ({ type: x.type, mb: Math.round((x.memory.privateBytes ?? x.memory.workingSetSize) / 1024), cpu: Math.round(x.cpu.percentCPUUsage) }));
         console.log('js', JSON.stringify({ metrics: m, totalMB: m.reduce((n, x) => n + x.mb, 0) }));
       }
-      if (s.tool) { try { await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); } catch (e) { console.error('shot tool', e.message); } }
+      if (s.diskWrite) fss.writeFileSync(s.diskWrite.path, s.diskWrite.text); // another program writes a file (tests)
+      if (s.profile === 'start') { w.webContents.debugger.attach('1.3'); await w.webContents.debugger.sendCommand('Profiler.enable'); await w.webContents.debugger.sendCommand('Profiler.setSamplingInterval', { interval: 200 }); await w.webContents.debugger.sendCommand('Profiler.start'); }
+      if (s.profile === 'stop') { const { profile } = await w.webContents.debugger.sendCommand('Profiler.stop'); w.webContents.debugger.detach(); fss.writeFileSync(s.profileOut, JSON.stringify(profile)); console.log('profile', s.profileOut); }
+      if (s.tool) { try { const v = await appBackend.call(s.tool.name, s.tool.args, { client: s.tool.client || 'Claude Desktop' }); if (s.log) console.log('js', JSON.stringify(v ?? null)); } catch (e) { console.error('shot tool', e.message); if (s.log) console.log('js', JSON.stringify(`ERR ${e.message}`)); } }
       await wait(s.wait ?? 700);
       if (s.out) { const img = await w.webContents.capturePage(); fss.writeFileSync(s.out, img.toPNG()); console.log('shot', s.out); }
     }

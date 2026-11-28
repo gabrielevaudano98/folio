@@ -355,6 +355,32 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 - A cell that starts with `=` is a formula, Excel syntax: `SUM`, `AVERAGE`, `IF`, `IFS`, `IFERROR`, `COUNTIF`, `SUMIF`, `VLOOKUP`, `HLOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `ROUND`, `TEXTJOIN`, dates, finance and about 380 more. `$` locks a reference. Write a pipe inside a cell as `\|`.
 - The optional `<!-- sheet: {...} -->` comment right after a table holds formatting: `cols` and `cells` with `format` (`number`, `integer`, `currency`, `usd`, `percent`, `date`, `text`), `bold`, `italic`, `align`, `width`; `view: "kanban"` and `kanbanBy` (column index) for the Kanban view.
 - Values are not stored, only formulas. Through MCP, `get_sheet_values` returns the computed values.
+- Text that would otherwise read as something else keeps one apostrophe in front, as in Excel and Google Sheets:
+  `'42` is the text "42", `'TRUE` the text "TRUE", `'=A1` the text "=A1" (an apostrophe before plain text is just
+  text: `'hello`). A line break inside a cell is `<br>`; a literal `<br>` is written `&lt;br>`; blanks at either end of
+  a cell, which a Markdown table trims, are written as `&#32;` (or `&#9;` for a tab); `&lt;`, `&amp;` and `&#n;` are
+  read as their characters, so an `&` that would start one is written `&amp;`.
+
+#### sheet-md v2 (Folio Sheets)
+
+The same file carries everything Folio Sheets edits; a file written by hand in the v1 style stays valid, and opening
+it never rewrites it. Full reference: [docs/sheets/README.md](sheets/README.md).
+
+- In the sheet comment, besides `cols`, `cells` and `rows`: `merges` (`["A5:C5"]`), `freeze` (`{"rows":1,"cols":0}`),
+  `tab` (colour), `hidden`, `gridlines`, `zoom`, `validation` (`[{"range":"B2:B9","type":"list","formula1":"EU,US"}]`),
+  `cf` (conditional formatting rules), `notes` (`{"F5":"Grand total"}`), `filter` (`{"range":"A1:F9"}`), `charts`
+  (`[{"type":"column","range":"C1:D9","title":"…","at":{"x":420,"y":40,"w":480,"h":300}}]`), `slicers`, `buttons`,
+  `protect` (`{"allow":["B2:B9"],"password":{…}}`), `encrypted` (AES-GCM boxes of encrypted ranges).
+- Cell keys add `font`, `size`, `color`, `fill`, `underline`, `strike`, `valign`, `wrap`, `rotate`, `border`
+  (`{"top":"thin #1f1f1f"}`), `numfmt` (any Excel pattern) and `data` (a rich data type: `{"type":"place","name":"Turin"}`).
+- One `<!-- workbook: {…} -->` comment holds workbook settings: `names` (defined names), `scenarios`, `print`
+  (page setup), `loads` (where query and pivot results were written), `scripts` (`{"hooks":true}`), `source` (the
+  original .xlsx/.xlsm kept as an asset for export).
+- Fenced blocks are part of the workbook: ```` ```fql Name ```` (queries and data models, [FQL](sheets/FQL.md)),
+  ```` ```pivot Name ```` (`source:`, `rows:`, `columns:`, `values: sum(Total)`, `filter:`, `place:`),
+  ```` ```script Name ```` ([Folio Script](sheets/SCRIPT.md)) and ```` ```python Name ````.
+- A signed workbook ends with `<!-- signature: {…} -->`: RSA-SHA256 over the rest of the file, with the public key.
+- Unknown keys and blocks are kept as written.
 
 ### Templates
 

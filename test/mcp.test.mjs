@@ -111,6 +111,8 @@ if (!process.env.FOLIO_APP_BRIDGE) {
   const c = new Client({ name: 'folio-test', version: '1' });
   await c.connect(t);
   await suite(c, root, 'stdio bridge, Folio closed (direct mode)');
+  const q = await c.callTool({ name: 'refresh_sheet', arguments: { path: 'Budget.sheet.md' } });
+  assert(q.isError && /Open Folio/.test(text(q))); ok('sheet engine tools ask for Folio when it is closed');
   await c.close();
   { // X3: with Folio closed, the stdio bridge reads the page locks from settings.json next to the bridge file
     const ud = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-lock-ud-')), ws = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-lock-ws-'));

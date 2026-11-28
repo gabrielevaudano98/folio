@@ -2,8 +2,11 @@
 import * as esbuild from 'esbuild';
 import { execFileSync } from 'node:child_process';
 const run = (f, ...args) => execFileSync(process.execPath, [f, ...args], { stdio: 'inherit' });
-await esbuild.build({ entryPoints: ['test/formats.test.mjs', 'test/mcp-gating.test.mjs'], bundle: true, platform: 'node', format: 'esm', outdir: 'dist/test', outExtension: { '.js': '.mjs' }, logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
+await esbuild.build({ entryPoints: ['test/formats.test.mjs', 'test/mcp-gating.test.mjs', 'test/sheets.test.mjs', 'test/fql.test.mjs', 'test/sheets-engine.test.mjs'], alias: { jquery: './src/sheets/core/jquery-lite.cjs' }, bundle: true, platform: 'node', format: 'esm', outdir: 'dist/test', outExtension: { '.js': '.mjs' }, logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
 run('dist/test/formats.test.mjs');
+run('dist/test/sheets.test.mjs'); run('dist/test/fql.test.mjs'); run('dist/test/sheets-engine.test.mjs'); // Folio Sheets (docs/sheets)
+run('test/sheets-formula-cache.test.mjs'); // formula cache and incremental recalculation: the values of stock Univer
+run('test/sheets-preview.test.mjs'); // first screen computed first: the values of a full computation
 run('test/pagetools.test.mjs');
 run('test/ai-requests.test.mjs');
 run('test/board-sheet-tools.test.mjs');
@@ -14,6 +17,7 @@ run('test/history.test.mjs');
 run('test/assets.test.mjs');
 run('test/duplicate.test.mjs');
 run('test/i18n.test.mjs');
+run('test/sheets-i18n.test.mjs');
 run('test/dates.test.mjs');
 run('test/search.test.mjs');
 run('test/reminders.test.mjs');
@@ -38,6 +42,11 @@ if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || proces
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/perf.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && process.platform === 'linux' && process.env.DISPLAY) run('test/visual.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/sync.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/sheets-ui.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/sheets-components-ui.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/tab-switch-save.test.mjs');
+run('test/sheets-value-cache.test.mjs');
+if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/sheets-tabs.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/insert.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/format.test.mjs');
 if (process.env.FOLIO_SKIP_UI !== '1' && (process.platform !== 'linux' || process.env.DISPLAY)) run('test/design.test.mjs');

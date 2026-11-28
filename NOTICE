@@ -34,8 +34,12 @@ THIRD-PARTY SOFTWARE
 Folio bundles open-source libraries under their own licenses (MIT, Apache-2.0,
 ISC, BSD), among them Electron, CodeMirror, TipTap, markdown-it, Mermaid,
 KaTeX, highlight.js, pptxgenjs, JSZip, hot-formula-parser, dagre and the Model
-Context Protocol SDK. Their notices are kept in node_modules and in the built
-application's license files.
+Context Protocol SDK; Folio Sheets adds Univer (Apache-2.0), Apache ECharts
+(Apache-2.0), Arquero (BSD-3-Clause), SheetJS Community Edition (Apache-2.0),
+xlsx-kit (MIT), quickjs-emscripten (MIT), node-forge (BSD-3-Clause, chosen from
+its BSD-3-Clause or GPL-2.0 dual license), PivotTable.js (MIT), React (MIT),
+RxJS (Apache-2.0) and json-diff-ts (MIT). Their notices are kept in
+node_modules and in the built application's license files.
 
 OPTIONAL COMPONENTS (downloaded only when the person turns on a feature)
 
@@ -48,3 +52,7 @@ Settings → Optional features and in src/main/features/catalog.js:
   - Parakeet TDT 0.6B v3 (CC-BY-4.0), NVIDIA; converted to ONNX int8 by sherpa-onnx
   - llama.cpp (MIT), the ggml authors
   - Qwen3-1.7B (Apache-2.0), Qwen team, Alibaba Cloud; GGUF by Unsloth
+
+Folio Sheets downloads the same way, when the person turns them on:
+  - DuckDB (MIT), DuckDB Foundation
+  - Pyodide (MPL-2.0) and its Python packages under their own licenses

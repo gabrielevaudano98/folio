@@ -45,7 +45,7 @@ const stem = (p) => base(p).replace(/(\.(slides|board|sheet))?\.(md|markdown|mdx
 
 /* ---------- document types: every type has a visual view and a code view ---------- */
 // the visual editors are loaded the first time a document of their type is opened, so startup parses only what pages need
-const SURFACES = { slides: () => import('./slides.js').then((m) => m.mountSlides), board: () => import('./board.js').then((m) => m.mountBoard), sheet: () => import('./sheet.js').then((m) => m.mountSheet) };
+const SURFACES = { slides: () => import('./slides.js').then((m) => m.mountSlides), board: () => import('./board.js').then((m) => m.mountBoard), sheet: () => import('../sheets/ui/surface.js').then((m) => m.mountSheet) }; // Folio Sheets (src/sheets, docs/sheets)
 const surfaceMods = {};
 const loadSurface = (type) => (surfaceMods[type] ||= SURFACES[type]().then((mount) => { surfaceMods[type].mount = mount; return mount; }, (e) => { delete surfaceMods[type]; throw e; }));
 const NEW_BOARD = (t) => `# ${t}\n\nA board in board-md. Shapes: \`id: shape "Label" @x,y\`. Connectors: \`a -> b "label"\`.\n\n\`\`\`board\nstart: terminator "Start" @40,60\nidea: rect "Write the idea" @230,55\nok: diamond "Clear?" @430,45\ndone: terminator "Share" @620,60\nnote: note "Double-click to edit, drag from the dots to connect" @220,190 200x80\n\nstart -> idea\nidea -> ok\nok -> done "yes"\nok.bottom -> idea.bottom "no" {route: orthogonal}\n\`\`\`\n`;
@@ -84,9 +84,10 @@ function surfaceFor(type) {
 function surfaceCtx(type) {
   return {
     icons, keyLabel, toast, prompt, confirm: confirmSheet, showMenu,
-    // a surface that saves later (a sheet saves after a pause, or in slices) names the document it saved: when that is
-    // no longer the active tab, the text goes to its own tab, never into the one now shown
-    onChange: (text, path) => (path && path !== S.active ? backgroundChange(path, text) : onEditorChange(text, false, 'surface')),
+    // every change a surface reports names the tab whose document it holds (the tab object, which a rename keeps; see
+    // docKey): a change that lands after the tab changed (notes and labels wait for a pause) goes to its own tab, never
+    // into the one now shown
+    onChange: (text, tab) => (tab && tab !== activeTab() ? backgroundChange(tab, text) : onEditorChange(text, false, 'surface')),
     onStatus: (s) => { S.surfaceStatus = s; renderStatus(); },
     resolveImage: resolveImg,
     dataUrl: (src) => folio.dataUrl(src, S.active),
@@ -108,6 +109,8 @@ function surfaceCtx(type) {
     userName: () => folio.userName(),
     pickImage: () => folio.pickImage(S.active),
     pickMedia: (kind) => folio.pickMedia(S.active, kind),
+    createDoc: createDocHere,
+    openFile: (p) => openFile(p),
   };
 }
 const curType = () => app.dataset.doc || 'md';
@@ -162,9 +165,9 @@ async function boot() {
     onUnlock: () => setPageLock(S.active, false),
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
-    // the page editor reports a change after a short pause: it names the page it holds (richPath), so a change that
-    // lands after the tab changed goes to that page, never into the document now shown
-    onChange: (md) => (richPath && richPath !== S.active ? backgroundChange(richPath, md) : onEditorChange(md, false, 'rich')),
+    // the page editor reports a change after a short pause: it names the tab whose page it holds (richTab), so a change
+    // that lands after the tab changed goes to that page, never into the document now shown
+    onChange: (md) => (richTab && richTab !== activeTab() ? backgroundChange(richTab, md) : onEditorChange(md, false, 'rich')),
     resolveImage: resolveImg,
     onRemoteBlocked: (n) => { remoteBlockedCount = n; renderRemoteNotice(); },
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
@@ -435,7 +438,10 @@ function setView(v, { persist = true } = {}) {
   if (type !== 'md') {
     const s = surfaceFor(type);
     if (!s) { loadSurface(type).then(() => { if (curType() === type) setView(v, { persist }); }, (e) => toast(e.message, { kind: 'error' })); return; }
-    if (t && s) { if (v !== 'code' && prev === 'code') s.setText(t.text); if (v !== 'visual') editor.applyRemote(t.text); s.setMode?.(v); }
+    if (t && s) {
+      if (prev !== 'code' && v !== prev) flushSurface(); // what the surface still holds reaches the tab before the code view takes its text
+      if (v !== 'code' && prev === 'code') s.setText(t.text); if (v !== 'visual') editor.applyRemote(t.text); s.setMode?.(v);
+    }
     $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
     layoutPanes();
     if (persist) localStorageSet('folio.view.' + type, v);
@@ -540,7 +546,10 @@ function activate(p, { line } = {}) {
   app.dataset.modeView = v;
   $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
   layoutPanes();
-  if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
+  // a document shown only in its visual view (a sheet, deck, board) is not loaded into the hidden text editor: parsing
+  // a 3.6 MB workbook there cost ~1.4 s of the window's time; setView hands the text over when split or code is shown
+  if (type !== 'md' && v === 'visual') { if (editor.view.state.doc.length) editor.setDoc(''); t.cm = null; }
+  else if (t.cm && t.cm.doc.toString() === t.text) editor.restore(t.cm); else editor.setDoc(t.text);
   if (type === 'md') { if (isRich()) { if (t.rich && t.rich.md === t.text) richShow().restore(t.rich); else richShow().setMarkdown(t.text); } }
   else {
     const s = surfaceFor(type);
@@ -571,6 +580,7 @@ async function closeTab(p = S.active) {
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
+  setTimeout(() => forgetTab(t), 0); // after the next tab is shown, so a surface lets go of the closed one
   { const k = closedTabs.indexOf(p); if (k >= 0) closedTabs.splice(k, 1); closedTabs.unshift(p); closedTabs.length = Math.min(closedTabs.length, 20); } // N5: Mod+Shift+T opens it again
   if (S.active === p) {
     const next = S.tabs[i] || S.tabs[i - 1];
@@ -585,21 +595,27 @@ function reopenClosedTab() {
 function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 
 /* ============ editing & saving ============ */
-const autosave = debounce(() => saveActive(), 650);
-const surfaceSoon = debounce((text) => curSurface()?.setText(text), 250);
+const autosave = debounce(() => { const t = activeTab(); if (t) saveTab(t); }, 650); // a pause in typing: what is still being typed (a cell, a label) stays open
+// the code pane's text reaches the surface after a pause, only while its tab is still shown: the next tab has its own
+// text already, and must not be given this one
+const surfaceSoon = debounce((text, tab) => { if (tab === activeTab()) curSurface()?.setText(text); }, 250);
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
-let richPath = null; // the page the page editor holds
+let richTab = null; // the tab whose page the page editor holds
 /** the page editor, about to be given the active tab's page */
-function richShow() { richPath = S.active; return rich; }
-/** a change a surface reports for a tab that is not the active one (see surfaceCtx onChange) */
-function backgroundChange(path, text) {
-  const t = tabOf(path); if (!t || t.dead || text === t.text) return;
+function richShow() { richTab = activeTab(); return rich; }
+/** a surface that keeps documents of hidden tabs (sheets do) lets go of a closed tab's */
+function forgetTab(t) { for (const sf of Object.values(surfaces)) { try { sf.forget?.(t); } catch (e) { console.error('[surface] forget', e); } } }
+/** a change the page editor or a surface reports for a tab that is not the active one (see surfaceCtx onChange) */
+function backgroundChange(t, text) {
+  if (!S.tabs.includes(t) || t.dead || text === t.text) return; // a closed tab was flushed and saved before it closed
   t.text = text; renderTabsDirty();
   saveTab(t);
 }
-/** a surface finishes what it has pending for the shown document (a sheet's delayed save) before the tab changes */
-function flushSurface() {
-  try { curSurface()?.flush?.(); } catch (e) { console.error('[surface] flush', e); }
+/** the shown editor hands over what it still holds for its document (the page editor's 220 ms pause; a surface's notes,
+ *  label or cell still being typed) before the tab changes, the view changes or the tabs are saved. `keepEditing`: an
+ *  explicit save, after which the person goes on typing in the same cell or text box */
+function flushSurface({ keepEditing = false } = {}) {
+  try { if (curType() !== 'md') curSurface()?.flush?.({ keepEditing }); } catch (e) { console.error('[surface] flush', e); }
   try { if (curType() === 'md' && isRich()) rich.flush?.(); } catch (e) { console.error('[rich] flush', e); }
 }
 function onEditorChange(text, isRemote, from = 'source') {
@@ -610,7 +626,7 @@ function onEditorChange(text, isRemote, from = 'source') {
   if (text === t.text) return;
   t.text = text;
   if (curType() !== 'md') {
-    if (from === 'source' && app.dataset.modeView === 'split') surfaceSoon(text);
+    if (from === 'source' && app.dataset.modeView === 'split') surfaceSoon(text, t);
     if (from === 'surface' && app.dataset.modeView === 'split') editor.applyRemote(text);
   }
   if (!isRemote) { autosave(); setSaveState('edited'); }
@@ -651,7 +667,7 @@ async function saveAllOrAsk() {
   if (discard) S.writesFrozen = true; // the pages are about to go: no later save (a Retry, an autosave) may write them, least of all into another folder
   return discard;
 }
-async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
+async function saveActive() { flushSurface({ keepEditing: true }); const t = activeTab(); if (t) await saveTab(t); } // ⌘S, history, a named version: with what is still being typed
 let saveStateTimer;
 function setSaveState(s) { $('#st-save').textContent = tr(`app.save-${s}`); clearTimeout(saveStateTimer); if (s === 'saved') saveStateTimer = setTimeout(() => ($('#st-save').textContent = ''), 1600); }
 
@@ -1370,7 +1386,7 @@ function renderStatus() {
 function showEmpty(html) { const e = $('#empty-state'); e.innerHTML = `<div class="empty-inner">${html}</div>`; e.hidden = false; }
 function hideEmpty() { $('#empty-state').hidden = true; }
 function showWelcome() {
-  S.workspace = null; S.tabs = []; S.active = null;
+  S.workspace = null; S.tabs.forEach(forgetTab); S.tabs = []; S.active = null;
   $('#workspace-name').textContent = tr('ui.no-folder');
   $('#tree').innerHTML = '<div class="side-empty">' + tr('app.open-a-folder-to-see-its-notes-here') + '</div>';
   renderTabs(); renderStatus(); hideAiBanner();
@@ -1695,7 +1711,7 @@ async function chooseFolder() {
 async function switchWorkspace(dir, { saved = false } = {}) {
   if (!saved) { await actions.idle(); if (!(await saveAllOrAsk())) return false; } // let a file action still running finish in the folder it started in
   for (const t of S.tabs) t.dead = true; // the old tabs go now: nothing of theirs is written any more (not even a pending Retry)
-  S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); resetRemote();
+  S.tabs.forEach(forgetTab); S.tabs = []; S.active = null; S.aiEdits.clear(); S.expanded.clear(); resetRemote();
   S.writesFrozen = false;
   renderTabs();
   await folio.openWorkspace(dir);
@@ -1950,6 +1966,7 @@ function openSettings() {
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.smart-quotes-and-dashes')}</span><span class="row-sub">${tr('app.typing-becomes-in-the-write-view')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="${tr('app.smart-quotes-and-dashes')}"></label></div>
       </div></section>
       <section class="group" id="set-features" aria-busy="true"><h3>${tr('app.optional-features')}</h3></section>
+      <section class="group" id="set-sheets-components" aria-busy="true"><h3>${tr('sc.title')}</h3></section>
       <section class="group"><h3>${tr('app.about')}</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">${tr('app.based-on-folio-by-gabriele-vaudano-fre')}</span></div>
           <button class="btn" type="button" data-open-url="https://github.com/gabrielevaudano98/folio">${tr('app.source-code')}</button></div>
@@ -1965,6 +1982,7 @@ function openSettings() {
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
   paintUpdates();
   meeting().then((m) => m.renderSettings($('#set-features', d))).catch((e) => toast(e.message, { kind: 'error' }));
+  import('./sheets-components.js').then((m) => m.renderSheetsComponents($('#set-sheets-components', d), { esc, toast, confirm: confirmSheet })).catch((e) => toast(e.message, { kind: 'error' }));
 }
 
 /* ============ updates (GitHub releases, see docs/explanation/updates.md) ============ */
@@ -2968,7 +2986,7 @@ function bindIpc() {
   folio.onTheme(({ dark, accent }) => applyTheme(dark, accent));
   folio.onSwitched(async ({ file }) => {
     const ws = (await folio.init()).settings.workspace;
-    if (ws !== S.workspace) { S.tabs = []; S.active = null; renderTabs(); await loadWorkspace(ws); }
+    if (ws !== S.workspace) { S.tabs.forEach(forgetTab); S.tabs = []; S.active = null; renderTabs(); await loadWorkspace(ws); }
     if (file) { await refreshTree(); openFile(file); }
   });
   folio.onBeforeClose(async () => { if (await saveAllOrAsk()) folio.closeOk(); else folio.closeCancel?.(); });
@@ -2979,6 +2997,7 @@ window.__folioErrors = [];
 window.__folioRun = (id) => (id === 'palette' ? openPalette('commands') : COMMANDS.find((x) => x.id === id)?.run()); // the palette is opened by the menu, not a command
 Object.defineProperty(window, '__folioSurface', { get: () => curSurface() });
 Object.defineProperty(window, '__folioEditor', { get: () => editor });
+Object.defineProperty(window, '__folioTabText', { get: () => activeTab()?.text ?? '' }); // tests: the active document's text in any view
 addEventListener('error', (e) => { window.__folioErrors.push(String(e.message)); console.error('[folio-error]', e.message); });
 addEventListener('unhandledrejection', (e) => { window.__folioErrors.push(String(e.reason?.message || e.reason)); if (e.reason?.stack) console.error('[folio-error-stack]', e.reason.stack.split('\n').slice(0, 4).join(' | ')); console.error('[folio-error]', e.reason?.message || e.reason); });
 boot().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<div class="toasts"><div class="toast" data-kind="error" role="alert"><p>${esc(tr('app.could-not-start', { message: e.message }))}</p></div></div>`); console.error(e); });

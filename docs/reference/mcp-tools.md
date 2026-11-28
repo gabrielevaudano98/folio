@@ -11,7 +11,11 @@ The tools Folio offers to AI assistants, over HTTP (in the app) and stdio (the b
 | `search_notes` | no | Full-text search across every note. Returns paths and matching lines with line numbers. |
 | `get_outline` | no | Return the heading structure of a note: level, text, first line and last line of each section (sub-sections included). |
 | `get_format_guide` | no | Return the syntax of Folio document types: pages (.md: footnotes, maths, colour, alignment, hidden comments), slides-md (.slides.md, Marp compatible), board-md (.board.md diagrams), sheet-md (.sheet.md spreadsheets), or the guide to building slide templates (type template: colours, fonts, masters with placeholders, variants; templates live in Templates/). |
-| `get_sheet_values` | no | Evaluate every formula in a .sheet.md note and return each sheet as a grid of computed values, with cell addresses. |
+| `get_sheet_values` | no | Evaluate every formula in a .sheet.md note with the same engine Folio shows (400+ Excel functions, dynamic arrays) and return each sheet as a grid of computed values, with cell addresses and the text as formatted in Folio. |
+| `run_sheet_query` | no | Run FQL (Folio Query Language, Power Query-like: get_format_guide type sheet, and docs in the workbook) against a .sheet.md workbook and return the results without writing anything. Give `query` to run one of the workbook's own queries, or `fql` to run your own program (e.g. `query Top = from sheet "Orders" \| groupby Region \| rollup Total = sum(Qty)`). |
+| `sheet_goal_seek` | no | Excel's Goal Seek on a .sheet.md workbook, without changing it: find the value of the `by` cell that makes the formula in `set` equal `to`. |
+| `refresh_sheet` | yes | Refresh all in a .sheet.md workbook: run every FQL query that loads into a sheet and recompute every PivotTable, writing the results where Folio writes them (the previous results are replaced). |
+| `run_sheet_macro` | yes | Run a macro (a function of the workbook's ```script blocks, Folio Script, Apps Script-like) and write its changes. Protected sheets refuse changes outside their editable ranges, as in Folio. |
 | `get_open_note` *(app only)* | no | Return the note the user has open in Folio right now, its unsaved text and the current selection. |
 | `create_note` | yes | Create a new note. Fails if the path already exists. |
 | `write_note` | yes | Replace the entire content of a note (creates it if missing). Prefer edit_note for small changes. |
@@ -108,12 +112,54 @@ Return the syntax of Folio document types: pages (.md: footnotes, maths, colour,
 
 ## `get_sheet_values`
 
-Evaluate every formula in a .sheet.md note and return each sheet as a grid of computed values, with cell addresses.
+Evaluate every formula in a .sheet.md note with the same engine Folio shows (400+ Excel functions, dynamic arrays) and return each sheet as a grid of computed values, with cell addresses and the text as formatted in Folio.
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes |  |
 | `sheet` | string | no | Sheet name; all sheets when omitted |
+
+## `run_sheet_query`
+
+Run FQL (Folio Query Language, Power Query-like: get_format_guide type sheet, and docs in the workbook) against a .sheet.md workbook and return the results without writing anything. Give `query` to run one of the workbook's own queries, or `fql` to run your own program (e.g. `query Top = from sheet "Orders" | groupby Region | rollup Total = sum(Qty)`).
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `query` | string | no | Name of a query in the workbook's ```fql blocks |
+| `fql` | string | no | An FQL program to run instead |
+| `limit` | integer | no | Rows returned per result (default 200) |
+
+## `sheet_goal_seek`
+
+Excel's Goal Seek on a .sheet.md workbook, without changing it: find the value of the `by` cell that makes the formula in `set` equal `to`.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `set` | string | yes | Cell with the formula, e.g. "F5" or "Orders!F5" |
+| `to` | number | yes |  |
+| `by` | string | yes | Input cell to change, e.g. "D2" |
+| `sheet` | string | no | Sheet the cells are on when not written in them |
+
+## `refresh_sheet`
+
+Refresh all in a .sheet.md workbook: run every FQL query that loads into a sheet and recompute every PivotTable, writing the results where Folio writes them (the previous results are replaced).
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+
+## `run_sheet_macro`
+
+Run a macro (a function of the workbook's ```script blocks, Folio Script, Apps Script-like) and write its changes. Protected sheets refuse changes outside their editable ranges, as in Folio.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes |  |
+| `macro` | string | yes |  |
+| `args` | array | no |  |
+| `sheet` | string | no | Active sheet for the macro (default: the first) |
 
 ## `get_open_note`
 

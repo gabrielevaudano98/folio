@@ -69,7 +69,7 @@ function catalog() {
   let o = head('Optional components', 'src/main/features/catalog.js');
   o += 'What an optional feature downloads. Every file has a fixed address (a commit, a version or a release tag) and a SHA-256 that is checked before the file is used, so a changed file is refused; nothing outside this list is ever downloaded. Components live in `%LOCALAPPDATA%\\Folio\\components` on Windows.\n\n';
   for (const [id, f] of Object.entries(FEATURES)) {
-    o += `## Feature: ${f.name} (\`${id}\`)\n\n${f.description}\n\n- Platforms: ${f.platforms.join(', ')}\n- Memory budget: worker ${f.budget.workerMB} MB, whole app ${f.budget.appMB} MB\n- Required: ${f.required.map((c) => `\`${c}\``).join(', ')}\n- Notes (optional): ${f.notes.map((c) => `\`${c}\``).join(', ')}\n`;
+    o += `## Feature: ${f.name} (\`${id}\`)\n\n${f.description}\n\n- Platforms: ${f.platforms.join(', ')}\n- Memory budget: worker ${f.budget.workerMB} MB, whole app ${f.budget.appMB} MB\n- Required: ${f.required.map((c) => `\`${c}\``).join(', ')}\n- Notes (optional): ${f.notes.map((c) => `\`${c}\``).join(', ') || '—'}\n${f.optional ? `- Optional components: ${f.optional.map((c) => `\`${c}\``).join(', ')}\n` : ''}`;
     if (f.alternatives) o += `- Alternatives: ${Object.entries(f.alternatives).map(([k, v]) => `${k}: ${v.map((c) => `\`${c}\``).join(', ')}`).join('; ')}\n`;
     o += '\n';
   }

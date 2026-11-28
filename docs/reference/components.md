@@ -14,6 +14,16 @@ Records your computer’s sound and your microphone, transcribes on this compute
 - Notes (optional): `llama-server`, `qwen3-1.7b-q4km`
 - Alternatives: asr: `parakeet-tdt-0.6b-v3-int8`
 
+## Feature: Sheets: data connectors and Python (`sheets-data`)
+
+SQL, Parquet and database files in queries (DuckDB) and Python in workbooks (Pyodide). Both run in a sandbox on this computer.
+
+- Platforms: win32, darwin, linux
+- Memory budget: worker 3072 MB, whole app 4096 MB
+- Required: 
+- Notes (optional): —
+- Optional components: `duckdb`, `pyodide`
+
 ## Components
 
 | Id | Kind | Name | Version | License | Peak memory | Download (Windows x64) |
@@ -24,6 +34,8 @@ Records your computer’s sound and your microphone, transcribes on this compute
 | `parakeet-tdt-0.6b-v3-int8` | asr | Transcription: Parakeet TDT 0.6B v3 (int8) | v3-int8 | CC-BY-4.0 | 1000 MB | 670.6 MB |
 | `llama-server` | runtime | Notes engine (llama.cpp server) | b12550 | MIT | — | 24.8 MB |
 | `qwen3-1.7b-q4km` | llm | Notes: Qwen3 1.7B (Q4_K_M) | q4_k_m | Apache-2.0 | 1700 MB | 1.11 GB |
+| `duckdb` | data | Data connectors (DuckDB) | 2.0.1-r.1 | MIT | — | 20.9 MB |
+| `pyodide` | data | Python (Pyodide) | 314.0.8 | MPL-2.0 | — | 6.5 MB |
 
 ## Attribution
 
@@ -33,3 +45,5 @@ Records your computer’s sound and your microphone, transcribes on this compute
 - **Transcription: Parakeet TDT 0.6B v3 (int8)** — Parakeet TDT 0.6B v3 by NVIDIA (nvidia/parakeet-tdt-0.6b-v3), CC-BY-4.0. Changed: exported to ONNX and quantised to int8 by the sherpa-onnx project. [License](https://creativecommons.org/licenses/by/4.0/)
 - **Notes engine (llama.cpp server)** — llama.cpp, Copyright (c) The ggml authors [License](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE)
 - **Notes: Qwen3 1.7B (Q4_K_M)** — Qwen3-1.7B by the Qwen team, Alibaba Cloud. GGUF conversion by Unsloth. [License](https://huggingface.co/Qwen/Qwen3-1.7B/blob/main/LICENSE)
+- **Data connectors (DuckDB)** — DuckDB, Copyright (c) 2018-2026 Stichting DuckDB Foundation [License](https://github.com/duckdb/duckdb/blob/main/LICENSE)
+- **Python (Pyodide)** — Pyodide, Copyright (c) Pyodide contributors; CPython, Copyright (c) Python Software Foundation [License](https://github.com/pyodide/pyodide/blob/main/LICENSE)

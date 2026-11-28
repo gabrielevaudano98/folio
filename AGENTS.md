@@ -9,11 +9,11 @@ AI assistants edit through MCP. Everything the user creates is a `.md` file.
 - `src/main/mcp-tools.js` MCP tool table shared by the HTTP server and `src/mcp/stdio.js`.
 - `src/renderer/app.js` shell: tabs, tree, views, AI edit banner and undo.
 - Document types, each a pure core plus a surface: `rich.js` (pages, TipTap), `slides-core.js`/`slides.js`/`slides-pptx.js`,
-  `board-core.js`/`board.js`, `sheet-core.js`/`sheet.js`/`sheet-xlsx.js`, `chart.js` (shared charts).
+  `board-core.js`/`board.js`, `sheet-core.js` + `src/sheets/` (Folio Sheets: Univer surface, panels, data engine process; docs/sheets/README.md), `chart.js` (shared charts).
 - Formats are specified in `docs/FORMATS.md`. That file is also served to AI assistants by the `get_format_guide` tool.
 - `src/main/features/` and `src/main/meeting/` optional features: pinned downloads (`catalog.js`) and the meeting recorder.
 - Full documentation: `docs/README.md` (architecture in arc42, decisions in `docs/adr/`, generated references in `docs/reference/`).
-- **Before starting work read `docs/STATUS.md`**: open PRs, unmerged branches (`feat/sheets-univer`, the Notion PR stack), known bugs, what needs a person.
+- **Before starting work read `docs/STATUS.md`**: open PRs, unmerged branches, known bugs, what needs a person.
 - Every file in `src/` has its own row in `docs/reference/source-map.md` (`test/docs-map.test.mjs` enforces it); how the editors work: `docs/explanation/editors.md`.
 
 ## Invariants (reviewers: flag violations)

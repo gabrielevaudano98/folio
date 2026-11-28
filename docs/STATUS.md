@@ -23,8 +23,8 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 | Pages (`.md`) | Pages Studio D0–D16, `.asset/` attachments and Notion gap waves 1–2 shipped (the F1–F6 data and UI fixes of [#81](https://github.com/gabrielevaudano98/folio/issues/81) included) | — | Image options and breadcrumb ([#85](https://github.com/gabrielevaudano98/folio/issues/85)), #86, #87 |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
-| Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
-| AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect, per-change review, Ask AI ([#20](https://github.com/gabrielevaudano98/folio/issues/20)) | Sheet tools on the Univer branch | `set_cells` to reconcile with Univer |
+| Sheets (`.sheet.md`) | **Folio Sheets on Univer** (merged for 1.8) | — | Live sync and presence; area 28 (AI) |
+| AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect, per-change review, Ask AI ([#20](https://github.com/gabrielevaudano98/folio/issues/20)) | — | `set_cells` to reconcile with Univer |
 | Meeting recorder (optional, Windows) | Shipped (1.5.x): one-click, call detection | — | Real-call measurements on Windows ([#88](https://github.com/gabrielevaudano98/folio/issues/88)) |
 | Release | Tests and CodeQL on pull requests to `main`; Windows and macOS packages on every push to `main`; a release when `package.json` changes | 5 Dependabot PRs | Code signing and notarisation (no certificates available) |
 
@@ -78,32 +78,16 @@ Wave 2 batch 2 ([#117](https://github.com/gabrielevaudano98/folio/pull/117), mer
 (block menu), files dropped on a page copied into `.asset/`, Page info (menu and command, Details panel with backlinks),
 Favorites and Recent in the sidebar. Still open from [#85](https://github.com/gabrielevaudano98/folio/issues/85): image options and the clickable breadcrumb. Wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
 
-### Sheets: Folio Sheets on Univer (`feat/sheets-univer`, no pull request)
+### Sheets: Folio Sheets on Univer (merged for 1.8)
 
-Branched from `main` at 1.4.2 (`9ffbdb1`), 21 commits named `wip: …`. A replacement of the light sheet grid by [Univer](https://github.com/dream-num/univer): Excel-grade grid, 400+ functions
-in a Web Worker, pivots, charts (ECharts), queries (FQL on Arquero, optional DuckDB), scripts (QuickJS), Python
-(optional Pyodide), what-if analysis, protection and encryption, `.xlsx`/`.xlsm` round trip, a separate *data engine*
-process, and new MCP tools. 27 of 28 planned areas are done (area 28, an AI copilot, is out of scope for now); the
-branch's own docs are `docs/sheets/README.md`, `FQL.md`, `SCRIPT.md` and `docs/HANDOFF.md`.
-
-Before it can merge ([#84](https://github.com/gabrielevaudano98/folio/issues/84)):
-
-- It is 21 commits ahead of and 5 behind `main` (1.5.0 and 1.5.1 landed after it branched).
-- Its ADR `0011-sheets-on-univer-with-a-data-engine.md` collides with `main`'s ADR 0011 (call detection): renumber it 0012.
-- It removes `src/renderer/sheet.js` and `sheet-xlsx.js` and adds about 3,500 lines to `package-lock.json`: check the
-  installer size and startup budgets ([budget](performance/budget.md)) and the licences of every new package.
-- Its fix for the tab-switch data-loss bug ([#82](https://github.com/gabrielevaudano98/folio/issues/82)) is now on `main`
-  for pages (the page editor's delayed change and the left tab's save); the sheet half (a Univer sheet's delayed save naming
-  its document) is still only in `d6ca0df`. Expect a small conflict in `app.js` `activate()` and `rich.js`.
-- It adds 67 files under `src/` (`src/sheets/**`, `src/main/sheets-engine.js`, `src/renderer/sheets-components.js`): each
-  needs its own line in the [source map](reference/source-map.md) (`test/docs-map.test.mjs`). It adds 4 MCP tools, so
-  re-run `node scripts/docs-reference.mjs` and update the tool counts here, in [overview](overview.md) and in README.
-  Expect conflicts with this documentation in `AGENTS.md`, `docs/README.md`, `docs/architecture/README.md` and `docs/reference/`.
-- Squash the `wip:` commits into a few meaningful ones (engine, UI, xlsx, MCP, docs) before review.
-- Already checked: a compatibility workbook (formats, 12 conditional-formatting rules, validation, filters, XLOOKUP,
-  SUMIFS…) opened in Excel on Windows as expected; LibreOffice computes the same values.
-- Open on the branch: live sync and presence (contracts only), visual baselines for the 93 px ribbon on macOS and
-  Windows, streaming `.xlsx` export above ~200k rows, an `.xlsm` with VBA checked in Excel.
+[Univer](https://github.com/dream-num/univer) replaces the light sheet grid ([ADR 0012](adr/0012-sheets-on-univer-with-a-data-engine.md)):
+Excel-grade grid, 400+ functions in a Web Worker, pivots, charts (ECharts), queries (FQL on Arquero, optional DuckDB),
+scripts (QuickJS), Python (optional Pyodide), what-if analysis, protection and encryption, `.xlsx`/`.xlsm` round trip,
+a separate *data engine* process and new MCP tools. Design and status: [sheets/README.md](sheets/README.md). Big
+workbooks (50k rows, 100k formulas): recalculation after an edit under 1 s, formula values on screen in about 2 s.
+Licences of the new packages are all permissive (NOTICE); startup time, startup JavaScript and memory at rest measured
+equal to `main` before the merge. Still open: live sync and presence (contracts only), visual baselines for the 93 px
+ribbon on macOS and Windows, streaming `.xlsx` export above ~200k rows, an `.xlsm` with VBA checked in Excel.
 
 ### Dependency updates
 
@@ -117,7 +101,7 @@ one of these is merged or closed**.
 ### Old branches
 
 About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `security/*`, `slides-p10-p15`, `pages`,
-`pages-studio`, `meeting-recorder`…). They can be deleted; keep `feat/sheets-univer`, the three `pages-ui-notion-pass` /
+`pages-studio`, `meeting-recorder`…). They can be deleted; keep the three `pages-ui-notion-pass` /
 `notion-gap-wave*` branches and open Dependabot branches ([#91](https://github.com/gabrielevaudano98/folio/issues/91)).
 
 ## Known bugs on main
@@ -147,7 +131,7 @@ Each is an open issue with its milestone. The ones that matter most for a first 
 
 Sheet issues [#7](https://github.com/gabrielevaudano98/folio/issues/7), [#14](https://github.com/gabrielevaudano98/folio/issues/14),
 [#15](https://github.com/gabrielevaudano98/folio/issues/15) and [#16](https://github.com/gabrielevaudano98/folio/issues/16)
-are done on the Univer branch and close when it merges.
+are closed by the Univer merge.
 
 ## Waiting on a person
 
@@ -159,7 +143,6 @@ Things an agent cannot do from a cloud machine.
 | Turn on *Offer to record when a call starts* and join a call | Maintainer | Call detection is tested only with sample data | [#88](https://github.com/gabrielevaudano98/folio/issues/88) |
 | Buy or set up signing (Apple Developer ID, a Windows route such as Azure Trusted Signing) and add the secrets | Maintainer | Unsigned builds warn on first open | [#3](https://github.com/gabrielevaudano98/folio/issues/3), [#4](https://github.com/gabrielevaudano98/folio/issues/4) |
 | Open an `.xlsm` with VBA through Folio Sheets and back in Excel | Maintainer | Last unchecked Excel round trip | [#84](https://github.com/gabrielevaudano98/folio/issues/84) |
-| Rebase the Univer branch on `main`: the Notion stack (merged 28 Nov) changed `app.js`, `page-ribbon.js` and the locales | Maintainer | The Univer branch needs a rebase before its PR | [#84](https://github.com/gabrielevaudano98/folio/issues/84) |
 
 ## How to pick up work
 

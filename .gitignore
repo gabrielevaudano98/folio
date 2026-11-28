@@ -5,3 +5,4 @@ release/
 
 test/visual/*.diff.png
 test/visual/*.actual.png
+.bench/

@@ -8,6 +8,7 @@ const PARAKEET = ['csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8', 'ed5d
 const QWEN = ['unsloth/Qwen3-1.7B-GGUF', 'd7f544eead698dbd1f15126ef60b45a1e1933222'];
 const WHISPER = ['csukuangfj/sherpa-onnx-whisper-turbo', '2ca6ff69fc878651b770880507669577ac41c2ff'];
 const LLAMA_TAG = 'b12550';
+const DUCK = (p, v = '2.0.1-r.1') => `https://registry.npmjs.org/@duckdb/${p}/-/${p}-${v}.tgz`;
 
 /** which files of a llama.cpp release the notes engine needs: the server and the libraries it loads */
 export function keepLlamaFile(name) {
@@ -85,6 +86,48 @@ export const COMPONENTS = {
     peakRamMB: 1700, contextTokens: 4096, threads: 4,
     files: [{ name: 'model.gguf', url: HF(...QWEN, 'Qwen3-1.7B-Q4_K_M.gguf'), sha256: 'b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897', bytes: 1107409472 }],
   },
+  /* Folio Sheets: data connectors and Python, downloaded when the person first uses them (docs/sheets/README.md) */
+  duckdb: {
+    kind: 'data', name: 'Data connectors (DuckDB)', version: '2.0.1-r.1', license: 'MIT',
+    attribution: 'DuckDB, Copyright (c) 2018-2026 Stichting DuckDB Foundation', licenseUrl: 'https://github.com/duckdb/duckdb/blob/main/LICENSE',
+    platforms: {
+      'win32-x64': [
+        { name: 'node-api.tgz', url: DUCK('node-api'), sha256: 'a870a0feb6d6ec4656dc44ea16b27c5acfe8f6ad8b2acc4f94a50b19b63b0134', bytes: 114627, unpack: 'tgz', into: 'node_modules/@duckdb/node-api', strip: 1 },
+        { name: 'node-bindings.tgz', url: DUCK('node-bindings'), sha256: 'aef3150ceae2880d93c7519fb837e567c6ef0a3ba409323f61264a2a0fbaedb2', bytes: 14216, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings', strip: 1 },
+        { name: 'node-bindings-win32-x64.tgz', url: DUCK('node-bindings-win32-x64'), sha256: '6ad3564e178fb563d91e96b3c780ce74c047a4a95846ba4c6c45185bc4323da7', bytes: 20726172, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings-win32-x64', strip: 1 },
+      ],
+      'win32-arm64': [
+        { name: 'node-api.tgz', url: DUCK('node-api'), sha256: 'a870a0feb6d6ec4656dc44ea16b27c5acfe8f6ad8b2acc4f94a50b19b63b0134', bytes: 114627, unpack: 'tgz', into: 'node_modules/@duckdb/node-api', strip: 1 },
+        { name: 'node-bindings.tgz', url: DUCK('node-bindings'), sha256: 'aef3150ceae2880d93c7519fb837e567c6ef0a3ba409323f61264a2a0fbaedb2', bytes: 14216, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings', strip: 1 },
+        { name: 'node-bindings-win32-arm64.tgz', url: DUCK('node-bindings-win32-arm64'), sha256: '717b9becb87906bf113cc3facf03c853dd70f230328872e9f86ced5d176f485d', bytes: 19414053, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings-win32-arm64', strip: 1 },
+      ],
+      'darwin-x64': [
+        { name: 'node-api.tgz', url: DUCK('node-api'), sha256: 'a870a0feb6d6ec4656dc44ea16b27c5acfe8f6ad8b2acc4f94a50b19b63b0134', bytes: 114627, unpack: 'tgz', into: 'node_modules/@duckdb/node-api', strip: 1 },
+        { name: 'node-bindings.tgz', url: DUCK('node-bindings'), sha256: 'aef3150ceae2880d93c7519fb837e567c6ef0a3ba409323f61264a2a0fbaedb2', bytes: 14216, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings', strip: 1 },
+        { name: 'node-bindings-darwin-x64.tgz', url: DUCK('node-bindings-darwin-x64'), sha256: '588bcc5354c6a74d51691ca3e6cc8f1abebb77503da8603c616771ec1b3131e9', bytes: 21813821, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings-darwin-x64', strip: 1 },
+      ],
+      'darwin-arm64': [
+        { name: 'node-api.tgz', url: DUCK('node-api'), sha256: 'a870a0feb6d6ec4656dc44ea16b27c5acfe8f6ad8b2acc4f94a50b19b63b0134', bytes: 114627, unpack: 'tgz', into: 'node_modules/@duckdb/node-api', strip: 1 },
+        { name: 'node-bindings.tgz', url: DUCK('node-bindings'), sha256: 'aef3150ceae2880d93c7519fb837e567c6ef0a3ba409323f61264a2a0fbaedb2', bytes: 14216, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings', strip: 1 },
+        { name: 'node-bindings-darwin-arm64.tgz', url: DUCK('node-bindings-darwin-arm64'), sha256: 'bd3abea2a378faac722d74858fb89fa4f9dee23320b445f0409044bef872424e', bytes: 19779503, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings-darwin-arm64', strip: 1 },
+      ],
+      'linux-x64': [
+        { name: 'node-api.tgz', url: DUCK('node-api'), sha256: 'a870a0feb6d6ec4656dc44ea16b27c5acfe8f6ad8b2acc4f94a50b19b63b0134', bytes: 114627, unpack: 'tgz', into: 'node_modules/@duckdb/node-api', strip: 1 },
+        { name: 'node-bindings.tgz', url: DUCK('node-bindings'), sha256: 'aef3150ceae2880d93c7519fb837e567c6ef0a3ba409323f61264a2a0fbaedb2', bytes: 14216, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings', strip: 1 },
+        { name: 'node-bindings-linux-x64.tgz', url: DUCK('node-bindings-linux-x64'), sha256: 'e060479ee5ed9d9fa7de33ee9985ea81833d9ada1994cfb4598ea4852119a6bf', bytes: 28487362, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings-linux-x64', strip: 1 },
+      ],
+      'linux-arm64': [
+        { name: 'node-api.tgz', url: DUCK('node-api'), sha256: 'a870a0feb6d6ec4656dc44ea16b27c5acfe8f6ad8b2acc4f94a50b19b63b0134', bytes: 114627, unpack: 'tgz', into: 'node_modules/@duckdb/node-api', strip: 1 },
+        { name: 'node-bindings.tgz', url: DUCK('node-bindings'), sha256: 'aef3150ceae2880d93c7519fb837e567c6ef0a3ba409323f61264a2a0fbaedb2', bytes: 14216, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings', strip: 1 },
+        { name: 'node-bindings-linux-arm64.tgz', url: DUCK('node-bindings-linux-arm64'), sha256: '1dd419d164b0e035217173a85a79c6bfb40ffb2122368a5da4160e8b76914abb', bytes: 26641854, unpack: 'tgz', into: 'node_modules/@duckdb/node-bindings-linux-arm64', strip: 1 },
+      ],
+    },
+  },
+  pyodide: {
+    kind: 'data', name: 'Python (Pyodide)', version: '314.0.8', license: 'MPL-2.0',
+    attribution: 'Pyodide, Copyright (c) Pyodide contributors; CPython, Copyright (c) Python Software Foundation', licenseUrl: 'https://github.com/pyodide/pyodide/blob/main/LICENSE',
+    files: [{ name: 'pyodide.tgz', url: NPM('pyodide', '314.0.8'), sha256: '9a52704e0ae5b07aaacb8e4fed9f1658e8024694a078695ea45ac79dee4cefcb', bytes: 6487361, unpack: 'tgz', into: 'pyodide', strip: 1 }],
+  },
 };
 
 export const FEATURES = {
@@ -99,6 +142,14 @@ export const FEATURES = {
     alternatives: { asr: ['parakeet-tdt-0.6b-v3-int8'] },
     /** optional: notes written by a small local model; without them the note holds the transcript only */
     notes: ['llama-server', 'qwen3-1.7b-q4km'],
+  },
+  'sheets-data': {
+    name: 'Sheets: data connectors and Python',
+    description: 'SQL, Parquet and database files in queries (DuckDB) and Python in workbooks (Pyodide). Both run in a sandbox on this computer.',
+    platforms: ['win32', 'darwin', 'linux'], permissions: [],
+    budget: { workerMB: 3072, appMB: 4096 }, // the data engine's heap cap (src/main/sheets-engine.js)
+    required: [], notes: [],
+    optional: ['duckdb', 'pyodide'],
   },
 };
 
@@ -127,7 +178,7 @@ export function validateCatalog(components = COMPONENTS, features = FEATURES) {
   const okName = (n) => typeof n === 'string' && /^[\w.-]+$/.test(n) && !n.startsWith('.');
   for (const [id, c] of Object.entries(components)) {
     if (!/^[a-z0-9][a-z0-9.-]*$/.test(id)) errors.push(`${id}: bad id`);
-    if (!['runtime', 'vad', 'asr', 'llm'].includes(c.kind)) errors.push(`${id}: bad kind`);
+    if (!['runtime', 'vad', 'asr', 'llm', 'data'].includes(c.kind)) errors.push(`${id}: bad kind`);
     if (!c.license || !c.attribution) errors.push(`${id}: missing license or attribution`);
     const lists = c.files ? [c.files] : Object.values(c.platforms || {});
     if (!lists.length) errors.push(`${id}: no files`);
@@ -137,7 +188,7 @@ export function validateCatalog(components = COMPONENTS, features = FEATURES) {
       if (!/^[0-9a-f]{64}$/.test(f.sha256)) errors.push(`${id}: ${f.name} bad sha256`);
       if (!(f.bytes > 0)) errors.push(`${id}: ${f.name} bad size`);
       if (f.unpack && !['tgz', 'zip'].includes(f.unpack)) errors.push(`${id}: ${f.name} bad unpack`);
-      if (f.into && (f.into.split('/').some((s) => !okName(s)))) errors.push(`${id}: ${f.name} bad into`);
+      if (f.into && (f.into.split('/').some((s) => !okName(s) && !/^@[a-z0-9][\w.-]*$/.test(s)))) errors.push(`${id}: ${f.name} bad into`);
     }
   }
   for (const [id, f] of Object.entries(features)) for (const c of [...f.required, ...f.notes, ...Object.values(f.alternatives || {}).flat()]) if (!components[c]) errors.push(`${id}: unknown component ${c}`);
