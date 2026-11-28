@@ -28,6 +28,7 @@ import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { icons } from './icons.js';
 import CodeBlock from '@tiptap/extension-code-block';
 import { Plugin, PluginKey, NodeSelection, TextSelection, EditorState } from '@tiptap/pm/state';
+import { Fragment } from '@tiptap/pm/model';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { renderMermaid, hydrateCharts, render } from './markdown.js';
 import hljs from 'highlight.js/lib/common';
@@ -629,6 +630,16 @@ const FolioImage = PageImage.extend({
   },
 });
 
+/** the footnote labels a fragment cites: [^label] references, also inside blocks kept as written (definitions are not citations) */
+function footnoteLabels(frag) {
+  const out = new Set();
+  frag.descendants((n) => {
+    if (n.type.name === 'footnoteRef') out.add(n.attrs.label);
+    else if (n.type.name === 'folioRaw') for (const m of n.attrs.source.replace(/^ {0,3}\[\^[^\]\s]+\]:/gm, '').matchAll(/\[\^([^\]\s]+)\]/g)) out.add(m[1]);
+    return true;
+  });
+  return out;
+}
 /* page commands shared by the ribbon, the bubble, the keyboard and the command palette */
 export const pageCmd = {
   footnote(editor) {
@@ -954,12 +965,32 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
      file; the blocks are replaced only after it exists, as one undo step. */
   function turnIntoPage({ from, to }) {
     if (!onTurnIntoPage || editor.storage.pageLock?.on) return;
-    let md;
-    try { md = codec.save(codec.load(''), editor.state.schema.topNodeType.create(null, editor.state.doc.slice(from, to).content)); } catch { return onError?.(new Error(tl('rich', 'These blocks cannot become a page.'))); }
     const doc = editor.state.doc; // the blocks are replaced only if the page is still this very document (no edit, no page switch while the file was created)
+    const slice = doc.slice(from, to).content;
+    // footnotes travel with the text that cites them: the definitions of the [^labels] used in the blocks go to the new page;
+    // the source keeps a definition only while it still cites that label (Markdown footnotes are per page)
+    const used = footnoteLabels(slice);
+    const defs = []; doc.descendants((n, pos) => { if (n.type.name === 'footnoteDef') { if (used.has(n.attrs.label) && (pos < from || pos >= to)) defs.push({ node: n, pos }); return false; } return true; });
+    const inSlice = new Set(); slice.forEach((n) => { if (n.type.name === 'footnoteDef') inSlice.add(n.attrs.label); });
+    const carried = defs.filter((d) => !inSlice.has(d.node.attrs.label) && !defs.some((e) => e !== d && e.node.attrs.label === d.node.attrs.label && e.pos < d.pos)); // the first definition wins, as in Markdown
+    let md;
+    try { md = codec.save(codec.load(''), editor.state.schema.topNodeType.create(null, slice.append(Fragment.from(carried.map((d) => d.node))))); } catch { return onError?.(new Error(tl('rich', 'These blocks cannot become a page.'))); }
     onTurnIntoPage(md, (name) => {
       if (editor.state.doc !== doc) return false;
-      try { const { schema } = editor.state; editor.view.dispatch(editor.state.tr.replaceWith(from, to, schema.nodes.paragraph.create(null, schema.text(`[[${name}]]`))).scrollIntoView()); return true; } catch { return false; }
+      try {
+        const { schema } = editor.state;
+        const tr = editor.state.tr.replaceWith(from, to, schema.nodes.paragraph.create(null, schema.text(`[[${name}]]`)));
+        const left = footnoteLabels(tr.doc.content);
+        // a definition that moved with the blocks but is still cited here stays here too
+        const keep = []; slice.forEach((n) => { if (n.type.name === 'footnoteDef' && left.has(n.attrs.label)) keep.push(n); });
+        for (const d of defs.slice().sort((a, b) => b.pos - a.pos)) {
+          if (left.has(d.node.attrs.label)) continue;
+          const at = tr.mapping.map(d.pos); if (tr.doc.nodeAt(at)?.type.name === 'footnoteDef') tr.delete(at, at + d.node.nodeSize);
+        }
+        if (keep.length) { let end = tr.doc.content.size; const last = tr.doc.lastChild; if (last?.type.name === 'paragraph' && !last.content.size) end -= last.nodeSize; tr.insert(end, keep); }
+        if (!tr.doc.childCount) tr.insert(0, schema.nodes.paragraph.create());
+        editor.view.dispatch(tr.scrollIntoView()); return true;
+      } catch { return false; }
     });
   }
   function flushEmit() { if (!emitTimer) return; clearTimeout(emitTimer); emitTimer = 0; onChange?.(api.getMarkdown()); }

@@ -1636,7 +1636,7 @@ async function turnIntoPage(md, apply) {
   if (!S.active || !S.workspace) return;
   const lines = md.split('\n'); const first = lines.find((l) => l.trim()) || '';
   const head = /^#{1,6}\s+(.+)$/.exec(first.trim());
-  let title = (head ? head[1] : first).replace(/^[>*_`~\-\s#]+/, '').replace(/\[\[|\]\]|[*_`~]|!?\[([^\]]*)\]\([^)]*\)/g, (m, t) => t || '').replace(/[\\/:*?"<>|#^\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).trim();
+  let title = (head ? head[1] : first).replace(/\[\^[^\]\s]+\]|\^\[[^\]]*\]/g, '').replace(/^[>*_`~\-\s#]+/, '').replace(/\[\[|\]\]|[*_`~]|!?\[([^\]]*)\]\([^)]*\)/g, (m, t) => t || '').replace(/[\\/:*?"<>|#^\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).replace(/[.\s]+$/, ''); // a trailing dot is not part of a file name on Windows
   if (!title) title = tr('app.untitled-page');
   const dir = dirOf(S.active); const taken = (n) => S.files.some((f) => f.toLowerCase() === ((dir ? dir + '/' : '') + n + '.md').toLowerCase());
   let name = title, i = 2; while (taken(name)) name = `${title} ${i++}`;
