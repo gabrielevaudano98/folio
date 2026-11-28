@@ -5,7 +5,10 @@
    the merge to `main`.
 3. Merge it. A push to `main` that changes `package.json` starts the **Release** workflow
    (`.github/workflows/release.yml`): it tests again, builds the Windows installer, the portable exe, the macOS DMG and ZIP, the Linux AppImage,
-   and publishes them as a GitHub release tagged `v<version>`. Do not push the tag yourself: a tag push starts the
+   and publishes them as a GitHub release tagged `v<version>` with `gh release create` (preinstalled on GitHub runners,
+   needs only `GITHUB_TOKEN`; no third-party publish action). The notes are the fixed download text followed by notes
+   generated from the merged pull requests. If the release for that version already exists, the workflow replaces its
+   assets with `gh release upload --clobber` and keeps the notes. Do not push the tag yourself: a tag push starts the
    same workflow a second time.
 
 ## What an update needs

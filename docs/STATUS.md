@@ -143,7 +143,6 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 
 Each is an open issue with its milestone. The ones that matter most for a first public release are in bold.
 
-- Release workflow without a third-party publish action ([#83](https://github.com/gabrielevaudano98/folio/issues/83)).
 - Signed and notarised builds for macOS ([#3](https://github.com/gabrielevaudano98/folio/issues/3)) and Windows
   ([#4](https://github.com/gabrielevaudano98/folio/issues/4)): **not possible for now, there are no certificates**; kept open only for the day they exist.
 - Auto-update ([#2](https://github.com/gabrielevaudano98/folio/issues/2)) is built, see [updates](explanation/updates.md); it needs a manual check on Windows after the first release that carries `latest.yml`.
