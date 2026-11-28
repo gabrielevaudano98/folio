@@ -42,7 +42,7 @@ function retitle(text, title) {
   while (i < text.length) {
     if (text.startsWith('<!--', i)) { const e = text.indexOf('-->', i + 4); if (e < 0) break; i = e + 3; continue; }
     const nl = text.indexOf('\n', i), end = nl < 0 ? text.length : nl;
-    if (/^#[ \t]/.test(text.slice(i, end)) && (i === 0 || text[i - 1] === '\n')) return text.slice(0, i) + `# ${title}` + text.slice(end);
+    if (/^#[ \t]/.test(text.slice(i, end)) && (i === 0 || text[i - 1] === '\n')) return text.slice(0, i) + `# ${title}` + (text[end - 1] === '\r' ? '\r' : '') + text.slice(end);
     i = end + 1;
   }
   return text;

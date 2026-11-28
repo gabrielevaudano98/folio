@@ -434,7 +434,7 @@ const TEMPLATE_MAX = 1024 * 1024;
 h('templates:fetch', async (url) => {
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 12000);
   try {
-    // every address, the first and each redirect, must be https on the public internet (or this machine over http); a link cannot reach the local network
+    // every address, the first and each redirect, must be https on the public internet; only the link the person gave may be http on this machine, a redirect never may; so a link cannot reach the local network
     let target = new URL(String(url)), res;
     for (let hop = 0; ; hop++) {
       if (hop > 5) throw new Error('Too many redirects.');
