@@ -47,6 +47,8 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 | `chat/prompt.js` | core | The chat's system prompt (folder tree, standing instructions, rules). |
 | `chat/keystore.js` | main | API keys encrypted with Electron `safeStorage`; refuses plain text. |
 | `chat/store.js` | main | Conversations as files in `<folder>/.folio/chat/`. |
+| `chat/local/catalog.js` | core | Open models the chat can run locally (llama.cpp); an entry is offered only once its revision, size and SHA-256 are pinned. |
+| `chat/local/system.js` | main | Reads cores, memory and free disk; decides which local models fit and which to recommend. |
 | `chat/service.js` | main | Chat mode in the main process: settings, keys, runs, IPC. See [chat mode](../explanation/chat-mode.md). |
 | `meeting/service.js` | main | Optional-features service: installs, the meeting session, the memory guard; IPC for Settings. |
 | `meeting/asr-worker.js` | utilityProcess | Voice detection (Silero) and transcription (Whisper via sherpa-onnx) for one recording; bundled as `dist/meeting-asr.cjs`. |
