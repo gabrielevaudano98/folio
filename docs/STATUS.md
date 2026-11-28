@@ -99,9 +99,10 @@ Before it can merge ([#84](https://github.com/gabrielevaudano98/folio/issues/84)
 - Its ADR `0011-sheets-on-univer-with-a-data-engine.md` collides with `main`'s ADR 0011 (call detection): renumber it 0012.
 - It removes `src/renderer/sheet.js` and `sheet-xlsx.js` and adds about 3,500 lines to `package-lock.json`: check the
   installer size and startup budgets ([budget](performance/budget.md)) and the licences of every new package.
-- Its fix for the tab-switch data-loss bug ([#82](https://github.com/gabrielevaudano98/folio/issues/82)) is now on `main`
-  for pages (the page editor's delayed change and the left tab's save); the sheet half (a Univer sheet's delayed save naming
-  its document) is still only in `d6ca0df`. Expect a small conflict in `app.js` `activate()` and `rich.js`.
+- Its fix for the tab-switch data-loss bug ([#82](https://github.com/gabrielevaudano98/folio/issues/82)) is on `main`
+  for pages and for the light slides, board and sheet surfaces. On `main` a surface names its document by the tab
+  object (`ctx.onChange(text, tab)`, `flush({ keepEditing })`), as `a3ea89e` does; the Univer surface must follow
+  the same contract. Expect a small conflict in `app.js` (`surfaceCtx`, `backgroundChange`, `flushSurface`).
 - It adds 67 files under `src/` (`src/sheets/**`, `src/main/sheets-engine.js`, `src/renderer/sheets-components.js`): each
   needs its own line in the [source map](reference/source-map.md) (`test/docs-map.test.mjs`). It adds 4 MCP tools, so
   re-run `node scripts/docs-reference.mjs` and update the tool counts here, in [overview](overview.md) and in README.
@@ -136,7 +137,6 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 | Editing a property rewrites CRLF front matter as LF (F3) | Unrelated bytes change (invariant 1) | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| The same delayed-change problem in the slides, board and sheet surfaces: a change they report after a pause is applied to whichever tab is then active (the page editor is fixed). Found in review of the #82 fix; not reproduced yet | Possible data loss | Needs surfaces to name their document, as `d6ca0df` does for sheets | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
 | Startup and opening a long page go over the 100 ms budget | Responsiveness | — | [#90](https://github.com/gabrielevaudano98/folio/issues/90) |
 
 ## Not started

@@ -76,6 +76,9 @@ export function mountBoard(host, ctx) {
   let view = { x: 40, y: 40, k: 1 }, fitted = false;
   const undo = [], redo = [];
   const docs = perDoc(undo, redo); let seen = false;
+  // the tab whose board this surface holds (ctx.docKey): every change names it, so one that lands after the tab changed
+  // (the label field waits for a pause) reaches that board and no other
+  let doc = null;
   let clipboard = null;
 
   /* ---------- model io ---------- */
@@ -91,7 +94,7 @@ export function mountBoard(host, ctx) {
     if (history) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; }
     text = joinBoardDoc(parts, serializeBoard(model));
     render();
-    ctx.onChange(text);
+    ctx.onChange(text, doc);
   }
   const node = (id) => model.nodes.find((n) => n.id === id);
   function newId(base) { const b = base.replace(/[^A-Za-z_]/g, '') || 'n'; let i = 1; while (node(b + i)) i++; return b + i; }
@@ -239,6 +242,7 @@ export function mountBoard(host, ctx) {
   }
 
   /* ---------- label editor ---------- */
+  let labelEdit = null; // the label being typed on the canvas: { write() keeps it open, done(save) closes it }
   function editLabel(id) {
     const n = node(id) ?? null;
     const edge = id.startsWith?.('e:') ? model.edges[Number(id.slice(2))] : null;
@@ -250,16 +254,22 @@ export function mountBoard(host, ctx) {
     Object.assign(editorEl.style, { left: `${box.x * view.k + view.x}px`, top: `${box.y * view.k + view.y}px`, width: `${box.w * view.k}px`, height: `${box.h * view.k}px`, fontSize: `${13 * view.k}px` });
     editorEl.value = n ? (n.body.length ? [n.label, ...n.body].join('\n') : n.label) : edge.label;
     editorEl.hidden = false; editorEl.focus(); editorEl.select();
-    const done = (save) => {
-      editorEl.hidden = true; editorEl.onkeydown = editorEl.onblur = null;
-      if (!save) return canvas.focus();
-      const v = editorEl.value;
+    let written = editorEl.value;
+    /** the label typed so far goes into the board (when it changed) */
+    const write = () => {
+      const v = editorEl.value; if (v === written) return; written = v;
       if (n) {
         if (['class', 'interface', 'table'].includes(n.shape) || (n.shape === 'note' && v.includes('\n'))) { const [first, ...rest] = v.split('\n'); n.label = first; n.body = rest; fitAuto(n); }
         else n.label = v;
       } else edge.label = v.replace(/\n/g, ' ');
-      commit(); canvas.focus();
+      commit();
     };
+    const done = (save) => {
+      editorEl.hidden = true; editorEl.onkeydown = editorEl.onblur = null; labelEdit = null;
+      if (!save) return canvas.focus();
+      write(); canvas.focus();
+    };
+    labelEdit = { write, done };
     editorEl.onkeydown = (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') done(false);
@@ -414,8 +424,8 @@ export function mountBoard(host, ctx) {
   canvas.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceDown = false; canvas.classList.remove('panning'); } });
 
   /* ---------- operations ---------- */
-  function doUndo() { if (!undo.length) return; redo.push(text); const t = undo.pop(); load(t); render(); ctx.onChange(text); }
-  function doRedo() { if (!redo.length) return; undo.push(text); const t = redo.pop(); load(t); render(); ctx.onChange(text); }
+  function doUndo() { if (!undo.length) return; redo.push(text); const t = undo.pop(); load(t); render(); ctx.onChange(text, doc); }
+  function doRedo() { if (!redo.length) return; undo.push(text); const t = redo.pop(); load(t); render(); ctx.onChange(text, doc); }
   function selectAll() { sel = new Set(model.nodes.map((n) => n.id)); render(); }
   function remove() {
     const ids = new Set([...sel].filter((s) => !s.startsWith('e:')));
@@ -562,14 +572,29 @@ A o-- B   aggregation</pre>`;
     if (t.dataset.e) { for (const ed of selEdges()) ed[t.dataset.e] = t.value || null; return commit(); }
     if (t.dataset.geo) { const n = selNodes()[0]; const v = Number(t.value); if (Number.isFinite(v)) { n[t.dataset.geo] = v; if ('wh'.includes(t.dataset.geo)) n.sized = true; commit(); } }
   });
+  // a label typed in the format panel is written after a pause, to the node or lines selected when typing began (even
+  // if the selection or the tab changed since); flushFields() writes it at once
+  const pendingFields = new Map(); // field → { timer, apply }
+  function flushFields() { for (const [t, p] of [...pendingFields]) { clearTimeout(p.timer); pendingFields.delete(t); p.apply(); } }
   inspector.addEventListener('input', (e) => {
     const t = e.target;
-    clearTimeout(t.__timer);
-    t.__timer = setTimeout(() => {
-      if (t.matches('[data-n-label]')) { const n = selNodes()[0]; const [first, ...rest] = t.value.split('\n'); if (n.body.length || ['class', 'interface', 'table'].includes(n.shape)) { n.label = first; n.body = rest; fitAuto(n); } else n.label = t.value; commit(); }
-      if (t.matches('[data-e-label]')) { for (const ed of selEdges()) ed.label = t.value; commit(); }
-    }, 300);
+    if (!t.matches('[data-n-label], [data-e-label]')) return;
+    let p = pendingFields.get(t);
+    if (!p) {
+      const ids = [...sel];
+      const apply = t.matches('[data-n-label]')
+        ? () => { const n = node(ids.find((s) => !s.startsWith('e:'))); if (!n) return; const v = t.value; const [first, ...rest] = v.split('\n'); if (n.body.length || ['class', 'interface', 'table'].includes(n.shape)) { n.label = first; n.body = rest; fitAuto(n); } else n.label = v; commit(); }
+        : () => { const eds = ids.filter((s) => s.startsWith('e:')).map((s) => model.edges[Number(s.slice(2))]).filter(Boolean); if (!eds.length) return; for (const ed of eds) ed.label = t.value; commit(); };
+      p = { apply }; pendingFields.set(t, p);
+    }
+    clearTimeout(p.timer);
+    p.timer = setTimeout(() => { pendingFields.delete(t); p.apply(); }, 300);
   });
+  /** everything typed and not written yet goes into the board now; `keepEditing` leaves the label being typed open */
+  function flushPending({ keepEditing = false } = {}) {
+    flushFields();
+    if (labelEdit) { if (keepEditing) labelEdit.write(); else labelEdit.done(true); }
+  }
 
   /* ---------- export ---------- */
   function exportSvgString() {
@@ -603,7 +628,9 @@ A o-- B   aggregation</pre>`;
 
   return {
     setText(t) {
-      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true;
+      const key = ctx.docKey?.();
+      if (key && key !== doc) { if (doc) flushPending(); doc = key; } // what the board shown so far still holds is written to it first
+      const moved = docs.bind(key); const had = seen; seen = true;
       if (t === text) { if (moved) render(); return; }
       if (!moved && had) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       const first = !parts;
@@ -611,6 +638,7 @@ A o-- B   aggregation</pre>`;
       if (first || !fitted) { fitted = false; requestAnimationFrame(() => { if (canvas.clientWidth) { fitted = true; fit(); } }); }
     },
     setMode(v) { host.classList.toggle('bd-compact', v === 'split'); requestAnimationFrame(() => { drawOverlay(); }); },
+    flush: flushPending,
     gotoNode(id) { if (model?.nodes.some((n) => n.id === id)) { sel = new Set([id]); render(); } },
     selectAtLine(line) {
       const n = model.nodes.find((x) => x.line === line - (parts.before.split('\n').length));

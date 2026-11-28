@@ -79,6 +79,11 @@ export function mountSlides(host, ctx) {
   const parse = (t) => parseDeck(t, { template: tplText });
   const undo = []; const redo = []; let lastPush = 0, restoring = false;
   const docs = perDoc(undo, redo); let seen = false;
+  // the tab whose deck this surface holds (ctx.docKey): every change names it, so one that lands after the tab changed
+  // (notes wait for a pause) reaches that deck and no other
+  let doc = null;
+  let notesFor = -1; // the slide whose notes the notes field shows
+  let notesTimer = 0, notesAt = -1; // notes typed and not written yet, and the slide they belong to (see flushNotes)
   const thumbs = host.querySelector('.sl-thumbs');
   const frame = host.querySelector('.sl-frame');
   const stage = host.querySelector('.sl-stage');
@@ -130,7 +135,7 @@ export function mountSlides(host, ctx) {
     cur = Math.min(cur, deck.slides.length - 1);
     render({ keepEditor, keepFrame });
     syncHistory();
-    ctx.onChange(text);
+    ctx.onChange(text, doc);
   }
   function syncHistory() {
     const u = host.querySelector('[data-sl="undo"]'), r = host.querySelector('[data-sl="redo"]');
@@ -249,13 +254,13 @@ export function mountSlides(host, ctx) {
     host.querySelector('[data-sl-paginate]').checked = deck.global.paginate === 'true';
     host.querySelector('.sl-cur-label').innerHTML = s.master ? `Master${s.master !== 'all' ? ` for <b>${esc(s.master)}</b> slides` : ' for <b>all</b> slides'}` : `Slide <b class="sl-cur">${s.number}</b> content`;
     renderLayers(); syncFmt(); checkSync(); renderFormat(); drawVertices(); renderDesign(); renderReview(); renderView(); renderIdeas(); renderAnim();
-    if (document.activeElement !== notesEl) notesEl.value = s.notes;
+    if (document.activeElement !== notesEl || notesFor !== cur) { notesEl.value = s.notes; notesFor = cur; } // typing in it is kept, unless another slide or deck is shown
     if (!keepEditor) { silent = true; chunkEditor.setDoc(chunks().list[cur].replace(/^\n+/, '')); silent = false; }
     ctx.onStatus?.(`${deck.shown.length} ${deck.shown.length === 1 ? 'slide' : 'slides'}${deck.masters.length ? ` · ${deck.masters.length} ${deck.masters.length === 1 ? 'master' : 'masters'}` : ''}`);
   }
 
   function select(i, { reveal = true } = {}) {
-    if (i !== cur) selected = [];
+    if (i !== cur) { flushNotes(); selected = []; }
     cur = Math.max(0, Math.min(i, deck.slides.length - 1));
     render();
     thumbs.querySelector(`[data-i="${cur}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -1185,8 +1190,22 @@ export function mountSlides(host, ctx) {
   host.querySelector('[data-sl-theme]').addEventListener('change', (e) => { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, 'theme', e.target.value), list)); });
   host.querySelector('[data-sl-size]').addEventListener('change', (e) => { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, 'size', e.target.value), list)); });
   host.querySelector('[data-sl-paginate]').addEventListener('change', (e) => { const { fm, list } = chunks(); commit(joinDeck(setGlobal(fm, 'paginate', String(e.target.checked)), list)); });
-  let notesTimer;
-  notesEl.addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(() => editChunk((c) => setNotes(c, notesEl.value)), 350); });
+  // notes are written after a pause in typing, to the slide they were typed for (notesAt), even when another slide or
+  // deck is shown by then; flushNotes() writes them at once (another slide chosen, the tab changed, Folio closing)
+  function flushNotes() {
+    if (!notesTimer) return;
+    clearTimeout(notesTimer); notesTimer = 0;
+    const { fm, list } = chunks(); if (!list[notesAt]) return;
+    const next = setNotes(list[notesAt], notesEl.value); if (next === list[notesAt]) return;
+    list[notesAt] = next; commit(joinDeck(fm, list), { keepEditor: true });
+  }
+  notesEl.addEventListener('input', () => { if (!notesTimer) notesAt = cur; clearTimeout(notesTimer); notesTimer = setTimeout(flushNotes, 350); });
+  notesEl.addEventListener('blur', flushNotes);
+  /** everything typed and not written yet goes into the deck now; `keepEditing` leaves the slide's text box open */
+  function flushPending({ keepEditing = false } = {}) {
+    flushNotes();
+    if (textEdit) { if (keepEditing) textEdit.flush(); else textEdit.end(); }
+  }
   host.querySelector('[data-sl="add"]').addEventListener('click', (e) => ctx.showMenu(e.currentTarget, [...LAYOUTS.map(([v, l]) => ({ label: l, run: () => addSlide(v) })), '-', { label: tr('slides.synced-copy-of-a-slide'), run: reuseSlide }, '-', ...BLOCKS.map(([id, l, body]) => ({ label: `Building block: ${l}`, run: () => addBlock(body) }))]));
   function addBlock(body) { const { fm, list } = chunks(); list.splice(cur + 1, 0, `\n${body}\n`); cur += 1; selected = []; commit(joinDeck(fm, list)); }
   host.querySelector('[data-sl="present"]').addEventListener('click', () => present(cur));
@@ -1225,11 +1244,15 @@ export function mountSlides(host, ctx) {
     const watch = setInterval(async () => { if (slideNow() !== slide) { await finish(); begin(); } }, 300);
     return { stop: async () => {
       clearInterval(watch); await finish(); stream.getTracks().forEach((t) => t.stop());
-      const { fm, list } = chunks();
+      const saved = [];
       for (const { slide: s, blob } of clips) {
         if (!s || blob.size < 2000) continue;
-        const rel = await ctx.saveAsset(`narration-${s.number}.webm`, new Uint8Array(await blob.arrayBuffer()));
-        const W = deck.width, H = deck.height;
+        saved.push([s, await ctx.saveAsset(`narration-${s.number}.webm`, new Uint8Array(await blob.arrayBuffer()))]);
+      }
+      // the deck's text is read after the clips are written, so nothing changed meanwhile is overwritten
+      const { fm, list } = chunks(); const W = deck.width, H = deck.height;
+      for (const [s, rel] of saved) {
+        if (list[s.index] == null) continue;
         list[s.index] = list[s.index].replace(/\n*::: media #narration[^\n]*:::\n?/g, '\n').replace(/\n+$/, '') + `\n\n::: media #narration x=${W - 88} y=${H - 88} w=56 h=56 src=${/\s/.test(rel) ? `"${rel}"` : rel} autoplay=true :::\n`;
       }
       commit(joinDeck(fm, list)); ctx.toast(`Narration recorded for ${clips.filter((c) => c.blob.size >= 2000).length} slides.`);
@@ -1330,7 +1353,9 @@ export function mountSlides(host, ctx) {
 
   return {
     setText(t) {
-      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true;
+      const key = ctx.docKey?.();
+      if (key && key !== doc) { if (doc) flushPending(); doc = key; notesFor = -1; } // what the deck shown so far still holds is written to it first
+      const moved = docs.bind(key); const had = seen; seen = true;
       if (moved) lastPush = 0; // the coalescing timer belongs to one document
       if (t === text) { if (moved) syncHistory(); return; }
       // a change that did not come from this canvas (an AI edit, the code pane) is a step of its own, so Undo gives it back
@@ -1340,6 +1365,7 @@ export function mountSlides(host, ctx) {
       render(); syncHistory();
     },
     setMode(view) { host.classList.toggle('sl-compact', view === 'split'); requestAnimationFrame(fit); },
+    flush: flushPending,
     selectAtLine(line) {
       if (!deck) return;
       const fm = parseFrontmatter(text); let l = fm.raw ? fm.raw.split('\n').length : 1; let idx = 0;

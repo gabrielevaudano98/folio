@@ -84,9 +84,10 @@ function surfaceFor(type) {
 function surfaceCtx(type) {
   return {
     icons, keyLabel, toast, prompt, confirm: confirmSheet, showMenu,
-    // a surface that saves later (a sheet saves after a pause, or in slices) names the document it saved: when that is
-    // no longer the active tab, the text goes to its own tab, never into the one now shown
-    onChange: (text, path) => (path && path !== S.active ? backgroundChange(path, text) : onEditorChange(text, false, 'surface')),
+    // every change a surface reports names the tab whose document it holds (the tab object, which a rename keeps; see
+    // docKey): a change that lands after the tab changed (notes and labels wait for a pause) goes to its own tab, never
+    // into the one now shown
+    onChange: (text, tab) => (tab && tab !== activeTab() ? backgroundChange(tab, text) : onEditorChange(text, false, 'surface')),
     onStatus: (s) => { S.surfaceStatus = s; renderStatus(); },
     resolveImage: resolveImg,
     dataUrl: (src) => folio.dataUrl(src, S.active),
@@ -161,9 +162,9 @@ async function boot() {
     onUnlock: () => setPageLock(S.active, false),
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
-    // the page editor reports a change after a short pause: it names the page it holds (richPath), so a change that
-    // lands after the tab changed goes to that page, never into the document now shown
-    onChange: (md) => (richPath && richPath !== S.active ? backgroundChange(richPath, md) : onEditorChange(md, false, 'rich')),
+    // the page editor reports a change after a short pause: it names the tab whose page it holds (richTab), so a change
+    // that lands after the tab changed goes to that page, never into the document now shown
+    onChange: (md) => (richTab && richTab !== activeTab() ? backgroundChange(richTab, md) : onEditorChange(md, false, 'rich')),
     resolveImage: resolveImg,
     onRemoteBlocked: (n) => { remoteBlockedCount = n; renderRemoteNotice(); },
     onPickImage: async () => { const t = activeTab(); if (!t) return null; try { return await folio.pickImage(t.path); } catch (e) { toast(e.message, { kind: 'error' }); return null; } },
@@ -402,7 +403,10 @@ function setView(v, { persist = true } = {}) {
   if (type !== 'md') {
     const s = surfaceFor(type);
     if (!s) { loadSurface(type).then(() => { if (curType() === type) setView(v, { persist }); }, (e) => toast(e.message, { kind: 'error' })); return; }
-    if (t && s) { if (v !== 'code' && prev === 'code') s.setText(t.text); if (v !== 'visual') editor.applyRemote(t.text); s.setMode?.(v); }
+    if (t && s) {
+      if (prev !== 'code' && v !== prev) flushSurface(); // what the surface still holds reaches the tab before the code view takes its text
+      if (v !== 'code' && prev === 'code') s.setText(t.text); if (v !== 'visual') editor.applyRemote(t.text); s.setMode?.(v);
+    }
     $$('#view-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === v)));
     layoutPanes();
     if (persist) localStorageSet('folio.view.' + type, v);
@@ -544,21 +548,25 @@ async function closeTab(p = S.active) {
 function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 
 /* ============ editing & saving ============ */
-const autosave = debounce(() => saveActive(), 650);
-const surfaceSoon = debounce((text) => curSurface()?.setText(text), 250);
+const autosave = debounce(() => { const t = activeTab(); if (t) saveTab(t); }, 650); // a pause in typing: what is still being typed (a cell, a label) stays open
+// the code pane's text reaches the surface after a pause, only while its tab is still shown: the next tab has its own
+// text already, and must not be given this one
+const surfaceSoon = debounce((text, tab) => { if (tab === activeTab()) curSurface()?.setText(text); }, 250);
 const previewSoon = debounce(() => { renderPreview(); renderOutline(); }, 110);
-let richPath = null; // the page the page editor holds
+let richTab = null; // the tab whose page the page editor holds
 /** the page editor, about to be given the active tab's page */
-function richShow() { richPath = S.active; return rich; }
-/** a change a surface reports for a tab that is not the active one (see surfaceCtx onChange) */
-function backgroundChange(path, text) {
-  const t = tabOf(path); if (!t || t.dead || text === t.text) return;
+function richShow() { richTab = activeTab(); return rich; }
+/** a change the page editor or a surface reports for a tab that is not the active one (see surfaceCtx onChange) */
+function backgroundChange(t, text) {
+  if (!S.tabs.includes(t) || t.dead || text === t.text) return; // a closed tab was flushed and saved before it closed
   t.text = text; renderTabsDirty();
   saveTab(t);
 }
-/** a surface finishes what it has pending for the shown document (a sheet's delayed save) before the tab changes */
-function flushSurface() {
-  try { curSurface()?.flush?.(); } catch (e) { console.error('[surface] flush', e); }
+/** the shown editor hands over what it still holds for its document (the page editor's 220 ms pause; a surface's notes,
+ *  label or cell still being typed) before the tab changes, the view changes or the tabs are saved. `keepEditing`: an
+ *  explicit save, after which the person goes on typing in the same cell or text box */
+function flushSurface({ keepEditing = false } = {}) {
+  try { if (curType() !== 'md') curSurface()?.flush?.({ keepEditing }); } catch (e) { console.error('[surface] flush', e); }
   try { if (curType() === 'md' && isRich()) rich.flush?.(); } catch (e) { console.error('[rich] flush', e); }
 }
 function onEditorChange(text, isRemote, from = 'source') {
@@ -569,7 +577,7 @@ function onEditorChange(text, isRemote, from = 'source') {
   if (text === t.text) return;
   t.text = text;
   if (curType() !== 'md') {
-    if (from === 'source' && app.dataset.modeView === 'split') surfaceSoon(text);
+    if (from === 'source' && app.dataset.modeView === 'split') surfaceSoon(text, t);
     if (from === 'surface' && app.dataset.modeView === 'split') editor.applyRemote(text);
   }
   if (!isRemote) { autosave(); setSaveState('edited'); }
@@ -610,7 +618,7 @@ async function saveAllOrAsk() {
   if (discard) S.writesFrozen = true; // the pages are about to go: no later save (a Retry, an autosave) may write them, least of all into another folder
   return discard;
 }
-async function saveActive() { const t = activeTab(); if (t) await saveTab(t); }
+async function saveActive() { flushSurface({ keepEditing: true }); const t = activeTab(); if (t) await saveTab(t); } // ⌘S, history, a named version: with what is still being typed
 let saveStateTimer;
 function setSaveState(s) { $('#st-save').textContent = tr(`app.save-${s}`); clearTimeout(saveStateTimer); if (s === 'saved') saveStateTimer = setTimeout(() => ($('#st-save').textContent = ''), 1600); }
 
