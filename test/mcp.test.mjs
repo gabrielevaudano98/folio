@@ -112,6 +112,24 @@ if (!process.env.FOLIO_APP_BRIDGE) {
   await c.connect(t);
   await suite(c, root, 'stdio bridge, Folio closed (direct mode)');
   await c.close();
+  { // X3: with Folio closed, the stdio bridge reads the page locks from settings.json next to the bridge file
+    const ud = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-lock-ud-')), ws = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-lock-ws-'));
+    try {
+      fs.writeFileSync(path.join(ud, 'mcp-bridge.json'), JSON.stringify({ workspace: ws, allowWrite: true }));
+      fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ lockedPages: { [ws]: { 'Locked.md': true }, '/elsewhere': { 'Other.md': true } } }));
+      const L = '# Locked\nsee [[Target]]\n'; fs.writeFileSync(path.join(ws, 'Locked.md'), L); fs.writeFileSync(path.join(ws, 'Other.md'), '# Other\nsee [[Target]]\n'); fs.writeFileSync(path.join(ws, 'Target.md'), '# Target\n');
+      const lc = new Client({ name: 'lock-test', version: '1' });
+      await lc.connect(new StdioClientTransport({ command: process.execPath, args: ['dist/mcp-stdio.mjs', '--bridge', path.join(ud, 'mcp-bridge.json')] }));
+      const w = await lc.callTool({ name: 'write_note', arguments: { path: 'Locked.md', content: 'x' } }); assert(w.isError && /locked/.test(text(w)), text(w));
+      const mv = await lc.callTool({ name: 'move_note', arguments: { from: 'Locked.md', to: 'Gone.md' } }); assert(mv.isError && /locked/.test(text(mv)), text(mv));
+      const e = await lc.callTool({ name: 'append_to_note', arguments: { path: 'Other.md', content: 'ok' } }); assert(!e.isError, text(e));
+      const m = await lc.callTool({ name: 'move_note', arguments: { from: 'Target.md', to: 'Moved.md' } }); assert(!m.isError && /locked pages/.test(text(m)), text(m));
+      assert.equal(fs.readFileSync(path.join(ws, 'Locked.md'), 'utf8'), L, 'a locked page keeps its old link');
+      assert(fs.readFileSync(path.join(ws, 'Other.md'), 'utf8').includes('[[Moved]]'));
+      await lc.close();
+      ok('stdio direct mode refuses writes and moves of a locked page, and a move leaves the links in locked pages alone');
+    } finally { fs.rmSync(ud, { recursive: true, force: true }); fs.rmSync(ws, { recursive: true, force: true }); }
+  }
 } else {
   const bridge = JSON.parse(fs.readFileSync(process.env.FOLIO_APP_BRIDGE, 'utf8'));
   const appRoot = bridge.workspace;

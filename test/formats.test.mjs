@@ -21,7 +21,8 @@ import { findMatches, replaceAll } from '../src/renderer/page-find.js';
 import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
-import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread } from '../src/renderer/page-critic.js';
+import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved, RESOLVED as RESOLVED_MARK } from '../src/renderer/page-critic.js';
+import { readAppearance, setAppearance, setCover, coverOf, ownedKeys } from '../src/renderer/page-appearance.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag, setTypeOverrides, inferType } from '../src/renderer/page-props.js';
 import { reactionOf, splitThread, myReaction, commentParts, mentionAt } from '../src/renderer/page-reactions.js';
 import { findMentions, linkMention, linkAllMentions } from '../src/renderer/refs-syntax.js';
@@ -214,6 +215,20 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   }
   ok(`page corpus (${corpus.length} files): opening is byte-identical, editing a paragraph rewrites only that paragraph`);
 
+  // W2-B: a date mention with a time, an end or a reminder is plain text after the day link: lossless, editable, and rewriting
+  // the paragraph writes the same characters back (Folio writes →; a hand-typed -> is read, see FORMATS.md)
+  {
+    const page = '# Dates\n\nCall Ada [[2026-12-01]]{09:00 remind 30m} about **budget**.\n\n- [ ] Trip [[2026-12-03]]{→ 2026-12-05} and [[2026-12-01]]{09:00 → 10:30 remind}\n- [ ] Rent [[2026-12-01]]{remind 1d} [status:: Doing]\n\nNot a tail: [[2026-12-07]]{see notes} and [[Plan]]{x}.\n';
+    const { m, doc, kids } = open(page);
+    assert.equal(codec.save(m, doc), page); assert(!m.blocks.some((b) => b.raw), 'every block stays editable');
+    m.orig = null; assert.equal(codec.save(m, withKids(kids.map((k) => schema.nodeFromJSON(k.toJSON())))), page, 'serializing every block again gives the same text');
+    const next = kids.slice(); next[1] = para('Call Ada [[2026-12-01]]{09:30 remind 1h} about it.');
+    const o2 = open(page); assert.equal(codec.save(o2.m, withKids([o2.kids[0], next[1], ...o2.kids.slice(2)])), page.replace('[[2026-12-01]]{09:00 remind 30m} about **budget**.', '[[2026-12-01]]{09:30 remind 1h} about it.'));
+    const h = markdownIt.render('Due [[2026-12-01]]{09:00 remind 30m} and [[2026-12-07]]{see}');
+    assert(h.includes('wikilink-date is-remind') && h.includes('9:00') && !h.includes('remind 30m') && h.includes('{see}'), h);
+    ok('date mentions with time, end and reminder round-trip byte for byte, edit as text, and read as one date in the Read view');
+  }
+
   const obs = open(fx('pages/obsidian.md'));
   assert(!obs.m.blocks.some((b) => b.raw)); ok('an Obsidian page (footnotes, maths, callouts, comments) is fully editable');
   const html = open(fx('pages/html.md')).m.blocks.filter((b) => b.raw).map((b) => b.src);
@@ -224,6 +239,27 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   const kinds = new Set(); st.doc.descendants((n) => { kinds.add(n.type.name + (n.attrs?.heading ? n.attrs.heading : '')); });
   for (const k of ['breadcrumb', 'toc', 'blockquote', 'details', 'details2', 'columns', 'column', 'pageBreak']) assert(kinds.has(k), k);
   ok('toggles, toggle headings, columns, contents, breadcrumb, page breaks and callouts are editable blocks');
+  { // F1: formatting in a toggle title is written as inline HTML inside <summary> and comes back as marks
+    const lit = '<details>\n<summary>**Bold** title</summary>\n\nBody text\n\n</details>\n';
+    const l = open(lit); assert.equal(l.kids[0].child(0).textContent, '**Bold** title'); assert.equal(codec.save(l.m, l.doc), lit);
+    const t = '<details>\n<summary>Plain <strong>bold <em>both</em></strong> <a href="https://x.org/?a=1&amp;b=2">link</a> <code>a&lt;b</code> <s>x</s></summary>\n\nBody text\n\n</details>\n';
+    const o = open(t); const sum = o.kids[0].child(0);
+    assert.deepEqual(sum.content.content.map((x) => [x.text, x.marks.map((mk) => mk.type.name).join('+')]), [['Plain ', ''], ['bold ', 'bold'], ['both', 'bold+italic'], [' ', ''], ['link', 'link'], [' ', ''], ['a<b', 'code'], [' ', ''], ['x', 'strike']]);
+    assert.equal(sum.child(4).marks[0].attrs.href, 'https://x.org/?a=1&b=2'); assert.equal(codec.save(o.m, o.doc), t);
+    // a mark added in the editor (what the bubble menu does) is saved, and loads back as the same mark
+    const { bold, italic } = schema.marks;
+    const mk = (title, h = 0) => schema.nodes.details.create({ heading: h }, [schema.nodes.detailsSummary.create(null, title), schema.nodes.detailsContent.create(null, [para('Body text')])]);
+    const edited = open(lit); const doc2 = withKids([mk([schema.text('Bold', [bold.create()]), schema.text(' title <em> & &amp;')])]);
+    const saved = codec.save(edited.m, doc2); assert.equal(saved, '<details>\n<summary><strong>Bold</strong> title &lt;em> & &amp;amp;</summary>\n\nBody text\n\n</details>\n');
+    const back = open(saved); assert.equal(back.kids[0].child(0).textContent, 'Bold title <em> & &amp;'); assert.deepEqual(back.kids[0].child(0).child(0).marks.map((x) => x.type.name), ['bold']); assert.equal(codec.save(back.m, back.doc), saved);
+    const cm = codec.save(edited.m, withKids([mk([schema.text('B', [bold.create()]), schema.text(' <!-- note --> 1 < 2')])])); assert.equal(cm, '<details>\n<summary><strong>B</strong> &lt;!-- note --> 1 &lt; 2</summary>\n\nBody text\n\n</details>\n');
+    { const b2 = open(cm); assert.equal(b2.kids[0].child(0).textContent, 'B <!-- note --> 1 < 2'); assert.equal(codec.save(b2.m, b2.doc), cm); assert.doesNotMatch(markdownIt.render(cm), /<!-- note/); }
+    const hd = codec.save(edited.m, withKids([mk([schema.text('Big', [italic.create()])], 2)])); assert.equal(hd, '<details>\n<summary><h2><em>Big</em></h2></summary>\n\nBody text\n\n</details>\n');
+    assert.equal(open(hd).kids[0].child(0).child(0).marks[0].type.name, 'italic');
+    // hand-written HTML Folio would write differently stays literal text, byte for byte
+    for (const raw of ['<em><strong>x</strong></em> y', '<strong>open', '<b>old</b> tag', 'a < b &lt; <strong>c</strong>']) { const x = `<details>\n<summary>${raw}</summary>\n\nBody text\n\n</details>\n`; const r = open(x); assert.equal(codec.save(r.m, r.doc), x, raw); }
+    const { markdownIt: mdi } = await import('../src/renderer/markdown.js'); assert.match(mdi.render(t), /<summary>Plain <strong>bold <em>both<\/em><\/strong> <a href="https:\/\/x.org\/\?a=1&amp;b=2">link<\/a>/);
+    ok('toggle titles keep bold, italic, links and code as inline HTML in <summary>; literal titles stay byte-identical; the Read view shows them'); }
   { const { parseCallout, calloutMarker } = await import('../src/renderer/callouts.js');
     assert.deepEqual(['faq', 'tldr', 'error', 'cite', 'weird'].map((k) => parseCallout(`[!${k}] x`).type), ['question', 'abstract', 'danger', 'quote', 'note']);
     const c = parseCallout('[!callout|💡 yellow]- Read me'); assert.deepEqual([c.emoji, c.color, c.fold, c.title, c.label], ['💡', 'yellow', '-', 'Read me', 'Callout']);
@@ -403,9 +439,25 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     assert.equal(items[3].comments[0].text, 'Check with legal.');
     let st = EditorState.create({ doc: r.doc }); const tr = st.tr; for (const it of items.filter((i) => i.kind !== 'thread')) settle(st, it, true, tr); st = st.apply(tr);
     assert.equal(codec.save(r.m, st.doc), '# Contract review\n\nThe supplier will deliver within 30 days.\nPayment terms 30 days. {==Liability is capped.==}{>>Check with legal.<<}\n\nNormal paragraph without marks.\n');
-    st = EditorState.create({ doc: r.doc }); st = st.apply(resolveThread(st, docReview(st.doc)[3]));
+    st = EditorState.create({ doc: r.doc }); st = st.apply(deleteThread(st, docReview(st.doc)[3]));
     assert(codec.save(r.m, st.doc).includes('days. Liability is capped.\n\nNormal'));
-    ok('CriticMarkup opens as editable marks and nodes, saves byte-identical; accept all and resolve a thread change only those blocks'); }
+    ok('CriticMarkup opens as editable marks and nodes, saves byte-identical; accept all and delete a thread change only those blocks');
+    // F2: Resolve keeps the thread and marks it resolved with a [resolved] reply; Reopen removes the marker; a reply reopens it
+    const src = fx('pages/review.md'); st = EditorState.create({ doc: r.doc });
+    st = st.apply(resolveThread(st, docReview(st.doc)[3], st.tr, 'Bob'));
+    const res = codec.save(r.m, st.doc); const mk = /\{>>Bob, \d{4}-\d{2}-\d{2} \d{2}:\d{2}: \[resolved\]<<\}/;
+    assert.match(res, new RegExp('\\{==Liability is capped\\.==\\}\\{>>Check with legal\\.<<\\}' + mk.source)); assert.equal(res.replace(mk, ''), src);
+    const th = docReview(st.doc)[3]; assert.equal(th.resolved, true); assert.equal(th.comments[0].text, 'Check with legal.');
+    assert.equal(resolveThread(st, th).docChanged, false, 'resolving twice adds nothing');
+    { let d = EditorState.create({ doc: r.doc }); d = d.apply(d.tr.insert(docReview(d.doc)[3].end, d.schema.nodes.criticComment.create({ body: commentBody('Bob', '') })));
+      assert.equal(resolveThread(d, docReview(d.doc)[3], d.tr, 'Bob').docChanged, false, 'a thread with an empty draft reply is not resolved (Resolve all skips it)'); }
+    assert.equal(parseComment(commentBody('A'.repeat(60), RESOLVED_MARK, '2026-11-27 10:00')).text, RESOLVED_MARK, 'a long author name is cut so the marker still parses');
+    const reo = open(res); assert.equal(codec.save(reo.m, reo.doc), res); assert.equal(docReview(reo.doc).at(-1).resolved, true, 'resolved survives a reload');
+    let s2 = EditorState.create({ doc: reo.doc }); s2 = s2.apply(reopenThread(s2, docReview(s2.doc).at(-1))); assert.equal(codec.save(reo.m, s2.doc), src); assert.equal(docReview(s2.doc).at(-1).resolved, false);
+    s2 = EditorState.create({ doc: reo.doc }); s2 = s2.apply(s2.tr.insert(docReview(s2.doc).at(-1).end, s2.schema.nodes.criticComment.create({ body: commentBody('Ada', 'Not yet', '2026-11-27 11:00') })));
+    assert.equal(docReview(s2.doc).at(-1).resolved, false, 'a reply after [resolved] reopens'); s2 = s2.apply(s2.tr.insert(docReview(s2.doc).at(-1).end, s2.schema.nodes.criticComment.create({ body: commentBody('Ada', '👍', '2026-11-27 11:00') })));
+    assert.equal(threadResolved([{ text: 'a' }, { text: '[resolved]' }, { text: '👍' }]), true); assert.equal(threadResolved([{ text: '[resolved]' }]), false);
+    ok('Resolve keeps the comments and adds a [resolved] reply (lossless, survives reload); Reopen and a new reply reopen; Delete removes'); }
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
@@ -431,6 +483,12 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.deepEqual((await ins('at', 'next friday'))[0], '[[2026-11-27]]'); assert.equal((await ins('at', 'tomorrow'))[0], '[[2026-11-21]]');
   assert.equal((await ins('at', 'domani'))[0], '[[2026-11-21]]'); assert.equal((await ins('at', 'tra 3 giorni'))[0], '[[2026-11-23]]'); assert.equal((await ins('at', '25 dec'))[0], '[[2026-12-25]]');
   ok('@ understands dates in English and Italian (tomorrow, next friday, domani, tra 3 giorni, 25 dec) and links the daily note');
+  assert.equal((await ins('at', 'tomorrow 9am'))[0], '[[2026-11-21]]{09:00}'); assert.equal((await ins('at', '3 dec - 5 dec'))[0], '[[2026-12-03]]{→ 2026-12-05}');
+  assert.deepEqual((await ins('at', 'remind tomorrow 9am')).slice(0, 1), ['[[2026-11-21]]{09:00 remind}']);
+  assert.deepEqual((await ins('at', 'ricordami domani alle 9')).slice(0, 1), ['[[2026-11-21]]{09:00 remind}']);
+  assert.equal((await ins('at', 'remind monday'))[0], '[[2026-11-23]]{remind}'); assert.equal((await mentionEntries('at', 'rem', ctx))[0].group, 'Reminders');
+  assert.ok((await ins('at', 'remind tomorrow 9am')).every((x) => !/\[\[[^\]]* \d/.test(x)), 'never a time inside the brackets');
+  ok('@tomorrow 9am adds the time, @3 dec - 5 dec a range, and @remind / @ricordami write a reminder after the day link');
   const at = await mentionEntries('at', 'ada', ctx); assert.equal(at[0].group, 'People');
   assert(!at.some((e) => e.insert === '[[2026-11-19]]')); ok('@ puts people first and does not list daily notes as pages');
   assert.deepEqual((await ins('at', 'done')).filter((x) => x.startsWith('[status')), ['[status:: Done]']); assert.equal((await ins('at', 'status')).filter((x) => x.startsWith('[status')).length, 4);
@@ -501,6 +559,15 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(setProp('# Hi\n', 'tags', ['a'], 'tags'), '---\ntags:\n  - a\n---\n\n# Hi\n'); assert.equal(removeProp('---\nx: 1\n---\n# Hi\n', 'x'), '# Hi\n');
   assert.equal(setProp('', 'done', false, 'checkbox'), '---\ndone: false\n---\n'); assert.equal(newKey(t), 'property'); assert.equal(newKey(setProp(t, 'property', '')), 'property 2');
   ok('the first property creates the front matter; removing the last removes it');
+  { // F3: a CRLF file keeps CRLF; only the edited property's line changes
+    const c = t.replace(/\n/g, '\r\n');
+    assert.equal(setProp(c, 'done', true), c.replace('done: false', 'done: true'));
+    assert.equal(setProp(c, 'aliases', ['One', 'Three']), c.replace('  - "Two: x"', '  - Three'));
+    assert.equal(removeProp(c, 'count'), c.replace('count: 3\r\n', '')); assert.equal(renameProp(c, 'due', 'deadline'), c.replace('due:', 'deadline:'));
+    assert.equal(setProp(c, 'new', 'hi'), c.replace('  status: [a, b]\r\n', '  status: [a, b]\r\nnew: hi\r\n'));
+    assert.equal(setProp('# Hi\r\n', 'done', true), '---\r\ndone: true\r\n---\r\n\r\n# Hi\r\n');
+    assert.equal(setProp('---  \nx: 1\n---\t\n# Hi\n', 'x', 2), '---  \nx: 2\n---\t\n# Hi\n'); assert.equal(setProp('---\r\nx: 1\r\n---', 'x', 2), '---\r\nx: 2\r\n---');
+    ok('a property edit keeps the file\'s line ending (CRLF) and the --- lines as written'); }
   assert.equal(renameTag(t, 'project', 'work'), t.replace('project/alpha', 'work/alpha'));
   assert.equal(renameTag('a #q4 b `#q4` #q4x (#q4)\n```\n#q4\n```\n#Q4.', 'q4', 'q1'), 'a #q1 b `#q4` #q4x (#q1)\n```\n#q4\n```\n#q1.');
   assert.equal(renameTag(t, 'q4', 'bad tag'), t);
@@ -522,8 +589,24 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert(INSERTS.every((i) => CATEGORIES.includes(i.cat) && (i.turn || i.run) && i.label && (i.icon || i.badge)));
   assert.equal(new Set(INSERTS.map((i) => i.id)).size, INSERTS.length); ok('every insert has a category, an action and an icon, and a unique id');
   const all = filterInserts('', { recent: ['math', 'h2'] });
-  assert.deepEqual(all.slice(0, 2).map((x) => [x.group, x.item.id]), [['Recent', 'math'], ['Recent', 'h2']]); assert.equal(all.filter((x) => x.group !== 'Recent').length, INSERTS.length);
-  ok('with no query the menu shows recent items, then every category');
+  assert.deepEqual(all.slice(0, 2).map((x) => [x.group, x.item.id]), [['Recent', 'math'], ['Recent', 'h2']]); assert.equal(all.filter((x) => x.group !== 'Recent' && !x.item.block).length, INSERTS.length);
+  assert.deepEqual([...new Set(all.slice(2 + INSERTS.length).map((x) => x.group))], ['Actions', 'Colour']);
+  ok('with no query the menu shows recent items, then every category, then the actions and colours of the block (Notion)');
+  {
+    const h2 = filterInserts('h2', { recent: [], hasText: true }).slice(0, 2);
+    assert.deepEqual(h2.map((x) => [x.item.id, x.mode]), [['h2', 'insert'], ['h2', 'turn']]);
+    assert.equal(filterInserts('h2', { recent: [] })[0].mode, undefined);
+    const full = filterInserts('', { recent: [], hasText: true });
+    assert(full.some((x) => x.group === 'Turn into' && x.item.id === 'h1') && full.filter((x) => x.group === 'Basic' && x.item.turn).every((x) => x.mode === 'insert'));
+    ok('on a line with text, a block is offered twice: insert below, or turn this line into it');
+    assert.deepEqual(filterInserts('red', { recent: [] }).slice(0, 2).map((x) => x.item.id), ['colour-red', 'bg-red']);
+    assert.equal(filterInserts('delete', { recent: [] })[0].item.id, 'act-delete'); assert(filterInserts('delete', { recent: [] })[0].item.danger);
+    assert.equal(filterInserts('dup', { recent: [] })[0].item.id, 'act-duplicate'); assert.equal(filterInserts('move up', { recent: [] })[0].item.id, 'act-up');
+    assert.equal(filterInserts('2 col', { recent: [] })[0].item.id, 'columns-2'); assert.equal(filterInserts('tdl', { recent: [] })[0].item.id, 'task');
+    assert.deepEqual([...new Set(filterInserts('turn', { recent: [], hasText: true }).map((x) => x.mode))], ['turn']); assert(filterInserts('turn', { recent: [], hasText: true }).length >= 9);
+    ok('/turn lists every block the line can become');
+    ok('/red, /delete, /dup, /move up, /2 col and initials (/tdl) find colours, actions and blocks');
+  }
   assert.equal(filterInserts('h2', { recent: [] })[0].item.id, 'h2'); assert.equal(filterInserts('todo', { recent: [] })[0].item.id, 'task');
   assert.equal(filterInserts('equation', { recent: [] })[0].item.id, 'math'); assert.equal(filterInserts('[[', { recent: [] })[0].item.id, 'link');
   assert(filterInserts('cal', { recent: [] }).slice(0, 6).every((x) => x.item.id.startsWith('callout'))); assert.equal(filterInserts('columns', { recent: [] })[0].item.id, 'columns-2'); assert.equal(filterInserts('toggle', { recent: [] })[0].item.id, 'toggle'); assert.equal(filterInserts('toc', { recent: [] })[0].item.id, 'toc');
@@ -800,6 +883,35 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.ok(!/<img\b[^>]*\ssrc="/.test(html) && !/srcset/.test(html), html);
   assert.ok(html.includes('data-src="https://example.com/a.png"') && html.includes('data-src="file:///etc/a.png"') && html.includes('data-src="pics/a.png"'), html);
   ok('slide text pictures keep their address in data-src, so the view checks it before anything is requested');
+}
+
+
+{ // W2-C: page appearance keys: each one adds or removes only its own line; CRLF stays CRLF; defaults leave no trace
+  for (const eol of ['\n', '\r\n']) {
+    const body = `# Title${eol}${eol}Text${eol}`;
+    const fmOf = (extra) => `---${eol}title: Hi${eol}${extra}tags: [a]${eol}---${eol}`;
+    const base = fmOf('') + body;
+    for (const [key, val, line] of [['font', 'serif', 'font: serif'], ['font', 'mono', 'font: mono'], ['small-text', true, 'small-text: true'], ['full-width', true, 'full-width: true'], ['toc', true, 'toc: true'], ['cover', '.asset/ab12cd34-pic.png', 'cover: .asset/ab12cd34-pic.png'], ['cover', 'gradient-3', 'cover: gradient-3']]) {
+      const on = setAppearance(base, key, val);
+      assert.equal(on, base.replace(`tags: [a]${eol}`, `tags: [a]${eol}${line}${eol}`), `${key} adds only its line`);
+      assert.equal(setAppearance(on, key, key === 'font' ? '' : false), base, `${key} removed restores the file byte for byte`);
+    }
+    const cov = setAppearance(base, 'cover', '.asset/x.png'); const moved = setAppearance(cov, 'cover-y', 30);
+    assert.equal(moved, cov.replace(`cover: .asset/x.png${eol}`, `cover: .asset/x.png${eol}cover-y: 30${eol}`));
+    assert.equal(setAppearance(moved, 'cover-y', 50), cov, 'the default position removes cover-y');
+    assert.equal(setCover(moved, ''), base, 'removing the cover takes cover-y with it');
+    assert.equal(setCover(moved, 'gradient-2'), moved.replace('cover: .asset/x.png', 'cover: gradient-2').replace(`cover-y: 30${eol}`, ''), 'a new cover resets its position');
+    // a page with no front matter gets one and loses it again
+    const bare = `# T${eol}`; const on = setAppearance(bare, 'toc', true);
+    assert.equal(setAppearance(on, 'toc', false), bare, 'a page with no front matter returns to none');
+  }
+  const a = readAppearance('---\nfont: mono\nsmall-text: true\nfull-width: true\ntoc: true\ncover: .asset/p.png\ncover-y: 20\n---\nx\n');
+  assert.deepEqual([a.font, a.small, a.full, a.toc, a.cover?.kind, a.coverY], ['mono', true, true, true, 'asset', 20]);
+  assert.equal(readAppearance('---\ncover: https://example.com/a.png\n---\n').cover, null, 'a web address is never a cover');
+  assert.equal(coverOf('.asset/../../etc/passwd'), null); assert.equal(coverOf('pics/a.png'), null); assert.equal(coverOf('gradient-9'), null);
+  assert.equal(readAppearance('---\nfont: comic\nsmall-text: false\n---\n').font, '', 'values it does not know are ignored');
+  assert.deepEqual([...ownedKeys('---\nfont: serif\ncover: https://x.y/z.png\ncover-y: 5\nowner: Ada\ntoc: true\n---\n')].sort(), ['font', 'toc'], 'only understood keys are hidden from the properties');
+  ok('page appearance: font, small-text, full-width, toc, cover and cover-y each change only their own line (LF and CRLF), defaults leave no trace, web covers are refused');
 }
 
 console.log(`\n${n} format checks passed`);

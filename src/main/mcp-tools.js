@@ -206,7 +206,7 @@ export async function runTool(notes, name, a, hooks = {}) {
     case 'write_note': return wrote(await notes.write(a.path, a.content), 'Rewrote');
     case 'edit_note': return wrote(await notes.edit(a.path, a.edits), 'Edited');
     case 'append_to_note': return wrote(await notes.append(a.path, a.content, a), 'Appended to');
-    case 'move_note': { const r = await notes.move(a.from, a.to); const changed = await notes.rewriteAfterMove(r.from, r.to).catch(() => []); await hooks.onMove?.(r); return `Moved ${r.from} to ${r.to}` + (changed.length ? `. Updated references in ${changed.join(', ')}` : '') + (changed.failed?.length ? `. Could not update references in ${changed.failed.join(', ')}; fix them by hand` : ''); }
+    case 'move_note': { const r = await notes.move(a.from, a.to); const changed = await notes.rewriteAfterMove(r.from, r.to, undefined, { skip: (f) => f !== r.to && !!hooks.isLocked?.(f) }).catch(() => []); await hooks.onMove?.(r); return `Moved ${r.from} to ${r.to}` + (changed.length ? `. Updated references in ${changed.join(', ')}` : '') + (changed.failed?.length ? `. Could not update references in ${changed.failed.join(', ')}; fix them by hand` : '') + (changed.skipped?.length ? `. Left the links in locked pages as they were: ${changed.skipped.join(', ')}` : ''); }
     case 'resolve_ref': {
       const files = await notes.allFiles();
       const r = await resolveRef(a.ref, { files, from: a.from || '', read: (p) => notes.read(p) });

@@ -133,7 +133,7 @@ const steps = [
   { js: drag('First paragraph.', 'Last paragraph.'), log: true, wait: 2500 },
   // D4: structure
   { js: "document.querySelector('[data-file=\"pages/d4.md\"]').click()", wait: 1200 },
-  { js: "(() => { const m = [...document.querySelectorAll('.rich-callout-marker')].find((x) => x.dataset.label === 'Success'); m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return !!document.querySelector('.callout-menu'); })()", log: true, wait: 300 },
+  { js: "(() => { const m = document.querySelector('.rich-callout.callout-success .rich-callout-icon'); m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return !!document.querySelector('.callout-menu'); })()", log: true, wait: 300 },
   { js: "document.querySelector('.callout-menu [data-kind=warning]').click(); true", wait: 300 },
   { js: "(() => { const n = document.querySelectorAll('.rich-callout.is-folded').length; document.querySelector('.rich-callout-fold[aria-expanded=false]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return n + ':' + document.querySelectorAll('.rich-callout.is-folded').length; })()", log: true, wait: 300 },
   { js: "(() => { const h = [...document.querySelectorAll('.rich-prose h2')].find((x) => x.textContent.includes('Appendix')); h.querySelector('.rich-hfold').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return [...document.querySelectorAll('.rich-prose > p')].filter((p) => p.textContent === 'Last paragraph.' && p.classList.contains('rich-fold-hidden')).length; })()", log: true, wait: 300 },
@@ -168,7 +168,7 @@ const steps = [
   ...pick('[[Brand New Idea', 'Create', 700),
   { js: 'true', wait: 2500 },
   { js: "['.rich-wikilink.is-person', '.rich-wikilink.is-date', '.rich-tag', '.rich-status.is-green'].map((q) => document.querySelectorAll(q).length).join(':')", log: true, wait: 100 },
-  { js: "(() => { const el = [...document.querySelectorAll('.rich-wikilink')].find((x) => x.dataset.target === 'Atlas Plan'); el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return true; })()", wait: 900 },
+  { js: "(() => { const el = [...document.querySelectorAll('.rich-wikilink')].find((x) => x.dataset.target === 'Atlas Plan'); el.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })); el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return true; })()", wait: 900 },
   { js: "(() => { const c = document.querySelector('.rich-hover'); return !!c && c.textContent.includes('Atlas Plan'); })()", log: true, wait: 100 },
   { js: "(() => { const el = document.querySelector('.rich-wikilink.is-date'); const r = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, ctrlKey: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new MouseEvent('mousedown', o)); el.dispatchEvent(new MouseEvent('mouseup', o)); return true; })()", wait: 2000 },
   // D6: sort, centre and move a column from the Table tab; paste cells from a spreadsheet

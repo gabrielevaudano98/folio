@@ -8,6 +8,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { buildServer, runTool, TOOLS } from '../main/mcp-tools.js';
 import { createNotes } from '../main/notes.js';
 import { createHistory } from '../main/history.js';
+import { assertUnlocked, isLockedPage, readLockedPages } from '../main/locks.js';
+import path from 'node:path';
 
 const argv = process.argv.slice(2);
 const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
@@ -48,8 +50,13 @@ const backend = {
   async call(name, args, ctx) {
     const r = await relay(name, args, ctx);
     if (r) return r.value;
-    if (readBridge().allowWrite === false && TOOLS.find((t) => t.name === name)?.write) throw new Error('Folio is set to read-only for AI assistants.');
-    return runTool(notes, name, args, { history, client: ctx?.client, onWrite: async (r) => { try { if (r.before != null) await history.snapshot(r.path, r.before, { reason: 'before-ai', force: true }); await history.snapshot(r.path, r.after, { by: ctx?.client || 'AI', reason: 'ai', force: true }); } catch {} } });
+    const tool = TOOLS.find((t) => t.name === name);
+    if (readBridge().allowWrite === false && tool?.write) throw new Error('Folio is set to read-only for AI assistants.');
+    // Folio is closed: the page locks come from its settings.json, next to the bridge file, keyed by the folder in use
+    const lockedPages = bridgePath && tool?.write ? readLockedPages(path.join(path.dirname(bridgePath), 'settings.json')) : {};
+    const workspace = rootOverride || readBridge().workspace;
+    assertUnlocked(tool, args, { notes, lockedPages, workspace });
+    return runTool(notes, name, args, { history, client: ctx?.client, isLocked: (rel) => isLockedPage(lockedPages, workspace, rel), onWrite: async (r) => { try { if (r.before != null) await history.snapshot(r.path, r.before, { reason: 'before-ai', force: true }); await history.snapshot(r.path, r.after, { by: ctx?.client || 'AI', reason: 'ai', force: true }); } catch {} } });
   },
 };
 
