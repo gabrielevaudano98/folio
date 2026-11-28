@@ -19,8 +19,8 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 
 | Area | On `main` | In flight | Main gaps |
 |---|---|---|---|
-| App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Linux build |
-| Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 on the PR stack | Data bugs fixed only on #77 ([#81](https://github.com/gabrielevaudano98/folio/issues/81)) |
+| App shell (files, tabs, search, undo, history, i18n) | Shipped | — | Linux build |
+| Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 shipped in 1.6.0 | Leftovers in [#86](https://github.com/gabrielevaudano98/folio/issues/86) |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
@@ -64,22 +64,11 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
 
 Work that exists in code but is not on `main`. Nothing here ships until it is merged.
 
-### Pages: the Notion gap (stacked pull requests)
+### Pages: the Notion gap (merged in 1.6.0)
 
-The plan lives in the Folio project notes (`NOTION-GAP-PLAN.md`, `NOTION-EXECUTION-PLAN.md`); the pull requests carry the
-summary. They are **stacked**: each one's base is the previous branch, so they merge in this order.
-
-| Order | PR | Branch | What | State |
-|---|---|---|---|---|
-| 1 | [#69](https://github.com/gabrielevaudano98/folio/pull/69) | `pages-ui-notion-pass` → `main` | Chips for dates, links, people, status; date popover and Settings → Date format; callouts with icon gutter; page icon; compact `/` menu | Open since 22 Nov; has merge conflicts with `main` (`mergeable_state: dirty`): rebase on 1.5.x |
-| 2 | [#77](https://github.com/gabrielevaudano98/folio/pull/77) | `notion-gap-wave1` → `pages-ui-notion-pass` | Data fixes F1–F3, shortcut/UI fixes F4–F6, Duplicate page, Move to…, Copy link, Lock page, code block Copy/Wrap, expand/collapse all | Open; **no CI has run on it** (see below); its description reports 547 checks green locally |
-| 3 | [#79](https://github.com/gabrielevaudano98/folio/pull/79) | `notion-gap-wave2` → `notion-gap-wave1` | Search window on `Mod+P`, dates with time, end date and reminders, per-page appearance (font, width, cover, floating TOC) | Open; no CI has run on it; its "not done" list is tracked in [#86](https://github.com/gabrielevaudano98/folio/issues/86) |
-
-**CI does not run on #77 and #79**: `ci.yml` and `codeql.yml` start only for pull requests whose base is `main`, so a
-stacked PR is untested in CI until it is retargeted to `main` or the one below it merges. Run `xvfb-run -a npm test`
-locally on each branch before merging. The stack adds 12 files to `src/` (for example `page-dates.js`, `main/locks.js`,
-`main/reminders.js`, `search-window.js`): each needs a line in the [source map](reference/source-map.md), or
-`test/docs-map.test.mjs` fails.
+The stacked pull requests [#69](https://github.com/gabrielevaudano98/folio/pull/69), [#77](https://github.com/gabrielevaudano98/folio/pull/77) and
+[#79](https://github.com/gabrielevaudano98/folio/pull/79) are on `main` as of 1.6.0. What is left of the plan is tracked in
+[#86](https://github.com/gabrielevaudano98/folio/issues/86).
 
 Not started from the same plan: wave 2 batch 2 (turn blocks into pages, drop any file on a page, image options, page
 info, favourites and recents, clickable breadcrumb) in [#85](https://github.com/gabrielevaudano98/folio/issues/85), and
@@ -131,11 +120,11 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 
 | Bug | Impact | Where the fix is | Issue |
 |---|---|---|---|
-| Bold, italic, link or code in a toggle title are lost on save (F1) | Data loss | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Resolve removes a comment thread (F2); on `main` this is the intended design ("the comments go, the text stays"), PR #77 keeps resolved threads instead | Feature gap, can surprise | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Editing a property rewrites CRLF front matter as LF (F3) | Unrelated bytes change (invariant 1) | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
+| Bold, italic, link or code in a toggle title are lost on save (F1) | Data loss | Fixed in 1.6.0 (PR #77) | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
+| Resolve removes a comment thread (F2); on `main` this is the intended design ("the comments go, the text stays"), PR #77 keeps resolved threads instead | Feature gap, can surprise | Fixed in 1.6.0 (PR #77) | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
+| Editing a property rewrites CRLF front matter as LF (F3) | Unrelated bytes change (invariant 1) | Fixed in 1.6.0 (PR #77) | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
+| `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | Fixed in 1.6.0 (PR #77) | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
+| Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | Fixed in 1.6.0 (PR #77) | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | The same delayed-change problem in the slides, board and sheet surfaces: a change they report after a pause is applied to whichever tab is then active (the page editor is fixed). Found in review of the #82 fix; not reproduced yet | Possible data loss | Needs surfaces to name their document, as `d6ca0df` does for sheets | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
 | Startup and opening a long page go over the 100 ms budget | Responsiveness | — | [#90](https://github.com/gabrielevaudano98/folio/issues/90) |
 
