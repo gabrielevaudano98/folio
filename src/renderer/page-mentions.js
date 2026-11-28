@@ -111,9 +111,11 @@ export async function dateEntries(q, now = new Date(), { lang = 'en', label = nu
   let rows = [];
   if (!q.trim()) rows = [ref, addDays(ref, 1), addDays(ref, -1)].map((d) => ({ day: ymd(d), date: d }));
   else if (/[\p{L}\d]/u.test(q)) {
-    rows.push(...keywordDays(q, ref).map((d) => ({ day: ymd(d), date: d })));
+    const kw = keywordDays(q, ref);
+    rows.push(...kw.map((d) => ({ day: ymd(d), date: d })));
     const w = await chronoWhen(q, now, lang);
-    if (w) rows.push(w.time || w.endDay ? w : { day: w.day, date: w.date });
+    // a bare day word ("sun" on a Sunday) already gave the coming day: chrono's "today" reading would only add a past-looking twin
+    if (w && (w.time || w.endDay)) rows.push(w); else if (w && !kw.length) rows.push({ day: w.day, date: w.date });
   }
   const seen = new Set();
   rows = rows.map((r) => ({ time: null, endDay: null, endTime: null, remind: null, ...r })).filter((r) => { const k = mentionText(r); return !seen.has(k) && seen.add(k); }).slice(0, 4);
@@ -225,7 +227,7 @@ export async function emojiEntries(q) {
 
 /** one entry point for the editor: kind is 'link' ([[), 'at' (@), 'tag' (#) or 'emoji' (:) */
 export function mentionEntries(kind, q, ctx) {
-  if (kind === 'link') return linkEntries(q, ctx);
+  if (kind === 'link' || kind === 'plus') return linkEntries(q, ctx); // +name is Notion's way to link a page or make one
   if (kind === 'at') return atEntries(q, ctx);
   if (kind === 'tag') return tagEntries(q, ctx);
   return emojiEntries(q);

@@ -534,11 +534,18 @@ async function closeTab(p = S.active) {
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
+  { const k = closedTabs.indexOf(p); if (k >= 0) closedTabs.splice(k, 1); closedTabs.unshift(p); closedTabs.length = Math.min(closedTabs.length, 20); } // N5: Mod+Shift+T opens it again
   if (S.active === p) {
     const next = S.tabs[i] || S.tabs[i - 1];
     if (next) activate(next.path); else { S.active = null; showNoNote(); renderTabs(); renderTree(); }
   } else renderTabs();
   persistTabs();
+}
+/** N5 (Notion, browsers): the tabs closed in this session, newest first, for Reopen closed tab */
+const closedTabs = [];
+function reopenClosedTab() {
+  while (closedTabs.length) { const p = closedTabs.shift(); if (S.files.includes(p) && !tabOf(p)) return openFile(p); } // a page moved or deleted since is skipped
+  toast(tr('app.no-closed-tab'));
 }
 function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 
@@ -2080,6 +2087,8 @@ const COMMANDS = [
   { id: 'move-to', title: 'Move note to…', run: () => S.active && moveToPicker(S.active, false) },
   { id: 'copy-page-link', title: 'Copy link to note', run: () => copyPageLink(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
+  { id: 'reopen-tab', title: 'Reopen closed tab', key: 'Mod+Shift+T', run: () => reopenClosedTab() },
+  { id: 'toggle-theme', title: 'Switch between light and dark', run: () => saveSetting({ theme: S.dark ? 'light' : 'dark' }) }, // A7: Notion's Ctrl+Shift+L is Align left here, so no shortcut
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
   { id: 'italic', title: 'Format: italic', key: 'Mod+I', run: () => fmt('italic') },

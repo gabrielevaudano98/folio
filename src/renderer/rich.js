@@ -787,9 +787,9 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   };
 }
 
-/* [[ @ # : — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
-const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji') };
-const MENTION_LABEL = { link: tl('rich', 'Link to a page'), at: tl('rich', 'Mention a person, page or date'), tag: 'Tags', emoji: 'Emoji' };
+/* [[ @ # : + — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
+const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji'), plus: new PluginKey('mentionPlus') };
+const MENTION_LABEL = { link: tl('rich', 'Link to a page'), at: tl('rich', 'Mention a person, page or date'), tag: 'Tags', emoji: 'Emoji', plus: tl('rich', 'Link to a page or create one') };
 const Mentions = Extension.create({
   name: 'folioMentions',
   addOptions() { return { ctx: () => null, keyLabel: (k) => k }; },
@@ -803,7 +803,7 @@ const Mentions = Extension.create({
         const $f = state.doc.resolve(range.from);
         if ($f.parent.type.spec.code || state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code)) return false;
         const q = state.doc.textBetween(range.from + char.length, range.to, ' ', ' ');
-        return q.length >= min && q.length <= 48 && !/[\]\n]/.test(q) && !(spaces && /^\s/.test(q)) && (kind !== 'emoji' || /^[\w+\-]*$/.test(q));
+        return q.length >= min && q.length <= 48 && !/[\]\n]/.test(q) && !(spaces && /^\s/.test(q)) && (kind !== 'emoji' || /^[\w+\-]*$/.test(q)) && (kind !== 'plus' || /^\p{L}/u.test(q)); // +name (Notion): a letter first, so 1 + 1 and +39 stay text
       },
       items: async ({ query }) => { const c = opts.ctx(); return c ? mentionEntries(kind, query, c) : []; },
       command: async ({ editor, range, props: entry }) => {
@@ -821,7 +821,7 @@ const Mentions = Extension.create({
       },
       render: () => slashRenderer(opts, MENTION_KEYS[kind], MENTION_LABEL[kind]),
     });
-    return [make('link', '[[', { spaces: true, anywhere: true }), make('at', '@', { spaces: true }), make('tag', '#', { min: 1 }), make('emoji', ':', { min: 2 })];
+    return [make('link', '[[', { spaces: true, anywhere: true }), make('at', '@', { spaces: true }), make('tag', '#', { min: 1 }), make('emoji', ':', { min: 2 }), make('plus', '+', { spaces: true, min: 1 })];
   },
 });
 
