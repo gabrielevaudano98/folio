@@ -34,6 +34,7 @@ import { readAppearance, setAppearance } from './page-appearance.js';
 import { openAppearance, mountToc, paintCover } from './page-appearance-ui.js';
 import { clean as cleanCm } from './page-critic.js';
 import { createSearchWindow } from './search-window.js';
+import { createRecents } from './recents.js';
 import tokensCss from './tokens.css';
 import stylesCss from './styles.css';
 
@@ -2178,15 +2179,26 @@ function insertMd(md) {
   editor.insert(md);
 }
 /* the search window (Ctrl+P): recent pages, titles and content, preview; Title only is the old Go to note */
+/* recently opened pages: one store for the search window and the sidebar's Recent list (subscribe with recents.onChange) */
+const recents = createRecents({ workspace: () => S.workspace });
 const searchWin = createSearchWindow({
   workspace: () => S.workspace, files: () => S.files, isOpen: (p) => !!tabOf(p), stem, dirOf, dirs: () => allDirs(), icons,
   typeIcon: (p) => typeIcon(docTypeAny(p)), textOf, render: (m) => render(m), absUrl: (rel) => folio.absUrl(normalize(rel)),
-  find: (q, o) => folio.find(q, o), get isMac() { return S.platform === 'darwin'; },
+  find: (q, o) => folio.find(q, o), creators: () => folio.historyCreators(), recents, get isMac() { return S.platform === 'darwin'; },
   open: (p, o) => openFile(p, o).catch((e) => toast(e.message, { kind: 'error' })),
   commands: (v) => { openPalette('commands'); const i = $('#palette-input'); i.value = v; updatePalette(); },
   create: async (q) => { try { const p = await folio.create(q.endsWith('.md') ? q : q + '.md', `# ${q.split('/').pop()}\n\n`); await refreshTree(); openFile(p); } catch (e) { toast(e.message, { kind: 'error' }); } },
 });
 function openSearch(o) { if ($('#palette') && !$('#palette').hidden) closePalette(); return searchWin.open(o); }
+/* Mod+P reaches the window twice on some systems: the page's keydown and the menu's accelerator (macOS sends the key
+   equivalent to the menu as well; on Windows and Linux the accelerator is not registered, see main.js). The second
+   arrival within half a second is the same press: dropped, so it cannot select what was typed meanwhile. */
+const quickOpenAt = { key: 0, menu: 0 };
+function quickOpen(from) {
+  const now = performance.now(), other = from === 'key' ? 'menu' : 'key';
+  if (now - quickOpenAt[other] < 500) { quickOpenAt[other] = 0; return; }
+  quickOpenAt[from] = now; openSearch();
+}
 let pal = { mode: 'commands', items: [], sel: 0, opener: null };
 function openPalette(mode = 'commands', move = null) {
   pal = { mode, items: [], sel: 0, opener: document.activeElement, move };
@@ -2814,7 +2826,7 @@ function bindChrome() {
   document.addEventListener('keydown', (e) => {
     const m = e.metaKey || e.ctrlKey;
     if (m && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openPalette('commands'); }
-    else if (m && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openSearch(); } // also the menu's accelerator; opening twice only refocuses
+    else if (m && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); quickOpen('key'); }
     if (m && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); insertRef('link'); }
     if (m && e.altKey && e.shiftKey && e.code === 'KeyT') { e.preventDefault(); toggleAllToggles(); } // B8: Notion's Ctrl+Alt+T is Insert template here
     else if (m && e.altKey && !e.shiftKey && e.code === 'KeyT' && curType() === 'md') { e.preventDefault(); insertTemplateCmd(); } // shown in the palette, was never bound
@@ -2857,6 +2869,7 @@ function bindIpc() {
     }
   });
   folio.onMenu((id) => {
+    if (id === 'quick-open') return quickOpen('menu');
     const c = COMMANDS.find((x) => x.id === id);
     if (c) return c.run();
     if (id === 'save') saveActive(); if (id === 'close-tab') closeTab(); if (id === 'palette') openPalette('commands');

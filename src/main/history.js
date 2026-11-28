@@ -90,11 +90,33 @@ export function createHistory(getRoot, { now = () => Date.now(), policy = POLICY
     }
     return out.sort((a, b) => b.last.t - a.last.t);
   }
+  /* who created each document, for the search window's Created by filter: { path: { by, t } }. Known only when Folio saw
+     the file come into being, i.e. its oldest version was made when it was created (in Folio, 'created'; by an assistant,
+     'ai'; the first save of a new file, 'edit'). A file that already existed starts with 'open' or 'before-ai': unknown.
+     Index files are replaced by rename, so the folder's mtime changes with every write: the answer is cached on it. */
+  let creatorsCache = null;
+  async function creators() {
+    const dir = path.join(base(), 'files');
+    const st = await fs.stat(dir).catch(() => null); if (!st) return {};
+    const key = dir + '\0' + st.mtimeMs;
+    if (creatorsCache?.key === key) return creatorsCache.value;
+    const names = (await fs.readdir(dir).catch(() => [])).filter((n) => n.endsWith('.json'));
+    const out = {};
+    for (let i = 0; i < names.length; i += 64) {
+      const ixs = await Promise.all(names.slice(i, i + 64).map((n) => fs.readFile(path.join(dir, n), 'utf8').then((t) => JSON.parse(t), () => null)));
+      for (const ix of ixs) {
+        const first = ix?.versions?.[0]; if (typeof ix?.path !== 'string' || !first) continue;
+        if (['created', 'ai', 'edit'].includes(first.reason)) out[ix.path] = { by: typeof first.by === 'string' && first.by ? first.by : 'you', t: first.t };
+      }
+    }
+    creatorsCache = { key, value: out };
+    return out;
+  }
   async function usage() {
     let total = 0; const walk = async (d) => { let es; try { es = await fs.readdir(d, { withFileTypes: true }); } catch { return; } for (const e of es) { const p = path.join(d, e.name); if (e.isDirectory()) await walk(p); else total += (await fs.stat(p).catch(() => ({ size: 0 }))).size; } };
     await walk(base()); return total;
   }
-  return { snapshot, list, get, name, rename, clear, deleted, usage };
+  return { snapshot, list, get, name, rename, clear, deleted, usage, creators };
 }
 
 export { wordParts, revertHunk, countHunks } from './history-diff.js';

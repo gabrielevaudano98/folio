@@ -100,8 +100,8 @@ export function recencyBoost(modified, now = Date.now()) {
 
 /**
  * Merge title and content matches into ranked rows.
- * files: [{ path, title, modified, open }]; content: Map path → matchContent result (or null to skip content).
- * sort: 'best' | 'edited'. Returns [{ path, title, modified, titleMarks, content, score }].
+ * files: [{ path, title, modified, created, open }]; content: Map path → matchContent result (or null to skip content).
+ * sort: 'best' | 'edited' | 'created' (newest page first). Returns [{ path, title, modified, created, titleMarks, content, score }].
  */
 export function rankResults(files, q, content, { sort = 'best', now = Date.now(), titleOnly = false } = {}) {
   const rows = [];
@@ -113,9 +113,10 @@ export function rankResults(files, q, content, { sort = 'best', now = Date.now()
     if (tm) score += tm.strong ? tm.score : tm.score * 0.5;
     if (cm) score += Math.min(60, 12 * Math.log2(1 + cm.total)) + (tm?.strong ? 0 : 40);
     score += recencyBoost(f.modified, now) + (f.open ? 6 : 0);
-    rows.push({ path: f.path, title: f.title, modified: f.modified || 0, titleMarks: tm?.marks || [], titleStrong: !!tm?.strong, content: cm, score });
+    rows.push({ path: f.path, title: f.title, modified: f.modified || 0, created: f.created || 0, titleMarks: tm?.marks || [], titleStrong: !!tm?.strong, content: cm, score });
   }
   if (sort === 'edited') rows.sort((a, b) => b.modified - a.modified || a.title.localeCompare(b.title));
+  else if (sort === 'created') rows.sort((a, b) => (b.created || 0) - (a.created || 0) || a.title.localeCompare(b.title));
   else rows.sort((a, b) => b.score - a.score || b.modified - a.modified || a.title.localeCompare(b.title));
   return rows;
 }
@@ -133,4 +134,23 @@ export function recencyGroups(items, now = Date.now(), { limit = 40 } = {}) {
   const sorted = items.filter((x) => x.time).sort((a, b) => b.time - a.time).slice(0, limit);
   for (const it of sorted) groups[it.time >= today ? 'today' : it.time >= yesterday ? 'yesterday' : it.time >= week ? 'week' : 'older'].push(it);
   return ['today', 'yesterday', 'week', 'older'].filter((k) => groups[k].length).map((key) => ({ key, items: groups[key] }));
+}
+
+/* ---- filters (Notion's Date and Created by) ---- */
+export const DATE_FILTERS = ['edited-today', 'edited-week', 'edited-month', 'created-today', 'created-week', 'created-month'];
+/** does a row ({ modified, created }) fall in the date filter ('' = any time). Today is since local midnight; a week and a month are the past 7 and 30 days */
+export function inDateRange(row, filter, now = Date.now()) {
+  if (!filter) return true;
+  const [field, span] = filter.split('-'); const t = field === 'created' ? row.created : row.modified;
+  if (!t) return false;
+  const d = new Date(now); const since = span === 'today' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : now - (span === 'week' ? 7 : 30) * DAY;
+  return t >= since;
+}
+/** who created a page, from its version history: 'you', an AI client's name, or '' when Folio did not see it being created */
+export const creatorOf = (creators, path) => (creators && Object.hasOwn(creators, path) ? creators[path]?.by || '' : '');
+/** the Created by choices of a folder: [{ value, count }], 'you' first, then AI clients by name, then '' (not known) */
+export function creatorChoices(creators, files) {
+  const n = new Map(); for (const p of files) { const by = creatorOf(creators, p); n.set(by, (n.get(by) || 0) + 1); }
+  const rank = (v) => (v === 'you' ? 0 : v ? 1 : 2);
+  return [...n.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])).map(([value, count]) => ({ value, count }));
 }

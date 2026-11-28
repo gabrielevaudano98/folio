@@ -208,9 +208,10 @@ export function createNotes(getRoot) {
     const c = textCache.map.get(abs);
     if (c && c.m === st.mtimeMs && c.s === st.size) return c;
     if (c) { textCache.bytes -= c.text.length * 4; textCache.map.delete(abs); }
-    if (st.size > CACHE_FILE_MAX * 4) return { m: st.mtimeMs, s: st.size, text: '', low: '', icon: '' }; // a huge file is listed, not searched
+    const created = Math.min(st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs, st.mtimeMs); // a copy that kept its old mtime was created no later than that
+    if (st.size > CACHE_FILE_MAX * 4) return { m: st.mtimeMs, s: st.size, c: created, text: '', low: '', icon: '' }; // a huge file is listed, not searched
     const text = await fs.readFile(abs, 'utf8').catch(() => '');
-    const e = { m: st.mtimeMs, s: st.size, text, low: text.toLowerCase(), icon: iconOf(text) };
+    const e = { m: st.mtimeMs, s: st.size, c: created, text, low: text.toLowerCase(), icon: iconOf(text) };
     const prev = textCache.map.get(abs); if (prev) { textCache.bytes -= prev.text.length * 4; textCache.map.delete(abs); } // a concurrent find may have stored it meanwhile
     if (st.size <= CACHE_FILE_MAX && textCache.bytes + text.length * 4 <= CACHE_MAX) { textCache.map.set(abs, e); textCache.bytes += text.length * 4; }
     return e;
@@ -228,7 +229,7 @@ export function createNotes(getRoot) {
       const notes = await Promise.all(batch.map(loadNote));
       batch.forEach((abs, k) => {
         const n = notes[k]; if (!n) return;
-        const row = { path: relOf(abs), modified: Math.round(n.m), icon: n.icon };
+        const row = { path: relOf(abs), modified: Math.round(n.m), created: Math.round(n.c || n.m), icon: n.icon };
         if (!q.terms.length) { out.push(row); return; }
         const hit = matchContent(n.text, q.terms, { low: n.low });
         if (hit) out.push({ ...row, ...hit });

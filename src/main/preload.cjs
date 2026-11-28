@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('folio', {
   historyGitGet: (p, hash) => call('history:git-get', p, hash),
   historyDeleted: () => call('history:deleted'),
   historyClear: (p) => call('history:clear', p),
+  historyCreators: () => call('history:creators'),
   readClipboard: () => call('clipboard:read'),
   importDocument: () => call('import:document'),
   exportHtml: (p, html) => call('export:html', p, html),

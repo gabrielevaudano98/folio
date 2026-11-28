@@ -63,6 +63,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `historyGitGet` | request | `history:git-get` | `src/main/main.js` |
 | `historyDeleted` | request | `history:deleted` | `src/main/main.js` |
 | `historyClear` | request | `history:clear` | `src/main/main.js` |
+| `historyCreators` | request | `history:creators` | `src/main/main.js` |
 | `readClipboard` | request | `clipboard:read` | `src/main/main.js` |
 | `importDocument` | request | `import:document` | `src/main/main.js` |
 | `exportHtml` | request | `export:html` | `src/main/main.js` |

@@ -373,6 +373,7 @@ h('history:git-get', (rel, hash) => gitLog.show(notes.relOf(notes.resolve(rel)),
 h('history:deleted', () => history.deleted());
 h('history:clear', (rel) => history.clear(rel));
 h('history:usage', () => history.usage());
+h('history:creators', () => history.creators());
 h('app:user-name', () => { try { const n = os.userInfo().username || ''; return n.charAt(0).toUpperCase() + n.slice(1); } catch { return ''; } });
 h('fs:backlinks', (rel) => notes.backlinks(rel));
 h('fs:unlinked', (rel) => notes.unlinkedMentions(rel));
@@ -721,7 +722,9 @@ function buildMenu() {
     { label: tl('menu', 'File'), submenu: [
       { label: tl('menu', 'New Note'), accelerator: 'CmdOrCtrl+N', click: cmd('new-note') },
       { label: tl('menu', 'Open Folder…'), accelerator: 'CmdOrCtrl+O', click: cmd('open-folder') },
-      { label: tl('menu', 'Quick Open…'), accelerator: 'CmdOrCtrl+P', click: cmd('quick-open') },
+      // the window binds Mod+P itself; on Windows and Linux the menu only shows it (no second, system-wide binding). On macOS
+      // the menu keeps its key equivalent and the window drops a duplicate arrival (quickOpen in app.js)
+      { label: tl('menu', 'Quick Open…'), accelerator: 'CmdOrCtrl+P', registerAccelerator: isMac, click: cmd('quick-open') },
       { type: 'separator' },
       { label: tl('menu', 'Save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
       { label: tl('menu', 'Close Tab'), accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
@@ -855,6 +858,7 @@ async function devShot(w) {
       if (s.size) w.setContentSize(s.size[0], s.size[1]);
       if ('failWrites' in s) shotFailWrites = !!s.failWrites;
       if (s.quit) app.quit(); // the same path as ⌘Q or the Quit menu item
+      if (s.menu) w.webContents.send('menu:command', s.menu); // what a menu item (or its accelerator) sends
       if (s.dark !== undefined) nativeTheme.themeSource = s.dark ? 'dark' : 'light';
       if (s.js) { try { const v = await w.webContents.executeJavaScript(s.js); if (s.log) console.log('js', JSON.stringify(v)); } catch (e) { console.error('[folio-error] shot js', e.message); } }
       if (s.metrics) { // memory of every process, in MB (private bytes on Windows and macOS, working set on Linux)
