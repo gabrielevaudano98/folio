@@ -61,6 +61,22 @@ export function parseFrontmatter(text) {
   return { raw: m[0], data, body: text.slice(m[0].length) };
 }
 
+/**
+ * Where slide `i` of the chunk list `before` is in `after` (both from splitSlides), after the deck was changed elsewhere:
+ * the same text (the nearest copy), else the same place when the number of slides is unchanged (that slide itself was
+ * edited), else the nearest slide with the same first heading; -1 when it cannot be told (the slide is gone).
+ * Used to keep typing that waits (notes, a text box) and recorded narration on the slide they belong to.
+ */
+export function relocateSlide(before, after, i) {
+  const was = before[i]; if (was == null) return -1;
+  if (after[i] === was) return i;
+  const nearest = (ok) => { let best = -1; after.forEach((c, j) => { if (ok(c) && (best < 0 || Math.abs(j - i) < Math.abs(best - i))) best = j; }); return best; };
+  const same = nearest((c) => c === was); if (same >= 0) return same;
+  if (after.length === before.length) return i;
+  const head = (c) => /^[ \t]*#{1,6}[ \t]+(.+?)[ \t]*$/m.exec(c)?.[1];
+  const h = head(was); return h ? nearest((c) => head(c) === h) : -1;
+}
+
 /** split the body on `---` lines that are outside code fences */
 export function splitSlides(body) {
   const lines = body.split('\n');

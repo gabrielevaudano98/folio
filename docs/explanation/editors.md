@@ -32,8 +32,11 @@ exports go through `markdown.js` (markdown-it, DOMPurify, KaTeX, Mermaid, charts
 - for the other types, it loads the surface module on first use (`loadSurface()`, a separate esbuild chunk,
   [ADR 0009](../adr/0009-lazy-visual-editors.md)) and mounts it once with a **context** object (`surfaceCtx()`).
 
-The context is the whole contract between a surface and the app. A surface calls `ctx.onChange(text)` when its document
-changes and receives text with `setText(text)`; it never touches files itself. The context also gives it `toast`,
+The context is the whole contract between a surface and the app. A surface calls `ctx.onChange(text, tab)` when its
+document changes, where `tab` is the `docKey()` it was given that document with, and receives text with `setText(text)`;
+it never touches files itself. It also has `flush({ keepEditing })`, which writes at once whatever is still waiting
+(slide notes and slide text after a pause, a board label field after a pause, the board's label editor, a sheet cell
+being typed in); see *Tab switch* below. The context also gives it `toast`,
 `prompt`, `confirm`, `showMenu`, `resolveImage`, `readNote`, `getPath`, `exportPdf`, `saveAsset`, `saveBinary`,
 `refEnv`/`openRef`/`pickRef` (references), template helpers, `pickImage`/`pickMedia` and `qa` (audience questions).
 One surface instance serves every tab of its type: `docKey()` returns the active tab, and per-document undo stacks are
@@ -49,10 +52,46 @@ swapped by `perDoc()` in `history.js`, so `Mod+Z` in one file never brings back 
    on autosaves (one per 3 minutes, the newest replacing the previous), before and after an AI edit, before a rename or
    move, before a restore, on close and when a version is named.
 
-Known weakness ([#82](https://github.com/gabrielevaudano98/folio/issues/82)): a change a surface reports after a pause is
-applied to the tab that is active *then*. The page editor is fixed (`rich.flush()` and saving the tab being left run
-before `activate()` switches, and its late change goes to `richPath`); the slides, board and sheet surfaces still do not
-name their document. A change must always name its document.
+### Tab switch
+
+Every editor reports some changes late: the page editor 220 ms after the last key, slide notes 350 ms, text on a slide
+180 ms, a board's label field 300 ms, and a sheet cell or board label only when its editor is left. Before
+[#82](https://github.com/gabrielevaudano98/folio/issues/82) such a change was applied to whichever tab was active by
+then, so a fast switch could write one document's text into another file. The rules now:
+
+- **A change names its document.** Each surface keeps the tab object (`docKey()`) its document came from and passes it
+  to `ctx.onChange(text, tab)`; the page editor's tab is `richTab`. A change for a tab that is no longer active goes to
+  that tab (`backgroundChange()`) and is saved there. The tab object, not the path, is the key, because a rename keeps
+  the object and changes the path.
+- **Pending work is flushed first.** `flushSurface()` runs before `activate()` switches, before `closeTab()`, before
+  the view of a surface leaves visual, before `saveAllOrAsk()` (quit, folder switch, update install) and before an
+  explicit save (`saveActive()`, with `keepEditing` so the cell or text box stays open). A surface given another
+  document in `setText()` also flushes what the previous one still held, to the previous one.
+- **The tab being left is saved** at once, not when it is shown again, closed or at quit.
+- A pending edit remembers what it was typed for, by an identity that survives edits elsewhere: notes and a slide's
+  text box keep their slide (found again with `relocateSlide()` in `slides-core.js`: the same text, else the same place
+  when the slide count is unchanged, else the same first heading) and the box's id; a board label keeps the node id, or
+  for a line its two ends and which of the lines between them it is (not its index, which deleting another line
+  changes). Choosing another slide, from any source, writes pending notes first.
+- **The same document changed from outside** (the code pane in split view, an AI edit, the file on disk) while
+  something typed in the surface still waits: the outside change is loaded, then the pending typing is applied to it by
+  that identity, so both are kept. On the very same notes, label or text box the typing wins, because it is what the
+  person sees and is still writing. When its slide or box is gone, the typed text is copied to the clipboard with a
+  notice instead of landing elsewhere. A sheet cell being typed in is known by its address and is written when its
+  editor is left.
+- **Undo and redo** first write what is still pending, as a step of its own, so Undo takes it back instead of the timer
+  putting it back on the restored document.
+- **Split view:** text typed in the code pane reaches the surface after 250 ms, only if its tab is still the active one,
+  and at once when the surface is touched (pointer, key, focus) or flushed, so the surface never commits an edit on top
+  of text older than the code pane's. Pending surface work is written when focus leaves it (notes, label field, text
+  box, cell).
+- The board's format panel is redrawn on every change; the field being typed in keeps its focus, caret and text.
+- Narration recorded while presenting is added to the slides it was recorded on, found again in the deck as it is
+  after the clips are saved; a slide that is gone gets none (with a notice), and nothing is added when another document
+  was opened meanwhile.
+
+`test/tab-switch-save.test.mjs` edits each editor and switches within its delay, then compares both files on disk byte
+for byte.
 
 ## Pages
 

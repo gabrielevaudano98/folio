@@ -76,6 +76,9 @@ export function mountBoard(host, ctx) {
   let view = { x: 40, y: 40, k: 1 }, fitted = false;
   const undo = [], redo = [];
   const docs = perDoc(undo, redo); let seen = false;
+  // the tab whose board this surface holds (ctx.docKey): every change names it, so one that lands after the tab changed
+  // (the label field waits for a pause) reaches that board and no other
+  let doc = null;
   let clipboard = null;
 
   /* ---------- model io ---------- */
@@ -91,9 +94,15 @@ export function mountBoard(host, ctx) {
     if (history) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; }
     text = joinBoardDoc(parts, serializeBoard(model));
     render();
-    ctx.onChange(text);
+    ctx.onChange(text, doc);
   }
   const node = (id) => model.nodes.find((n) => n.id === id);
+  // a line has no id of its own: it is known by its ends and which of the lines between them it is, which deleting or
+  // adding other lines does not change (its index in model.edges does)
+  const edgeKey = (ed) => { const same = model.edges.filter((x) => x.from === ed.from && x.to === ed.to); return `${ed.from}\u0000${ed.to}\u0000${same.indexOf(ed)}`; };
+  const edgeByKey = (k) => { const [from, to, nth] = k.split('\u0000'); return model.edges.filter((x) => x.from === from && x.to === to)[Number(nth)] || null; };
+  /** what a selection entry points at, kept across a reload of the model: a node id, or `e:` and a line's key */
+  const stableRef = (s) => (s.startsWith('e:') ? (model.edges[Number(s.slice(2))] ? 'e:' + edgeKey(model.edges[Number(s.slice(2))]) : null) : s);
   function newId(base) { const b = base.replace(/[^A-Za-z_]/g, '') || 'n'; let i = 1; while (node(b + i)) i++; return b + i; }
 
   /* ---------- render ---------- */
@@ -239,6 +248,7 @@ export function mountBoard(host, ctx) {
   }
 
   /* ---------- label editor ---------- */
+  let labelEdit = null; // the label being typed on the canvas: { write() keeps it open, done(save) closes it }
   function editLabel(id) {
     const n = node(id) ?? null;
     const edge = id.startsWith?.('e:') ? model.edges[Number(id.slice(2))] : null;
@@ -250,16 +260,26 @@ export function mountBoard(host, ctx) {
     Object.assign(editorEl.style, { left: `${box.x * view.k + view.x}px`, top: `${box.y * view.k + view.y}px`, width: `${box.w * view.k}px`, height: `${box.h * view.k}px`, fontSize: `${13 * view.k}px` });
     editorEl.value = n ? (n.body.length ? [n.label, ...n.body].join('\n') : n.label) : edge.label;
     editorEl.hidden = false; editorEl.focus(); editorEl.select();
-    const done = (save) => {
-      editorEl.hidden = true; editorEl.onkeydown = editorEl.onblur = null;
-      if (!save) return canvas.focus();
-      const v = editorEl.value;
+    let written = editorEl.value;
+    const ref = n ? n.id : edgeKey(edge);
+    /** the label typed so far goes into the board (when it changed), on the node or line it was opened for, found again
+     *  by id (or a line's ends) in case the board was reloaded meanwhile */
+    const write = () => {
+      const v = editorEl.value; if (v === written) return; written = v;
+      const n = id.startsWith?.('e:') ? null : node(ref), edge = n ? null : edgeByKey(ref);
+      if (!n && !edge) return;
       if (n) {
         if (['class', 'interface', 'table'].includes(n.shape) || (n.shape === 'note' && v.includes('\n'))) { const [first, ...rest] = v.split('\n'); n.label = first; n.body = rest; fitAuto(n); }
         else n.label = v;
       } else edge.label = v.replace(/\n/g, ' ');
-      commit(); canvas.focus();
+      commit();
     };
+    const done = (save) => {
+      editorEl.hidden = true; editorEl.onkeydown = editorEl.onblur = null; labelEdit = null;
+      if (!save) return canvas.focus();
+      write(); canvas.focus();
+    };
+    labelEdit = { write, done };
     editorEl.onkeydown = (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') done(false);
@@ -414,8 +434,10 @@ export function mountBoard(host, ctx) {
   canvas.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceDown = false; canvas.classList.remove('panning'); } });
 
   /* ---------- operations ---------- */
-  function doUndo() { if (!undo.length) return; redo.push(text); const t = undo.pop(); load(t); render(); ctx.onChange(text); }
-  function doRedo() { if (!redo.length) return; undo.push(text); const t = redo.pop(); load(t); render(); ctx.onChange(text); }
+  // typing still waiting is written first, as a step of its own: Undo takes it back, instead of the timer putting it
+  // back on the restored board a moment later
+  function doUndo() { flushPending(); if (!undo.length) return; redo.push(text); const t = undo.pop(); load(t); render(); ctx.onChange(text, doc); }
+  function doRedo() { flushPending(); if (!redo.length) return; undo.push(text); const t = redo.pop(); load(t); render(); ctx.onChange(text, doc); }
   function selectAll() { sel = new Set(model.nodes.map((n) => n.id)); render(); }
   function remove() {
     const ids = new Set([...sel].filter((s) => !s.startsWith('e:')));
@@ -482,7 +504,20 @@ export function mountBoard(host, ctx) {
   function swatches(list, cur, attr) {
     return `<div class="bd-swatches">${list.map((c) => `<button type="button" class="bd-sw ${c ? '' : 'bd-sw-none'}" data-${attr}="${c}" aria-pressed="${(cur || '') === c}" aria-label="${c || 'Default'}" style="${c ? `background:${c}` : ''}"></button>`).join('')}</div>`;
   }
+  /** redraw the format panel; the field being typed in stays: focus, caret and its text are carried over (a commit
+   *  redraws the panel, and keystrokes after it must still reach the field) */
+  let drawing = false; // the panel is being redrawn: a field leaving the page then is not the person leaving it
   function renderInspector() {
+    const f = document.activeElement;
+    const key = inspector.contains(f) && f.matches?.('input, textarea') ? ['n-label', 'e-label', 'geo'].map((k) => f.dataset[k.replace(/-(\w)/, (_, c) => c.toUpperCase())] !== undefined && `[data-${k}${k === 'geo' ? `="${f.dataset.geo}"` : ''}]`).find(Boolean) : null;
+    const was = key && { sel: [...sel].join('\u0001'), value: f.value, a: f.selectionStart, b: f.selectionEnd, dir: f.selectionDirection };
+    drawing = true; try { drawInspector(); } finally { drawing = false; }
+    if (!was || was.sel !== [...sel].join('\u0001')) return;
+    const g = inspector.querySelector(key); if (!g) return;
+    g.value = was.value; g.focus({ preventScroll: true }); try { g.setSelectionRange(was.a, was.b, was.dir); } catch {}
+    const p = pendingFields.get(f); if (p) { pendingFields.delete(f); pendingFields.set(g, p); p.field = g; }
+  }
+  function drawInspector() {
     const ns = [...sel].filter((s) => !s.startsWith('e:')).map(node).filter(Boolean);
     const es = [...sel].filter((s) => s.startsWith('e:')).map((s) => model.edges[Number(s.slice(2))]).filter(Boolean);
     if (!ns.length && !es.length) {
@@ -562,14 +597,34 @@ A o-- B   aggregation</pre>`;
     if (t.dataset.e) { for (const ed of selEdges()) ed[t.dataset.e] = t.value || null; return commit(); }
     if (t.dataset.geo) { const n = selNodes()[0]; const v = Number(t.value); if (Number.isFinite(v)) { n[t.dataset.geo] = v; if ('wh'.includes(t.dataset.geo)) n.sized = true; commit(); } }
   });
+  // a label typed in the format panel is written after a pause, to the node or lines selected when typing began (even
+  // if the selection or the tab changed since); flushFields() writes it at once
+  const pendingFields = new Map(); // field → { field, timer, apply }
+  function flushFields() { for (const [t, p] of [...pendingFields]) { clearTimeout(p.timer); pendingFields.delete(t); p.apply(); } }
   inspector.addEventListener('input', (e) => {
     const t = e.target;
-    clearTimeout(t.__timer);
-    t.__timer = setTimeout(() => {
-      if (t.matches('[data-n-label]')) { const n = selNodes()[0]; const [first, ...rest] = t.value.split('\n'); if (n.body.length || ['class', 'interface', 'table'].includes(n.shape)) { n.label = first; n.body = rest; fitAuto(n); } else n.label = t.value; commit(); }
-      if (t.matches('[data-e-label]')) { for (const ed of selEdges()) ed.label = t.value; commit(); }
-    }, 300);
+    if (!t.matches('[data-n-label], [data-e-label]')) return;
+    let p = pendingFields.get(t);
+    if (!p) {
+      const refs = [...sel].map(stableRef).filter(Boolean); // what was selected when typing began, by stable identity
+      const node1 = () => node(refs.find((s) => !s.startsWith('e:')));
+      const lines = () => refs.filter((s) => s.startsWith('e:')).map((s) => edgeByKey(s.slice(2))).filter(Boolean);
+      // p.field is the field now on screen: a redraw of the panel puts a new one in its place (see renderInspector)
+      p = { field: t };
+      p.apply = t.matches('[data-n-label]')
+        ? () => { const n = node1(); if (!n) return; const v = p.field.value; const [first, ...rest] = v.split('\n'); if (n.body.length || ['class', 'interface', 'table'].includes(n.shape)) { n.label = first; n.body = rest; fitAuto(n); } else n.label = v; commit(); }
+        : () => { const eds = lines(); if (!eds.length) return; for (const ed of eds) ed.label = p.field.value; commit(); };
+      pendingFields.set(t, p);
+    }
+    clearTimeout(p.timer);
+    p.timer = setTimeout(() => { pendingFields.delete(p.field); p.apply(); }, 300);
   });
+  inspector.addEventListener('focusout', (e) => { if (drawing) return; const p = pendingFields.get(e.target); if (p) { clearTimeout(p.timer); pendingFields.delete(e.target); p.apply(); } });
+  /** everything typed and not written yet goes into the board now; `keepEditing` leaves the label being typed open */
+  function flushPending({ keepEditing = false } = {}) {
+    flushFields();
+    if (labelEdit) { if (keepEditing) labelEdit.write(); else labelEdit.done(true); }
+  }
 
   /* ---------- export ---------- */
   function exportSvgString() {
@@ -603,14 +658,27 @@ A o-- B   aggregation</pre>`;
 
   return {
     setText(t) {
-      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true;
+      const key = ctx.docKey?.();
+      if (key && key !== doc) { if (doc) flushPending(); doc = key; } // what the board shown so far still holds is written to it first
+      const moved = docs.bind(key); const had = seen; seen = true;
       if (t === text) { if (moved) render(); return; }
-      if (!moved && had) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
+      const outside = !moved && had;
+      if (outside) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       const first = !parts;
-      load(t); render();
+      const kept = outside ? [...sel].map(stableRef).filter(Boolean) : null; // the selection, by identity
+      load(t);
+      // lines are selected by index: after an outside edit that added, removed or reordered lines, the selection is put
+      // back on the same lines (by their ends), so the panel and a label typed next go to the line still highlighted
+      if (kept) sel = new Set(kept.map((r) => { if (!r.startsWith('e:')) return node(r) ? r : null; const e = edgeByKey(r.slice(2)); return e ? 'e:' + model.edges.indexOf(e) : null; }).filter(Boolean));
+      render();
+      // the same board changed from outside (the code pane, an AI edit, the file on disk) while a label typed here still
+      // waits: the outside change is taken, then the label is put on its node or line (found by id, or a line's ends), so
+      // neither is lost; on the very same label the typing wins, as it is what the person sees and is still writing
+      if (outside) flushPending({ keepEditing: true });
       if (first || !fitted) { fitted = false; requestAnimationFrame(() => { if (canvas.clientWidth) { fitted = true; fit(); } }); }
     },
     setMode(v) { host.classList.toggle('bd-compact', v === 'split'); requestAnimationFrame(() => { drawOverlay(); }); },
+    flush: flushPending,
     gotoNode(id) { if (model?.nodes.some((n) => n.id === id)) { sel = new Set([id]); render(); } },
     selectAtLine(line) {
       const n = model.nodes.find((x) => x.line === line - (parts.before.split('\n').length));

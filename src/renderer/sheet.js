@@ -60,6 +60,9 @@ export function mountSheet(host, ctx) {
   let anchor = [0, 0], focus = [0, 0], editing = null, colSel = false;
   const undo = [], redo = [];
   const docs = perDoc(undo, redo); let seen = false;
+  // the tab whose workbook this surface holds (ctx.docKey): every change names it, so one that lands after the tab changed
+  // (a cell editor left later) reaches that workbook and no other
+  let doc = null;
   let clip = null;
 
   const sheets = () => blocks.filter((b) => b.type === 'sheet');
@@ -88,7 +91,7 @@ export function mountSheet(host, ctx) {
   function commit({ history = true } = {}) {
     if (history) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; }
     text = serializeWorkbook(blocks);
-    render(); ctx.onChange(text);
+    render(); ctx.onChange(text, doc);
   }
 
   /* ---------- render ---------- */
@@ -226,6 +229,13 @@ export function mountSheet(host, ctx) {
     if (save && editor.value !== raw(r, c)) { setRaw(r, c, editor.value); commit(); }
     if (move) select(r + move[0], c + move[1]); else drawSel();
     wrap.focus();
+  }
+  /** the cell being typed in goes into the workbook now; `keepEditing` leaves its editor open (an explicit save) */
+  function flushPending({ keepEditing = false } = {}) {
+    if (!editing) return;
+    if (!keepEditing) return endEdit(true);
+    const [r, c] = editing;
+    if (editor.value !== raw(r, c)) { setRaw(r, c, editor.value); commit(); }
   }
   function setRange(fn) {
     const [r0, c0, r1, c1] = range();
@@ -485,8 +495,9 @@ export function mountSheet(host, ctx) {
   });
 
   /* ---------- toolbar ---------- */
-  const doUndo = () => { if (!undo.length) return; redo.push(text); load(undo.pop()); render(); ctx.onChange(text); };
-  const doRedo = () => { if (!redo.length) return; undo.push(text); load(redo.pop()); render(); ctx.onChange(text); };
+  // a cell still being typed in is written first, as a step of its own, so Undo takes it back
+  const doUndo = () => { flushPending(); if (!undo.length) return; redo.push(text); load(undo.pop()); render(); ctx.onChange(text, doc); };
+  const doRedo = () => { flushPending(); if (!redo.length) return; undo.push(text); load(redo.pop()); render(); ctx.onChange(text, doc); };
   host.querySelector('.sf-toolbar').addEventListener('click', (e) => {
     const b = e.target.closest('[data-s],[data-sv]'); if (!b) return;
     const a = b.dataset.s, [r0, c0, r1, c1] = range();
@@ -597,11 +608,14 @@ export function mountSheet(host, ctx) {
 
   return {
     setText(t) {
-      const moved = docs.bind(ctx.docKey?.()); const had = seen; seen = true; if (t === text) { if (moved) render(); return; }
+      const key = ctx.docKey?.();
+      if (key && key !== doc) { if (doc) flushPending(); doc = key; } // what the workbook shown so far still holds is written to it first
+      const moved = docs.bind(key); const had = seen; seen = true; if (t === text) { if (moved) render(); return; }
       if (!moved && had) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       load(t); render();
     },
     setMode() { requestAnimationFrame(drawSel); },
+    flush: flushPending,
     selectAtLine() {},
     refresh() { syncExternals(true); },
     gotoCell(part) {
