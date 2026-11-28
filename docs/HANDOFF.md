@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-28T00:12:52Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-28T00:13:01Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: --help
+- Last checkpoint: sheets: Univer's compiled-formula cache raised (recalculation 2-4x faster, identical values by fuzz); bench script, handoff
 
 ## Resume in a new session
 
@@ -95,7 +95,8 @@ Open next (not started): live sync and presence (contracts ready, §5 of docs/sh
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 8d44dfb wip: --help
+- 308e074 wip: sheets: Univer's compiled-formula cache raised (recalculation 2-4x faster, identical values by fuzz); bench script, handoff
+- cd17ca7 wip: --help
 - edf453f wip: sheets: measured calculation cost per formula count, 'Calculating…' note for recalculations over 0.4 s, docs
 - aa7abfc wip: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests
 - a3ea89e wip: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
