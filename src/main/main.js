@@ -43,6 +43,7 @@ if (process.env.FOLIO_USER_DATA) app.setPath('userData', process.env.FOLIO_USER_
 
 /* ---------------- settings ---------------- */
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
+const requests = createRequests();
 const BRIDGE_FILE = () => path.join(app.getPath('userData'), 'mcp-bridge.json');
 const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
@@ -173,6 +174,7 @@ if (isWin) systemPreferences.on?.('accent-color-changed', () => win?.webContents
 let watcher = null;
 const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own echo
 async function setWorkspace(dir) {
+  requests.clear(); // a request belongs to the folder it was written in
   await clearTrashed();
   settings.workspace = dir;
   if (dir) settings.recent = [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8);
@@ -521,7 +523,6 @@ function logActivity(entry) {
   win?.webContents.send('ai:activity', mcpStatus());
 }
 
-const requests = createRequests();
 const appBackend = {
   capabilities: () => ({ app: true, write: settings.allowWrite }),
   async call(name, args, ctx) {

@@ -8,7 +8,7 @@ const ro = { readOnlyHint: true, openWorldHint: false };
 const rw = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 const bpath = z.string().describe('Path of a .board.md note');
 const spath = z.string().describe('Path of a .sheet.md note');
-const sid = z.string().regex(/^[A-Za-z_][\w-]*$/).describe('Shape id (letters, digits, _ and -; starts with a letter)');
+const sid = z.string().regex(/^[A-Za-z_][\w-]*$/).describe('Shape id (letters, digits, _ and -; starts with a letter or _)');
 const style = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional();
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
@@ -18,7 +18,7 @@ export const BOARD_SHEET_TOOLS = [
     input: { path: bpath } },
   { name: 'add_shape', title: 'Add board shape', write: true, annotations: rw,
     description: `Add a shape to a board. shape: ${SHAPES.join(', ')}. Leave x and y out to have the shape placed by auto layout. body lines are used by class, interface, table and note shapes.`,
-    input: { path: bpath, id: sid, shape: z.string().default('rect'), label: z.string().optional(), x: z.number().optional(), y: z.number().optional(), w: z.number().positive().optional(), h: z.number().positive().optional(), style, body: z.array(z.string()).optional() } },
+    input: { path: bpath, id: sid, shape: z.string().optional().describe('Defaults to rect'), label: z.string().optional(), x: z.number().optional(), y: z.number().optional(), w: z.number().positive().optional(), h: z.number().positive().optional(), style, body: z.array(z.string()).optional() } },
   { name: 'update_shape', title: 'Update board shape', write: true, annotations: rw,
     description: 'Change a shape: label, position, size, shape type, body, or style (a value sets a style key, null removes it). Give only what changes.',
     input: { path: bpath, id: sid, label: z.string().optional(), shape: z.string().optional(), x: z.number().optional(), y: z.number().optional(), w: z.number().positive().optional(), h: z.number().positive().optional(), style, body: z.array(z.string()).optional() } },
@@ -27,7 +27,7 @@ export const BOARD_SHEET_TOOLS = [
     input: { path: bpath, id: sid } },
   { name: 'connect', title: 'Connect board shapes', write: true, annotations: rw,
     description: `Add a connector between two shapes that exist on the board. op: ${Object.keys(ARROWS).join('  ')}. fromPort and toPort pick a side (top, right, bottom, left).`,
-    input: { path: bpath, from: sid, to: sid, op: z.enum(Object.keys(ARROWS)).default('->'), label: z.string().optional(), fromPort: z.enum(['top', 'right', 'bottom', 'left']).optional(), toPort: z.enum(['top', 'right', 'bottom', 'left']).optional(), style } },
+    input: { path: bpath, from: sid, to: sid, op: z.enum(Object.keys(ARROWS)).optional().describe('Defaults to ->'), label: z.string().optional(), fromPort: z.enum(['top', 'right', 'bottom', 'left']).optional(), toPort: z.enum(['top', 'right', 'bottom', 'left']).optional(), style } },
   { name: 'disconnect', title: 'Remove board connector', write: true, annotations: { ...rw, destructiveHint: true },
     description: 'Remove the connector(s) from one shape to another.',
     input: { path: bpath, from: sid, to: sid } },
@@ -48,14 +48,18 @@ export const isBoardSheetTool = (name) => NAMES.has(name);
 const need = (p, re, what) => { if (!re.test(p)) throw new Error(`This tool works on ${what}.`); };
 const cleanStyle = (target, patch) => { const s = { ...target }; for (const [k, v] of Object.entries(patch || {})) { if (v === null || v === false) delete s[k]; else s[k] = v; } return s; };
 const shapeOf = (m, id) => { const n = m.nodes.find((x) => x.id === id); if (!n) throw new Error(`No shape "${id}". Use get_board to see the ids.`); return n; };
+// a CRLF file is edited as LF and written back as CRLF, so untouched lines keep their endings
+const lf = (t) => ({ text: t.replace(/\r\n/g, '\n'), back: (x) => (t.includes('\r\n') ? x.replace(/\r?\n/g, '\r\n') : x) });
 const cellText = (v) => (v === null || v === undefined ? '' : String(v));
 
 async function editBoard(notes, a, wrote, verb, fn) {
   need(a.path, /\.board\.md$/i, '.board.md notes');
-  const parts = splitBoardDoc(await notes.read(a.path));
+  const { text, back } = lf(await notes.read(a.path));
+  const parts = splitBoardDoc(text);
   const m = parseBoard(parts.code);
+  if (m.errors.length) throw new Error(`The board has lines Folio cannot read (line ${m.errors[0].line}: ${m.errors[0].msg}). Fix them first, or edit the note with edit_note: a structured edit would drop them.`);
   const out = await fn(m);
-  return wrote(await notes.write(a.path, joinBoardDoc(parts, serializeBoard(m))), verb) + (out ? ` ${out}` : '');
+  return wrote(await notes.write(a.path, back(joinBoardDoc(parts, serializeBoard(m)))), verb) + (out ? ` ${out}` : '');
 }
 
 export async function runBoardSheetTool(notes, name, a, wrote) {
@@ -66,6 +70,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       return { shapes: m.nodes.map((n) => ({ id: n.id, shape: n.shape, label: n.label, x: n.x, y: n.y, w: n.w, h: n.h, style: n.style, body: n.body })), connectors: m.edges.map((e) => ({ from: e.from, fromPort: e.fromPort, to: e.to, toPort: e.toPort, op: e.op, label: e.label })), unreadable: m.errors };
     }
     case 'add_shape': return editBoard(notes, a, wrote, 'Added a shape to', (m) => {
+      a.shape ??= 'rect';
       if (m.nodes.some((n) => n.id === a.id && !n.implicit)) throw new Error(`A shape "${a.id}" already exists. Use update_shape.`);
       if (!SHAPES.includes(a.shape)) throw new Error(`Unknown shape "${a.shape}". Use one of: ${SHAPES.join(', ')}.`);
       m.nodes = m.nodes.filter((n) => n.id !== a.id); // an id only used by a connector becomes a real shape
@@ -89,7 +94,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       return `(${before - m.edges.length} connector${before - m.edges.length === 1 ? '' : 's'} removed)`;
     });
     case 'connect': return editBoard(notes, a, wrote, 'Connected shapes in', (m) => {
-      shapeOf(m, a.from); shapeOf(m, a.to);
+      shapeOf(m, a.from); shapeOf(m, a.to); a.op ??= '->';
       m.edges.push({ pre: [], from: a.from, fromPort: a.fromPort || null, to: a.to, toPort: a.toPort || null, op: a.op, label: a.label || '', style: cleanStyle({}, a.style), ...ARROWS[a.op] });
     });
     case 'disconnect': return editBoard(notes, a, wrote, 'Removed a connector from', (m) => {
@@ -101,7 +106,8 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
     case 'auto_layout_board': return editBoard(notes, a, wrote, 'Laid out', (m) => { if (!autoLayout(m, { dir: a.dir || 'LR', all: !!a.all })) return '(nothing needed placing)'; });
     case 'set_cells': {
       need(a.path, /\.sheet\.md$/i, '.sheet.md notes');
-      const blocks = parseWorkbook(await notes.read(a.path));
+      const { text: src, back } = lf(await notes.read(a.path));
+      const blocks = parseWorkbook(src);
       const sheets = blocks.filter((b) => b.type === 'sheet');
       const sh = a.sheet ? sheets.find((b) => b.name.toLowerCase() === a.sheet.toLowerCase()) : sheets[0];
       if (!sh) throw new Error(`No sheet named ${a.sheet}. Sheets: ${sheets.map((b) => b.name).join(', ')}.`);
@@ -114,18 +120,19 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       }
       const width = Math.max(...sh.rows.map((r) => r.length));
       for (const r of sh.rows) while (r.length < width) r.push('');
-      return wrote(await notes.write(a.path, serializeWorkbook(blocks)), `Set ${Object.keys(a.cells).length} cell${Object.keys(a.cells).length === 1 ? '' : 's'} (${addr(0, 0)}…) in`);
+      return wrote(await notes.write(a.path, back(serializeWorkbook(blocks))), `Set ${Object.keys(a.cells).length} cell${Object.keys(a.cells).length === 1 ? '' : 's'} (${addr(0, 0)}…) in`);
     }
     case 'add_sheet': {
       need(a.path, /\.sheet\.md$/i, '.sheet.md notes');
       let existing = null; try { existing = await notes.read(a.path); } catch { /* new note */ }
-      const blocks = existing == null ? [] : parseWorkbook(existing);
+      const { text: src, back } = lf(existing ?? '');
+      const blocks = existing == null ? [] : parseWorkbook(src);
       const sheets = blocks.filter((b) => b.type === 'sheet' && !b.fresh);
       if (sheets.some((b) => b.name.toLowerCase() === a.name.toLowerCase())) throw new Error(`A sheet named ${a.name} already exists.`);
       const rows = (a.rows?.length ? a.rows : [['A', 'B', 'C'], ['', '', '']]).map((r) => r.map(cellText));
       const kept = blocks.filter((b) => !b.fresh);
       kept.push({ type: 'sheet', name: a.name, named: true, headingLines: [], rows, align: [], meta: {} });
-      return wrote(await notes.write(a.path, serializeWorkbook(kept)), 'Added a sheet to');
+      return wrote(await notes.write(a.path, back(serializeWorkbook(kept))), 'Added a sheet to');
     }
     default: throw new Error(`Unknown tool ${name}`);
   }

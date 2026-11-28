@@ -490,8 +490,8 @@ Add a shape to a board. shape: rect, rounded, ellipse, circle, diamond, triangle
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes | Path of a .board.md note |
-| `id` | string | yes | Shape id (letters, digits, _ and -; starts with a letter) |
-| `shape` | string | yes |  |
+| `id` | string | yes | Shape id (letters, digits, _ and -; starts with a letter or _) |
+| `shape` | string | no | Defaults to rect |
 | `label` | string | no |  |
 | `x` | number | no |  |
 | `y` | number | no |  |
@@ -507,7 +507,7 @@ Change a shape: label, position, size, shape type, body, or style (a value sets 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes | Path of a .board.md note |
-| `id` | string | yes | Shape id (letters, digits, _ and -; starts with a letter) |
+| `id` | string | yes | Shape id (letters, digits, _ and -; starts with a letter or _) |
 | `label` | string | no |  |
 | `shape` | string | no |  |
 | `x` | number | no |  |
@@ -524,7 +524,7 @@ Remove a shape and every connector attached to it.
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes | Path of a .board.md note |
-| `id` | string | yes | Shape id (letters, digits, _ and -; starts with a letter) |
+| `id` | string | yes | Shape id (letters, digits, _ and -; starts with a letter or _) |
 
 ## `connect`
 
@@ -533,9 +533,9 @@ Add a connector between two shapes that exist on the board. op: ->  -->  --  .. 
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes | Path of a .board.md note |
-| `from` | string | yes | Shape id (letters, digits, _ and -; starts with a letter) |
-| `to` | string | yes | Shape id (letters, digits, _ and -; starts with a letter) |
-| `op` | `->`, `-->`, `--`, `..`, `<->`, `-\|>`, `..\|>`, `*--`, `o--`, `..>` | yes |  |
+| `from` | string | yes | Shape id (letters, digits, _ and -; starts with a letter or _) |
+| `to` | string | yes | Shape id (letters, digits, _ and -; starts with a letter or _) |
+| `op` | `->`, `-->`, `--`, `..`, `<->`, `-\|>`, `..\|>`, `*--`, `o--`, `..>` | no | Defaults to -> |
 | `label` | string | no |  |
 | `fromPort` | `top`, `right`, `bottom`, `left` | no |  |
 | `toPort` | `top`, `right`, `bottom`, `left` | no |  |
@@ -548,8 +548,8 @@ Remove the connector(s) from one shape to another.
 | Argument | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes | Path of a .board.md note |
-| `from` | string | yes | Shape id (letters, digits, _ and -; starts with a letter) |
-| `to` | string | yes | Shape id (letters, digits, _ and -; starts with a letter) |
+| `from` | string | yes | Shape id (letters, digits, _ and -; starts with a letter or _) |
+| `to` | string | yes | Shape id (letters, digits, _ and -; starts with a letter or _) |
 
 ## `auto_layout_board`
 

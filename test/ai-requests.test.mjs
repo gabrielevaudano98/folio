@@ -19,5 +19,7 @@ await assert.rejects(runTool({}, 'finish_ai_request', { id: 'nope' }, hooks), /N
 await assert.rejects(runTool({}, 'get_ai_requests', {}, {}), /not running/);
 for (let i = 0; i < 25; i++) q.add({ instruction: 'x' + i });
 assert.equal(q.count(), 20);
-assert(TOOLS.filter((t) => ['get_ai_requests', 'finish_ai_request'].includes(t.name)).every((t) => t.appOnly));
+const reg = TOOLS.filter((t) => ['get_ai_requests', 'finish_ai_request'].includes(t.name));
+assert.equal(reg.length, 2); assert(reg.every((t) => t.appOnly));
+q.clear(); assert.equal(q.count(), 0);
 console.log('  ✓ requests queue in memory, the assistant reads and closes them, both tools need the app, the queue is capped');

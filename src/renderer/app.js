@@ -1537,6 +1537,7 @@ function onAiEdit({ path: p, before, after, client, created, orphans, aiKept = t
   }
   if (created) refreshTree(); else renderTree();
   renderTabs();
+  const dd = $('#sheet-diff'); if (dd.open && dd.dataset.path === p && !created) openDiff(p); // a new edit changes the hunks: rebuild so no button points at a stale one
 }
 let settleTimer;
 function highlightAi(p, { fresh }) {
@@ -1612,7 +1613,7 @@ function openDiff(p = S.active) {
   const d = $('#sheet-diff');
   d.dataset.path = p;
   d.innerHTML = `
-    <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))} · ${esc(tr('app.hunks-pending', { n: count }))}</p></div>
+    <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))} · ${esc(tr('app.hunks-pending', { count, n: count }))}</p></div>
       <button class="icon-btn" type="button" data-close-sheet aria-label="${tr('app.close')}">${icons.close}</button></div>
     <div class="sheet-body"><div class="diff-summary"><span>+ ${stats.added} added</span><span>− ${stats.removed} removed</span></div><div class="diff">${rows.join('')}</div></div>
     <div class="sheet-foot"><button class="btn" type="button" data-diff="undo">${tr('app.undo-all-changes')}</button><button class="btn btn-primary" type="button" data-diff="keep">${tr('app.keep-changes')}</button></div>`;
@@ -2565,7 +2566,7 @@ function bindChrome() {
   document.addEventListener('click', async (e) => {
     const close = e.target.closest('[data-close-sheet]'); if (close) close.closest('dialog').close();
     const url = e.target.closest('[data-open-url]'); if (url) folio.openExternal(url.dataset.openUrl);
-    const hk = e.target.closest('[data-hunk-act]'); if (hk) { settleAiHunk($('#sheet-diff').dataset.path, Number(hk.dataset.hunkId), hk.dataset.hunkAct); return; }
+    const hk = e.target.closest('[data-hunk-act]'); if (hk) { if (hk.disabled) return; $$('#sheet-diff [data-hunk-act]').forEach((b) => (b.disabled = true)); settleAiHunk($('#sheet-diff').dataset.path, Number(hk.dataset.hunkId), hk.dataset.hunkAct).finally(() => $$('#sheet-diff [data-hunk-act]').forEach((b) => (b.disabled = false))); return; }
     const diff = e.target.closest('[data-diff]'); if (diff) { $('#sheet-diff').close(); if (diff.dataset.diff === 'undo') undoAi(); else dismissAi(); }
     const inst = e.target.closest('[data-install]');
     if (inst) { inst.disabled = true; inst.textContent = tr('app.connecting'); try { const r = await folio.install(inst.dataset.install); toast(tr('app.connected-restart', { restart: r.restart })); } catch (er) { toast(er.message, { kind: 'error' }); } openAiSheet(); }

@@ -24,7 +24,7 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
-| AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect | Sheet tools on the Univer branch | Ask-AI from inside Folio |
+| AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect, per-change review, Ask AI (#101) | Sheet tools on the Univer branch | `set_cells` to reconcile with Univer |
 | Meeting recorder (optional, Windows) | Shipped (1.5.x): one-click, call detection | — | Real-call measurements on Windows ([#88](https://github.com/gabrielevaudano98/folio/issues/88)) |
 | Release | Tests and CodeQL on pull requests to `main`; Windows and macOS packages on every push to `main`; a release when `package.json` changes | 5 Dependabot PRs | Code signing and notarisation (no certificates available) |
 
@@ -148,7 +148,6 @@ Each is an open issue with its milestone. The ones that matter most for a first 
   ([#4](https://github.com/gabrielevaudano98/folio/issues/4)): **not possible for now, there are no certificates**; kept open only for the day they exist.
 - Auto-update ([#2](https://github.com/gabrielevaudano98/folio/issues/2)) is built, see [updates](explanation/updates.md); it needs a manual check on Windows after the first release that carries `latest.yml`.
 - Accessibility audit of the board canvas and the sheet grid ([#6](https://github.com/gabrielevaudano98/folio/issues/6)).
-- AI: ask your AI from inside Folio ([#20](https://github.com/gabrielevaudano98/folio/issues/20)).
 - Boards: connector waypoints ([#11](https://github.com/gabrielevaudano98/folio/issues/11)), sequence messages
   ([#12](https://github.com/gabrielevaudano98/folio/issues/12)), images and pen ([#13](https://github.com/gabrielevaudano98/folio/issues/13)).
 - Slides leftovers: incremental lists ([#9](https://github.com/gabrielevaudano98/folio/issues/9)), rulers and guides

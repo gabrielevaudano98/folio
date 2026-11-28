@@ -23,8 +23,10 @@ export function createRequests({ now = () => Date.now() } = {}) {
       const r = list.find((x) => x.id === id);
       if (!r) throw new Error(`No request ${id}. Use get_ai_requests to see the open ones.`);
       r.status = 'done'; r.reply = String(reply || '').slice(0, 2000);
+      list.splice(list.indexOf(r), 1); // a finished request is not kept: the queue stays small and an id cannot be answered twice
       return view(r);
     },
+    clear() { list.length = 0; },
     cancel(id) { const i = list.findIndex((x) => x.id === id && x.status === 'pending'); if (i >= 0) list.splice(i, 1); return i >= 0; },
   };
 }

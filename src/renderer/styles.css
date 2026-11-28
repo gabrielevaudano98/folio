@@ -1902,5 +1902,5 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .remote-bar .btn { margin-left: auto; }
 .remote-bar-edit { margin: 0.5em 1em 0; flex: none; }
 img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; outline: 1px dashed var(--color-rule-strong); outline-offset: -1px; }
-.diff-hunk { position: relative; border-block: 1px solid var(--color-line); }
+.diff-hunk { position: relative; border-block: 1px solid var(--color-rule); }
 .diff-hunk-actions { display: flex; justify-content: flex-end; gap: var(--space-xs); padding: var(--space-2xs) var(--space-sm); background: var(--color-paper-3); }

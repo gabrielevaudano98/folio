@@ -51,4 +51,15 @@ ok('add_sheet appends or creates; duplicate names and bad addresses are refused'
 await assert.rejects(run('set_cells', { path: 'x.md', cells: { A1: 1 } }), /\.sheet\.md/);
 assert(BOARD_SHEET_TOOLS.filter((t) => !t.write).length === 1 && BOARD_SHEET_TOOLS.every((t) => t.write || t.name === 'get_board'));
 ok('the tools refuse other file types and every write tool is marked as writing');
+// CRLF files keep their endings; a board with unreadable lines is not rewritten
+files.set('c.board.md', '# A\r\n\r\n```board\r\napi: rect "A" @0,0\r\ndb: rect "B" @200,0\r\n```\r\n\r\nEnd\r\n');
+await run('connect', { path: 'c.board.md', from: 'api', to: 'db' });
+assert.equal(files.get('c.board.md'), '# A\r\n\r\n```board\r\napi: rect "A" @0,0\r\ndb: rect "B" @200,0\r\n\r\napi -> db\r\n```\r\n\r\nEnd\r\n');
+files.set('c.sheet.md', '## S\r\n\r\n| A | B |\r\n| - | - |\r\n| 1 | 2 |\r\n\r\nEnd\r\n');
+await run('set_cells', { path: 'c.sheet.md', cells: { A2: 9 } });
+assert(!/[^\r]\n/.test(files.get('c.sheet.md')) && files.get('c.sheet.md').includes('| 9') && files.get('c.sheet.md').endsWith('End\r\n'), JSON.stringify(files.get('c.sheet.md')));
+files.set('bad.board.md', '```board\na: rect "A"\nthis is not a line\n```\n');
+await assert.rejects(run('add_shape', { path: 'bad.board.md', id: 'b' }), /cannot read/);
+assert.equal(files.get('bad.board.md'), '```board\na: rect "A"\nthis is not a line\n```\n');
+ok('CRLF files keep their line endings; a board with unreadable lines is refused, not rewritten');
 console.log(`\n${n} board and sheet tool checks passed`);
