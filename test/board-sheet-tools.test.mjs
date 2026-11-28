@@ -49,7 +49,9 @@ assert(files.get('new.sheet.md').includes('## First'));
 await assert.rejects(run('add_sheet', { path: 's.sheet.md', name: 'costs' }), /already exists/);
 ok('add_sheet appends or creates; duplicate names and bad addresses are refused');
 await assert.rejects(run('set_cells', { path: 'x.md', cells: { A1: 1 } }), /\.sheet\.md/);
-assert(BOARD_SHEET_TOOLS.filter((t) => !t.write).length === 1 && BOARD_SHEET_TOOLS.every((t) => t.write || t.name === 'get_board'));
+const readers = ['get_board_reference', 'get_board', 'describe_board', 'find_shapes', 'list_shape_kinds', 'get_board_issues', 'render_board', 'export_board'];
+assert.deepEqual(BOARD_SHEET_TOOLS.filter((t) => !t.write).map((t) => t.name).sort(), [...readers].sort());
+assert(BOARD_SHEET_TOOLS.filter((t) => t.write).every((t) => !t.annotations.readOnlyHint));
 ok('the tools refuse other file types and every write tool is marked as writing');
 // CRLF files keep their endings; a board with unreadable lines is not rewritten
 files.set('c.board.md', '# A\r\n\r\n```board\r\napi: rect "A" @0,0\r\ndb: rect "B" @200,0\r\n```\r\n\r\nEnd\r\n');
@@ -59,9 +61,10 @@ files.set('c.sheet.md', '## S\r\n\r\n| A | B |\r\n| - | - |\r\n| 1 | 2 |\r\n\r\n
 await run('set_cells', { path: 'c.sheet.md', cells: { A2: 9 } });
 assert(!/[^\r]\n/.test(files.get('c.sheet.md')) && files.get('c.sheet.md').includes('| 9') && files.get('c.sheet.md').endsWith('End\r\n'), JSON.stringify(files.get('c.sheet.md')));
 files.set('bad.board.md', '```board\na: rect "A"\nthis is not a line\n```\n');
-await assert.rejects(run('add_shape', { path: 'bad.board.md', id: 'b' }), /cannot read/);
-assert.equal(files.get('bad.board.md'), '```board\na: rect "A"\nthis is not a line\n```\n');
-ok('CRLF files keep their line endings; a board with unreadable lines is refused, not rewritten');
+const kept = await run('add_shape', { path: 'bad.board.md', id: 'b' });
+assert.equal(files.get('bad.board.md'), '```board\na: rect "A"\nb: rect\nthis is not a line\n```\n');
+assert.match(kept.kept, /1 unreadable line/);
+ok('CRLF files keep their line endings; an unreadable line is kept byte for byte and reported');
 await assert.rejects(run('set_cells', { path: 's.sheet.md', cells: { A0: 1 } }), /cell address/);
 await assert.rejects(run('add_sheet', { path: 's.sheet.md', name: 'a\nb' }), /one line/);
 await assert.rejects(run('add_shape', { path: 'b.board.md', id: 'half', x: 5 }), /together/);

@@ -157,24 +157,53 @@ export function applyEdgeStyle(e) {
 }
 
 /* ---------- layout ---------- */
-export function autoLayout(model, { dir = 'LR', all = false } = {}) {
-  const need = all ? model.nodes : model.nodes.filter((n) => n.x == null || n.y == null);
-  if (!need.length) return false;
-  const g = new dagre.graphlib.Graph();
+export const LAYOUT_ENGINE = { engine: 'dagre', version: dagre.version || null };
+const isFree = (n) => n.auto || n.x == null || n.y == null;
+function dagreRun(nodes, edges, dir, compound) {
+  const g = new dagre.graphlib.Graph({ compound });
   g.setGraph({ rankdir: dir, nodesep: 50, ranksep: 80, marginx: 40, marginy: 40 });
   g.setDefaultEdgeLabel(() => ({}));
-  const free = new Set(need.map((n) => n.id));
-  for (const n of model.nodes) if (free.has(n.id) && !CONTAINERS.includes(n.shape)) g.setNode(n.id, { width: n.w, height: n.h });
-  for (const e of model.edges) if (g.hasNode(e.from) && g.hasNode(e.to)) g.setEdge(e.from, e.to);
+  const ids = new Set(nodes.map((n) => n.id));
+  const parents = new Set(compound ? nodes.filter((n) => n.parent && ids.has(n.parent)).map((n) => n.parent) : []);
+  for (const n of nodes) g.setNode(n.id, parents.has(n.id) ? { paddingTop: 40 } : { width: n.w, height: n.h });
+  if (compound) for (const n of nodes) if (n.parent && ids.has(n.parent)) g.setParent(n.id, n.parent);
+  // dagre cannot route edges that touch a cluster; those are left out of the ranking
+  for (const e of edges) if (ids.has(e.from) && ids.has(e.to) && e.from !== e.to && !parents.has(e.from) && !parents.has(e.to)) g.setEdge(e.from, e.to);
   dagre.layout(g);
-  let ox = 0;
-  if (!all) { const placed = model.nodes.filter((n) => !free.has(n.id) && n.x != null); if (placed.length) ox = Math.max(...placed.map((n) => n.x + n.w)) + 80; }
-  for (const n of model.nodes) {
-    if (!free.has(n.id)) continue;
-    const p = g.node(n.id);
-    if (p) { n.x = Math.round((p.x - n.w / 2 + ox) / 10) * 10; n.y = Math.round((p.y - n.h / 2) / 10) * 10; }
-    else { n.x = ox + 40; n.y = 40; }
+  return { g, parents };
+}
+/**
+ * Place shapes with dagre. By default only auto shapes (no stored position) are placed, to the right of the placed
+ * ones, and stay auto (they are drawn there, never written). all: true lays out everything and pins the result.
+ * Shapes `in` a container are laid out inside it.
+ */
+export function autoLayout(model, { dir = 'LR', all = false } = {}) {
+  const need = all ? model.nodes : model.nodes.filter(isFree);
+  if (!need.length) return false;
+  const free = new Set(need.map((n) => n.id));
+  const byId = new Map(model.nodes.map((n) => [n.id, n]));
+  const set = (n, x, y) => { n.x = Math.round(x / 10) * 10; n.y = Math.round(y / 10) * 10; if (all) n.auto = false; };
+  // children of a placed container: laid out inside it
+  const inside = new Map();
+  for (const n of need) { const p = n.parent && byId.get(n.parent); if (p && !free.has(p.id) && CONTAINERS.includes(p.shape)) (inside.get(p.id) || inside.set(p.id, []).get(p.id)).push(n); }
+  for (const [pid, kids] of inside) {
+    const p = byId.get(pid), { g } = dagreRun(kids, model.edges, dir, false);
+    for (const n of kids) { const q = g.node(n.id); set(n, p.x + 20 + (q.x - n.w / 2 - 40), p.y + 40 + (q.y - n.h / 2 - 40)); free.delete(n.id); }
   }
+  const rest = need.filter((n) => free.has(n.id) && (!CONTAINERS.includes(n.shape) || model.nodes.some((c) => c.parent === n.id && free.has(c.id))));
+  const lone = need.filter((n) => free.has(n.id) && !rest.includes(n));
+  const { g, parents } = dagreRun(rest, model.edges, dir, true);
+  let ox = 0;
+  if (!all) { const placed = model.nodes.filter((n) => !free.has(n.id) && n.x != null && !need.includes(n)); if (placed.length) ox = Math.max(...placed.map((n) => n.x + n.w)) + 80; }
+  for (const n of rest) {
+    const q = g.node(n.id);
+    if (!q) continue;
+    if (parents.has(n.id)) { if (!n.sized) { n.w = Math.round(q.width); n.h = Math.round(q.height); } set(n, q.x - q.width / 2 + ox, q.y - q.height / 2); }
+    else set(n, q.x - n.w / 2 + ox, q.y - n.h / 2);
+  }
+  // empty containers (and anything dagre did not place) go in a row below
+  let lx = ox + 40; const ly = Math.max(40, ...rest.map((n) => (n.y ?? 0) + n.h + 60));
+  for (const n of lone) { set(n, lx, ly); lx += n.w + 40; }
   return true;
 }
 
@@ -198,6 +227,14 @@ export function edgePath(a, b, e) {
   const [fp, tp] = pickPorts(a, b, e);
   const [x1, y1] = ports(a)[fp], [x2, y2] = ports(b)[tp];
   const route = e.style.route || 'orthogonal';
+  if (e.via?.length) {
+    // waypoints: straight segments through each point, leaving and entering on the sides facing the first and last point
+    const pt = (p) => ({ x: p[0], y: p[1], w: 0, h: 0 });
+    const [fp2] = pickPorts(a, pt(e.via[0]), { fromPort: e.fromPort }), [, tp2] = pickPorts(pt(e.via.at(-1)), b, { toPort: e.toPort });
+    const pts = [ports(a)[fp2], ...e.via, ports(b)[tp2]];
+    const k = Math.floor((pts.length - 1) / 2);
+    return { d: 'M' + pts.map((p) => p.join(',')).join(' L'), mid: [(pts[k][0] + pts[k + 1][0]) / 2, (pts[k][1] + pts[k + 1][1]) / 2] };
+  }
   if (a === b) { const x = a.x + a.w, y = a.y + a.h / 2; return { d: `M${x},${y - 12} C${x + 60},${y - 60} ${x + 60},${y + 60} ${x},${y + 12}`, mid: [x + 45, y] }; }
   if (route === 'straight') return { d: `M${x1},${y1} L${x2},${y2}`, mid: [(x1 + x2) / 2, (y1 + y2) / 2] };
   if (route === 'curved') {
