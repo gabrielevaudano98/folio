@@ -19,12 +19,12 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 
 | Area | On `main` | In flight | Main gaps |
 |---|---|---|---|
-| App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Linux build |
+| App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Linux build is in CI on this branch (first AppImage unchecked on a real desktop) |
 | Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 on the PR stack | Data bugs fixed only on #77 ([#81](https://github.com/gabrielevaudano98/folio/issues/81)) |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
-| AI / MCP | 41 tools, HTTP and stdio, one-click connect | **Chat mode** (BYOK, [#102](https://github.com/gabrielevaudano98/folio/issues/102), branch `claude/project-thread-v7hqgg`); sheet tools on the Univer branch | Per-change review of AI edits, ask-AI from inside Folio |
+| AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect, per-change review, Ask AI ([#20](https://github.com/gabrielevaudano98/folio/issues/20)) | **Chat mode** (BYOK, [#102](https://github.com/gabrielevaudano98/folio/issues/102), PR #114); sheet tools on the Univer branch | `set_cells` to reconcile with Univer |
 | Meeting recorder (optional, Windows) | Shipped (1.5.x): one-click, call detection | — | Real-call measurements on Windows ([#88](https://github.com/gabrielevaudano98/folio/issues/88)) |
 | Release | Tests and CodeQL on pull requests to `main`; Windows and macOS packages on every push to `main`; a release when `package.json` changes | 5 Dependabot PRs | Code signing and notarisation (no certificates available) |
 
@@ -53,7 +53,7 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
 - **Sheets (light)**: grid over Markdown tables, ~390 functions (hot-formula-parser), formats, fill, copy and paste with
   Excel, several sheets, Kanban view, charts, `.xlsx` and CSV export.
 - **AI**: MCP server on `127.0.0.1:47321` with token and Host/Origin checks, stdio bridge inside the app binary, one-click
-  setup for Claude Desktop, Cursor, VS Code, Windsurf, LM Studio and a command for Claude Code; 41 tools
+  setup for Claude Desktop, Cursor, VS Code, Windsurf, LM Studio and a command for Claude Code; 52 tools
   ([reference](reference/mcp-tools.md)); every AI write is highlighted with Undo and kept in version history.
 - **Meeting recorder** ([explanation](explanation/meeting-recorder.md)): optional download, local Whisper transcription,
   notes checked against the transcript, one-click start, offer to record when a call starts.
@@ -154,8 +154,6 @@ Each is an open issue with its milestone. The ones that matter most for a first 
   ([#4](https://github.com/gabrielevaudano98/folio/issues/4)): **not possible for now, there are no certificates**; kept open only for the day they exist.
 - Auto-update ([#2](https://github.com/gabrielevaudano98/folio/issues/2)) is built, see [updates](explanation/updates.md); it needs a manual check on Windows after the first release that carries `latest.yml`.
 - Accessibility audit of the board canvas and the sheet grid ([#6](https://github.com/gabrielevaudano98/folio/issues/6)).
-- AI: accept or reject each AI change ([#18](https://github.com/gabrielevaudano98/folio/issues/18)); structured board
-  and sheet tools ([#19](https://github.com/gabrielevaudano98/folio/issues/19)); ask your AI from inside Folio ([#20](https://github.com/gabrielevaudano98/folio/issues/20)).
 - Boards: connector waypoints ([#11](https://github.com/gabrielevaudano98/folio/issues/11)), sequence messages
   ([#12](https://github.com/gabrielevaudano98/folio/issues/12)), images and pen ([#13](https://github.com/gabrielevaudano98/folio/issues/13)).
 - Slides leftovers: incremental lists ([#9](https://github.com/gabrielevaudano98/folio/issues/9)), rulers and guides
@@ -163,7 +161,7 @@ Each is an open issue with its milestone. The ones that matter most for a first 
   screen recording, screenshots and 3D ([#94](https://github.com/gabrielevaudano98/folio/issues/94)), background removal
   ([#95](https://github.com/gabrielevaudano98/folio/issues/95)), live captions ([#96](https://github.com/gabrielevaudano98/folio/issues/96)),
   video/GIF/image export ([#97](https://github.com/gabrielevaudano98/folio/issues/97)).
-- More chart types and axis titles ([#17](https://github.com/gabrielevaudano98/folio/issues/17)); Linux build ([#23](https://github.com/gabrielevaudano98/folio/issues/23)).
+- More chart types and axis titles ([#17](https://github.com/gabrielevaudano98/folio/issues/17)).
 - Meeting recorder on macOS (system sound capture) ([#89](https://github.com/gabrielevaudano98/folio/issues/89)).
 
 Sheet issues [#7](https://github.com/gabrielevaudano98/folio/issues/7), [#14](https://github.com/gabrielevaudano98/folio/issues/14),

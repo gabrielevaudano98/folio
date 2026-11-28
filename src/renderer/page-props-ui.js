@@ -4,6 +4,8 @@ import { t as tr, tl } from './i18n.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, TYPES } from './page-props.js';
 import { popupMenu } from './page-table.js';
 import { openEmojiPicker } from './page-icon.js';
+import { readAppearance, ownedKeys, setCover, setAppearance } from './page-appearance.js';
+import { openCoverPicker, paintCover } from './page-appearance-ui.js';
 /* the page icon (Notion): front matter `icon:`, drawn above the title, not listed with the properties */
 const ICON_KEY = 'icon';
 
@@ -22,10 +24,10 @@ const convert = (v, t) => {
   return one === true ? 'true' : one === false ? 'false' : String(one ?? '');
 };
 
-export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType, locked = () => false }) {
+export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType, locked = () => false, resolveImage = null, pickCover = null }) {
   const box = document.createElement('section'); box.className = 'props'; box.setAttribute('aria-label', tl('props', 'Properties'));
   page.prepend(box);
-  let open = true, adding = null;
+  let open = true, adding = null, repo = false;
   const ic = (n) => icons[n] || '';
   const commit = (fn) => { if (locked()) return render(); const before = get(); const after = fn(before); if (after !== before) set(after); render(); };
 
@@ -46,11 +48,14 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   function render() {
     const all = parseProps(get()); const iconProp = all.props.find((x) => x.key === ICON_KEY && !x.readOnly && typeof x.value === 'string' && x.value.trim());
-    const p = { ...all, props: all.props.filter((x) => x !== iconProp) };
+    const own = ownedKeys(get()); const ap = readAppearance(get()); const cover = ap.cover; if (!cover || cover.kind !== 'asset') repo = false;
+    const p = { ...all, props: all.props.filter((x) => x !== iconProp && !own.has(x.key)) }; // appearance keys (font, cover…) are not properties
     box.classList.toggle('is-empty', !p.props.length && !adding);
     box.classList.toggle('has-icon', !!iconProp);
-    box.innerHTML = `${iconProp ? `<button type="button" class="page-icon" aria-label="${esc(tr('icon.change'))}" title="${esc(tr('icon.change'))}">${esc(iconProp.value.trim())}</button>` : ''}
-      <div class="page-head-actions">${iconProp ? '' : `<button type="button" class="props-icon-add">${ic('smile') || ic('plus')}<span>${esc(tr('icon.add'))}</span></button>`}</div>
+    box.classList.toggle('has-cover', !!cover);
+    box.innerHTML = `${cover ? `<div class="page-cover${repo ? ' is-repositioning' : ''}" data-kind="${cover.kind}"${repo ? ` title="${esc(tr('cover.drag-hint'))}" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${ap.coverY}" aria-label="${esc(tr('cover.drag-hint'))}"` : ''}>
+        <div class="page-cover-actions"><button type="button" class="page-cover-btn" data-cover="change">${esc(tr('cover.change'))}</button>${cover.kind === 'asset' ? `<button type="button" class="page-cover-btn" data-cover="reposition" aria-pressed="${repo}">${esc(tr(repo ? 'cover.done' : 'cover.reposition'))}</button>` : ''}<button type="button" class="page-cover-btn" data-cover="remove">${esc(tr('cover.remove'))}</button></div></div>` : ''}${iconProp ? `<button type="button" class="page-icon" aria-label="${esc(tr('icon.change'))}" title="${esc(tr('icon.change'))}">${esc(iconProp.value.trim())}</button>` : ''}
+      <div class="page-head-actions">${cover ? '' : `<button type="button" class="props-cover-add">${ic('image') || ic('plus')}<span>${esc(tr('cover.add'))}</span></button>`}${iconProp ? '' : `<button type="button" class="props-icon-add">${ic('smile') || ic('plus')}<span>${esc(tr('icon.add'))}</span></button>`}</div>
       ${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
       <div class="props-rows"${open ? '' : ' hidden'}>${p.props.map((x) => `<div class="prop-row" data-key="${esc(x.key)}" data-type="${x.type}">
         <button type="button" class="prop-key" aria-haspopup="menu" aria-label="${esc(x.key)}: ${TYPE_LABEL[x.type]}. Change type, rename or remove" data-tip="${TYPE_LABEL[x.type]}">${ic(TYPE_ICON[x.type])}<span>${esc(x.key)}</span></button>
@@ -59,8 +64,9 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
       </div>
       <button type="button" class="props-add"${open || !p.props.length ? '' : ' hidden'}>${ic('plus')}<span>${tr('props.add-property')}</span></button>
       <datalist id="prop-tag-list"></datalist>`;
+    if (cover) paintCover(box.querySelector('.page-cover'), cover, ap.coverY, resolveImage);
     if (adding) { const k = box.querySelector('.prop-new-key'); k.focus(); k.select(); }
-    if (locked()) box.querySelectorAll('input, .prop-key, .page-icon').forEach((el) => { el.disabled = true; }); // X3: read, not changed
+    if (locked()) box.querySelectorAll('input, .prop-key, .page-icon, .page-cover-btn, .props-cover-add').forEach((el) => { el.disabled = true; }); // X3: read, not changed
   }
 
   const keyOf = (el) => el.closest('.prop-row')?.dataset.key;
@@ -84,6 +90,16 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   box.addEventListener('click', (e) => {
     if (e.target.closest('.props-head')) { open = !open; render(); return; }
+    const cb = e.target.closest('.page-cover-btn, .props-cover-add');
+    if (cb) {
+      if (locked()) return;
+      const how = cb.dataset.cover;
+      if (how === 'reposition') { repo = !repo; render(); return; }
+      if (how === 'remove') { commit((t) => setCover(t, '')); return; }
+      const upload = async () => { const rel = await pickCover?.(); if (rel) commit((t) => setCover(t, rel)); };
+      openCoverPicker(cb, { onGradient: (n) => commit((t) => setCover(t, `gradient-${n}`)), onUpload: upload, onRemove: how === 'change' ? () => commit((t) => setCover(t, '')) : null });
+      return;
+    }
     const pi = e.target.closest('.page-icon, .props-icon-add');
     if (pi) { const had = !!e.target.closest('.page-icon'); const back = () => box.querySelector('.page-icon, .props-icon-add')?.focus(); openEmojiPicker(pi, { onPick: (em) => { commit((t) => setProp(t, ICON_KEY, em, 'text')); back(); }, onRemove: had ? () => { commit((t) => removeProp(t, ICON_KEY)); back(); } : null }); return; }
     if (e.target.closest('.props-add')) { if (locked()) return; open = true; adding = newKey(get()); render(); return; }
@@ -94,6 +110,25 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
     if (link) { if (e.ctrlKey || e.metaKey || locked()) onLink?.(link.dataset.link); else { link.hidden = true; const i = link.parentElement.querySelector('input'); i.hidden = false; i.focus(); } return; }
     const key = e.target.closest('.prop-key');
     if (key && !key.closest('.is-new')) openMenu(key);
+  });
+  /* reposition: drag the picture up or down; the position is written once, when the pointer is released */
+  box.addEventListener('pointerdown', (e) => {
+    const c = e.target.closest('.page-cover.is-repositioning'); const img = c?.querySelector('.page-cover-img'); if (!c || !img || e.target.closest('.page-cover-btn') || locked()) return;
+    e.preventDefault();
+    const y0 = readAppearance(get()).coverY, h = c.getBoundingClientRect().height || 1, from = e.clientY; let y = y0;
+    try { c.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer cannot be captured */ }
+    const move = (ev) => { y = Math.min(100, Math.max(0, Math.round(y0 - ((ev.clientY - from) / h) * 100))); img.style.objectPosition = `50% ${y}%`; };
+    const end = () => { c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', cancel); };
+    const up = () => { end(); if (y !== y0) commit((t) => setAppearance(t, 'cover-y', y)); };
+    const cancel = () => { end(); img.style.objectPosition = `50% ${y0}%`; }; // an interrupted drag is aborted, never saved half-way
+    c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', cancel);
+  });
+  /* the same, from the keyboard: Up and Down move the picture in steps of 5 */
+  box.addEventListener('keydown', (e) => {
+    const c = e.target.closest?.('.page-cover.is-repositioning'); if (!c || e.target !== c || locked() || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const y = Math.min(100, Math.max(0, readAppearance(get()).coverY + (e.key === 'ArrowUp' ? 5 : -5)));
+    commit((t) => setAppearance(t, 'cover-y', y)); setTimeout(() => box.querySelector('.page-cover.is-repositioning')?.focus(), 0);
   });
   box.addEventListener('change', (e) => {
     const t = e.target;
