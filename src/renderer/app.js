@@ -452,11 +452,14 @@ function setView(v, { persist = true } = {}) {
 }
 
 /* ============ workspace ============ */
+/** N5 (Notion, browsers): the tabs closed in this folder, newest first, for Reopen closed tab */
+const closedTabs = [];
 async function loadWorkspace(dir, { restore = false } = {}) {
   if (dir !== S.workspace) resetRemote(); // grants and fetched web images never follow you into another folder, however the folder changed
   S.workspace = dir;
   folio.propTypes().then(setTypeOverrides).catch(() => setTypeOverrides({}));
   actions.clear(); nav.list = []; nav.i = -1; // file actions and history belong to one folder
+  closedTabs.length = 0; // a closed tab is a path in this folder: never reopen another folder's file with the same name
   $('#workspace-name').textContent = dir.split(/[\\/]/).filter(Boolean).pop();
   $('#tree').innerHTML = Array.from({ length: 7 }, (_, i) => `<div class="skeleton-row" style="--w:${[62, 48, 70, 40, 56, 66, 44][i]}%;--d:${i % 3 === 2 ? 1 : 0}"></div>`).join('');
   await refreshTree();
@@ -568,11 +571,16 @@ async function closeTab(p = S.active) {
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
+  { const k = closedTabs.indexOf(p); if (k >= 0) closedTabs.splice(k, 1); closedTabs.unshift(p); closedTabs.length = Math.min(closedTabs.length, 20); } // N5: Mod+Shift+T opens it again
   if (S.active === p) {
     const next = S.tabs[i] || S.tabs[i - 1];
     if (next) activate(next.path); else { S.active = null; showNoNote(); renderTabs(); renderTree(); }
   } else renderTabs();
   persistTabs();
+}
+function reopenClosedTab() {
+  while (closedTabs.length) { const p = closedTabs.shift(); if (S.files.includes(p) && !tabOf(p)) return openFile(p).catch(() => reopenClosedTab()); } // a page moved or deleted since is skipped
+  toast(tr('app.no-closed-tab'));
 }
 function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 
@@ -2203,6 +2211,8 @@ const COMMANDS = [
   { id: 'page-info', title: 'Page info', run: () => { if (S.active) setDock('info', { focus: true }); } },
   { id: 'toggle-favorite', title: 'Add to or remove from favorites', run: () => toggleFav(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
+  { id: 'reopen-tab', title: 'Reopen closed tab', key: 'Mod+Shift+T', run: () => reopenClosedTab() },
+  { id: 'toggle-theme', title: 'Switch between light and dark', run: () => saveSetting({ theme: S.dark ? 'light' : 'dark' }) }, // A7: Notion's Ctrl+Shift+L is Align left here, so no shortcut
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
   { id: 'italic', title: 'Format: italic', key: 'Mod+I', run: () => fmt('italic') },

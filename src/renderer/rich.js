@@ -763,7 +763,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
     onStart(p) {
       props = p; view = p.editor.view; items = p.items; sel = 0;
       el = document.createElement('div'); el.className = `slash-menu${insertMenu ? ' is-insert' : ''}`;
-      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">' + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
+      el.innerHTML = `<div class="slash-list" role="listbox" id="slash-list" aria-label="${String(label).replace(/[&"<]/g, (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;' }[c]))}"></div><div class="slash-foot" aria-hidden="true">` + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
       list = el.firstChild; document.body.append(el);
       view.dom.setAttribute('aria-controls', 'slash-list'); // aria-expanded is not allowed on a textbox: the list is announced through aria-activedescendant
       list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
@@ -787,9 +787,9 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   };
 }
 
-/* [[ @ # : — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
-const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji') };
-const MENTION_LABEL = { link: tl('rich', 'Link to a page'), at: tl('rich', 'Mention a person, page or date'), tag: 'Tags', emoji: 'Emoji' };
+/* [[ @ # : + — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
+const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji'), plus: new PluginKey('mentionPlus') };
+const MENTION_LABEL = { link: tl('rich', 'Link to a page'), at: tl('rich', 'Mention a person, page or date'), tag: 'Tags', emoji: 'Emoji', plus: tl('rich', 'Link to a page or create one') };
 const Mentions = Extension.create({
   name: 'folioMentions',
   addOptions() { return { ctx: () => null, keyLabel: (k) => k }; },
@@ -803,15 +803,17 @@ const Mentions = Extension.create({
         const $f = state.doc.resolve(range.from);
         if ($f.parent.type.spec.code || state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code)) return false;
         const q = state.doc.textBetween(range.from + char.length, range.to, ' ', ' ');
-        return q.length >= min && q.length <= 48 && !/[\]\n]/.test(q) && !(spaces && /^\s/.test(q)) && (kind !== 'emoji' || /^[\w+\-]*$/.test(q));
+        return q.length >= min && q.length <= 48 && !/[\]\n]/.test(q) && !(spaces && /^\s/.test(q)) && (kind !== 'emoji' || /^[\w+\-]*$/.test(q)) && (kind !== 'plus' || /^\p{L}/u.test(q)); // +name (Notion): a letter first, so 1 + 1 and +39 stay text
       },
       items: async ({ query }) => { const c = opts.ctx(); return c ? mentionEntries(kind, query, c) : []; },
       command: async ({ editor, range, props: entry }) => {
         if (entry.disabled) return;
         if (entry.create) {
+          const typed = editor.state.doc.textBetween(range.from, range.to, ' ', ' ');
           editor.chain().focus().deleteRange(range).run();
-          const made = await opts.ctx()?.createDoc?.({ type: 'md', name: entry.create });
-          if (made) editor.chain().focus().insertContent({ type: 'text', text: `[[${made.ref}]]` }).run();
+          const made = await opts.ctx()?.createDoc?.({ type: 'md', name: entry.create }).catch?.(() => null);
+          // a page that could not be made gives back what was typed ([[name, +name) instead of losing it
+          editor.chain().focus().insertContent({ type: 'text', text: made ? `[[${made.ref}]]` : typed }).run();
           return;
         }
         // a trailing space after a tag is for typing on; at the end of a block it would only leave a stray space in the file
@@ -821,7 +823,7 @@ const Mentions = Extension.create({
       },
       render: () => slashRenderer(opts, MENTION_KEYS[kind], MENTION_LABEL[kind]),
     });
-    return [make('link', '[[', { spaces: true, anywhere: true }), make('at', '@', { spaces: true }), make('tag', '#', { min: 1 }), make('emoji', ':', { min: 2 })];
+    return [make('link', '[[', { spaces: true, anywhere: true }), make('at', '@', { spaces: true }), make('tag', '#', { min: 1 }), make('emoji', ':', { min: 2 }), make('plus', '+', { spaces: true, min: 1 })];
   },
 });
 

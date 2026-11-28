@@ -41,6 +41,12 @@ assert.deepEqual((await ins('dom', 'it')).slice(0, 2), ['[[2026-11-23]]', '[[202
 assert.equal((await ins('ven', 'it'))[0], '[[2026-11-27]]');
 assert.equal((await ins('next friday'))[0], '[[2026-11-27]]');
 ok('“@tod”, “@dom”, “@ven” offer the day before the word is finished');
+// D4 (Notion): a weekday always means the coming one, never a day already gone; on a Sunday "@sun" is next Sunday only
+assert.deepEqual(await ins('mon'), ['[[2026-11-23]]']); assert.deepEqual(await ins('lun', 'it'), ['[[2026-11-23]]']);
+assert.deepEqual(await ins('sun'), ['[[2026-11-29]]']); assert.deepEqual(await ins('wed'), ['[[2026-11-25]]']);
+assert.deepEqual(await ins('mercoledì prossimo', 'it'), ['[[2026-11-25]]']);
+assert.equal((await ins('sat 7pm'))[0], '[[2026-11-28]]{19:00}');
+ok('weekday names look forward, in English and Italian; a time after one is kept');
 
 /* link health: [[2026-11-23]] is a date, [[Nowhere]] is a missing page */
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-dates-'));

@@ -734,6 +734,7 @@ function buildMenu() {
       { type: 'separator' },
       { label: tl('menu', 'Save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
       { label: tl('menu', 'Close Tab'), accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
+      { label: tl('menu', 'Reopen Closed Tab'), accelerator: 'CmdOrCtrl+Shift+T', click: cmd('reopen-tab') },
       { type: 'separator' },
       { label: tl('menu', 'Import Word or HTML…'), click: cmd('import-document') },
       { label: tl('menu', 'Import PowerPoint…'), click: cmd('import-pptx') },
