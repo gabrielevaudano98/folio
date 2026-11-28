@@ -21,6 +21,7 @@ import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
+import { mayOpenWithSystem } from './open-guard.js';
 import { createFeatures } from './meeting/service.js';
 import { createUpdater } from './updater.js';
 import electronUpdater from 'electron-updater';
@@ -132,7 +133,7 @@ function createWindow() {
   // the window never leaves the app page: any other address (a file: page would inherit the preload bridge) opens in the browser or not at all
   const here = (u) => String(u).split(/[?#]/)[0];
   const lock = (e, url) => { if (here(url) === here(win.webContents.getURL())) return; e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); };
-  win.webContents.on('will-navigate', lock);
+  win.webContents.on('will-navigate', lock); win.webContents.on('will-redirect', lock);
   // the page crashed (out of memory, a GPU or renderer fault): open it again rather than leave a blank window.
   // Notes are autosaved shortly after typing stops, so the last second or so of typing can be lost; tabs come back from
   // settings. A recording in progress is stopped and saved first, since its audio came from this page.
@@ -397,12 +398,20 @@ h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal
 /* templates (D9): the community gallery and links to Markdown files. Text only, 1 MB at most, HTTPS (or this machine) */
 const TEMPLATE_MAX = 1024 * 1024;
 h('templates:fetch', async (url) => {
-  const u = new URL(String(url));
-  const local = u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname);
-  if (u.protocol !== 'https:' && !local) throw new Error('Only https:// links can be downloaded.');
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 12000);
   try {
-    const res = await net.fetch(u.href, { signal: ctl.signal, redirect: 'follow' });
+    // every address, the first and each redirect, must be https on the public internet (or this machine over http); a link cannot reach the local network
+    let target = new URL(String(url)), res;
+    for (let hop = 0; ; hop++) {
+      if (hop > 5) throw new Error('Too many redirects.');
+      const local = target.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(target.hostname);
+      if (target.protocol !== 'https:' && !local) throw new Error('Only https:// links can be downloaded.');
+      if (!local) await assertPublicHost(target.hostname);
+      res = await net.fetch(target.href, { signal: ctl.signal, redirect: 'manual' });
+      const next = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+      if (!next) break;
+      target = new URL(next, target);
+    }
     if (!res.ok) throw new Error(`The server answered ${res.status}.`);
     const type = res.headers.get('content-type') || '';
     if (/^(image|video|audio|application\/(pdf|zip|octet-stream))/i.test(type)) throw new Error('That link is not a text file.');
@@ -419,7 +428,7 @@ h('templates:import-files', async () => {
   for (const f of r.filePaths.slice(0, 50)) { const st = await fs.stat(f); if (st.size > TEMPLATE_MAX) continue; out.push({ name: path.basename(f).replace(/\.(md|markdown|txt)$/i, ''), text: await fs.readFile(f, 'utf8') }); }
   return out;
 });
-h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
+h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); if (!mayOpenWithSystem(abs)) throw new Error('Folio opens documents and media only, not programs or scripts.'); if (!(await fs.stat(abs)).isFile()) throw new Error('That is not a file.'); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
 h('clipboard:read', async () => ({ text: await clipboard.readText(), html: typeof clipboard.readHTML === 'function' ? clipboard.readHTML() : '' })); // Electron 45: readText is async, readHTML is gone
 /* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */

@@ -30,6 +30,7 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 | `page-tools.js` | core | Section-level Markdown edits for AI tools: find a section by heading or `^block-id`, replace, insert after. |
 | `mcp-tools.js` | core | The MCP tool table (zod schemas, descriptions, read/write flags) and `runTool()`; one table for both hosts. See [MCP tools](mcp-tools.md). |
 | `mcp-slides.js` | core | Slide-specific MCP tools (objects, motion, links, alt text, notes, design ideas). |
+| `open-guard.js` | core | Which workspace files "Open" may hand to the system (documents and media; never programs, scripts or shortcuts). |
 | `netguard.js` | core | Is an address loopback or private? Guards every remote image fetch. |
 | `permissions.js` | core | Which browser permissions the app page gets (microphone only). |
 | `qa.js` | main | Audience Q&A web page on the local network, only while the presenter has it open. |

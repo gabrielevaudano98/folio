@@ -40,7 +40,7 @@ export const refFor = (path) => path.replace(/\.md$/i, '');
 export function newDeckFrom(t, title) {
   const fm = `---\nmarp: true\ntemplate: ${refFor(workspacePath(t))}\ntitle: ${title}\n---\n`;
   const samples = splitSlides(parseFrontmatter(t.text).body).filter((c) => !/<!--\s*master\b/.test(c));
-  const first = samples[0] ? samples[0].replace(/^(\s*(?:<!--[\s\S]*?-->\s*)*)#\s+.*$/m, `$1# ${title}`) : `\n# ${title}\n`;
+  const first = samples[0] ? samples[0].replace(/^#[ \t]+.*$/m, () => `# ${title}`) : `\n# ${title}\n`;
   return joinDeck(fm, [first, ...samples.slice(1)].map((c) => '\n' + c.replace(/^\n+/, '')));
 }
 /** front matter keys that a template provides; applying a template removes them from the deck so the template shows */

@@ -46,7 +46,7 @@ function parseDelimited(text, delim, { strict = false } = {}) {
   return rows.map((r) => [...r, ...Array(width - r.length).fill('')].map((c) => c.replace(/\n/g, ' ').trim()));
 }
 
-const cellText = (c) => String(c ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+const cellText = (c) => String(c ?? '').replace(/(\\*)\|/g, '$1$1\\|').replace(/\n/g, ' ');
 /** a GFM table from rows of text; the first row is the header */
 export function gfmTable(rows, aligns = []) {
   const w = Math.max(...rows.map((r) => r.length));

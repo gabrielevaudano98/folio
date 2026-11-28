@@ -88,7 +88,7 @@ import { STARTERS } from './template-starters.js';
      description: Agenda, notes, decisions and actions
      category: Meetings
      icon: 📝 */
-const META_BLOCK = /^template:[ \t]*\r?\n((?:[ \t]+[^\n]*\r?\n?)*)/m;
+const META_BLOCK = /^template:[ \t]*\r?\n((?:[ \t][^\n]*(?:\n|$))*)/m;
 export function templateMeta(text) {
   const m = FM.exec(String(text)); if (!m) return {};
   const b = META_BLOCK.exec(m[0]); if (!b) return {};
