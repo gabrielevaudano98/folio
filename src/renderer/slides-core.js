@@ -7,7 +7,7 @@ import mark from 'markdown-it-mark';
 import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
-import { extractObjects, geometry, textStyle, linePoints, linePath, fillCss, fillSvg, frameCss, flipCss, adjustCss, safeColor, parsePoints, pointsPath } from './slides-objects.js';
+import { extractObjects, scanObjects, addObject, nextId, geometry, textStyle, linePoints, linePath, fillCss, fillSvg, frameCss, flipCss, adjustCss, safeColor, parsePoints, pointsPath } from './slides-objects.js';
 import { shapeSvg } from './board-core.js';
 import { refsPlugin } from './refs-syntax.js';
 import { smartArt, parseItems } from './slides-smartart.js';
@@ -52,6 +52,13 @@ for (const name of ['left', 'right', 'columns', 'column', 'card', 'center', 'not
 // Marp fragmented lists: `*` bullets and `1)` numbers build one item per click when presenting (`-`, `+` and `1.` do not)
 const FRAGMENT = (t) => t.type === 'list_item_open' && (t.markup === '*' || t.markup === ')');
 md.core.ruler.push('folio_fragments', (state) => { for (const t of state.tokens) if (FRAGMENT(t)) t.attrSet('data-fragment', ''); });
+// the slide text's top-level blocks carry data-flow="k" (their order), so the canvas can point at one and Place it
+const FLOW_BLOCK = /^(paragraph|heading|bullet_list|ordered_list|blockquote|table)_open$|^(fence|code_block)$/;
+const TOP = (t) => t.level === 0 && (t.nesting === 1 || t.nesting === 0) && t.type !== 'inline';
+md.core.ruler.push('folio_flow_index', (state) => {
+  if (!state.env?.flow) return;
+  let k = 0; for (const t of state.tokens) if (TOP(t)) { if (FLOW_BLOCK.test(t.type)) t.attrSet('data-flow', String(k)); k++; }
+});
 /** how many list items of a slide build one by one: its flow text and its own boxes and shapes (masters never build) */
 export function fragmentCount(s) {
   if (!s || s.master) return 0;
@@ -183,7 +190,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
   const bgs = [...s.bgs, ...(bgImg ? [{ src: bgImg, fit: 'cover', side: null, filters: [] }] : [])];
   const full = bgs.filter((b) => !b.side), side = bgs.filter((b) => b.side);
   const sideW = side[0]?.size || 50;
-  const clean = (m) => lazySrc(DOMPurify.sanitize(md.render(m), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] })); // body, placeholders: pictures wait for the resolver
+  const clean = (m, env = {}) => lazySrc(DOMPurify.sanitize(md.render(m, env), { ADD_ATTR: ['target', 'data-spec', 'data-ref', 'data-label'], FORBID_TAGS: ['style', 'script', 'iframe'] })); // body, placeholders: pictures wait for the resolver
   const ph = s.master ? {} : placeholdersFor(deck, s);
   let html, phHtml = '';
   if (ph.title || ph.body || ph.subtitle) {
@@ -199,7 +206,7 @@ export function renderSlide(deck, s, { number = true } = {}) {
       if (a.radius) st.push(`border-radius:${parseFloat(a.radius) || 0}px`);
       return `<div class="sl-ph sl-ph-${r}${a.fit === 'shrink' ? ' sl-obj is-fit' : ''}" style="${st.join(';')}">${clean(parts[r])}</div>`;
     }).join('');
-  } else html = clean(s.content);
+  } else html = clean(s.content, { flow: true });
   const placed = placedHtml(deck, s, zoomDepth ? { inert: true } : undefined);
   const img = (b) => `<img class="sl-img" data-src="${escape(b.src)}" alt="" style="object-fit:${b.fit === 'none' ? 'none' : /%$/.test(b.fit) ? 'contain' : b.fit};${b.filters.length ? `filter:${b.filters.join(' ')};` : ''}">`;
   const theme = MARP_THEME[e.theme] || (THEMES.some(([t]) => t === e.theme) ? e.theme : deck.theme);
@@ -350,6 +357,64 @@ function lineHtml(o, n, byId, inert = false) {
   const heads = (/arrow/.test(a.head || '') ? head([x2, y2], seg[0]) : '') + (/arrow/.test(a.tail || '') ? head([x1, y1], seg[1]) : '');
   const dash = a.dash === 'true' ? ` stroke-dasharray="${sw * 3} ${sw * 2}"` : '';
   return `<div class="sl-obj sl-line${['true', '1', 'yes'].includes(String(a.lock || '').toLowerCase()) ? ' is-locked' : ''}${a.from || a.to ? ' is-connector' : ''}${inert ? ' is-master' : ''}"${inert ? '' : ` data-obj="${n}"${o.id ? ` data-id="${escape(o.id)}"` : ''}`} data-x1="${x1}" data-y1="${y1}" data-x2="${x2}" data-y2="${y2}" style="left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px;z-index:${10 + g.z}"><svg width="${bw}" height="${bh}" viewBox="${bx} ${by} ${bw} ${bh}"><path class="sl-line-hit" d="${d}"/><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash}/>${heads}</svg></div>`;
+}
+
+/* ---------- the slide text's blocks, and placing one as a free box (P2) ---------- */
+/**
+ * the top-level blocks of a slide's flow text, numbered as renderSlide numbers them (data-flow), with their line range in
+ * the chunk: [{ k, type, from, to, clean }]. The flow is rebuilt the way parseDeck builds it (comments, `![bg]` pictures and
+ * placed objects taken out), remembering where each character came from. clean is false when the block's lines also hold
+ * something that is not part of it (a comment, an object, a background), so they cannot be moved on their own.
+ */
+export function flowBlocks(chunk) {
+  let t = chunk; let at = Array.from({ length: chunk.length }, (_, i) => i);
+  const cut = (ranges) => {
+    let out = ''; const o = []; let last = 0;
+    for (const [a, b] of ranges) { if (a < last) continue; out += t.slice(last, a); for (let i = last; i < a; i++) o.push(at[i]); last = b; }
+    out += t.slice(last); for (let i = last; i < t.length; i++) o.push(at[i]); t = out; at = o;
+  };
+  cut([...t.matchAll(/<!--[\s\S]*?-->/g)].map((m) => [m.index, m.index + m[0].length]));
+  cut([...t.matchAll(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)].filter((m) => m[1].trim().split(/\s+/)[0]?.toLowerCase() === 'bg').map((m) => [m.index, m.index + m[0].length]));
+  {
+    const lines = t.split('\n'); const starts = []; let p = 0; for (const l of lines) { starts.push(p); p += l.length + 1; }
+    cut(scanObjects(t).map((o) => (o.close + 1 < lines.length ? [starts[o.open], starts[o.close + 1]] : [Math.max(0, starts[o.open] - 1), t.length])));
+  }
+  const lead = t.length - t.trimStart().length; const content = t.trim(); const origin = at.slice(lead, lead + content.length);
+  const nl = [0]; for (let i = 0; i < chunk.length; i++) if (chunk.charCodeAt(i) === 10) nl.push(i + 1);
+  const lineOf = (off) => { let lo = 0, hi = nl.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (nl[mid] <= off) lo = mid; else hi = mid - 1; } return lo; };
+  const cLines = content.split('\n'); const cStarts = []; { let p = 0; for (const l of cLines) { cStarts.push(p); p += l.length + 1; } }
+  const src = chunk.split('\n'); const out = []; let k = 0;
+  for (const tk of md.parse(content, {})) {
+    if (!TOP(tk)) continue;
+    if (tk.map && FLOW_BLOCK.test(tk.type)) {
+      const [l0, l1] = tk.map; let last = Math.max(l0, l1 - 1);
+      while (last > l0 && !cLines[last].trim()) last--; // a list's range runs over the blank lines after it
+      const a = cStarts[l0], b = cStarts[last] + Math.max(0, cLines[last].length - 1);
+      const from = lineOf(origin[a]), to = lineOf(origin[Math.min(b, origin.length - 1)]);
+      // its lines hold the block and at most whole comments or backgrounds (they mean the same anywhere on the slide), never an object
+      const own = src.slice(from, to + 1).join('\n').replace(/<!--[\s\S]*?-->/g, '').replace(/!\[\s*bg\b[^\]]*\]\([^)]*\)/gi, '');
+      const norm = (x) => x.replace(/[ \t]+$/gm, '').replace(/\n{2,}/g, '\n').trim();
+      const clean = norm(own) === norm(cLines.slice(l0, last + 1).join('\n')) && !scanObjects(src.slice(from, to + 1).join('\n')).length;
+      out.push({ k, type: tk.type.replace(/_open$/, ''), from, to, clean });
+    }
+    k++;
+  }
+  return out;
+}
+/**
+ * move block k of the slide text into a free `::: box` at geom ({ x, y, w, h } in slide px), in one edit: its lines leave
+ * the flow and come back unchanged as the body of a new box at the end of the slide. A block that cannot be moved on its
+ * own leaves the chunk as it was.
+ */
+export function placeFlowBlock(chunk, k, geom, attrs = {}) {
+  const b = flowBlocks(chunk).find((x) => x.k === k); if (!b || !b.clean) return chunk;
+  const lines = chunk.split('\n'); const body = lines.slice(b.from, b.to + 1);
+  lines.splice(b.from, b.to - b.from + 1);
+  // the gap the block leaves: never two blank lines in a row where it was
+  if (b.from > 0 && b.from < lines.length && !lines[b.from - 1].trim() && !lines[b.from].trim()) lines.splice(b.from, 1);
+  const r = Math.round; const id = nextId(chunk, 'box');
+  const extra = Object.entries(attrs).filter(([, v]) => v != null && v !== '').map(([key, v]) => ` ${key}=${/[\s"']/.test(String(v)) ? `"${String(v).replace(/"/g, '')}"` : v}`).join('');
+  return addObject(lines.join('\n'), `::: box #${id} x=${r(geom.x)} y=${r(geom.y)} w=${r(geom.w)} h=${r(geom.h)}${extra}\n${body.join('\n')}\n:::`);
 }
 
 /* ---------- synced copies ---------- */

@@ -133,6 +133,7 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `slides-a11y.js` | core | Accessibility checker for a deck. |
 | `slides.js` | surface (~1,350 lines) | The slide editor: thumbnails, stage, panels, insert, format, export menu. |
 | `slides-canvas.js` | surface | Select, move, resize, rotate, snap (Moveable + Selecto); each gesture is one text edit. |
+| `slides-rulers.js` | surface | Rulers along the slide and guides dragged out of them; view state only, never written to the file. |
 | `slides-text.js` | surface | Edit a box's text on the slide with a lean TipTap editor. |
 | `slides-anim-pane.js` | surface | The Animations pane. |
 | `slides-merge.js` | surface helper | Merge shapes (union, intersect, subtract) with polygon-clipping. |

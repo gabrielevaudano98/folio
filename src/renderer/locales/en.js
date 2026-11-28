@@ -1918,4 +1918,9 @@ export default {
   "slides.fragments-note_one": "Incremental list: {n} item marked with * or 1) appears on its own click, before the animations below.",
   "slides.fragments-note_other": "Incremental list: {n} items marked with * or 1) appear one per click, before the animations below.",
   "slides.mixed-list-markers": "This box mixes list markers (* with - or 1) with 1.), which the text editor cannot keep. Edit it in the slide's Markdown below.",
+  "slides.rulers": "Rulers",
+  "slides.rulers-hint": "Show rulers. Drag from a ruler to add a guide; drag a guide back to remove it. Guides are not saved in the file.",
+  "slides.clear-guides": "Clear all guides",
+  "slides.place-as-box": "Place as free box",
+  "slides.place-not-possible": "This block shares its lines with a placed object, so it cannot be moved on its own. Move it in the slide's Markdown.",
 };

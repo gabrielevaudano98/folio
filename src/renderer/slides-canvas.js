@@ -46,8 +46,30 @@ export function mountCanvas(o) {
     snappable: true, snapDirections: { left: true, top: true, right: true, bottom: true, center: true, middle: true },
     elementSnapDirections: { left: true, top: true, right: true, bottom: true, center: true, middle: true },
     snapThreshold: 6, isDisplaySnapDigit: false, snapGap: false, snapRotationThreshold: 4, snapRotationDegrees: [0, 45, 90, 135, 180, 225, 270, 315],
-    verticalGuidelines: [0, width / 2, width], horizontalGuidelines: [0, height / 2, height], elementGuidelines: [],
+    // the frame (unscaled, slide size × k) is the snap container: snap lines and the grid are slide px scaled by k
+    snapContainer: frame, elementGuidelines: [],
   });
+  /** snap lines: the slide's edges and centre plus the guides from the rulers (slide px), and the grid, all scaled by k */
+  let guideLines = o.guides?.() || { x: [], y: [] }, grid = 0;
+  const applySnap = () => {
+    const kk = k();
+    moveable.verticalGuidelines = [...new Set([0, width / 2, width, ...(guideLines.x || [])])].map((v) => v * kk);
+    moveable.horizontalGuidelines = [...new Set([0, height / 2, height, ...(guideLines.y || [])])].map((v) => v * kk);
+    moveable.snapGridWidth = grid * kk; moveable.snapGridHeight = grid * kk;
+  };
+  applySnap();
+  /** a drag that snapped lands a fraction of a screen pixel off its line; put an edge or centre exactly on it */
+  const settle = (p, g0) => {
+    if (p.rotate || g0.rotate) return;
+    const tol = Math.max(1, 1 / k());
+    const fix = (pos, size, lines) => {
+      let best = null;
+      for (const at of [pos, pos + size / 2, pos + size]) for (const v of lines) { const d = v - at; if (Math.abs(d) <= tol && (best == null || Math.abs(d) < Math.abs(best))) best = d; }
+      return best == null ? pos : Math.round(pos + best);
+    };
+    p.x = fix(p.x, p.w, [0, width / 2, width, ...(guideLines.x || [])]);
+    p.y = fix(p.y, p.h, [0, height / 2, height, ...(guideLines.y || [])]);
+  };
 
   const apply = (e) => { e.target.style.cssText += e.cssText; };
   let copying = false, dragging = false;
@@ -61,6 +83,7 @@ export function mountCanvas(o) {
     const objs = scanObjects(o.getChunk());
     const patches = els.map((el) => {
       const i = indexOf(el); const g0 = start[i] || geometry({ attrs: {} }); const p = readPatch(el, g0);
+      if (dragging) settle(p, g0);
       for (const key of Object.keys(p)) if (p[key] === g0[key]) delete p[key];
       if (p.rotate === 0 && !('rotate' in (objs[i]?.attrs || {}))) delete p.rotate;
       return [i, p];
@@ -237,9 +260,10 @@ export function mountCanvas(o) {
 
   return {
     select: set,
-    setGrid(n) { moveable.snapGridWidth = n; moveable.snapGridHeight = n; moveable.updateRect(); },
+    setGrid(n) { grid = n; applySnap(); moveable.updateRect(); },
+    setGuides(g) { guideLines = g || { x: [], y: [] }; applySnap(); moveable.updateRect(); },
     selection: () => sel,
-    update: () => { moveable.updateRect(); if (ends.length) drawEnds(byIndex(sel[0])); },
+    update: () => { applySnap(); moveable.updateRect(); if (ends.length) drawEnds(byIndex(sel[0])); },
     destroy() { document.removeEventListener('mousemove', trackAlt, true); document.removeEventListener('pointermove', trackAlt, true); live.remove(); ends.forEach((h) => h.remove()); stage.removeEventListener('keydown', onKey); selecto.destroy(); moveable.destroy(); },
   };
 }

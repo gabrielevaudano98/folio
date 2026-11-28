@@ -1914,4 +1914,9 @@ export default {
   "slides.fragments-note_one": "Elenco progressivo: {n} voce segnata con * o 1) compare con un clic, prima delle animazioni qui sotto.",
   "slides.fragments-note_other": "Elenco progressivo: {n} voci segnate con * o 1) compaiono una per clic, prima delle animazioni qui sotto.",
   "slides.mixed-list-markers": "Questa casella mescola segni di elenco (* con - oppure 1) con 1.) che l'editor di testo non può conservare. Modificala nel Markdown della diapositiva qui sotto.",
+  "slides.rulers": "Righelli",
+  "slides.rulers-hint": "Mostra i righelli. Trascina da un righello per aggiungere una guida; riportala sul righello per toglierla. Le guide non vengono salvate nel file.",
+  "slides.clear-guides": "Togli tutte le guide",
+  "slides.place-as-box": "Posiziona come casella libera",
+  "slides.place-not-possible": "Questo blocco condivide le righe con un oggetto posizionato, quindi non si può spostare da solo. Spostalo nel Markdown della diapositiva.",
 };

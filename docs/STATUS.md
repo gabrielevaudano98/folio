@@ -21,7 +21,7 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 |---|---|---|---|
 | App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Linux build is in CI on this branch (first AppImage unchecked on a real desktop) |
 | Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 on the PR stack | Data bugs fixed only on #77 ([#81](https://github.com/gabrielevaudano98/folio/issues/81)) |
-| Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
+| Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
 | AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect, per-change review, Ask AI ([#20](https://github.com/gabrielevaudano98/folio/issues/20)) | Sheet tools on the Univer branch | `set_cells` to reconcile with Univer |
@@ -46,7 +46,7 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
   (CriticMarkup), paste and import from Word, Google Docs and Notion, backlinks and unlinked mentions, find and replace,
   attachments in `.asset/`, ribbon (compact and full).
 - **Slides** ([SLIDES-PLAN.md](SLIDES-PLAN.md)): free placement, arrange, text on the slide, themes and masters, templates,
-  SmartArt and Design ideas, transitions (Marp names too), animations and Morph, incremental lists (Marp `*` and `1)` lists, built in the show and in PowerPoint), links and Zoom, presenter view with audience window,
+  SmartArt and Design ideas, transitions (Marp names too), animations and Morph, incremental lists (Marp `*` and `1)` lists, built in the show and in PowerPoint), rulers and guides (view state, objects snap to them), Place a text block as a free box, links and Zoom, presenter view with audience window,
   pen and laser, narration, audience Q&A, PowerPoint in and out with native motion, handouts and PDF.
 - **Boards**: draw.io-style canvas on board-md; general, flowchart, UML, ER and architecture shapes; UML connectors;
   auto-layout (dagre); PNG and SVG export.
@@ -150,8 +150,7 @@ Each is an open issue with its milestone. The ones that matter most for a first 
 - Accessibility audit of the board canvas and the sheet grid ([#6](https://github.com/gabrielevaudano98/folio/issues/6)).
 - Boards: connector waypoints ([#11](https://github.com/gabrielevaudano98/folio/issues/11)), sequence messages
   ([#12](https://github.com/gabrielevaudano98/folio/issues/12)), images and pen ([#13](https://github.com/gabrielevaudano98/folio/issues/13)).
-- Slides leftovers: rulers and guides
-  ([#92](https://github.com/gabrielevaudano98/folio/issues/92)), per-word styling and WordArt ([#93](https://github.com/gabrielevaudano98/folio/issues/93)),
+- Slides leftovers: per-word styling and WordArt ([#93](https://github.com/gabrielevaudano98/folio/issues/93)),
   screen recording, screenshots and 3D ([#94](https://github.com/gabrielevaudano98/folio/issues/94)), background removal
   ([#95](https://github.com/gabrielevaudano98/folio/issues/95)), live captions ([#96](https://github.com/gabrielevaudano98/folio/issues/96)),
   video/GIF/image export ([#97](https://github.com/gabrielevaudano98/folio/issues/97)).

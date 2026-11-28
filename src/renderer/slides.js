@@ -1,6 +1,6 @@
 // Folio — slides surface: thumbnails, stage, per-slide Markdown, presenter, PDF and PowerPoint export.
 import { t as tr, tl } from './i18n.js';
-import { setFlag, addComment, removeComment, sectionsOf, SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES } from './slides-core.js';
+import { setFlag, addComment, removeComment, sectionsOf, SIZES, TOKENS, syncBody, slideChunk, syncedCopy, parseDeck, renderSlide, joinDeck, setDirective, setNotes, setGlobal, splitSlides, parseFrontmatter, LAYOUTS, THEMES, TEMPLATES, placeFlowBlock } from './slides-core.js';
 import { createEditor } from './editor.js';
 import { perDoc } from './history.js';
 import slidesCss from './slides.css';
@@ -11,6 +11,7 @@ import { designIdeas, BLOCKS } from './slides-designer.js';
 import { SCHEMES, FONT_PAIRS, templateInfo, applyTemplate, templateFromDeck } from './slides-templates.js';
 import { LIBRARY, shapeSvg, defaultSize } from './board-core.js';
 import { startTextEdit } from './slides-text.js';
+import { mountRulers } from './slides-rulers.js';
 import { pathBlock, polygonsBlock, simplify, parsePoints, pointsText, replaceImageSrc, parseFill, MASKS, SHADOWS, scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, listMarkers, keepMarkers, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -33,6 +34,7 @@ export function mountSlides(host, ctx) {
       <label class="sf-check"><input type="checkbox" data-sl-format> Format</label>
       <label class="sf-check"><input type="checkbox" data-sl-layers> Layers</label>
       <label class="sf-check"><input type="checkbox" data-sl-grid> Grid</label>
+      <label class="sf-check" title="${tr('slides.rulers-hint')}"><input type="checkbox" data-sl-rulers> ${tr('slides.rulers')}</label>
       <div class="sf-sep"></div>
       <label class="sf-field"><span>${tr('slides.layout')}</span><select class="rb-select" data-sl-layout>${LAYOUTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
       <label class="sf-field"><span>${tr('slides.theme')}</span><select class="rb-select sf-narrow" data-sl-theme>${THEMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
@@ -74,7 +76,7 @@ export function mountSlides(host, ctx) {
       </div>
     </div>`;
 
-  let text = '', deck = null, cur = 0, silent = false, canvas = null, selected = [];
+  let text = '', deck = null, cur = 0, silent = false, canvas = null, selected = [], pickedFlow = null;
   let tplText = null, tplRef = null, tplSeq = 0;
   const parse = (t) => parseDeck(t, { template: tplText });
   const undo = []; const redo = []; let lastPush = 0, restoring = false;
@@ -190,7 +192,18 @@ export function mountSlides(host, ctx) {
     frame.style.width = `${deck.width * k}px`; frame.style.height = `${deck.height * k}px`;
     frame.style.setProperty('--k', k);
     canvas?.update();
+    rulers?.update({ width: deck.width, height: deck.height });
   }
+  /* rulers and guides: view state per open deck, never written to the file */
+  const guideStore = new Map();
+  const guides = () => { const key = ctx.docKey?.() || ''; if (!guideStore.has(key)) guideStore.set(key, { x: [], y: [] }); return guideStore.get(key); };
+  const rulers = mountRulers({
+    stage, frame, width: 1280, height: 720, k: () => parseFloat(frame.style.getPropertyValue('--k')) || 1, guides,
+    onChange: (g) => { guideStore.set(ctx.docKey?.() || '', g); rulers.update(); canvas?.setGuides(g); },
+    label: tr, menu: (items, at) => ctx.showMenu(null, items, at),
+  });
+  const snapLines = () => (rulers.visible ? guides() : { x: [], y: [] });
+  host.querySelector('[data-sl-rulers]').addEventListener('change', (e) => { rulers.setVisible(e.target.checked); canvas?.setGuides(snapLines()); });
   new ResizeObserver(fit).observe(stage);
 
   /* thumbnails: rendered when they scroll into view, and cached until their slide (or the deck's look) changes */
@@ -237,11 +250,14 @@ export function mountSlides(host, ctx) {
     hydrate(frame); fit(); shrinkFit(frame);
     canvas?.destroy();
     canvas = mountCanvas({
-      frame, stage, width: deck.width, height: deck.height, selected,
+      frame, stage, width: deck.width, height: deck.height, selected, guides: snapLines,
       getChunk: () => chunks().list[cur],
       edit(fn) { const { fm, list } = chunks(); list[cur] = fn(list[cur]); commit(joinDeck(fm, list)); },
       onSelect(sel) { selected = sel; canvas?.select(sel, { notify: false }); renderLayers(); syncFmt(); renderFormat(); drawVertices(); animPane?.render(); },
     });
+    // the grid keeps snapping after the canvas is rebuilt (every edit rebuilds it)
+    if (host.querySelector('[data-sl-grid]').checked) canvas.setGrid(40);
+    pickedFlow = null;
     }
     host.querySelector('[data-sl-layout]').value = s.layout;
     host.querySelector('[data-sl-theme]').value = deck.theme;
@@ -325,6 +341,7 @@ export function mountSlides(host, ctx) {
       item(tl('slides', 'Group'), many, () => { const g = nextGroup(objs); patchSel(selected.map((i) => [i, { group: g }])); }),
       item(tl('slides', 'Ungroup'), grouped, () => patchSel(selected.map((i) => [i, { group: null }]))),
       item(tl('slides', 'Lock'), one, () => patchSel(selected.map((i) => [i, { lock: 'true' }]))), '-',
+      { label: tr('slides.place-as-box'), run: () => placeFlow(pickedFlow), disabled: pickedFlow == null }, '-',
       ...(() => { const ok = many && selected.every((i) => ['shape', 'box', 'path', 'image'].includes(objs[i]?.kind)); return [
         item(tl('slides', 'Merge shapes: union'), ok, () => mergeSel('union')), item(tl('slides', 'Merge shapes: intersect'), ok, () => mergeSel('intersection')),
         item(tl('slides', 'Merge shapes: subtract'), ok, () => mergeSel('difference')), item(tl('slides', 'Merge shapes: combine'), ok, () => mergeSel('xor')), '-']; })(),
@@ -444,6 +461,30 @@ export function mountSlides(host, ctx) {
     syncFmt();
   }
   frame.addEventListener('dblclick', (e) => { const el = e.target.closest('.sl-obj'); if (el) startEdit(Number(el.dataset.obj)); });
+
+  /* place a block of the slide text (laid out by the layout) as a free box at the same spot (P2) */
+  const flowEl = (target) => (target.closest?.('.sl-obj, .sl-guide') ? null : target.closest?.('.sl-frame .sl-body > [data-flow]'));
+  function pickFlow(el) {
+    frame.querySelectorAll('.is-flow-picked').forEach((x) => x.classList.remove('is-flow-picked'));
+    pickedFlow = el ? Number(el.dataset.flow) : null; el?.classList.add('is-flow-picked');
+  }
+  frame.addEventListener('click', (e) => pickFlow(flowEl(e.target)));
+  frame.addEventListener('contextmenu', (e) => {
+    const el = flowEl(e.target); if (!el) return; e.preventDefault(); pickFlow(el);
+    ctx.showMenu(null, [{ label: tr('slides.place-as-box'), run: () => placeFlow(Number(el.dataset.flow)) }], { x: e.clientX, y: e.clientY });
+  });
+  // a box pads its text (.slide .sl-box: 12px 16px): the box grows by that much so the text stays where it was
+  const BOX_PAD = { x: 16, y: 12 };
+  function placeFlow(k) {
+    const el = k == null ? null : frame.querySelector(`.sl-body > [data-flow="${k}"]`); const sec = frame.querySelector('section.slide');
+    if (!el || !sec) return;
+    const kk = parseFloat(frame.style.getPropertyValue('--k')) || 1; const r = el.getBoundingClientRect(), s0 = sec.getBoundingClientRect();
+    const geom = { x: (r.left - s0.left) / kk - BOX_PAD.x, y: (r.top - s0.top) / kk - BOX_PAD.y, w: Math.ceil(r.width / kk) + BOX_PAD.x * 2 + 2, h: Math.ceil(r.height / kk) + BOX_PAD.y * 2 };
+    const al = getComputedStyle(el).textAlign; const align = ['center', 'right', 'justify'].includes(al) ? al : null;
+    let placed = false;
+    editChunk2((c) => { const next = placeFlowBlock(c, k, geom, { align }); placed = next !== c; if (placed) selected = [scanObjects(next).length - 1]; return next; });
+    if (!placed) ctx.toast(tr('slides.place-not-possible'), { kind: 'error' });
+  }
 
   /* synced copies of slides from this or another deck */
   const syncBar = host.querySelector('.sl-sync'); let syncSeq = 0;

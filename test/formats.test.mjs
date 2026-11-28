@@ -765,6 +765,24 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.equal((tx.match(/nodeType="clickEffect"/g) || []).length, 4); assert.match(tx, /<p:bldP spid="2" grpId="0" build="p"/); ok('PowerPoint export: each fragmented item is its own click, by paragraph, before the slide\'s animations');
 }
 
+// rulers and Place: a block of the slide text becomes a free box in one minimal edit (#92)
+{
+  const { flowBlocks, placeFlowBlock } = await import('../src/renderer/slides-core.js');
+  const chunk = '\n<!-- layout: title -->\n# Big title <!-- note -->\n\nIntro line\n\n- One\n- Two\n\n::: box #a x=1 y=2 w=3 h=4\nIn a box\n:::\n\n> Quote\n';
+  const bl = flowBlocks(chunk);
+  assert.deepEqual(bl.map((b) => [b.k, b.type, b.from, b.to, b.clean]), [[0, 'heading', 2, 2, true], [1, 'paragraph', 4, 4, true], [2, 'bullet_list', 6, 7, true], [3, 'blockquote', 13, 13, true]]);
+  ok('flowBlocks finds the top-level blocks of the slide text and their lines, skipping directives and placed objects');
+  const placed = placeFlowBlock(chunk, 2, { x: 80.4, y: 200, w: 400, h: 90.6 });
+  assert.equal(placed, '\n<!-- layout: title -->\n# Big title <!-- note -->\n\nIntro line\n\n::: box #a x=1 y=2 w=3 h=4\nIn a box\n:::\n\n> Quote\n\n::: box #box-1 x=80 y=200 w=400 h=91\n- One\n- Two\n:::\n');
+  ok('Place moves the block\'s lines unchanged into a new ::: box at whole pixels; the rest of the slide is byte-identical');
+  assert.equal(placeFlowBlock(chunk, 0, { x: 0, y: 0, w: 10, h: 10 }, { align: 'center' }).match(/::: box #box-1 .*\n# Big title <!-- note -->\n:::/)[0].split('\n')[0], '::: box #box-1 x=0 y=0 w=10 h=10 align=center');
+  const deck = '---\nmarp: true\n---\n\n' + placed; const fm = parseFrontmatter(deck); assert.equal(joinDeck(fm.raw, splitSlides(fm.body)), deck);
+  assert.deepEqual(parseDeck(deck).slides[0].objects.map((o) => o.id), ['a', 'box-1']); ok('a placed block round-trips and parses as a box; alignment is carried as align=');
+  const mixed = 'Text\n::: box #x x=0 y=0 w=1 h=1\nB\n:::\nmore text';
+  assert.deepEqual(flowBlocks(mixed).map((b) => [b.from, b.to, b.clean]), [[0, 4, false]]); assert.equal(placeFlowBlock(mixed, 0, { x: 0, y: 0, w: 1, h: 1 }), mixed);
+  assert.equal(placeFlowBlock(chunk, 9, { x: 0, y: 0, w: 1, h: 1 }), chunk); ok('a block that shares lines with a placed object (or does not exist) is left alone');
+}
+
 // interactivity: links, zooms, custom shows, auto-advance
 {
   const lt = fx('Links.slides.md'); const ld = parseDeck(lt);

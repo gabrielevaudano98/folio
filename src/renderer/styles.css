@@ -1431,6 +1431,22 @@ li[data-checked="true"] .rich-chip.is-date.is-remind.is-due { color: var(--color
 .sl-layer-lock:focus-visible { outline: 2px solid currentColor; }
 .sl-frame.sl-grid::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 5; background-image: linear-gradient(to right, color-mix(in oklch, var(--color-ink) 14%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklch, var(--color-ink) 14%, transparent) 1px, transparent 1px); background-size: calc(40px * var(--k, .5)) calc(40px * var(--k, .5)); }
 .sl-frame .sl-obj.is-locked { cursor: not-allowed; opacity: .96; }
+/* rulers and guides (view state, never in the file) */
+.sl-ruler, .sl-ruler-corner { position: absolute; z-index: 6; background: var(--color-chrome); color: var(--color-muted); font-family: var(--font-sans); font-size: var(--text-2xs); user-select: none; }
+.sl-ruler-corner { width: 18px; height: 18px; border-radius: var(--radius-xs, 4px) 0 0 0; }
+.sl-ruler.is-top { height: 18px; cursor: row-resize; border-bottom: 1px solid var(--color-rule-strong); background-image: linear-gradient(to right, var(--color-rule-strong) 1px, transparent 1px), linear-gradient(to right, var(--color-muted) 1px, transparent 1px); background-size: var(--tick) 5px, var(--major) 11px; background-repeat: repeat-x; background-position: left bottom; }
+.sl-ruler.is-left { width: 18px; cursor: col-resize; border-right: 1px solid var(--color-rule-strong); background-image: linear-gradient(to bottom, var(--color-rule-strong) 1px, transparent 1px), linear-gradient(to bottom, var(--color-muted) 1px, transparent 1px); background-size: 5px var(--tick), 11px var(--major); background-repeat: repeat-y; background-position: right top; }
+.sl-ruler span { position: absolute; line-height: 1; pointer-events: none; font-variant-numeric: tabular-nums; }
+.sl-ruler.is-top span { top: 1px; padding-left: 3px; }
+.sl-ruler.is-left span { left: 1px; padding-top: 3px; writing-mode: vertical-rl; transform: rotate(180deg); transform-origin: center; }
+.sl-guides { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+.sl-guide { position: absolute; pointer-events: auto; }
+.sl-guide.is-v { top: 0; bottom: 0; width: 7px; margin-left: -3px; cursor: col-resize; background: linear-gradient(to right, transparent 3px, var(--color-ink) 3px, var(--color-ink) 4px, transparent 4px); }
+.sl-guide.is-h { left: 0; right: 0; height: 7px; margin-top: -3px; cursor: row-resize; background: linear-gradient(to bottom, transparent 3px, var(--color-ink) 3px, var(--color-ink) 4px, transparent 4px); }
+.sl-guide.is-dragging { opacity: .7; }
+/* a block of the slide text, picked to be placed as a free box */
+.sl-frame .sl-body > [data-flow]:hover { outline: calc(1px / var(--k, .5)) dashed color-mix(in oklch, var(--color-ink) 35%, transparent); outline-offset: calc(4px / var(--k, .5)); }
+.sl-frame .sl-body > [data-flow].is-flow-picked { outline: calc(2px / var(--k, .5)) solid var(--color-ink); outline-offset: calc(4px / var(--k, .5)); }
 .menu-item:disabled { opacity: .4; cursor: default; pointer-events: none; }
 
 /* format bar for placed text */

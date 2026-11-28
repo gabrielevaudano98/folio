@@ -308,6 +308,8 @@ Optional label
 - Arrange attributes: `group=name` (objects with the same group are selected and moved together), `lock=true` (cannot be selected on the canvas).
 - Only top-level objects are placed. Containers nested in a box (`::: note`, `::: card`) are ordinary content. Objects inside code fences are text.
 - Editing the canvas rewrites only the opener line (or the image line) of the moved object. Everything else is untouched.
+- Place as free box (Arrange menu, or right-click a block of the slide text): the block's lines move unchanged into a new `::: box #box-N x= y= w= h=` at the end of the slide, sized and positioned where the block was drawn (`align=` is added when the text was centred, right-aligned or justified). Nothing else in the slide changes. A block that shares its lines with a placed object is not moved.
+- Rulers and guides are view state: guides dragged out of the rulers snap objects while they move, are kept per open deck for the session, and are never written to the file.
 - Marp shows boxes as ordinary content in reading order, without positioning.
 
 ## board-md
