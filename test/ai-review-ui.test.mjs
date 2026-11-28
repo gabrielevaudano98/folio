@@ -5,11 +5,13 @@ import fs from 'node:fs';
 import { workspace, runApp, open, errors } from './harness.mjs';
 
 const w = workspace('ai-review', 47626);
+// a fixed token written into the test's own settings, so nothing is read back from disk to authorise the request
+const TOKEN = 'ai-review-test-token';
+fs.writeFileSync(`${w.ud}/settings.json`, JSON.stringify({ workspace: w.ws, openTabs: [], mcpPort: 47626, token: TOKEN }));
 fs.writeFileSync(`${w.ws}/Review.md`, '# Review\n\nOne first.\n\n' + Array.from({ length: 12 }, (_, i) => `Filler ${i}.`).join('\n\n') + '\n\nTwo last.\n');
 // the assistant edits from outside the window, like a real MCP client (the page's own fetch would carry the wrong Origin)
 const edit = async () => {
-  const token = JSON.parse(fs.readFileSync(`${w.ud}/mcp-bridge.json`, 'utf8')).token;
-  const res = await fetch('http://127.0.0.1:47626/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer ' + token },
+  const res = await fetch('http://127.0.0.1:47626/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer ' + TOKEN },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'edit_note', arguments: { path: 'Review.md', edits: [{ oldText: 'One first.', newText: 'One changed.' }, { oldText: 'Two last.', newText: 'Two changed.' }] } } }) });
   return res.status + ' ' + (await res.text()).slice(0, 300);
 };

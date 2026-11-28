@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { splitBoardDoc, joinBoardDoc, parseBoard, serializeBoard, autoLayout, defaultSize, fitAuto, SHAPES, ARROWS } from '../renderer/board-core.js';
 import { parseWorkbook, serializeWorkbook, parseAddr, addr } from '../renderer/sheet-core.js';
 
+const MAX_ROWS = 5000, MAX_COLS = 200; // a stray address like XFD1048576 must not allocate a million rows
 const ro = { readOnlyHint: true, openWorldHint: false };
 const rw = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 const bpath = z.string().describe('Path of a .board.md note');
@@ -18,7 +19,7 @@ export const BOARD_SHEET_TOOLS = [
     input: { path: bpath } },
   { name: 'add_shape', title: 'Add board shape', write: true, annotations: rw,
     description: `Add a shape to a board. shape: ${SHAPES.join(', ')}. Leave x and y out to have the shape placed by auto layout. body lines are used by class, interface, table and note shapes.`,
-    input: { path: bpath, id: sid, shape: z.string().optional().describe('Defaults to rect'), label: z.string().optional(), x: z.number().optional(), y: z.number().optional(), w: z.number().positive().optional(), h: z.number().positive().optional(), style, body: z.array(z.string()).optional() } },
+    input: { path: bpath, id: sid, shape: z.string().optional().describe('Defaults to rect'), label: z.string().optional(), x: z.number().optional(), y: z.number().optional(), w: z.number().positive().optional(), h: z.number().positive().optional(), style, body: z.array(z.string().max(500)).max(200).optional() } },
   { name: 'update_shape', title: 'Update board shape', write: true, annotations: rw,
     description: 'Change a shape: label, position, size, shape type, body, or style (a value sets a style key, null removes it). Give only what changes.',
     input: { path: bpath, id: sid, label: z.string().optional(), shape: z.string().optional(), x: z.number().optional(), y: z.number().optional(), w: z.number().positive().optional(), h: z.number().positive().optional(), style, body: z.array(z.string()).optional() } },
@@ -39,7 +40,7 @@ export const BOARD_SHEET_TOOLS = [
     input: { path: spath, sheet: z.string().optional().describe('Sheet name; the first sheet when omitted'), cells: z.record(z.string(), cellValue) } },
   { name: 'add_sheet', title: 'Add sheet', write: true, annotations: rw,
     description: 'Add a sheet (a table under a ## heading) to a .sheet.md note, creating the note when it does not exist. rows[0] is the header row.',
-    input: { path: spath, name: z.string().min(1).max(60), rows: z.array(z.array(cellValue)).optional() } },
+    input: { path: spath, name: z.string().min(1).max(60), rows: z.array(z.array(cellValue).max(MAX_COLS)).max(MAX_ROWS).optional() } },
 ];
 
 const NAMES = new Set(BOARD_SHEET_TOOLS.map((t) => t.name));
@@ -51,6 +52,8 @@ const cleanStyle = (target, patch) => { for (const [k, v] of Object.entries(patc
 const shapeOf = (m, id) => { const n = m.nodes.find((x) => x.id === id); if (!n) throw new Error(`No shape "${id}". Use get_board to see the ids.`); return n; };
 // a CRLF file is edited as LF and written back as CRLF, so untouched lines keep their endings
 const lf = (t) => ({ text: t.replace(/\r\n/g, '\n'), back: (x) => (t.includes('\r\n') ? x.replace(/\r?\n/g, '\r\n') : x) });
+const safeLabel = (s) => { if (s != null && /\\/.test(s)) throw new Error('A label cannot contain a backslash (board-md cannot store it reliably).'); return s; };
+const safeBody = (lines) => { for (const l of lines || []) if (l.trim() === ']' || /[\r\n]/.test(l)) throw new Error('A body line cannot be "]" or contain a line break.'); return lines || []; };
 const cellText = (v) => (v === null || v === undefined ? '' : String(v));
 
 async function editBoard(notes, a, wrote, verb, fn) {
@@ -77,13 +80,14 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       if (!SHAPES.includes(a.shape)) throw new Error(`Unknown shape "${a.shape}". Use one of: ${SHAPES.join(', ')}.`);
       m.nodes = m.nodes.filter((n) => n.id !== a.id); // an id only used by a connector becomes a real shape
       const [dw, dh] = defaultSize(a.shape);
-      const n = { pre: [], id: a.id, shape: a.shape, label: a.label ?? a.id, x: a.x ?? null, y: a.y ?? null, w: a.w ?? dw, h: a.h ?? dh, sized: a.w != null || a.h != null, style: cleanStyle({}, a.style), body: a.body || [] };
+      const n = { pre: [], id: a.id, shape: a.shape, label: safeLabel(a.label) ?? a.id, x: a.x ?? null, y: a.y ?? null, w: a.w ?? dw, h: a.h ?? dh, sized: a.w != null || a.h != null, style: cleanStyle({}, a.style), body: safeBody(a.body) };
       fitAuto(n); m.nodes.push(n);
       if (n.x == null || n.y == null) autoLayout(m);
     });
     case 'update_shape': return editBoard(notes, a, wrote, 'Updated a shape in', (m) => {
       const n = shapeOf(m, a.id);
       if (a.shape) { if (!SHAPES.includes(a.shape)) throw new Error(`Unknown shape "${a.shape}".`); n.shape = a.shape; }
+      safeLabel(a.label); if (a.body) safeBody(a.body);
       for (const k of ['label', 'x', 'y', 'w', 'h', 'body']) if (a[k] != null) n[k] = a[k];
       if (a.w != null || a.h != null) n.sized = true;
       if (a.style) n.style = cleanStyle(n.style, a.style);
@@ -97,7 +101,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
     });
     case 'connect': return editBoard(notes, a, wrote, 'Connected shapes in', (m) => {
       shapeOf(m, a.from); shapeOf(m, a.to); a.op ??= '->';
-      m.edges.push({ pre: [], from: a.from, fromPort: a.fromPort || null, to: a.to, toPort: a.toPort || null, op: a.op, label: a.label || '', style: cleanStyle({}, a.style), ...ARROWS[a.op] });
+      m.edges.push({ pre: [], from: a.from, fromPort: a.fromPort || null, to: a.to, toPort: a.toPort || null, op: a.op, label: safeLabel(a.label) || '', style: cleanStyle({}, a.style), ...ARROWS[a.op] });
     });
     case 'disconnect': return editBoard(notes, a, wrote, 'Removed a connector from', (m) => {
       const before = m.edges.length;
@@ -115,7 +119,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       if (!sh) throw new Error(`No sheet named ${a.sheet}. Sheets: ${sheets.map((b) => b.name).join(', ')}.`);
       for (const [ref, v] of Object.entries(a.cells)) {
         const rc = parseAddr(ref); if (!rc) throw new Error(`"${ref}" is not a cell address like B7.`);
-        const [r, c] = rc; if (r < 0 || c < 0) throw new Error(`"${ref}" is not a cell address like B7 (rows start at 1).`);
+        const [r, c] = rc; if (r < 0 || c < 0 || r >= MAX_ROWS || c >= MAX_COLS) throw new Error(`"${ref}" is not a usable cell address (like B7; rows 1 to ${MAX_ROWS}, columns A to ${addr(0, MAX_COLS - 1).replace(/\d+/, '')}).`);
         while (sh.rows.length <= r) sh.rows.push([]);
         const row = sh.rows[r]; while (row.length <= c) row.push('');
         row[c] = cellText(v);
@@ -127,6 +131,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
     case 'add_sheet': {
       need(a.path, /\.sheet\.md$/i, '.sheet.md notes');
       if (/[\r\n]/.test(a.name)) throw new Error('A sheet name is one line.');
+      a.name = a.name.trim(); if (!a.name) throw new Error('A sheet needs a name.');
       let existing = null; try { existing = await notes.read(a.path); } catch { /* new note */ }
       const { text: src, back } = lf(existing ?? '');
       const blocks = existing == null ? [] : parseWorkbook(src);
