@@ -29,8 +29,12 @@ const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.mi
 
 const steps = [
   { size: [1400, 900], wait: 1500 },
-  ev('setup', `${lt}; return ${mem}`),
-  ev('open big', `const t=performance.now(); ${open('sheets/Big.sheet.md')}; ${until(`${S}?.read?.('Summary!B2')?.[0]?.[0]>0`, 180000)}; return {ms:Math.round(performance.now()-t), total:${S}.read('Summary!B2')[0][0], heap:${mem}}`, 500),
+  ev('setup', `${lt}; ${process.env.FOLIO_STRESS_INCREMENTAL === 'off' ? "localStorage.setItem('folio.sheets.incremental','off');" : "localStorage.removeItem('folio.sheets.incremental');"} return ${mem}`),
+  // grid: the workbook is on screen and its typed values can be read; visible: the first rows' formulas have values
+  ev('open big', `const t=performance.now(); ${open('sheets/Big.sheet.md')}; ${until(`${S}?.read?.('Data!D2')?.[0]?.[0]!=null`, 180000)}; const grid=Math.round(performance.now()-t);
+    ${until(`${S}.read('Data!F2')?.[0]?.[0]!=null && ${S}.read('Data!F30')?.[0]?.[0]!=null`, 180000)}; const visible=Math.round(performance.now()-t);
+    ${until(`${S}?.read?.('Summary!B2')?.[0]?.[0]>0`, 180000)}; return {grid, visible, ms:Math.round(performance.now()-t), total:${S}.read('Summary!B2')[0][0], heap:${mem}}`, 500),
+  ev('recalc passes', `return {worker: await ${S}.recalcStats(), preview: ${S}.previewStats()}`),
   ev('long tasks while opening', ltSum),
   // values kept from the last open: the grid shows numbers at once, the worker then confirms them
   ev('cached reopen', `const total=${S}.read('Summary!B2')[0][0]; await new Promise(r=>setTimeout(r,4500)); document.querySelector('[data-close="sheets/Big.sheet.md"]').click(); ${until("!document.querySelector('[data-close=\"sheets/Big.sheet.md\"]')", 30000)}; await new Promise(r=>setTimeout(r,1500)); const t=performance.now(); ${open('sheets/Big.sheet.md')}; ${until(`${S}?.read?.('Summary!B2')?.[0]?.[0]>0`, 180000)}; const first=Math.round(performance.now()-t); const shown=${S}.read('Summary!B2')[0][0]; await new Promise(r=>setTimeout(r,12000)); return {firstValueMs:first, shown, same:shown===total, after:${S}.read('Summary!B2')[0][0]===total}`, 500),
@@ -56,7 +60,7 @@ const steps = [
   ev('worker killed', `${open('sheets/Small.sheet.md')}; await new Promise(r=>setTimeout(r,800)); const s=${S}; const wk=s.univerWorker?.(); if(!wk) return 'no worker'; wk.terminate(); await s.write('S','A2',[[21]]); await new Promise(r=>setTimeout(r,2500)); return {b2:s.read('S!B2')[0][0], toast:[...document.querySelectorAll('.toast')].map(t=>t.textContent).join(' | ')}`, 500),
   // the file changes on disk while open (another editor, git checkout, sync client)
   ev('DISK-WRITE', `return 'write'`, 3000),
-  ev('after disk change', `const s=${S}; return {a2:s.read('S!A2')[0][0], b2:s.read('S!B2')[0][0], toast:[...document.querySelectorAll('.toast')].map(t=>t.textContent).join(' | ')}`),
+  ev('after disk change', `const s=${S}; await new Promise(r=>setTimeout(r,3000)); return {a2:s.read('S!A2')[0][0], b2:s.read('S!B2')[0][0], toast:[...document.querySelectorAll('.toast')].map(t=>t.textContent).join(' | ')}`),
   ev('errors', 'return window.__folioErrors||[]'),
 ];
 const stepsFile = path.join(w.tmp, 'steps.json'); fs.writeFileSync(stepsFile, JSON.stringify(steps));

@@ -11,6 +11,7 @@ import enEngineFormula from '@univerjs/engine-formula/locale/en-US';
 import enSheets from '@univerjs/sheets/locale/en-US';
 import { baselineOf } from '../core/convert.js';
 import { tuneFormulaCache } from '../core/formula-cache.js';
+import { enableIncrementalRecalc } from '../core/formula-incremental.js';
 import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula/worker';
 import { UniverRPCWorkerThreadPlugin } from '@univerjs/rpc/worker';
 import { UniverSheetsPlugin } from '@univerjs/sheets/worker';
@@ -36,9 +37,11 @@ self.addEventListener('message', (e) => {
   if (!e.data || e.data.folio !== 'udf-port' || !e.ports?.[0]) return;
   e.stopImmediatePropagation();
   port = e.ports[0];
+  if (e.data.incremental === false) incremental?.disable();
   port.onmessage = (m) => {
     const d = m.data || {};
     if (d.op === 'ping') { port.postMessage({ op: 'pong' }); return; }
+    if (d.op === 'stats') { port.postMessage({ op: 'stats', id: d.id, stats: incremental ? { ...incremental.stats, remembered: incremental.remembered } : null }); return; }
     if (d.op === 'register') { register(d.names || []); port.postMessage({ op: 'registered', id: d.id }); return; }
     // the file as the window opened it, made comparable (convert.js): the window's first save then has nothing to compute
     if (d.op === 'baseline') { let baseline = null; try { baseline = baselineOf(d.text, { share: true }); } catch { /* the window computes it */ } port.postMessage({ op: 'baseline', id: d.id, baseline }); return; }
@@ -53,3 +56,4 @@ univer.registerPlugin(UniverRPCWorkerThreadPlugin);
 univer.registerPlugin(UniverRemoteSheetsFormulaPlugin);
 univer.registerPlugin(UniverSheetsFilterPlugin);
 tuneFormulaCache(univer); // Univer re-parses every formula at each recalculation above 5,000 formulas (core/formula-cache.js)
+const incremental = enableIncrementalRecalc(univer); // value edits reuse the dependency objects (core/formula-incremental.js)

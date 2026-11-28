@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-28T00:13:01Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-28T01:19:44Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: sheets: Univer's compiled-formula cache raised (recalculation 2-4x faster, identical values by fuzz); bench script, handoff
+- Last checkpoint: sheets: incremental recalculation (dependency trees reused, partial rebuild of changed formulas), formula cache emptied on name/sheet/table changes (fixes a stale value), first screen of a big workbook computed first (visible values 9.4 s -> 2.0 s); fuzz and preview tests
 
 ## Resume in a new session
 
@@ -95,7 +95,8 @@ Open next (not started): live sync and presence (contracts ready, §5 of docs/sh
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- 308e074 wip: sheets: Univer's compiled-formula cache raised (recalculation 2-4x faster, identical values by fuzz); bench script, handoff
+- b6242f6 wip: sheets: incremental recalculation (dependency trees reused, partial rebuild of changed formulas), formula cache emptied on name/sheet/table changes (fixes a stale value), first screen of a big workbook computed first (visible values 9.4 s -> 2.0 s); fuzz and preview tests
+- c7df057 wip: sheets: Univer's compiled-formula cache raised (recalculation 2-4x faster, identical values by fuzz); bench script, handoff
 - cd17ca7 wip: --help
 - edf453f wip: sheets: measured calculation cost per formula count, 'Calculating…' note for recalculations over 0.4 s, docs
 - aa7abfc wip: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests

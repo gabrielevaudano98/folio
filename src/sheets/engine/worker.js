@@ -48,6 +48,18 @@ async function grids(text) {
   const h = await headless(); const wb = await h.open(data);
   try { return Object.fromEntries(data.sheetOrder.map((id) => { const s = wb.fwb.getSheetBySheetId(id); return [s.getSheetName(), s.getDataRange().getRawValues()]; })); } finally { h.close(wb); }
 }
+/** the first screen of a big workbook (core/preview.js): compute the small workbook, return the target cells' values */
+async function preview(book, targets) {
+  const h = await headless(); const wb = await h.open(book);
+  try {
+    const snap = wb.save(); const out = {};
+    for (const [sid, keys] of Object.entries(targets || {})) {
+      const cd = snap.sheets?.[sid]?.cellData || {}; const o = (out[sid] = {});
+      for (const k of keys) { const [r, c] = k.split(',').map(Number); const cell = cd[r]?.[c]; if (cell && cell.v !== undefined && cell.v !== null) o[k] = cell.t != null ? { v: cell.v, t: cell.t } : { v: cell.v }; }
+    }
+    return out;
+  } finally { h.close(wb); }
+}
 async function readFiles(files = {}, kinds = {}) {
   const out = {};
   for (const [rel, abs] of Object.entries(files)) {
@@ -120,6 +132,7 @@ const METHODS = {
 
   /* batch: computed values for MCP, the command line and exports */
   'calc.grids': ({ text }) => grids(text),
+  'calc.preview': ({ book, targets }) => preview(book, targets),
 
   /* whole-workbook jobs (book.js): for AI assistants through MCP and for the command line */
   'book.values': async ({ text, sheet }) => book.values(await headless(), text, { sheet }),

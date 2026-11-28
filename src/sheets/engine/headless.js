@@ -20,11 +20,12 @@ import '@univerjs/sheets-note/facade';
 import '@univerjs/sheets-numfmt/facade';
 import { toRange, splitRef } from '../core/a1.js';
 import { tuneFormulaCache } from '../core/formula-cache.js';
+import { enableIncrementalRecalc } from '../core/formula-incremental.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** one Univer per process; workbooks are units inside it */
-export async function createHeadless({ functions = {}, tune = true } = {}) {
+export async function createHeadless({ functions = {}, tune = true, incremental = true } = {}) {
   const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: {} } });
   univer.registerPlugin(UniverFormulaEnginePlugin, { notExecuteFormula: false });
   univer.registerPlugin(UniverSheetsPlugin, { notExecuteFormula: false });
@@ -36,6 +37,7 @@ export async function createHeadless({ functions = {}, tune = true } = {}) {
   univer.registerPlugin(UniverSheetsNotePlugin);
   univer.registerPlugin(UniverSheetsNumfmtPlugin);
   if (tune) tuneFormulaCache(univer);
+  const recalc = incremental ? enableIncrementalRecalc(univer) : null;
   const api = FUniver.newAPI(univer);
   const formula = api.getFormula();
   for (const [name, fn] of Object.entries(functions)) formula.registerFunction?.(name, fn);
@@ -97,7 +99,7 @@ export async function createHeadless({ functions = {}, tune = true } = {}) {
     };
   }
   return {
-    univer, api, open, settle,
+    univer, api, open, settle, recalc,
     close(wb) { univer.__getInjector(); api.disposeUnit?.(wb.id) ?? univer.disposeUnit?.(wb.id); },
     dispose() { univer.dispose(); },
   };

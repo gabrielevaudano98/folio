@@ -25,6 +25,7 @@ import { createExtensions } from './extensions.js';
 import { createOpLog } from '../core/collab.js';
 import { engine } from './engine-client.js';
 import { applyValues, storeValues } from './value-cache.js';
+import { previewBook } from '../core/preview.js';
 import { locale } from '../../renderer/i18n.js';
 
 const CSS_ID = 'folio-univer-css';
@@ -54,8 +55,10 @@ export function mountSheet(host, ctx) {
   // formulas are computed in a Web Worker (the grid stays responsive on large workbooks); `folio.sheets.worker` = 'off'
   // in localStorage keeps them on the window's thread, as before
   const workerOff = (() => { try { return localStorage.getItem('folio.sheets.worker') === 'off'; } catch { return false; } })();
+  // incremental recalculation (core/formula-incremental.js); `folio.sheets.incremental` = 'off' turns it off
+  const incrementalOff = (() => { try { return localStorage.getItem('folio.sheets.incremental') === 'off'; } catch { return false; } })();
   let udfImpl = null; // set below, once the surface exists
-  const U = startUniver(gridEl, { lang: locale(), dark: !!ctx.isDark?.(), worker: !workerOff, udf: (name, args) => udfImpl?.(name, args) ?? '#NAME?',
+  const U = startUniver(gridEl, { lang: locale(), dark: !!ctx.isDark?.(), worker: !workerOff, incremental: !incrementalOff, udf: (name, args) => udfImpl?.(name, args) ?? '#NAME?',
     onWorkerFailed: () => { try { localStorage.setItem('folio.sheets.worker', 'off'); } catch { /* private storage */ } ctx.toast(L('Formulas could not be computed in the background. Close and reopen the workbook to compute them here.'), { kind: 'error' }); } });
   const { api } = U;
 
@@ -89,6 +92,10 @@ export function mountSheet(host, ctx) {
 
   const surface = {
     icons, ctx, L,
+    /** the formula worker's recalculation counts (fast and full passes), for tests and diagnostics */
+    recalcStats: () => U.workerStats(),
+    /** the last first-screen preview: { cells computed, values shown, ms } or null */
+    previewStats: () => lastPreview,
     get oplog() { return oplog; },
     wb, ws,
     range: () => wb()?.getActiveRange(),
@@ -305,7 +312,8 @@ export function mountSheet(host, ctx) {
       if (replace) { leave(); if (unitId) { api.disposeUnit(unitId); unitId = null; } }
       oplog = createOpLog({ actor });
       loaded = toUniver(t, { id: `folio-${Math.random().toString(36).slice(2, 8)}`, name: ctx.getPath?.() || 'Workbook', share: true });
-      try { applyValues(t, loaded.data); } catch { /* a cache that cannot be read is no cache */ }
+      let cached = 0;
+      try { cached = applyValues(t, loaded.data); } catch { /* a cache that cannot be read is no cache */ }
       dirty = new Set(['*']); saveCache = new Map();
       if (U.worker) { const mine = loaded; U.workerBaseline(t).then((b) => { if (b && loaded === mine) mine.provideBaseline(b); }); }
       sheetMeta = {}; saveMs = 0;
@@ -317,6 +325,7 @@ export function mountSheet(host, ctx) {
       text = t; docTab = ctx.docKey?.() || null;
       if (prevSheet) { const s = wb().getSheetByName(prevSheet); if (s) s.activate(); }
       oplog.reset(loaded.data);
+      if (!cached && U.worker) previewSoon(loaded);
       // drawings need the sheet's render unit, which Univer creates on the next frames
       setTimeout(() => drawQuietly(() => { charts.renderAll(); floats.renderAll(); }), 60);
       panels.refresh();
@@ -324,6 +333,38 @@ export function mountSheet(host, ctx) {
       setTimeout(syncRibbon, 0);
     } finally { setTimeout(() => { loading = false; }, 0); }
   }
+  // A big workbook opened without kept values: the formula worker needs seconds for all of it, so the data engine
+  // computes the first screen's formulas (and what they read) on their own, exactly (core/preview.js). Their values are
+  // shown only in cells the worker has not filled yet, and not at all once anything was edited.
+  const PREVIEW_MIN_FORMULAS = 5000;
+  function previewSoon(mine) {
+    let n = 0;
+    for (const sh of Object.values(mine.data.sheets || {})) for (const r in sh.cellData || {}) for (const c in sh.cellData[r]) { const x = sh.cellData[r][c]; if (x && (x.f || x.si)) n++; }
+    if (n < PREVIEW_MIN_FORMULAS) return;
+    const at = changes;
+    setTimeout(async () => {
+      if (loaded !== mine || !unitId) return;
+      const sid = ws()?.getSheetId(); let p = null;
+      try { p = previewBook(mine.data, { sheetId: sid }); } catch (e) { console.error('[sheets] preview', e); }
+      if (!p) return;
+      let vals = null; const t0 = performance.now();
+      try { vals = await engine('calc.preview', { book: p.book, targets: p.targets }, { note: ctx.getPath?.() }); } catch { return; }
+      if (loaded !== mine || changes !== at || !unitId || !vals) return;
+      let shown = 0;
+      for (const [sheetId, cells] of Object.entries(vals)) {
+        const model = wb()?.getSheetBySheetId(sheetId)?.getSheet?.(); if (!model) continue;
+        const cellValue = {};
+        for (const [k, val] of Object.entries(cells)) {
+          const [r, c] = k.split(',').map(Number); const cur = model.getCellRaw?.(r, c) ?? model.getCell(r, c);
+          if (!cur || (!cur.f && !cur.si) || (cur.v !== undefined && cur.v !== null)) continue; // the worker got there first
+          (cellValue[r] ||= {})[c] = val; shown++;
+        }
+        if (shown) U.commands.syncExecuteCommand('sheet.mutation.set-range-values', { unitId, subUnitId: sheetId, cellValue }, { onlyLocal: true, fromSync: true });
+      }
+      lastPreview = { cells: p.cells, shown, ms: Math.round(performance.now() - t0) };
+    }, 0);
+  }
+  let lastPreview = null;
   // every save names the document it belongs to (docTab, set at load): a save that lands after the tab changed goes
   // to that document, never to the one now shown
   // once the worker's results stop arriving and nothing is pending, keep the values for the next open of this text

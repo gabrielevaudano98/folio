@@ -5,7 +5,8 @@ const run = (f, ...args) => execFileSync(process.execPath, [f, ...args], { stdio
 await esbuild.build({ entryPoints: ['test/formats.test.mjs', 'test/mcp-gating.test.mjs', 'test/sheets.test.mjs', 'test/fql.test.mjs', 'test/sheets-engine.test.mjs'], alias: { jquery: './src/sheets/core/jquery-lite.cjs' }, bundle: true, platform: 'node', format: 'esm', outdir: 'dist/test', outExtension: { '.js': '.mjs' }, logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
 run('dist/test/formats.test.mjs');
 run('dist/test/sheets.test.mjs'); run('dist/test/fql.test.mjs'); run('dist/test/sheets-engine.test.mjs'); // Folio Sheets (docs/sheets)
-run('test/sheets-formula-cache.test.mjs'); // compiled-formula cache: identical values to Univer's stock cache
+run('test/sheets-formula-cache.test.mjs'); // formula cache and incremental recalculation: the values of stock Univer
+run('test/sheets-preview.test.mjs'); // first screen computed first: the values of a full computation
 run('test/pagetools.test.mjs');
 run('test/mcp.test.mjs');
 run('dist/test/mcp-gating.test.mjs');

@@ -2,6 +2,7 @@
 // Folio draws the ribbon around it (ribbon.js), so Univer's own header and toolbar are off.
 // The theme is read from Folio's design tokens at start, so the grid follows tokens.css (grey, chroma 0) and dark mode.
 import { tuneFormulaCache } from '../core/formula-cache.js';
+import { enableIncrementalRecalc } from '../core/formula-incremental.js';
 import { Univer, LocaleType, mergeLocales, UniverInstanceType, ICommandService } from '@univerjs/core';
 import { defaultTheme } from '@univerjs/themes';
 import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
@@ -106,13 +107,12 @@ export function folioTheme(dark) {
  * `worker`: compute formulas in a Web Worker (formula-worker.js) so a large workbook never blocks the window. Falls back
  * to the window's thread when a worker cannot start. `udf(name, args)` answers custom functions asked by the worker.
  */
-export function startUniver(container, { lang = 'en', dark = false, worker: useWorker = false, udf = null, onWorkerFailed = null } = {}) {
+export function startUniver(container, { lang = 'en', dark = false, worker: useWorker = false, udf = null, onWorkerFailed = null, incremental = true } = {}) {
   const locale = lang === 'it' ? LocaleType.IT_IT : LocaleType.EN_US;
   const univer = new Univer({
     theme: folioTheme(dark), darkMode: dark, locale,
     locales: { [LocaleType.EN_US]: mergeLocales(...EN), [LocaleType.IT_IT]: mergeLocales(...IT) },
   });
-  tuneFormulaCache(univer); // only used when formulas run on this thread (no worker); costs nothing otherwise
   const fontFamily = tok('--font-sans');
   let worker = null, port = null, heartbeat = 0, lastPong = 0;
   if (useWorker) {
@@ -121,11 +121,12 @@ export function startUniver(container, { lang = 'en', dark = false, worker: useW
       // a worker that cannot load reports it later, not here: formulas would then never compute, so say so
       worker.addEventListener('error', (e) => { console.error('[sheets] formula worker failed', e.message || e); onWorkerFailed?.(e); }, { once: true });
       const ch = new MessageChannel(); port = ch.port1;
-      worker.postMessage({ folio: 'udf-port' }, [ch.port2]);
+      worker.postMessage({ folio: 'udf-port', incremental }, [ch.port2]);
       port.onmessage = async (m) => {
         const d = m.data || {};
         if (d.op === 'call') { let value; try { value = udf ? await udf(d.name, d.args) : '#NAME?'; } catch (e) { value = `#ERROR: ${e.message}`; } port.postMessage({ id: d.id, value }); }
         else if (d.op === 'registered' || d.op === 'baseline') { pending.get(d.id)?.(d.baseline); pending.delete(d.id); }
+        else if (d.op === 'stats') { pending.get(d.id)?.(d.stats); pending.delete(d.id); }
         else if (d.op === 'pong') lastPong = Date.now();
       };
       // a worker killed later (out of memory, a crash) sends no error event: formulas would silently stop updating.
@@ -172,6 +173,8 @@ export function startUniver(container, { lang = 'en', dark = false, worker: useW
   univer.registerPlugin(UniverDrawingUIPlugin);
   univer.registerPlugin(UniverSheetsDrawingPlugin);
   univer.registerPlugin(UniverSheetsDrawingUIPlugin);
+  // used only when formulas run on this thread (no worker); they cost nothing otherwise (core/formula-cache.js, core/formula-incremental.js)
+  if (!worker) { tuneFormulaCache(univer); if (incremental) enableIncrementalRecalc(univer); }
   const api = FUniver.newAPI(univer);
   const commands = univer.__getInjector().get(ICommandService);
   return {
@@ -181,6 +184,8 @@ export function startUniver(container, { lang = 'en', dark = false, worker: useW
     /** make custom functions known to the worker; resolves once they are registered there */
     /** the save baseline of a file's text, computed in the worker (null without a worker or when it fails) */
     workerBaseline(text) { if (!port) return Promise.resolve(null); const id = ++reqId; return new Promise((res) => { pending.set(id, res); port.postMessage({ op: 'baseline', id, text }); }); },
+    /** how the worker's recalculations went: { fast, full, why } (core/formula-incremental.js), null without a worker */
+    workerStats() { if (!port) return Promise.resolve(null); const id = ++reqId; return new Promise((res) => { pending.set(id, res); port.postMessage({ op: 'stats', id }); setTimeout(() => res(null), 3000); }); },
     registerWorkerFunctions(names) { if (!port || !names.length) return Promise.resolve(); const id = ++reqId; return new Promise((res) => { pending.set(id, res); port.postMessage({ op: 'register', id, names }); setTimeout(res, 3000); }); },
     open(data) { return univer.createUnit(UniverInstanceType.UNIVER_SHEET, data); },
     close(unitId) { api.disposeUnit?.(unitId); },

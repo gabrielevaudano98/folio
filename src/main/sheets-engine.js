@@ -60,7 +60,7 @@ export function createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin
   // relative to the open note: "data/x.csv" next to "Reports/Sales.sheet.md" is "Reports/data/x.csv"
   const relTo = (noteRel, p) => (p.startsWith('/') ? p.slice(1) : path.posix.normalize(path.posix.join(path.posix.dirname(noteRel || ''), p)));
 
-  const ALLOWED = new Set(['ping', 'file.exportXlsx', 'file.exportCsv', 'fql.inputs', 'fql.run', 'sql.run', 'script.describe', 'script.run', 'script.call', 'python.run', 'crypto.hash', 'crypto.check', 'crypto.encrypt', 'crypto.decrypt', 'crypto.sign', 'crypto.verify', 'whatif.goalSeek', 'whatif.dataTable', 'whatif.scenarios', 'whatif.simulate', 'calc.grids', 'book.values', 'book.refresh', 'book.macro']);
+  const ALLOWED = new Set(['ping', 'file.exportXlsx', 'file.exportCsv', 'fql.inputs', 'fql.run', 'sql.run', 'script.describe', 'script.run', 'script.call', 'python.run', 'crypto.hash', 'crypto.check', 'crypto.encrypt', 'crypto.decrypt', 'crypto.sign', 'crypto.verify', 'whatif.goalSeek', 'whatif.dataTable', 'whatif.scenarios', 'whatif.simulate', 'calc.grids', 'calc.preview', 'book.values', 'book.refresh', 'book.macro']);
   /** a call for a note: the window and the MCP tools send workspace paths relative to the note, the engine gets
    *  absolute ones, each checked to stay inside the workspace */
   async function callFor(method, payload = {}, o = {}) {

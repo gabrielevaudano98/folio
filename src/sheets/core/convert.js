@@ -176,7 +176,8 @@ const shifted = (f, dr, dc) => {
   if (v === undefined) { if (SHIFTED.size > 400000) SHIFTED.clear(); v = shiftFormula(f, dr, dc); SHIFTED.set(k, v); }
   return v;
 };
-function expandShared(cellData) {
+/** (row, col, cell) -> the cell with its shared formula (si) written out; for one sheet's cellData */
+export function expandShared(cellData) {
   const roots = new Map();
   for (const r in cellData || {}) { const row = cellData[r]; for (const c in row || {}) { const cell = row[c]; if (cell?.si && cell.f) roots.set(cell.si, { f: cell.f, r: Number(r), c: Number(c) }); } }
   if (!roots.size) return (r, c, cell) => cell;
