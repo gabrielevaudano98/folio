@@ -10,7 +10,7 @@ import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, add
 import { getSchema } from '@tiptap/core';
 import { MarkdownManager } from '@tiptap/markdown';
 import { pageExtensions } from '../src/renderer/page-schema.js';
-import { portableMarkdown } from '../src/renderer/page-syntax.js';
+import { portableMarkdown, summaryNodes } from '../src/renderer/page-syntax.js';
 import { headings } from '../src/renderer/markdown.js';
 import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
@@ -257,8 +257,9 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     const hd = codec.save(edited.m, withKids([mk([schema.text('Big', [italic.create()])], 2)])); assert.equal(hd, '<details>\n<summary><h2><em>Big</em></h2></summary>\n\nBody text\n\n</details>\n');
     assert.equal(open(hd).kids[0].child(0).child(0).marks[0].type.name, 'italic');
     // hand-written HTML Folio would write differently stays literal text, byte for byte
-    for (const raw of ['<em><strong>x</strong></em> y', '<strong>open', '<b>old</b> tag', 'a < b &lt; <strong>c</strong>']) { const x = `<details>\n<summary>${raw}</summary>\n\nBody text\n\n</details>\n`; const r = open(x); assert.equal(codec.save(r.m, r.doc), x, raw); }
+    for (const raw of ['<em><strong>x</strong></em> y', '<strong>open', '<b>old</b> tag', 'a < b &lt; <strong>c</strong>', '<a>bare</a> <strong>c</strong>']) { const x = `<details>\n<summary>${raw}</summary>\n\nBody text\n\n</details>\n`; const r = open(x); assert.equal(codec.save(r.m, r.doc), x, raw); }
     const { markdownIt: mdi } = await import('../src/renderer/markdown.js'); assert.match(mdi.render(t), /<summary>Plain <strong>bold <em>both<\/em><\/strong> <a href="https:\/\/x.org\/\?a=1&amp;b=2">link<\/a>/);
+    assert.deepEqual(summaryNodes('<a>bare</a> <strong>c</strong>'), [{ type: 'text', text: '<a>bare</a> <strong>c</strong>' }]); // a bare <a> (no href) next to a real mark stays literal text, never throws
     ok('toggle titles keep bold, italic, links and code as inline HTML in <summary>; literal titles stay byte-identical; the Read view shows them'); }
   { const { parseCallout, calloutMarker } = await import('../src/renderer/callouts.js');
     assert.deepEqual(['faq', 'tldr', 'error', 'cite', 'weird'].map((k) => parseCallout(`[!${k}] x`).type), ['question', 'abstract', 'danger', 'quote', 'note']);
