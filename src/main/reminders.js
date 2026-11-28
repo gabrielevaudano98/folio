@@ -1,8 +1,12 @@
-// Folio — reminders (D1, D2, X13). Finds `[[2026-12-01]]{09:00 remind 30m}` mentions in the workspace's pages
-// (page-when.js), keeps them in memory, and fires each one once when its time comes while Folio is open: the caller
-// shows an Electron Notification and an in-app toast. Nothing runs when Folio is closed (decision 2: in-app first).
+// Folio — reminders (D1, D2, X13). Finds `[[2026-12-01]]{09:00 remind 30m}` mentions and front matter date properties
+// with a `<name>-remind:` line in the workspace's pages (page-when.js), keeps them in memory, and fires each one once
+// when its time comes while Folio is open: the caller shows an Electron Notification and an in-app toast. Nothing runs
+// when Folio is closed (decision 2: in-app first).
 //
-// A reminder whose time passed while Folio was closed is not announced on start: it is listed as overdue.
+// Missed reminders: the caller keeps, per folder, the moment up to which reminders were announced (seen / setSeen). The
+// first scan after a folder opens announces, once and together (onMissed), the reminders that came due after that moment
+// while the folder was not open, unless already done or dismissed; they stay listed as overdue. A folder seen for the
+// first time announces nothing from before.
 // Done and dismissed states are app state, kept by the caller in the settings file per workspace
 // ({ "<folder>": { "<page>::<key>": "done" | "dismissed" } }), never in the .md.
 // Reading is asynchronous and gives way between files; a page is only parsed when it contains "remind".
@@ -16,15 +20,19 @@ const GRACE = 60 * 1000; // a reminder that comes due less than a minute before 
 export const reminderId = (rel, key) => `${rel}::${key}`;
 
 /**
- * notes: { allFiles(), read(rel) }; isNote(rel); clock: { now, setTimeout, clearTimeout };
+ * notes: { notePaths() → { paths, capped } (or allFiles()), read(rel) }; isNote(rel); clock: { now, setTimeout, clearTimeout };
  * states(): the { id: state } map of the open workspace; setStates(map) stores it;
- * onFire(item) for each reminder that comes due; onChange() when the list changes.
+ * seen(): the moment (ms) up to which this folder's reminders were announced, or null; setSeen(ms) stores it;
+ * onFire(item) for each reminder that comes due; onMissed(items) once after opening, for the ones due while it was closed;
+ * onChange() when the list changes.
  */
-export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt)$/i.test(r), clock = realClock, states = () => ({}), setStates = () => {}, onFire = () => {}, onChange = () => {} }) {
+export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt)$/i.test(r), clock = realClock, states = () => ({}), setStates = () => {}, seen = () => null, setSeen = () => {}, onFire = () => {}, onMissed = () => {}, onChange = () => {} }) {
   let byFile = new Map(); // rel -> reminders of that page
   let since = clock.now(); // reminders due after this moment fire; earlier ones are overdue
   const fired = new Set(); // id@time, so an unchanged reminder fires once
   let timer = null, gen = 0, touched = null; // touched: pages the watcher reported while a scan is reading the workspace
+  let missedDone = false; // the missed reminders of this folder were looked for (once per opening)
+  const markSeen = () => { try { setSeen(clock.now()); } catch (e) { console.error('[folio] reminders seen', e.message); } };
 
   const all = () => [...byFile.entries()].flatMap(([rel, list]) => list.map((r) => ({ ...r, rel, id: reminderId(rel, r.key) })));
   const stateOf = (id) => states()?.[id] || null;
@@ -48,7 +56,7 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
     const due = all().filter((r) => r.at > since && r.at <= now && !fired.has(`${r.id}@${r.at}`) && !stateOf(r.id));
     since = now;
     for (const r of due) { fired.add(`${r.id}@${r.at}`); try { onFire({ ...r, state: 'overdue' }); } catch (e) { console.error('[folio] reminder', e.message); } }
-    if (due.length) onChange();
+    if (due.length) { onChange(); if (missedDone) markSeen(); } // announced: not "missed" at the next start
     arm();
   }
 
@@ -67,7 +75,10 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
   /** the whole workspace, again (on open). Older states of reminders that no longer exist are dropped. */
   async function scanAll() {
     const g = ++gen; const next = new Map(); const mine = (touched = new Set()); let complete = true;
-    let files = []; try { const all = await notes.allFiles(); if (all.length >= 20000) complete = false; files = all.filter(isNote); } catch { files = []; complete = false; } // a capped listing is not the whole workspace
+    let files = []; try { // a capped listing is not the whole workspace
+      const { paths, capped } = notes.notePaths ? await notes.notePaths() : { paths: await notes.allFiles(), capped: false };
+      if (capped) complete = false; files = paths.filter(isNote);
+    } catch { files = []; complete = false; }
     for (let i = 0; i < files.length; i++) {
       const text = await notes.read(files[i]).catch(() => { complete = false; return null; });
       if (g !== gen) return; // a newer scan (another workspace) took over
@@ -77,6 +88,16 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
     for (const rel of mine) { if (byFile.has(rel)) next.set(rel, byFile.get(rel)); else next.delete(rel); } // pages the watcher updated while we read
     if (g !== gen) return;
     touched = null; byFile = next; since = Math.max(since, 0);
+    if (!missedDone) { // once per opening: what came due while this folder was not open
+      missedDone = true;
+      const from = seen();
+      if (Number.isFinite(from)) {
+        const missed = all().filter((r) => r.at > from && r.at <= since && !stateOf(r.id) && !fired.has(`${r.id}@${r.at}`)).sort((a, b) => a.at - b.at || a.rel.localeCompare(b.rel));
+        for (const r of missed) fired.add(`${r.id}@${r.at}`);
+        if (missed.length) { try { onMissed(missed.map((r) => ({ ...r, state: 'overdue' }))); } catch (e) { console.error('[folio] missed reminders', e.message); } }
+      }
+      markSeen();
+    }
     if (complete) { // only a scan that read everything may conclude that a reminder is gone
       const ids = new Set(all().map((r) => r.id)); const st = states() || {};
       const kept = Object.fromEntries(Object.entries(st).filter(([id]) => ids.has(id)));
@@ -86,7 +107,9 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
   }
 
   /** a new workspace: forget everything, announce only what comes due from now on */
-  function reset() { gen++; touched = null; byFile = new Map(); fired.clear(); since = clock.now(); if (timer) clock.clearTimeout(timer); timer = null; onChange(); }
+  function reset() { gen++; touched = null; byFile = new Map(); fired.clear(); since = clock.now(); missedDone = false; if (timer) clock.clearTimeout(timer); timer = null; onChange(); }
+  /** the folder is being left (another opens, or Folio quits): everything due until now was seen */
+  function leave() { if (missedDone) markSeen(); }
 
   /** done / dismissed / null (back to the list) */
   function setState(id, state) {
@@ -110,5 +133,5 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
     if (moved) setStates(st); onChange();
   }
   const stop = () => { gen++; if (timer) clock.clearTimeout(timer); timer = null; };
-  return { list, update, scanAll, reset, setState, rename, stop, tick };
+  return { list, update, scanAll, reset, leave, setState, rename, stop, tick };
 }

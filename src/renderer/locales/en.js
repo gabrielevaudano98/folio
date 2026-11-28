@@ -1930,4 +1930,10 @@ export default {
   "app.reminder-toast": "Reminder: {what} ({when})",
   "app.reminder-dismissed": "Reminder dismissed. The page keeps it.",
   "rem.notify-title": "Folio reminder",
+  "rem.missed-title_one": "A reminder came due while Folio was closed",
+  "rem.missed-title_other": "{n} reminders came due while Folio was closed",
+  "app.reminders-missed_one": "Missed while Folio was closed: {what} ({when})",
+  "app.reminders-missed_other": "{n} reminders came due while Folio was closed",
+  "app.reminders-show": "Show",
+  "props.remind": "Reminder for {key}",
 };

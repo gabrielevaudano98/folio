@@ -616,6 +616,17 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(setProp('# Hi\n', 'tags', ['a'], 'tags'), '---\ntags:\n  - a\n---\n\n# Hi\n'); assert.equal(removeProp('---\nx: 1\n---\n# Hi\n', 'x'), '# Hi\n');
   assert.equal(setProp('', 'done', false, 'checkbox'), '---\ndone: false\n---\n'); assert.equal(newKey(t), 'property'); assert.equal(newKey(setProp(t, 'property', '')), 'property 2');
   ok('the first property creates the front matter; removing the last removes it');
+  { // #86: a reminder on a date property is one `<name>-remind:` line; the page opens byte for byte and edits touch only that line
+    const { setPropRemind, propReminders } = await import('../src/renderer/page-props.js');
+    const src = '---\ndue: 2026-12-01 09:30\ndue-remind: 30m\nowner: "[[Ada]]"\n---\n# Plan\n\nBody.\n';
+    const pg = (() => { const win = new Window(); win.document.write('<!DOCTYPE html><html><body></body></html>'); Object.assign(globalThis, { window: win, document: win.document, DOMParser: win.DOMParser }); const ext = pageExtensions(); const codec = createPageCodec(new MarkdownManager({ extensions: ext, markedOptions: { gfm: true } })); const m = codec.load(src); const doc = getSchema(ext).nodeFromJSON(m.json); codec.bind(m, doc); const out = codec.save(m, doc); for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k]; return out; })();
+    assert.equal(pg, src, 'opening and saving changes nothing');
+    assert.deepEqual(propReminders(src).map((r) => [r.key, r.remind]), [['due', '30m']]);
+    assert.deepEqual(only(src, setPropRemind(src, 'due', '1d')), ['due-remind: 1d']); assert.equal(setPropRemind(src, 'due', null), src.replace('due-remind: 30m\n', ''));
+    assert.equal(setPropRemind(setPropRemind(src, 'due', null), 'due', '30m'), src, 'removed and set again: the same bytes');
+    assert.deepEqual(only(src, setProp(src, 'due', '2026-12-02 09:30', 'datetime')), ['due: 2026-12-02 09:30'], 'changing the date keeps its reminder line');
+    ok('a date property’s reminder (`due-remind: 30m`) round-trips byte for byte; setting, changing, removing it writes only its line');
+  }
   { // F3: a CRLF file keeps CRLF; only the edited property's line changes
     const c = t.replace(/\n/g, '\r\n');
     assert.equal(setProp(c, 'done', true), c.replace('done: false', 'done: true'));

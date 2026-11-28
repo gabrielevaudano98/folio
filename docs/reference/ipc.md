@@ -29,6 +29,8 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `reminders.set` | request | `reminders:set` | `src/main/main.js` |
 | `reminders.onChanged` | event | `reminders:changed` | — |
 | `reminders.onFired` | event | `reminders:fired` | — |
+| `reminders.takeMissed` | request | `reminders:take-missed` | `src/main/main.js` |
+| `reminders.onMissed` | event | `reminders:missed` | — |
 | `reminders.onOpen` | event | `reminders:open` | — |
 | `backlinks` | request | `fs:backlinks` | `src/main/main.js` |
 | `userName` | request | `app:user-name` | `src/main/main.js` |

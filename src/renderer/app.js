@@ -874,6 +874,16 @@ async function renderReminders() {
     + (done ? `<button type="button" class="rem-more" data-act="toggle-done">${showDoneReminders ? tr('app.reminders-hide-done') : tr('app.reminders-show-done', { n: done })}</button>` : '');
 }
 const remindersSoon = debounce(() => renderReminders(), 150);
+/* reminders that came due while Folio (or this folder) was closed: one toast at start. One reminder opens its note;
+   several open the sidebar's Reminders section, where they are listed as overdue */
+async function showMissed() {
+  const list = await folio.reminders.takeMissed?.().catch(() => []) || [];
+  if (!list.length) return;
+  const r = list[0];
+  if (list.length === 1) toast(tr('app.reminders-missed', { n: 1, what: r.title || stem(r.rel), when: reminderWhen(r) }), { action: [tr('app.open'), () => openFile(r.rel, { line: r.line })] });
+  else toast(tr('app.reminders-missed', { n: list.length }), { action: [tr('app.reminders-show'), () => { if (!remindersOpen()) saveSetting({ showReminders: true }).then(renderReminders); if (app.dataset.sidebar !== 'open') toggleSidebar(); $('#section-reminders')?.scrollIntoView({ block: 'nearest' }); $('#reminders-head')?.focus(); }] });
+  remindersSoon();
+}
 function onReminderFired(r) {
   const what = r.title || stem(r.rel);
   toast(tr('app.reminder-toast', { what, when: reminderWhen(r) }), { action: [tr('app.open'), () => openFile(r.rel, { line: r.line })] });
@@ -2847,7 +2857,7 @@ function dragResize(handle, onMove) {
 
 function bindIpc() {
   folio.onTreeChanged(() => { refreshTree(); backlinksSoon(); });
-  if (folio.reminders) { folio.reminders.onChanged(remindersSoon); folio.reminders.onFired(onReminderFired); folio.reminders.onOpen((r) => openFile(r.rel, { line: r.line })); setInterval(remindersSoon, 60000); /* overdue as time passes */ }
+  if (folio.reminders) { folio.reminders.onChanged(remindersSoon); folio.reminders.onFired(onReminderFired); folio.reminders.onOpen((r) => openFile(r.rel, { line: r.line })); folio.reminders.onMissed?.(showMissed); showMissed(); setInterval(remindersSoon, 60000); /* overdue as time passes */ }
   folio.onFileChanged(({ path: p, content }) => {
     tagsStale();
     if (p !== S.active) backlinksSoon();

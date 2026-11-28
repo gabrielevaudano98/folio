@@ -68,7 +68,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Status chip, inline field | `[status:: In progress]`, `[owner:: Ada]` | Dataview inline field. `status` is a coloured chip (Not started, In progress, Blocked, Done; other words are grey). Click the chip to change it. A page can offer its own words in the front matter: `folio:` then `  status: [Idea, Design, Shipped]` (or a `- Idea` list); the `@` picker offers the same words. |
 | Emoji | `😄` | The character itself. `:smile` in the Write view looks it up. |
 | Table column alignment | `\| :--- \| :---: \| ---: \|` | GFM. Set from a column's menu or the Table tab; sorting, moving rows and columns (menu or dragging a grip) rewrite only the table. **Header row** off leaves the header cells empty (`\|  \|  \|`, valid GFM, hidden in Folio); on removes an empty header again. |
-| Properties | YAML front matter: `title: Text`, `count: 3`, `done: true`, `due: 2026-12-01`, `tags: [a, b/c]`, `owner: "[[Ada]]"` | Edited as fields above the title (a type chosen from a field's menu is remembered per property name in `.folio/property-types.json`; it only applies when the value fits); only the changed property's lines are rewritten. Nested maps are kept and shown read-only. |
+| Properties | YAML front matter: `title: Text`, `count: 3`, `done: true`, `due: 2026-12-01`, `tags: [a, b/c]`, `owner: "[[Ada]]"` | Edited as fields above the title (a type chosen from a field's menu is remembered per property name in `.folio/property-types.json`; it only applies when the value fits); only the changed property's lines are rewritten. Nested maps are kept and shown read-only. A date's `<name>-remind: 1d` sibling is its reminder (see *Reminders*). |
 | Page icon | front matter `icon: 🚀` | One emoji shown large above the title (Notion). Not listed with the properties; other editors see an ordinary property. |
 | Page appearance (Notion's Appearance & layout) | front matter `font: serif` (or `mono`), `small-text: true`, `full-width: true`, `toc: true`, `cover: .asset/<file>` (or `gradient-1` to `gradient-6`), `cover-y: 30` | Per page, written only when not the default, so a default page has none of these lines (the app-wide text size, width and the docked outline stay in Settings). `font` absent = the sans-serif of the interface; `small-text` makes the page text 87.5 % of the Text size setting; `full-width` overrides the page width setting; `toc: true` shows a floating table of contents on the right edge when the page has two or more headings (thin lines that open to the list on hover or focus; the current section is marked; a click scrolls). `cover` is a picture copied into the page's `.asset/` folder or a built-in gradient; any other value (a web address, a path elsewhere) is not drawn, is never requested and stays an ordinary property. `cover-y` is the picture's vertical position, 0 (top) to 100 (bottom), absent = 50; removing the cover removes it. These keys are not listed with the properties. Changing one rewrites only its own line (CRLF files stay CRLF), except that choosing a different cover also removes `cover-y`, so a new picture starts centred. Other editors see ordinary properties. |
 | Template button (Folio) | ```` ```template-button ```` with `label: New meeting`, `template: Meeting notes`, optional `where: above` | Drawn as a button; inserts the template from `Templates/` (or a starter). Other editors show a code block. |
@@ -408,8 +408,25 @@ transcription_speed: 0.21       # seconds of work per second of audio
 
 A reminder is a date mention with `remind` in its brace group (see *Date with time, end, reminder* above). While Folio is open
 it fires once at its time: a system notification (click it to open the page at that line) and a toast with **Open**.
-Nothing is sent when Folio is closed; a reminder whose time passed meanwhile is listed as overdue, not announced.
+Nothing can be sent while Folio is closed. At the next start, once the folder has been read, the reminders that came due
+while it was closed (since the folder was last open, at most once each) are announced together: one system notification
+(click it to open the first one) and a toast (**Open** for one, **Show** for several, which opens the sidebar section); they
+stay listed as overdue. The moment up to which a folder's reminders were announced is kept in the settings file per folder
+(`remindersSeen`); a folder opened for the first time announces nothing from the past.
 The **Reminders** section of the sidebar lists every reminder of the folder, soonest first, with **Done** and **Dismiss**.
 Done and Dismiss are kept in the app's settings file per folder, never in the page: the page keeps the reminder as written.
 A reminder is known by its own text and its place among identical ones on the page, so editing the words around it keeps
-its state, and changing its date, time or offset makes it a new reminder. Front matter dates have no reminder.
+its state, and changing its date, time or offset makes it a new reminder.
+
+A front matter date (or date and time) gets a reminder from a sibling line named after it with `-remind`:
+
+```yaml
+due: 2026-12-05
+due-remind: 1d
+```
+
+The value is `0` (at the date's time) or `N` followed by `m`, `h`, `d` or `w` (before it); a date without time reminds from
+9:00 on its day, as in the page. The bell next to the date in the Properties panel writes the line right under the date
+(None removes it); it is not listed as a property of its own, renaming or removing the date renames or removes it, and any
+other value is an ordinary property. The sidebar lists it as “first heading · property”, opening the page at the front
+matter. Other editors see an ordinary property.

@@ -7,6 +7,7 @@ import os from 'node:os';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -52,7 +53,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true, remoteImages: false,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
-  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {}, autoUpdate: false,
+  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {}, remindersSeen: {}, autoUpdate: false,
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
@@ -96,25 +97,44 @@ const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset 
 const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); return false; } return null; }; // false: it could not be stored (null: nothing new to store)
 let win = null;
 const liveWin = () => !!win && !win.isDestroyed() && !win.webContents.isDestroyed();
-/* reminders (D1, X13): fired while Folio is open; Done / Dismissed kept here per workspace, never in the page */
+/* reminders (D1, X13): fired while Folio is open, and the ones missed while it was closed announced at the next start;
+   Done / Dismissed and the moment up to which reminders were announced are kept here per workspace, never in the page */
+/* the OS notification. FOLIO_NO_OS_NOTIFY (tests, or anyone who wants none) replaces it with a silent stand-in that the dev
+   test runner can click ({ notifyClick: n }), so the click path is exercised on any system */
+const shotNotes = [];
+let pendingMissed = []; // missed reminders not yet shown by the window
+function osNotify(opts, onClick) {
+  try {
+    if (process.env.FOLIO_NO_OS_NOTIFY) { const n = new EventEmitter(); n.opts = opts; n.on('click', onClick); if (!app.isPackaged) shotNotes.push(n); return; }
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ ...opts, silent: false }); n.on('click', onClick); n.show();
+  } catch (e) { console.error('[folio] notification', e.message); }
+}
+/* a click on a reminder's notification brings Folio forward on that note (a closed window first opens again) */
+function openFromNotification(r, fromWorkspace) {
+  if (settings.workspace !== fromWorkspace) return; // another workspace is open now: r.rel would point at a different note
+  const go = () => { if (win.isMinimized()) win.restore(); win.show(); win.focus(); app.focus?.({ steal: true }); win.webContents.send('reminders:open', r); };
+  if (!liveWin()) { createWindow(); win.webContents.once('did-finish-load', go); return; }
+  go();
+}
 const reminders = createReminders({
   notes, isNote: (rel) => NOTE_EXT.includes(path.extname(rel).toLowerCase()),
   states: () => (settings.workspace && settings.reminderStates?.[settings.workspace]) || {},
   setStates: (m) => { if (!settings.workspace) return; settings.reminderStates = { ...(settings.reminderStates || {}), [settings.workspace]: m }; if (!Object.keys(m).length) delete settings.reminderStates[settings.workspace]; saveSettings(); },
+  seen: () => { const v = settings.workspace && settings.remindersSeen?.[settings.workspace]; return Number.isFinite(v) ? v : null; },
+  setSeen: (ms) => { if (!settings.workspace) return; settings.remindersSeen = { ...(settings.remindersSeen || {}), [settings.workspace]: ms }; saveSettings(); },
   onChange: () => { if (liveWin()) win.webContents.send('reminders:changed'); },
   onFire: (r) => {
     const fromWorkspace = settings.workspace;
     try { if (liveWin()) win.webContents.send('reminders:fired', r); } catch (e) { console.error('[folio] reminder send', e.message); }
-    try {
-      if (!Notification.isSupported() || process.env.FOLIO_NO_OS_NOTIFY) return;
-      const n = new Notification({ title: t('rem.notify-title'), body: r.title || path.basename(r.rel).replace(/\.[^.]+$/, ''), silent: false });
-      n.on('click', () => {
-        if (settings.workspace !== fromWorkspace) return; /* another workspace is open now: r.rel would point at a different note */
-        if (!liveWin()) { createWindow(); win.webContents.once('did-finish-load', () => { win.show(); win.focus(); win.webContents.send('reminders:open', r); }); return; }
-        if (win.isMinimized()) win.restore(); win.show(); win.focus(); win.webContents.send('reminders:open', r);
-      });
-      n.show();
-    } catch (e) { console.error('[folio] notification', e.message); }
+    osNotify({ title: t('rem.notify-title'), body: r.title || path.basename(r.rel).replace(/\.[^.]+$/, '') }, () => openFromNotification(r, fromWorkspace));
+  },
+  onMissed: (list) => {
+    const fromWorkspace = settings.workspace;
+    pendingMissed = list; // taken by the window when it is ready (it may still be loading at start)
+    try { if (liveWin()) win.webContents.send('reminders:missed'); } catch (e) { console.error('[folio] reminder send', e.message); }
+    const name = (r) => r.title || path.basename(r.rel).replace(/\.[^.]+$/, '');
+    osNotify({ title: t('rem.missed-title', { n: list.length }), body: list.slice(0, 3).map(name).join(' · ') + (list.length > 3 ? ' …' : '') }, () => openFromNotification(list[0], fromWorkspace));
   },
 });
 
@@ -201,12 +221,13 @@ const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own
 async function setWorkspace(dir) {
   requests.clear(); // a request belongs to the folder it was written in
   await clearTrashed();
+  if (settings.workspace !== dir) reminders.leave(); // the folder being left saw its reminders up to now
   settings.workspace = dir;
   if (dir) settings.recent = [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8);
   saveSettings();
   await watcher?.close();
   watcher = null;
-  reminders.reset();
+  pendingMissed = []; reminders.reset();
   if (!dir) return;
   reminders.scanAll().catch((e) => console.error('[folio] reminders', e.message));
   assets.purgeTrash().catch(() => {}); // removed files older than 30 days leave the asset trash
@@ -362,6 +383,7 @@ h('fs:untrash', async (token) => {
 h('fs:search', (q, opts) => notes.search(q, opts));
 h('fs:find', (q, opts) => notes.find(q, opts));
 h('reminders:list', () => reminders.list());
+h('reminders:take-missed', () => { const l = pendingMissed; pendingMissed = []; return l; });
 h('reminders:set', (id, state) => { if (typeof id !== 'string' || ![null, 'done', 'dismissed'].includes(state ?? null)) throw new Error('Not a reminder state.'); reminders.setState(id, state ?? null); return true; });
 /* version history */
 h('history:list', (rel) => history.list(rel));
@@ -843,7 +865,7 @@ app.on('before-quit', (e) => { // a recording is saved before the app quits; a n
 app.on('before-quit', (e) => {
   if (!quitAgreed()) return; // the page saves (or asks) first
   if (settingsInFlight) { e.preventDefault(); settingsWrite.finally(() => app.quit()); return; } // let it land first, then flush
-  flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; writeAtomicSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {} });
+  reminders.leave(); flushSettingsSync(); fss.rmSync(undoRoot(), { recursive: true, force: true }); if (win) win.__forceClose = true; try { const b = JSON.parse(fss.readFileSync(BRIDGE_FILE(), 'utf8')); b.port = null; writeAtomicSync(BRIDGE_FILE(), JSON.stringify(b, null, 2), { mode: 0o600 }); } catch {} });
 
 /* dev only: scripted screenshots for visual QA */
 let shotFailWrites = false; // the dev test runner can make every page write fail, to test what the app does then
@@ -859,6 +881,8 @@ async function devShot(w) {
       if ('failWrites' in s) shotFailWrites = !!s.failWrites;
       if (s.quit) app.quit(); // the same path as ⌘Q or the Quit menu item
       if (s.menu) w.webContents.send('menu:command', s.menu); // what a menu item (or its accelerator) sends
+      if (s.notifications) console.log('js', JSON.stringify(shotNotes.map((n) => n.opts))); // the notifications shown (FOLIO_NO_OS_NOTIFY)
+      if ('notifyClick' in s) { if (s.blur) { w.blur(); w.minimize(); } shotNotes.at(s.notifyClick)?.emit('click'); }
       if (s.dark !== undefined) nativeTheme.themeSource = s.dark ? 'dark' : 'light';
       if (s.js) { try { const v = await w.webContents.executeJavaScript(s.js); if (s.log) console.log('js', JSON.stringify(v)); } catch (e) { console.error('[folio-error] shot js', e.message); } }
       if (s.metrics) { // memory of every process, in MB (private bytes on Windows and macOS, working set on Linux)

@@ -1926,4 +1926,10 @@ export default {
   "app.reminder-toast": "Promemoria: {what} ({when})",
   "app.reminder-dismissed": "Promemoria ignorato. La pagina lo conserva.",
   "rem.notify-title": "Promemoria di Folio",
+  "rem.missed-title_one": "Un promemoria è scaduto mentre Folio era chiuso",
+  "rem.missed-title_other": "{n} promemoria sono scaduti mentre Folio era chiuso",
+  "app.reminders-missed_one": "Scaduto mentre Folio era chiuso: {what} ({when})",
+  "app.reminders-missed_other": "{n} promemoria sono scaduti mentre Folio era chiuso",
+  "app.reminders-show": "Mostra",
+  "props.remind": "Promemoria per {key}",
 };

@@ -110,6 +110,12 @@ export function createNotes(getRoot) {
     return stats.sort((a, b) => (b.modified || '').localeCompare(a.modified || ''));
   }
 
+  /** every note's path, unsorted and without stat (a whole-folder scan only needs the names); capped: the listing stopped at MAX_FILES */
+  async function notePaths() {
+    const files = []; await walk(root(), files);
+    return { paths: files.map(relOf), capped: files.length >= MAX_FILES };
+  }
+
   async function read(rel, { fromLine, toLine } = {}) {
     const abs = resolve(rel);
     let text;
@@ -312,5 +318,5 @@ export function createNotes(getRoot) {
     return out;
   }
 
-  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, find, outline, move, rewriteAfterMove, backlinks, unlinkedMentions, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
+  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, find, outline, move, rewriteAfterMove, backlinks, unlinkedMentions, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path), notePaths };
 }

@@ -1,7 +1,8 @@
 // Folio — the Properties panel above the title of a page (D8). It edits the front matter through page-props.js,
 // so each change rewrites only that property's lines. `get()` returns the front matter block, `set(text)` stores it.
 import { t as tr, tl } from './i18n.js';
-import { parseProps, setProp, removeProp, renameProp, newKey, TYPES } from './page-props.js';
+import { parseProps, setProp, removeProp, renameProp, newKey, TYPES, remindKeys, setPropRemind, isRemindValue, REMIND_SUFFIX } from './page-props.js';
+import { REMIND_PRESETS } from './page-when.js';
 import { popupMenu } from './page-table.js';
 import { openEmojiPicker } from './page-icon.js';
 import { readAppearance, ownedKeys, setCover, setAppearance } from './page-appearance.js';
@@ -31,7 +32,14 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   const ic = (n) => icons[n] || '';
   const commit = (fn) => { if (locked()) return render(); const before = get(); const after = fn(before); if (after !== before) set(after); render(); };
 
-  const valueHtml = (p) => {
+  /* a date property's reminder (`<name>-remind:`): a bell menu beside the date, as in the date popover */
+  const REMIND_LABEL = { '5m': 'date.remind-5m', '10m': 'date.remind-10m', '30m': 'date.remind-30m', '1h': 'date.remind-1h', '1d': 'date.remind-1d', '2d': 'date.remind-2d' };
+  const remindHtml = (p, cur) => {
+    const at = tr(p.type === 'datetime' ? 'date.remind-at-time' : 'date.remind-on-day');
+    const opts = ['', ...REMIND_PRESETS, ...(cur && !REMIND_PRESETS.includes(cur) ? [cur] : [])];
+    return `<select class="prop-remind${cur ? ' is-on' : ''}" aria-label="${esc(tr('props.remind', { key: p.key }))}" title="${esc(tr('date.remind'))}">${opts.map((o) => `<option value="${o}"${o === (cur || '') ? ' selected' : ''}>${esc(o === '' ? tr('date.remind-none') : o === '0' ? at : REMIND_LABEL[o] ? tr(REMIND_LABEL[o]) : o)}</option>`).join('')}</select>`;
+  };
+  const valueHtml = (p, remind) => {
     const id = `prop-${p.key.replace(/\W+/g, '-')}`;
     if (p.readOnly) return `<code class="prop-raw" title="${tr('props.nested-values-are-edited-in-the-source')}">${esc(String(p.value).trim())}</code>`;
     if (p.type === 'checkbox') return `<input type="checkbox" class="prop-check" id="${id}" ${p.value ? 'checked' : ''} aria-label="${esc(p.key)}">`;
@@ -39,8 +47,9 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
       const chips = (p.value || []).map((x, i) => `<span class="prop-chip${p.type === 'tags' ? ' is-tag' : ''}"><button type="button" class="prop-chip-text" data-chip="${i}"${p.type === 'tags' ? ` data-tag="${esc(String(x).replace(/^#/, ''))}"` : ''}>${p.type === 'tags' ? '#' : ''}${esc(String(x).replace(/^#/, ''))}</button><button type="button" class="prop-chip-x" data-remove="${i}" aria-label="Remove ${esc(x)}">${ic('close')}</button></span>`).join('');
       return `<div class="prop-chips">${chips}<input class="prop-add-chip" id="${id}" type="text" placeholder="${p.value?.length ? '' : p.type === 'tags' ? 'Add a tag' : 'Add a value'}" aria-label="Add to ${esc(p.key)}" spellcheck="false"${p.type === 'tags' ? ' list="prop-tag-list"' : ''}></div>`;
     }
-    if (p.type === 'date') return `<input type="date" class="prop-input" id="${id}" value="${esc(String(p.value || '').slice(0, 10))}" aria-label="${esc(p.key)}">`;
-    if (p.type === 'datetime') return `<input type="datetime-local" class="prop-input" id="${id}" value="${esc(String(p.value || '').replace(' ', 'T').slice(0, 16))}" aria-label="${esc(p.key)}">`;
+    const bell = p.value ? remindHtml(p, remind) : '';
+    if (p.type === 'date') return `<div class="prop-date-row"><input type="date" class="prop-input" id="${id}" value="${esc(String(p.value || '').slice(0, 10))}" aria-label="${esc(p.key)}">${bell}</div>`;
+    if (p.type === 'datetime') return `<div class="prop-date-row"><input type="datetime-local" class="prop-input" id="${id}" value="${esc(String(p.value || '').replace(' ', 'T').slice(0, 16))}" aria-label="${esc(p.key)}">${bell}</div>`;
     if (p.type === 'number') return `<input type="number" class="prop-input" id="${id}" value="${esc(p.value)}" aria-label="${esc(p.key)}" step="any">`;
     if (p.type === 'link') { const v = String(p.value || '').replace(/^\[\[|\]\]$/g, ''); return `<div class="prop-link-row">${v ? `<button type="button" class="prop-link" data-link="${esc(v)}" title="${tr('props.ctrl-or-click-to-open')}">${esc(v)}</button>` : ''}<input type="text" class="prop-input prop-link-input" id="${id}" value="${esc(v)}" placeholder="${tr('props.page-name')}" aria-label="${esc(p.key)}" spellcheck="false"${v ? ' hidden' : ''}></div>`; }
     return `<input type="text" class="prop-input" id="${id}" value="${esc(p.value)}" placeholder="${tr('props.empty')}" aria-label="${esc(p.key)}">`;
@@ -49,7 +58,8 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   function render() {
     const all = parseProps(get()); const iconProp = all.props.find((x) => x.key === ICON_KEY && !x.readOnly && typeof x.value === 'string' && x.value.trim());
     const own = ownedKeys(get()); const ap = readAppearance(get()); const cover = ap.cover; if (!cover || cover.kind !== 'asset') repo = false;
-    const p = { ...all, props: all.props.filter((x) => x !== iconProp && !own.has(x.key)) }; // appearance keys (font, cover…) are not properties
+    const rk = remindKeys(get()); const remindOf = (k) => { const r = all.props.find((x) => x.key === k + REMIND_SUFFIX); const v = r ? String(r.value ?? '').trim() : ''; return rk.has(k + REMIND_SUFFIX) && isRemindValue(v) ? v : ''; };
+    const p = { ...all, props: all.props.filter((x) => x !== iconProp && !own.has(x.key) && !rk.has(x.key)) }; // appearance keys (font, cover…) and a date's reminder line are not properties
     box.classList.toggle('is-empty', !p.props.length && !adding);
     box.classList.toggle('has-icon', !!iconProp);
     box.classList.toggle('has-cover', !!cover);
@@ -59,14 +69,14 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
       ${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
       <div class="props-rows"${open ? '' : ' hidden'}>${p.props.map((x) => `<div class="prop-row" data-key="${esc(x.key)}" data-type="${x.type}">
         <button type="button" class="prop-key" aria-haspopup="menu" aria-label="${esc(x.key)}: ${TYPE_LABEL[x.type]}. Change type, rename or remove" data-tip="${TYPE_LABEL[x.type]}">${ic(TYPE_ICON[x.type])}<span>${esc(x.key)}</span></button>
-        <div class="prop-value">${valueHtml(x)}</div></div>`).join('')}
+        <div class="prop-value">${valueHtml(x, remindOf(x.key))}</div></div>`).join('')}
         ${adding ? `<div class="prop-row is-new"><span class="prop-key">${ic('plus')}<input class="prop-new-key" type="text" value="${esc(adding)}" aria-label="${tr('props.property-name')}" spellcheck="false"></span><div class="prop-value prop-hint">${tr('props.enter-to-add-esc-to-cancel')}</div></div>` : ''}
       </div>
       <button type="button" class="props-add"${open || !p.props.length ? '' : ' hidden'}>${ic('plus')}<span>${tr('props.add-property')}</span></button>
       <datalist id="prop-tag-list"></datalist>`;
     if (cover) paintCover(box.querySelector('.page-cover'), cover, ap.coverY, resolveImage);
     if (adding) { const k = box.querySelector('.prop-new-key'); k.focus(); k.select(); }
-    if (locked()) box.querySelectorAll('input, .prop-key, .page-icon, .page-cover-btn, .props-cover-add').forEach((el) => { el.disabled = true; }); // X3: read, not changed
+    if (locked()) box.querySelectorAll('input, select, .prop-key, .page-icon, .page-cover-btn, .props-cover-add').forEach((el) => { el.disabled = true; }); // X3: read, not changed
   }
 
   const keyOf = (el) => el.closest('.prop-row')?.dataset.key;
@@ -133,6 +143,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   box.addEventListener('change', (e) => {
     const t = e.target;
     if (t.classList.contains('prop-check')) { const key = keyOf(t); commit((x) => setProp(x, key, t.checked, 'checkbox')); }
+    else if (t.classList.contains('prop-remind')) { const key = keyOf(t); commit((x) => setPropRemind(x, key, t.value)); box.querySelector(`.prop-row[data-key="${CSS.escape(key)}"] .prop-remind`)?.focus(); }
     else if (t.classList.contains('prop-input') && (t.type === 'date' || t.type === 'datetime-local')) saveInput(t);
   });
   box.addEventListener('focusout', (e) => {
