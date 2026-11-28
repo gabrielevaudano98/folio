@@ -34,6 +34,7 @@ function register(names) {
 }
 // the window hands over its end of a MessageChannel once; Univer's RPC keeps the worker's own channel
 self.addEventListener('message', (e) => {
+  if (e.origin && e.origin !== self.location.origin) return; // a dedicated worker hears only its window; checked anyway
   if (!e.data || e.data.folio !== 'udf-port' || !e.ports?.[0]) return;
   e.stopImmediatePropagation();
   port = e.ports[0];

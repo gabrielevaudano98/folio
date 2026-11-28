@@ -20,7 +20,7 @@ export function withDecimals(p, n) {
 }
 
 export function createCommands(env) {
-  const { api, commands, host, ctx, panels, surface } = env;
+  const { api, commands, ctx, panels, surface } = env;
   const wb = () => api.getActiveWorkbook();
   const ws = () => wb()?.getActiveSheet();
   const rg = () => wb()?.getActiveRange() || ws()?.getRange('A1');
@@ -35,7 +35,6 @@ export function createCommands(env) {
   const setPattern = (p) => rg().setNumberFormat(p);
 
   const insertFormula = (name) => {
-    const r = rg(); const cell = r.getCell?.() ? r : r;
     surface.startEdit(`=${name}(`);
   };
 

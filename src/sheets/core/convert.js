@@ -5,7 +5,7 @@
 // so differences in how a value can be written (":---:" or {"align":"center"}) never rewrite an untouched sheet.
 import { addr, colName, colIndex, parseAddr, toRange, fromRange, toRanges, fromRanges } from './a1.js';
 import { toUniverStyle, fromUniverStyle, styleDiff, isEmpty } from './style.js';
-import { readDoc, sheetsOf, setWorkbook, serializeDoc } from './sheetmd.js';
+import { readDoc, sheetsOf, setWorkbook } from './sheetmd.js';
 import { shiftFormula, drain, serializeWorkbookSteps } from '../../renderer/sheet-core.js';
 import { readCell, writeText } from './cell-text.js';
 

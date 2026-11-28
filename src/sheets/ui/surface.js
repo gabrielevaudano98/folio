@@ -134,7 +134,6 @@ export function mountSheet(host, ctx) {
       return { ...unit.getSnapshot(), resources: inj.get(IResourceManagerService).getResources(unitId, UniverInstanceType.UNIVER_SHEET) };
     },
     text: () => text,
-    unitId: () => unitId,
     /** write pending edits now and return the file text */
     saveNow() { save(true); return text; },
     path: () => ctx.getPath?.(),

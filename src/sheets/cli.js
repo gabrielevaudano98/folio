@@ -22,7 +22,8 @@ import { addr, splitRef, toRange, quoteSheet } from './core/a1.js';
 import { buildPrintHtml } from './ui/print-ui.js';
 
 const [cmd, file, ...rest] = process.argv.slice(2);
-const die = (m) => { console.error(m); process.exit(2); };
+/** prints the message and exits; never returns (throws if exit is stubbed) */
+const die = (m) => { console.error(m); process.exit(2); throw new Error(m); };
 const usage = 'folio-sheets values|export|import|refresh|goal|pdf|check <file> …';
 if (!cmd || !file) die(usage);
 
@@ -36,7 +37,7 @@ const COMMANDS = {
     console.log(JSON.stringify(out, null, 1)); H.dispose();
   },
   async export() {
-    const out = rest[0] || die(usage); const text = await fs.readFile(file, 'utf8');
+    const out = rest[0]; if (!out) die(usage); const text = await fs.readFile(file, 'utf8');
     if (out.endsWith('.csv')) { const { H, wb } = await open(text); const g = grids(wb); await fs.writeFile(out, '﻿' + exportCsv(g[rest[1]] || Object.values(g)[0])); H.dispose(); return; }
     const src = readDoc(text).workbook?.source; const source = src ? await fs.readFile(path.join(path.dirname(file), src)).catch(() => null) : null;
     const { H, wb, loaded } = await open(text);
@@ -78,7 +79,7 @@ const COMMANDS = {
     H.dispose(); process.exitCode = errors.length || cycles.length ? 1 : 0;
   },
   async pdf() {
-    const out = rest[0] || die(usage); const text = await fs.readFile(file, 'utf8');
+    const out = rest[0]; if (!out) die(usage); const text = await fs.readFile(file, 'utf8');
     const { H, wb, loaded } = await open(text);
     const ws = rest[1] ? wb.fwb.getSheetByName(rest[1]) : wb.fwb.getSheets()[0]; const snap = wb.save(); const sh = snap.sheets[ws.getSheetId()];
     const print = readDoc(text).workbook?.print || {}; const a1 = print.area ? splitRef(print.area).range : ws.getDataRange().getA1Notation(); const range = toRange(a1);

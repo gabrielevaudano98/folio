@@ -161,7 +161,6 @@ export default {
   "Create PivotTable": "Crea tabella pivot",
   "Create model": "Crea modello",
   "Currency": "Valuta",
-  "Custom": "Personalizzato",
   "Custom function from the workbook scripts": "Funzione personalizzata dagli script della cartella di lavoro",
   "Custom functions": "Funzioni personalizzate",
   "Custom sort…": "Ordinamento personalizzato…",

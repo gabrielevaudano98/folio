@@ -210,7 +210,7 @@ export async function runScript(code, entry, wb, args = []) {
     // the person's code is evaluated as a script so its functions become globals; line numbers stay theirs
     evalOrThrow(vm, String(code), 'script.js', timedOut);
     if (!/^[A-Za-z_$][\w$]*$/.test(entry)) throw new Error(`Not a function name: ${entry}`);
-    const result = evalOrThrow(vm, `(() => { if (typeof ${entry} !== 'function') throw new Error('No function named ${entry} in the scripts'); const r = ${entry}(...${JSON.stringify(args)}); return r === undefined ? null : JSON.parse(JSON.stringify(r)); })()`, 'run.js', timedOut);
+    const result = evalOrThrow(vm, `(() => { const n = ${JSON.stringify(entry)}, f = globalThis[n]; if (typeof f !== 'function') throw new Error('No function named ' + n + ' in the scripts'); const r = f(...${JSON.stringify(args)}); return r === undefined ? null : JSON.parse(JSON.stringify(r)); })()`, 'run.js', timedOut);
     const out = JSON.parse(evalOrThrow(vm, '__out()', 'out.js', timedOut));
     return { ...out, result };
   });
@@ -233,7 +233,7 @@ export async function callFunction(code, name, args) {
     warm.set(code, w);
   }
   w.deadline = Date.now() + 1000; // one cell gets one second
-  const v = evalOrThrow(w.vm, `(() => { const r = ${name}(...${JSON.stringify(args)}); return r === undefined ? null : JSON.parse(JSON.stringify(r)); })()`, 'call.js', () => Date.now() > w.deadline);
+  const v = evalOrThrow(w.vm, `(() => { const r = globalThis[${JSON.stringify(name)}](...${JSON.stringify(args)}); return r === undefined ? null : JSON.parse(JSON.stringify(r)); })()`, 'call.js', () => Date.now() > w.deadline);
   return v;
 }
 

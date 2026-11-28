@@ -64,8 +64,11 @@ async function readFiles(files = {}, kinds = {}) {
   const out = {};
   for (const [rel, abs] of Object.entries(files)) {
     if (kinds[rel] === 'parquet' || kinds[rel] === 'db') { out[rel] = { path: abs }; continue; }
-    const st = await fs.stat(abs); if (st.size > 256 * 1024 * 1024) throw new Error(`${rel} is larger than 256 MB: query it with SQL (DuckDB) instead.`);
-    const bytes = await fs.readFile(abs);
+    let bytes; const fh = await fs.open(abs, 'r'); // one handle: the size checked is the size read
+    try {
+      if ((await fh.stat()).size > 256 * 1024 * 1024) throw new Error(`${rel} is larger than 256 MB: query it with SQL (DuckDB) instead.`);
+      bytes = await fh.readFile();
+    } finally { await fh.close(); }
     out[rel] = kinds[rel] === 'xlsx' ? { bytes } : { text: bytes.toString('utf8').replace(/^﻿/, ''), bytes };
   }
   return out;

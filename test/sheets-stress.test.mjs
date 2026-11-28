@@ -20,12 +20,11 @@ console.log(`sheets stress: ${ROWS} rows × 7 columns (${(fs.statSync(path.join(
 const S = "document.querySelector('.surface-sheet:not([hidden])')?.__surface";
 const mem = 'Math.round(performance.memory.usedJSHeapSize/2**20)';
 const ev = (name, body, wait = 200) => ({ js: `(async()=>{try{const v=await (async()=>{${body}})();return JSON.stringify({step:${JSON.stringify(name)},v})}catch(e){return JSON.stringify({step:${JSON.stringify(name)},err:e.message})}})()`, log: true, wait });
-const until = (expr, ms = 120000) => `await new Promise((r,j)=>{const t0=Date.now();const k=()=>{let v;try{v=(${expr})}catch{};if(v)r(v);else if(Date.now()-t0>${ms})j(new Error('timeout: ${expr.replace(/'/g, '').slice(0, 60)}'));else setTimeout(k,50)};k()})`;
-const open = (f) => `document.querySelector('[data-file="${f}"]').click()`;
+const until = (expr, ms = 120000) => `await new Promise((r,j)=>{const t0=Date.now();const k=()=>{let v;try{v=(${expr})}catch{};if(v)r(v);else if(Date.now()-t0>${ms})j(new Error(${JSON.stringify('timeout: ' + expr.slice(0, 60))}));else setTimeout(k,50)};k()})`;
+const open = (f) => `document.querySelector(${JSON.stringify(`[data-file="${f}"]`)}).click()`;
 // long tasks (main thread blocked > 50 ms) while a block runs
 const lt = "window.__lt=[];new PerformanceObserver((l)=>{for(const e of l.getEntries())window.__lt.push(Math.round(e.duration))}).observe({type:'longtask',buffered:false})";
 const ltSum = 'const L=window.__lt.splice(0);return {n:L.length,total:L.reduce((a,b)=>a+b,0),max:Math.max(0,...L)}';
-const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * p))]; };
 
 const steps = [
   { size: [1400, 900], wait: 1500 },

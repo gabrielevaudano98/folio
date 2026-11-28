@@ -79,8 +79,11 @@ export function createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin
     if (r.canceled || !r.filePaths?.[0]) return null;
     const file = r.filePaths[0], ext = path.extname(file).slice(1).toLowerCase();
     if (!IMPORT_EXT.includes(ext)) throw new Error('Choose an Excel, OpenDocument or CSV file.');
-    const st = await fs.stat(file); if (st.size > MAX_IMPORT) throw new Error('This file is too large to import (over 200 MB). Query it with Get data → SQL instead.');
-    const bytes = new Uint8Array(await fs.readFile(file));
+    let bytes; const fh = await fs.open(file, 'r'); // one handle: the size checked is the size read
+    try {
+      if ((await fh.stat()).size > MAX_IMPORT) throw new Error('This file is too large to import (over 200 MB). Query it with Get data → SQL instead.');
+      bytes = new Uint8Array(await fh.readFile());
+    } finally { await fh.close(); }
     const out = await call('file.import', { bytes, name: path.basename(file) });
     return { ...out, name: path.basename(file), ext, source: out.keepSource ? bytes : null };
   });

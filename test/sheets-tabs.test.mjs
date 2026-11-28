@@ -10,7 +10,7 @@ const book = (n, extra = '') => `## S\n\n| X | Y |\n| --: | --: |\n| ${n} | =A2*
 fs.writeFileSync(path.join(w.ws, 'sheets', 'A.sheet.md'), book(1, '\n<!-- sheet: {"charts":[{"type":"column","range":"A1:B2"}]} -->\n\n```script\nfunction onOpen() { const s = SpreadsheetApp.getActiveSheet(); s.getRange("D1").setValue((s.getRange("D1").getValue() || 0) + 1); }\n```\n\n<!-- workbook: {"scripts":{"hooks":true}} -->\n'));
 for (const n of ['B', 'C', 'D']) fs.writeFileSync(path.join(w.ws, 'sheets', `${n}.sheet.md`), book(n.charCodeAt(0)));
 const S = "document.querySelector('.surface-sheet:not([hidden])')?.__surface";
-const click = (f) => `document.querySelector('[data-file="${f}"]').click()`;
+const click = (f) => `document.querySelector(${JSON.stringify(`[data-file="${f}"]`)}).click()`;
 const show = (f, wait = 1500) => ({ js: `(async()=>{const t=performance.now(); ${click(f)}; await new Promise(r=>setTimeout(r,${wait})); return JSON.stringify({ms:Math.round(performance.now()-t)})})()`, wait: 100 });
 const state = (label) => ({ js: `(()=>{const s=${S}; return JSON.stringify({label:${JSON.stringify(label)}, unit:s.unitId(), a2:s.read('S!A2')[0][0], b2:s.read('S!B2')[0][0], d1:s.read('S!D1')[0][0], sel:s.selectionRef(), charts:document.querySelectorAll('.surface-sheet:not([hidden]) .xs-chart, .surface-sheet:not([hidden]) [data-chart]').length, ops:s.oplog.ops().length})})()`, log: true, wait: 100 });
 const r = await runApp(w, [{ size: [1300, 900], wait: 1200 },
@@ -34,7 +34,7 @@ const all = r.js.slice(0, -1).map((x) => JSON.parse(x)); const errs = r.js.at(-1
 
 let n = 0; const ok = (m) => { n++; console.log('  ✓ ' + m); };
 console.log('workbooks of hidden tabs');
-const [a1, aEd, b, aBack, aUndo, c, d, bAgain, aDisk, closedD] = all;
+const [a1, aEd, b, aBack, aUndo, , , bAgain, aDisk, closedD] = all;
 assert.equal(aEd.a2, 5); assert.equal(aEd.b2, 10); assert.equal(a1.d1, 1, 'onOpen ran once');
 assert.equal(aBack.unit, aEd.unit, 'the same unit is shown again'); assert.notEqual(b.unit, aEd.unit);
 assert.equal(aBack.a2, 5); assert.equal(aBack.b2, 10); assert.equal(aBack.sel, aEd.sel); assert.equal(aBack.d1, 1, 'onOpen did not run again');

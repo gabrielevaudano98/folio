@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { toUniver, fromUniver, fromUniverAsync, roundTrip } from '../src/sheets/core/convert.js';
 import { readDoc, setFence, serializeDoc } from '../src/sheets/core/sheetmd.js';
 import { toRange, fromRange } from '../src/sheets/core/a1.js';
