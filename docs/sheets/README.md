@@ -205,7 +205,28 @@ the five MCP tools), `test/sheets-components-ui.test.mjs` (4: Settings → data 
   2.7 s → 0.55 s, 100k 4.7 s → 1.3 s; in the app (50k rows, 100k formulas) 2.6–3.1 s → 0.75–1.7 s, opening 9.4 → 8.6 s, peak
   renderer RSS +110 MB. `test/sheets-formula-cache.test.mjs` runs the same random edits (values, formulas, row insert and
   delete, sheet rename, defined name) on a stock and a tuned engine with 7,500 formulas and demands identical values at
-  every step (default 14 steps; `FOLIO_FUZZ_STEPS=60`, seeds 1–3 clean). What remains per recalculation is building the
-  dependency trees (object construction, ~0.5 s at 50k formulas); `node scripts/sheets-bench.mjs 10000 25000` measures it.
+  every step (default 14 steps; `FOLIO_FUZZ_STEPS=60`, seeds 1–8 clean). A parsed formula also depends on defined names,
+  tables and sheet names; Univer refreshes an entry only when it reads it during a recalculation that carries the change,
+  so a cell text that rows moved away and back keeps the old meaning (a stale value, also latent in stock Univer). Folio
+  empties the cache when a recalculation reports a changed defined name, table or sheet. Univer also indexes every
+  formula in a fresh R-tree to look for INDIRECT and OFFSET; with none in the workbook that step is skipped.
+- **Incremental recalculation** (`core/formula-incremental.js`). At every recalculation Univer 1.6 rebuilds one
+  dependency tree per formula from scratch (~0.5 s at 50k formulas). Folio keeps the trees of the last pass and the
+  formulas they were built from. A pass with no formula changed reuses every tree (only the dirty ranges are compared);
+  a pass with a few formulas changed (at most 20,000 and a quarter of them) rebuilds only those, whole shared runs
+  included, and reuses the rest; anything unusual (defined names, tables, sheet changes, INDIRECT/OFFSET, external or
+  iterative workbooks, feature formulas, a pass whose rebuilt trees do not look plain) falls back to Univer's full pass.
+  Univer removing a formula forgets its tree. `localStorage['folio.sheets.incremental'] = 'off'` turns it off;
+  `surface.recalcStats()` counts fast, partial and full passes with the reason for each full one. The fuzz test runs it
+  together with the cache (120 random edits, seeds 1–8, values identical to stock Univer) plus targeted cases (formula
+  retyped, workbook reopened under the same id, shared runs split, formulas removed and filled down).
+- **First screen first** (`core/preview.js`, data engine method `calc.preview`). A big workbook opened for the first time
+  (no values kept, see value cache) waits for the worker's first full calculation. For workbooks of 5,000 formulas or
+  more, the surface cuts out the first screen (100 rows × 40 columns) with every cell its formulas read, if all of them
+  use pure functions and plain references (no defined names, volatile or address functions), computes that small book in
+  the data engine and shows those values as worker results (not edits, not saved) until the worker's own arrive.
+- Measured in the app (50k rows, 100k formulas, Linux cloud machine): recalculation after an edit 2.6–3.1 s → 0.07–0.8 s;
+  grid shown 1.1 s; formula values on screen 9.4 s → 2.0 s; every value computed ~8.5 s on first open; reopening 1.5 s
+  with values (value cache). `node scripts/sheets-bench.mjs 10000 25000` and `test/sheets-stress.test.mjs` measure it.
 - **Shared formulas** are only how Univer holds a run of formulas in memory: the file always lists each formula, and
   code that reads Univer data itself (export, scripts, version compare) never sees `si` cells (`expandSharedFormulas`).

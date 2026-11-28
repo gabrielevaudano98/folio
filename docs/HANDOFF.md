@@ -86,10 +86,13 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    being evicted before reuse above 5,000 formulas; `src/sheets/core/formula-cache.js` raises it to 120k (worker, headless,
    window). In the app (50k rows): edit recalculation 2.6–3.1 s → 0.75–1.7 s. `test/sheets-formula-cache.test.mjs`
    (same random edits on stock vs tuned engine, identical values) is in `npm test`; benchmark `scripts/sheets-bench.mjs`.
-   **Next for speed:** opening a 50k-row workbook is still ~9 s (worker builds the trees from scratch; ~3 s of it first
-   calculation), a small workbook reloaded behind a big one still waits in the worker queue, and the remaining per-edit cost
-   is building dependency trees (~0.5 s at 50k formulas, object construction). Ideas: measure the open phases, give a
-   hidden big workbook a lower priority, evaluate keeping the dependency trees (needs the same fuzz comparison).
+18. ~~**Recalculation under 1 s, first screen under 4 s**~~ DONE (README §8 "Incremental recalculation", "First screen
+   first"): dependency trees kept between passes (`core/formula-incremental.js`), cache emptied on name/sheet/table
+   changes (fixed a stale value), first screen computed in the data engine (`core/preview.js`). App, 50k rows / 100k
+   formulas: edit 0.07–0.8 s, values on screen 2.0 s, all values ~8.5 s on a first open. Cell being typed in is written
+   before a tab switch, and the shown workbook stays Univer's current unit after a cell editor closes (tab-switch test).
+   **Next for speed:** the full first calculation (~8 s at 100k formulas) could itself be chunked or prioritised by
+   visible sheet; a small workbook reloaded behind a big one still waits in the worker queue.
 
 Open next (not started): live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.

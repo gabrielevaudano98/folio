@@ -23,13 +23,12 @@ Notion-grade page editing in plain Markdown. Built as three stacked pull request
 [#79](https://github.com/gabrielevaudano98/folio/pull/79) (search window, reminders, page appearance).
 Then wave 2 batch 2 [#85](https://github.com/gabrielevaudano98/folio/issues/85), the follow-ups [#86](https://github.com/gabrielevaudano98/folio/issues/86) and wave 3 [#87](https://github.com/gabrielevaudano98/folio/issues/87).
 
-## Now: Sheets on Univer
+## Done: Sheets on Univer (1.8)
 
-Folio Sheets on [Univer](https://github.com/dream-num/univer), built on the branch `feat/sheets-univer`: Excel-grade grid,
-pivots, charts, queries, scripts, Python, what-if, `.xlsx`/`.xlsm` round trip, a data engine process and new MCP tools.
-Merge checklist in [#84](https://github.com/gabrielevaudano98/folio/issues/84); on merge it closes [#7](https://github.com/gabrielevaudano98/folio/issues/7) (virtual grid), [#14](https://github.com/gabrielevaudano98/folio/issues/14) (cross-sheet references), [#15](https://github.com/gabrielevaudano98/folio/issues/15) (field
-types, validation, conditional formatting) and [#16](https://github.com/gabrielevaudano98/folio/issues/16) (import Excel and CSV). Afterwards: live sync and presence, an AI
-copilot (area 28), streaming export of very large workbooks.
+Folio Sheets on [Univer](https://github.com/dream-num/univer): Excel-grade grid, pivots, charts, queries, scripts,
+Python, what-if, `.xlsx`/`.xlsm` round trip, a data engine process and new MCP tools; big workbooks recalculate in under
+a second. Closed [#7](https://github.com/gabrielevaudano98/folio/issues/7), [#14](https://github.com/gabrielevaudano98/folio/issues/14), [#15](https://github.com/gabrielevaudano98/folio/issues/15), [#16](https://github.com/gabrielevaudano98/folio/issues/16) and [#84](https://github.com/gabrielevaudano98/folio/issues/84). Afterwards: live sync and presence, an AI copilot
+(area 28), streaming export of very large workbooks.
 
 ## Next: v1.2 Editors (open after 1.5; the name is historical)
 
@@ -41,7 +40,7 @@ copilot (area 28), streaming export of very large workbooks.
 ## Next: v1.3 AI-native
 
 - Accept or reject each AI change [#18](https://github.com/gabrielevaudano98/folio/issues/18) (assistants can already propose with `suggest_edit`).
-- Structured MCP tools for boards (slides done, sheets on the Univer branch) [#19](https://github.com/gabrielevaudano98/folio/issues/19).
+- Structured MCP tools for boards (slides and sheets done) [#19](https://github.com/gabrielevaudano98/folio/issues/19).
 - Ask your AI from inside Folio [#20](https://github.com/gabrielevaudano98/folio/issues/20).
 
 ## Later

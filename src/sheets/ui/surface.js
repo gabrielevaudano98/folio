@@ -134,6 +134,7 @@ export function mountSheet(host, ctx) {
       return { ...unit.getSnapshot(), resources: inj.get(IResourceManagerService).getResources(unitId, UniverInstanceType.UNIVER_SHEET) };
     },
     text: () => text,
+    unitId: () => unitId,
     /** write pending edits now and return the file text */
     saveNow() { save(true); return text; },
     path: () => ctx.getPath?.(),
@@ -271,20 +272,34 @@ export function mountSheet(host, ctx) {
   }
   /** before another workbook is shown: write what this one has pending, take its drawings off the grid, cancel its
    *  pending onEdit hook (it would run against the next workbook) */
+  /** a cell still being typed in goes into the workbook now (Univer writes it synchronously, as Enter does); returns
+   *  whether one was open */
+  function commitEditor() {
+    try { const book = wb(); if (!book?.isCellEditing?.()) return false; book.endEditingAsync(true); return true; } catch (e) { console.error('[sheets] commit cell', e); return false; }
+  }
   function leave() {
     if (!unitId) return;
+    commitEditor();
     if (pending || sliced) { try { save(true); } catch (e) { console.error('[sheets] save before leaving', e); } }
     clearTimeout(saveTimer); pending = false; if (sliced) { sliced.cancelled = true; sliced = null; }
     extensions.leaving();
     drawQuietly(() => { charts.sync(); floats.sync(); charts.clear(true); floats.clear(true); });
+  }
+  /** make the shown workbook Univer's current one. Again on the next turns: a cell editor closed just before (leave)
+   *  hands focus back to its own workbook a moment later, which would leave the grid and every command on the
+   *  workbook just hidden */
+  function focusMine() {
+    const units = U.univer.__getInjector().get(IUniverInstanceService);
+    const mine = unitId;
+    const set = () => { if (!mine || unitId !== mine) return; if (units.getFocusedUnit?.()?.getUnitId?.() !== mine || api.getActiveWorkbook()?.getId() !== mine) { units.setCurrentUnitForType(mine); units.focusUnit(mine); } };
+    set(); setTimeout(set, 0); setTimeout(set, 50); requestAnimationFrame(set);
   }
   /** show a kept workbook again */
   function show(st) {
     loading = true;
     try {
       useState(st);
-      const inj = U.univer.__getInjector(); const units = inj.get(IUniverInstanceService);
-      units.setCurrentUnitForType(unitId); units.focusUnit(unitId);
+      focusMine();
       setTimeout(() => drawQuietly(() => { charts.renderAll(); floats.renderAll(); }), 60);
       panels.refresh();
       extensions.shown();
@@ -322,6 +337,7 @@ export function mountSheet(host, ctx) {
       workbookMeta = structuredClone(Object.fromEntries(Object.entries(loaded.doc.workbook || {}).filter(([k]) => k !== 'names' && k !== 'univer')));
       const unit = U.open(loaded.data);
       unitId = unit.getUnitId();
+      focusMine();
       text = t; docTab = ctx.docKey?.() || null;
       if (prevSheet) { const s = wb().getSheetByName(prevSheet); if (s) s.activate(); }
       oplog.reset(loaded.data);
@@ -503,8 +519,14 @@ export function mountSheet(host, ctx) {
     setText(t) { if (t === text && (ctx.docKey?.() || null) === docTab) return; open(t); },
     /** the app closed this document's tab */
     forget,
-    /** write what is pending now (the app calls this before the tab changes) */
-    flush() { if (unitId && (pending || sliced)) surface.saveNow(); },
+    /** write what is pending now, a cell being typed in included (the app calls this before the tab or the view changes,
+     *  before saving all and on an explicit save). `keepEditing`: an explicit save; the cell editor opens again */
+    flush({ keepEditing = false } = {}) {
+      if (!unitId) return;
+      const was = commitEditor();
+      if (pending || sliced) surface.saveNow();
+      if (was && keepEditing) { try { wb().startEditing(); } catch { /* the cell stays committed */ } }
+    },
     setMode() { /* one view */ },
     focus() { surface.focusGrid(); },
     /** "Costs!B7" from a reference or a search result */

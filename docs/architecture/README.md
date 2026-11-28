@@ -191,8 +191,6 @@ See [`docs/adr/`](../adr/README.md).
 - **A delayed edit can land in the wrong tab** after a fast tab switch ([#82](https://github.com/gabrielevaudano98/folio/issues/82)).
   Fixed for the page editor (its pending change is flushed and the left tab saved before switching); the slides, board and
   sheet surfaces still report delayed changes without naming their document. Changes must name their document, not rely on "the active tab".
-- **Long-lived branches.** The Notion PR stack and `feat/sheets-univer` both diverge from `main` and touch `app.js`,
-  `page-ribbon.js` and the locales; merging them is planned in [STATUS](../STATUS.md#in-flight).
 - `app.js` (~2,600 lines) is the window's composition root and holds many features; split out a feature when it next
   changes, as for `main.js`.
 - One maintainer; the docs, `AGENTS.md` and the issue tracker are written so that a person or an agent can take over.
@@ -215,4 +213,4 @@ See [`docs/adr/`](../adr/README.md).
 | Reference | `[[Doc#part]]` link, `{{Doc#part}}` live value, `![[Doc#part]]` embed between documents. |
 | CriticMarkup | The plain-text syntax for comments and suggestions (`{++ ++}`, `{>> <<}`). |
 | Snapshot, version | A copy of a document kept in `.folio/history/`. |
-| Data engine | On the Univer branch: the separate process for sheet imports, queries, scripts and what-if. |
+| Data engine | The separate process (Electron utilityProcess) for sheet imports, queries, scripts and what-if. |

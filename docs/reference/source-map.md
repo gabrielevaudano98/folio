@@ -32,6 +32,7 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 | `mcp-tools.js` | core | The MCP tool table (zod schemas, descriptions, read/write flags) and `runTool()`; one table for both hosts. See [MCP tools](mcp-tools.md). |
 | `mcp-slides.js` | core | Slide-specific MCP tools (objects, motion, links, alt text, notes, design ideas). |
 | `mcp-board-sheet.js` | core | Structured MCP tools for boards (shapes, connectors, layout) and sheets (cells, sheets). |
+| `sheets-engine.js` | main | Starts and stops Folio Sheets' data engine (utilityProcess), resolves its paths, allows its methods. |
 | `ai-requests.js` | core | Queue of requests the user writes with "Ask AI"; assistants read and close them over MCP. |
 | `netguard.js` | core | Is an address loopback or private? Guards every remote image fetch. |
 | `permissions.js` | core | Which browser permissions the app page gets (microphone only). |
@@ -152,11 +153,88 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `board-core.js` | core | board-md: shapes, connectors, library, auto-layout (dagre), SVG of each shape. |
 | `board.js` | surface | draw.io-style canvas over board-md. |
 | `sheet-core.js` | core | sheet-md: Markdown tables as sheets, formulas (hot-formula-parser), formats. |
-| `sheet.js` | surface | Excel-style grid, Kanban view, CSV/XLSX export. |
-| `sheet-xlsx.js` | surface helper | sheet-md to a real `.xlsx` (JSZip); formulas stay formulas. |
+| `sheets-components.js` | surface | Settings section for the spreadsheet's optional components (DuckDB, Pyodide). |
 
-> The sheet files above are what ships on `main`. The `feat/sheets-univer` branch replaces `sheet.js` and
-> `sheet-xlsx.js` with `src/sheets/` (Univer). See [status](../STATUS.md#in-flight).
+> `sheet-core.js` stays: it evaluates sheet-md tables in pages and slides and in the plain view. The spreadsheet
+> editor itself is Folio Sheets on Univer, in `src/sheets/` below ([ADR 0012](../adr/0012-sheets-on-univer-with-a-data-engine.md)).
+
+## Folio Sheets — `src/sheets/`
+
+The spreadsheet editor on [Univer](https://univer.ai) ([ADR 0012](../adr/0012-sheets-on-univer-with-a-data-engine.md), design in
+[sheets/README.md](../sheets/README.md)). `core/` is pure and shared by the window, the data engine, the command line
+and tests; `engine/` runs in the data engine (an Electron utilityProcess, `src/main/sheets-engine.js`); `ui/` draws in
+the window.
+
+| File | Kind | Responsibility |
+|---|---|---|
+| `cli.js` | core | The `folio-sheets` command line: formulas, FQL, conversion and what-if without a window. |
+| `core/a1.js` | core | A1 addresses and Univer ranges. |
+| `core/cell-text.js` | core | How one cell value is written in a Markdown table cell and read back. |
+| `core/collab.js` | core | Operation log and contracts for a future sync service (no network code). |
+| `core/convert.js` | core | sheet-md v2 ⇄ Univer workbook data, lossless for sheets the person did not change. |
+| `core/diff.js` | core | What changed between two versions of a workbook, cell by cell. |
+| `core/formula-cache.js` | core | Univer's compiled-formula cache: raised limit, emptied when names, sheets or tables change. |
+| `core/formula-incremental.js` | core | Incremental recalculation: reuses Univer's dependency trees, rebuilds only changed formulas. |
+| `core/preview.js` | core | The first screen of a big workbook, cut out and computed first (pure formulas only). |
+| `core/fql/parse.js` | core | FQL parser (Power Query and Power Pivot as text). |
+| `core/fql/run.js` | core | FQL compiler and runtime on Arquero column tables. |
+| `core/jquery-lite.cjs` | core | The part of jQuery pivottable needs, without a DOM. |
+| `core/pivot-jquery.js` | core | Makes jQuery global for pivottable before it loads. |
+| `core/pivot.js` | core | PivotTables as readable ```` ```pivot ```` blocks. |
+| `core/refs.js` | core | Which cells a formula reads; circular and broken references from the file alone. |
+| `core/replay.js` | core | Replays the operations a Folio Script returns as undoable Univer commands. |
+| `core/sheetmd.js` | core | sheet-md v2 documents: parse and write. |
+| `core/style.js` | core | Cell styles: sheet-md keys ⇄ Univer style data. |
+| `engine/book.js` | engine | Whole-workbook jobs (Refresh all, macros) on a headless Univer. |
+| `engine/crypto.js` | engine | Protection passwords, encryption and signatures (node-forge). |
+| `engine/duck.js` | engine | External data through DuckDB (optional component). |
+| `engine/headless.js` | engine | Univer without a window, with Folio's formula cache and incremental recalculation. |
+| `engine/io.js` | engine | Import and export: .xlsx/.xlsm, CSV, PDF and more. |
+| `engine/python.js` | engine | Python in Pyodide (optional component). |
+| `engine/script-describe.js` | core | The functions a script defines, read without running it. |
+| `engine/script.js` | engine | Folio Script in a QuickJS sandbox. |
+| `engine/whatif.js` | engine | Goal seek, data tables, scenarios, Monte Carlo on a headless copy. |
+| `engine/worker.js` | engine | The data engine's entry point and method table (includes `calc.preview`). |
+| `engine/xlsx-cf.js` | engine | Conditional formatting to and from .xlsx. |
+| `engine/xlsx-formula.js` | engine | Excel function prefixes (`_xlfn.`) in and out of formulas. |
+| `ui/charts.js` | surface | Charts over the grid (ECharts). |
+| `ui/commands.js` | surface | Ribbon command id → Univer command. |
+| `ui/engine-client.js` | surface | The window's calls to the data engine. |
+| `ui/extensions.js` | surface | Workbook hooks and extension points. |
+| `ui/floats.js` | surface | Slicers, timelines and macro buttons over the grid. |
+| `ui/formula-worker.js` | surface | Univer's formula engine in a Web Worker, with the formula cache and incremental recalculation. |
+| `ui/functions.js` | data | Function library menus. |
+| `ui/i18n.js` | core | Interface text for Sheets. |
+| `ui/icons.js` | data | Generated Lucide icons. |
+| `ui/locale-it.js` | data | Italian interface text. |
+| `ui/panels/audit.js` | surface | Formula auditing: precedents, dependents, errors, cycles. |
+| `ui/panels/cf.js` | surface | Quick conditional formatting rules. |
+| `ui/panels/chart.js` | surface | Chart settings. |
+| `ui/panels/code-style.js` | surface | Syntax colours for panel code editors. |
+| `ui/panels/entity.js` | surface | Rich data types in cells. |
+| `ui/panels/form.js` | surface | Data form, one record at a time. |
+| `ui/panels/fql-lang.js` | surface | FQL highlighting and completion. |
+| `ui/panels/history.js` | surface | Versions, comparison and activity. |
+| `ui/panels/index.js` | surface | The side panel host; panels load on first use. |
+| `ui/panels/kit.js` | surface | Building blocks every panel uses. |
+| `ui/panels/model.js` | surface | Data model (Power Pivot). |
+| `ui/panels/pivot.js` | surface | PivotTable fields. |
+| `ui/panels/print.js` | surface | Page setup. |
+| `ui/panels/protect.js` | surface | Protection, encryption and signatures. |
+| `ui/panels/python.js` | surface | Python blocks. |
+| `ui/panels/queries.js` | surface | Queries and connections (FQL). |
+| `ui/panels/scripts.js` | surface | Scripts, macros, custom functions, hooks. |
+| `ui/panels/series.js` | surface | Fill series. |
+| `ui/panels/slicer.js` | surface | Slicers and timelines. |
+| `ui/panels/text-to-cols.js` | surface | Text to columns. |
+| `ui/panels/whatif.js` | surface | What-if analysis and simulation. |
+| `ui/print-ui.js` | surface | Print and PDF. |
+| `ui/protection.js` | surface | Sheet protection. |
+| `ui/ribbon.js` | data | The ribbon's tabs, groups and controls. |
+| `ui/sheets.css` | styles | Univer's styles, then Folio's. |
+| `ui/surface.js` | surface | The sheet surface: ribbon, grid, side panel; load, save, first-screen preview. |
+| `ui/univer.js` | surface | Univer in the window, and the formula worker's start. |
+| `ui/value-cache.js` | surface | Computed values of big workbooks kept between sessions. |
 
 ## Built-in slide templates — `src/templates/`
 
