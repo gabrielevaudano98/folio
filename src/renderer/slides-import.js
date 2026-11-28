@@ -262,7 +262,7 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
     }
     if (el.type === 'table') {
       const rows = el.data || []; if (!rows.length) return [];
-      const cell = (c) => plain(c.text).replace(/\|/g, '\\|') || ' ';
+      const cell = (c) => plain(c.text).replace(/\\/g, '\\\\').replace(/\|/g, '\\|') || ' ';
       const head = `| ${rows[0].map(cell).join(' | ')} |`, sep = `|${rows[0].map(() => ' --- ').join('|')}|`;
       return [`::: box ${attrs({ [own(el, 't')]: 1, ...geo })}\n${[head, sep, ...rows.slice(1).map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n')}\n:::`];
     }
