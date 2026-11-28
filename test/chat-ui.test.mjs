@@ -20,7 +20,15 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
-const ask = (text) => ({ js: `(()=>{const i=document.querySelector('#chat-input');i.value=${JSON.stringify(text)};document.querySelector('#chat-form').requestSubmit();return 1})()`, wait: 2500 });
+const stringifyForJsCode = (value) =>
+  JSON.stringify(value).replace(/[<>/\u2028\u2029]/g, (ch) => ({
+    '<': '\\u003C',
+    '>': '\\u003E',
+    '/': '\\u002F',
+    '\u2028': '\\u2028',
+    '\u2029': '\\u2029',
+  }[ch]));
+const ask = (text) => ({ js: `(()=>{const i=document.querySelector('#chat-input');i.value=${stringifyForJsCode(text)};document.querySelector('#chat-form').requestSubmit();return 1})()`, wait: 2500 });
 const r = await runApp(w, [
   { size: [1300, 860], wait: 1200 },
   { js: "window.__ai=[];folio.onAiEdit((e)=>__ai.push([e.path,e.client]));1", wait: 100 },
