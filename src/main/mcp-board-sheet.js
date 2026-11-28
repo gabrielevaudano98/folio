@@ -46,7 +46,8 @@ const NAMES = new Set(BOARD_SHEET_TOOLS.map((t) => t.name));
 export const isBoardSheetTool = (name) => NAMES.has(name);
 
 const need = (p, re, what) => { if (!re.test(p)) throw new Error(`This tool works on ${what}.`); };
-const cleanStyle = (target, patch) => { const s = { ...target }; for (const [k, v] of Object.entries(patch || {})) { if (v === null || v === false) delete s[k]; else s[k] = v; } return s; };
+const bad = /[{};\r\n]/;
+const cleanStyle = (target, patch) => { for (const [k, v] of Object.entries(patch || {})) if (bad.test(k) || (typeof v === 'string' && bad.test(v))) throw new Error(`Style "${k}" contains a character that is not allowed ({ } ; or a line break).`); const s = { ...target }; for (const [k, v] of Object.entries(patch || {})) { if (v === null || v === false) delete s[k]; else s[k] = v; } return s; };
 const shapeOf = (m, id) => { const n = m.nodes.find((x) => x.id === id); if (!n) throw new Error(`No shape "${id}". Use get_board to see the ids.`); return n; };
 // a CRLF file is edited as LF and written back as CRLF, so untouched lines keep their endings
 const lf = (t) => ({ text: t.replace(/\r\n/g, '\n'), back: (x) => (t.includes('\r\n') ? x.replace(/\r?\n/g, '\r\n') : x) });
@@ -70,6 +71,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       return { shapes: m.nodes.map((n) => ({ id: n.id, shape: n.shape, label: n.label, x: n.x, y: n.y, w: n.w, h: n.h, style: n.style, body: n.body })), connectors: m.edges.map((e) => ({ from: e.from, fromPort: e.fromPort, to: e.to, toPort: e.toPort, op: e.op, label: e.label })), unreadable: m.errors };
     }
     case 'add_shape': return editBoard(notes, a, wrote, 'Added a shape to', (m) => {
+      if ((a.x == null) !== (a.y == null)) throw new Error('Give x and y together, or neither to let auto layout place the shape.');
       a.shape ??= 'rect';
       if (m.nodes.some((n) => n.id === a.id && !n.implicit)) throw new Error(`A shape "${a.id}" already exists. Use update_shape.`);
       if (!SHAPES.includes(a.shape)) throw new Error(`Unknown shape "${a.shape}". Use one of: ${SHAPES.join(', ')}.`);
@@ -113,7 +115,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
       if (!sh) throw new Error(`No sheet named ${a.sheet}. Sheets: ${sheets.map((b) => b.name).join(', ')}.`);
       for (const [ref, v] of Object.entries(a.cells)) {
         const rc = parseAddr(ref); if (!rc) throw new Error(`"${ref}" is not a cell address like B7.`);
-        const [r, c] = rc;
+        const [r, c] = rc; if (r < 0 || c < 0) throw new Error(`"${ref}" is not a cell address like B7 (rows start at 1).`);
         while (sh.rows.length <= r) sh.rows.push([]);
         const row = sh.rows[r]; while (row.length <= c) row.push('');
         row[c] = cellText(v);
@@ -124,6 +126,7 @@ export async function runBoardSheetTool(notes, name, a, wrote) {
     }
     case 'add_sheet': {
       need(a.path, /\.sheet\.md$/i, '.sheet.md notes');
+      if (/[\r\n]/.test(a.name)) throw new Error('A sheet name is one line.');
       let existing = null; try { existing = await notes.read(a.path); } catch { /* new note */ }
       const { text: src, back } = lf(existing ?? '');
       const blocks = existing == null ? [] : parseWorkbook(src);

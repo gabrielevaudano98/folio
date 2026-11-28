@@ -13,7 +13,9 @@ const edit = async () => {
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'edit_note', arguments: { path: 'Review.md', edits: [{ oldText: 'One first.', newText: 'One changed.' }, { oldText: 'Two last.', newText: 'Two changed.' }] } } }) });
   return res.status + ' ' + (await res.text()).slice(0, 300);
 };
-setTimeout(() => edit().then((x) => console.error('edit', x)).catch((e) => console.error('edit failed', e)), 4500);
+// retry until the app's MCP server answers (a slow start must not lose the edit); the edit itself succeeds only once
+const tryEdit = async (n = 0) => { try { const r = await edit(); if (r.includes('Edited')) return; } catch { /* not listening yet */ } if (n < 20) setTimeout(() => tryEdit(n + 1), 700); };
+setTimeout(() => tryEdit(), 2500);
 const r = await runApp(w, [{ size: [1300, 900], wait: 1200 }, open('Review.md'),
   { js: '1', wait: 4000 },
   { js: "document.querySelector('#ai-banner-review').click();1", wait: 600 },
