@@ -47,7 +47,7 @@ optional **meeting recorder** (Windows) that transcribes a call on the computer 
 ## How AI fits in
 
 Folio runs a small MCP server on the computer. One click in **Connect AI Assistants** configures Claude Desktop, Cursor,
-VS Code, Windsurf or LM Studio; Claude Code gets a ready command. The assistant then has 41 tools ([list](reference/mcp-tools.md)): list, read and search
+VS Code, Windsurf or LM Studio; Claude Code gets a ready command. The assistant then has 50 tools ([list](reference/mcp-tools.md)): list, read and search
 notes; edit a section; suggest a change; read a spreadsheet's computed values; place and style objects on a slide;
 compare and restore versions. Assistants only see the open folder, and a switch makes them read-only.
 

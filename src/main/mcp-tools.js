@@ -10,6 +10,7 @@ import { parseRef, resolveTarget, docKind } from '../renderer/refs-syntax.js';
 import { createPatch, diffWords } from 'diff';
 import { sections, findSection, findBlock, readSection, replaceSection, insertAfter, addComment, suggestEdit } from './page-tools.js';
 import { SLIDE_TOOLS, runSlideTool } from './mcp-slides.js';
+import { BOARD_SHEET_TOOLS, isBoardSheetTool, runBoardSheetTool } from './mcp-board-sheet.js';
 import pkg from '../../package.json' with { type: 'json' };
 
 export const SERVER_INFO = { name: 'folio', version: pkg.version };
@@ -109,6 +110,7 @@ export const TOOLS = [
     description: 'Open a note in Folio so the user sees it, optionally scrolled to a line.',
     input: { path: z.string(), line: z.number().int().min(1).optional() } },
   ...SLIDE_TOOLS,
+  ...BOARD_SHEET_TOOLS,
 ];
 
 const asText = (v) => ({ content: [{ type: 'text', text: typeof v === 'string' ? v : JSON.stringify(v, null, 2) }] });
@@ -210,6 +212,7 @@ export async function runTool(notes, name, a, hooks = {}) {
     case 'get_open_note': if (!hooks.openNote) throw new Error('Folio is not running.'); return hooks.openNote();
     case 'open_note': if (!hooks.showNote) throw new Error('Folio is not running.'); await hooks.showNote(a); return `Opened ${a.path}`;
     default:
+      if (isBoardSheetTool(name)) return runBoardSheetTool(notes, name, a, wrote);
       if (SLIDE_TOOLS.some((t) => t.name === name)) return runSlideTool(notes, name, a, wrote);
       throw new Error(`Unknown tool ${name}`);
   }

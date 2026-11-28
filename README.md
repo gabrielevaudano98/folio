@@ -75,7 +75,7 @@ Apri **AI → Connect AI Assistants…** (`⌘⇧A`) oppure clicca il riquadro i
 
 Il bridge stdio usa l'eseguibile stesso di Folio (`--mcp-stdio`), quindi **non serve installare Node**. Se Folio è aperto, le chiamate passano dall'app (evidenziazioni live, undo, nota aperta); se è chiuso, lavora direttamente sull'ultima cartella aperta.
 
-**Strumenti MCP:** 41 strumenti, tra cui `list_notes`, `read_note`, `search_notes`, `get_outline`, `read_section`/`replace_section`, `edit_note` (trova/sostituisci esatto), `suggest_edit` e `add_comment` (proposte da accettare o rifiutare), `get_sheet_values`, la cronologia delle versioni e gli strumenti per le slide oggetto per oggetto. Elenco completo: [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md).
+**Strumenti MCP:** 50 strumenti, tra cui `list_notes`, `read_note`, `search_notes`, `get_outline`, `read_section`/`replace_section`, `edit_note` (trova/sostituisci esatto), `suggest_edit` e `add_comment` (proposte da accettare o rifiutare), `get_sheet_values`, la cronologia delle versioni e gli strumenti per slide, lavagne (forme e connettori) e fogli (celle) elemento per elemento. Elenco completo: [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md).
 
 **Sicurezza:** server solo su `127.0.0.1` con token e controllo Host/Origin; nessun accesso fuori dalla cartella aperta; scrittura solo su `.md/.markdown/.mdx/.txt`; interruttore "Let AI edit notes" per la sola lettura.
 
