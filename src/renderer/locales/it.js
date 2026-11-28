@@ -1936,4 +1936,12 @@ export default {
   "date.week-monday": "Lunedì",
   "date.week-sunday": "Domenica",
   "date.week-saturday": "Sabato",
+  "rich.backlinks": "Backlink",
+  "rich.backlinks-n_one": "{n} backlink",
+  "rich.backlinks-n_other": "{n} backlink",
+  "app.page-backlinks": "Backlink nella pagina",
+  "app.page-backlinks-hint": "Le pagine che rimandano qui, in cima alla pagina nella vista Scrivi.",
+  "app.page-backlinks-expanded": "Espansi",
+  "app.page-backlinks-count": "Come numero",
+  "app.page-backlinks-off": "Nascosti",
 };

@@ -1158,9 +1158,15 @@ function renderOutline() {
   if (activeTab()?.path !== blPath) renderBacklinks();
 }
 let blSeq = 0, blPath = null;
+/* Settings → Backlinks on the page: expanded | count (default) | off */
+const pageBacklinkMode = () => (['expanded', 'count', 'off'].includes(S.settings.pageBacklinks) ? S.settings.pageBacklinks : 'count');
+/** one row per page that links here (the dock lists every reference; the page shows pages) */
+function dedupeBacklinks(bl) { const seen = new Map(); for (const b of bl) if (b.path !== S.active && !seen.has(b.path)) seen.set(b.path, { path: b.path, name: stem(b.path), line: b.line, ref: b.ref }); return [...seen.values()]; }
 const backlinksSoon = debounce(() => renderBacklinks(), 600);
 async function renderBacklinks() {
-  const t = activeTab(); const seq = ++blSeq; if (!t) return; blPath = t.path;
+  const t = activeTab(); const seq = ++blSeq; if (!t) return;
+  if (blPath !== t.path) rich?.setBacklinks?.(null); // the last page's list never shows on this one while the new one loads
+  blPath = t.path;
   const [bl, broken, mentions] = await Promise.all([folio.backlinks(t.path).catch(() => []), folio.brokenLinks(t.path).catch(() => []), folio.unlinked(t.path).catch(() => [])]);
   if (seq !== blSeq) return;
   renderUnlinked(mentions);
@@ -1173,6 +1179,7 @@ async function renderBacklinks() {
     ...(bl.length ? [{ head: tr('app.linked-from') }, ...bl.map((b) => ({ label: `${stem(b.path)}: ${b.ref}`, run: () => openFile(b.path, { line: b.line }) }))] : []),
     ...(broken.length ? [{ head: tr('app.broken-references-here') }, ...broken.map((b) => ({ label: tr('app.line-line-ref', { line: b.line, ref: b.ref }), run: () => openFile(t.path, { line: b.line }) }))] : []),
   ]);
+  if (richPath === t.path) rich?.setBacklinks?.(dedupeBacklinks(bl), pageBacklinkMode());
   const box = $('#broken-links'); box.hidden = !broken.length;
   box.innerHTML = broken.length ? `<b>${tr('app.broken-references', { n: broken.length })}</b>${broken.map((b) => { const nm = /^\[\[([^\]|#]+)\]\]$/.exec(b.ref)?.[1]?.trim(); return `<span class="broken-row"><a href="#" data-bl="${esc(t.path)}" data-bl-line="${b.line}">${esc(tr('app.line-line-ref', { line: b.line, ref: b.ref }))}</a>${nm && !/\.\w{2,5}$/.test(nm) ? `<button type="button" class="btn btn-quiet" data-create-page="${esc(nm)}">${tr('app.create-page')}</button>` : ''}</span>`; }).join('')}` : '';
 }
@@ -1948,6 +1955,8 @@ function openSettings() {
       </div></section>
       <section class="group"><h3>${tr('app.writing')}</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.load-remote-images-always')}</span><span class="row-sub">${tr('app.load-remote-images-always-help')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="remoteImages" ${s.remoteImages ? 'checked' : ''} aria-label="${tr('app.load-remote-images-always')}"></label></div>
+        <div class="row"><div class="row-main"><label class="row-title" for="set-backlinks">${esc(tr('app.page-backlinks'))}</label><span class="row-sub">${esc(tr('app.page-backlinks-hint'))}</span></div>
+          <select class="select" id="set-backlinks" data-setting="pageBacklinks"><option value="expanded">${esc(tr('app.page-backlinks-expanded'))}</option><option value="count">${esc(tr('app.page-backlinks-count'))}</option><option value="off">${esc(tr('app.page-backlinks-off'))}</option></select></div>
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.check-spelling')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="spellcheck" ${s.spellcheck ? 'checked' : ''} aria-label="${tr('app.check-spelling')}"></label></div>
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.smart-quotes-and-dashes')}</span><span class="row-sub">${tr('app.typing-becomes-in-the-write-view')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="${tr('app.smart-quotes-and-dashes')}"></label></div>
       </div></section>
@@ -1962,7 +1971,7 @@ function openSettings() {
           <input class="input" id="set-port" type="text" inputmode="numeric" name="port" autocomplete="off" value="${s.mcpPort}" style="width:7rem" aria-describedby="port-help"></div>
       </div></section>
     </div>`;
-  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth; $('#set-date', d).value = s.dateStyle || 'relative'; $('#set-week', d).value = s.weekStart || 'auto';
+  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth; $('#set-date', d).value = s.dateStyle || 'relative'; $('#set-week', d).value = s.weekStart || 'auto'; $('#set-backlinks', d).value = pageBacklinkMode();
   if (!d.open) d.showModal();
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
   paintUpdates();
@@ -2886,6 +2895,7 @@ function bindChrome() {
     if (k === 'spellcheck') editor.setSpellcheck(v);
     if (k === 'remoteImages') allowRemote(null);
     if (k === 'dateStyle') { datePrefs.style = v; rich.refreshDecorations?.(); renderPreview(); }
+    if (k === 'pageBacklinks') { blPath = null; renderBacklinks(); }
     if (k === 'weekStart') datePrefs.weekStart = v; // the next calendar that opens starts on the chosen day
     if (k === 'language') { setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }

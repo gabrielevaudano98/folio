@@ -1221,6 +1221,25 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   /* per-page appearance (page-appearance.js): font, small text and full width as attributes of the page, the floating contents */
   function setFm(fm) { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); applyAppearance(); }
   const toc = mountToc(host.querySelector('.rich-scroll'), { root: () => editor.view.dom });
+  /* backlinks at the top of the page (Notion): Settings → Backlinks on the page, expanded, as a count, or off.
+     The app gives the list ({ path, name, line, ref }); a link carries data-bl, which the app opens. */
+  const backBar = document.createElement('nav'); backBar.className = 'page-backlinks'; backBar.hidden = true; backBar.setAttribute('aria-label', tr('rich.backlinks'));
+  host.querySelector('.props')?.after(backBar);
+  let backOpen = false;
+  function paintBacklinks(list, mode) {
+    backBar.hidden = mode === 'off' || !list?.length;
+    if (backBar.hidden) { backBar.replaceChildren(); return; }
+    const expanded = mode === 'expanded' || backOpen;
+    backBar.dataset.mode = mode;
+    const rows = list.map((b) => `<li><a href="#" class="page-bl-link" data-bl="${escHtml(b.path)}" data-bl-line="${b.line || 0}" title="${escHtml(b.ref || b.path)}">${icons.doc || ''}<span>${escHtml(b.name)}</span></a></li>`).join('');
+    backBar.innerHTML = `<button type="button" class="page-bl-toggle" aria-expanded="${expanded}">${icons.link || ''}<span>${escHtml(tr('rich.backlinks-n', { n: list.length }))}</span></button>${expanded ? `<ul class="page-bl-list">${rows}</ul>` : ''}`;
+    backBar._list = list;
+  }
+  backBar.addEventListener('click', (e) => {
+    if (!e.target.closest('.page-bl-toggle') || backBar.dataset.mode === 'expanded') return;
+    backOpen = !backOpen; paintBacklinks(backBar._list, backBar.dataset.mode);
+    backBar.querySelector('.page-bl-toggle')?.focus();
+  });
   function applyAppearance() {
     const a = readAppearance(model?.fm || '');
     for (const [k, v] of [['font', a.font], ['small-text', a.small], ['full-width', a.full]]) { if (v) page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = v === true ? 'true' : v; else delete page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())]; }
@@ -1339,6 +1358,8 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     /** the person allowed web images: try again every one that was held back */
     /** the front matter block of the page, and a way to change it (Appearance): fn gets it and returns the new one */
     getFm() { return model?.fm || ''; },
+    /** the pages that link here, drawn at the top of the page; mode: expanded | count | off. null clears it (another page opened). */
+    setBacklinks(list, mode = 'count') { if (list == null) backOpen = false; paintBacklinks(list || [], mode); },
     editFm(fn) { const old = model?.fm || ''; const next = fn(old); if (next !== old) { setFm(next); props.render(); } },
     refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,

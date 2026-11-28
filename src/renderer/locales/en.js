@@ -1940,4 +1940,12 @@ export default {
   "date.week-monday": "Monday",
   "date.week-sunday": "Sunday",
   "date.week-saturday": "Saturday",
+  "rich.backlinks": "Backlinks",
+  "rich.backlinks-n_one": "{n} backlink",
+  "rich.backlinks-n_other": "{n} backlinks",
+  "app.page-backlinks": "Backlinks on the page",
+  "app.page-backlinks-hint": "Pages that link here, shown at the top of the page in the Write view.",
+  "app.page-backlinks-expanded": "Expanded",
+  "app.page-backlinks-count": "As a count",
+  "app.page-backlinks-off": "Off",
 };
