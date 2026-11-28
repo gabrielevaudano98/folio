@@ -914,10 +914,14 @@ function saveFavs(list) {
   const next = { ...favMap() }; if (list.length) next[S.workspace] = list; else delete next[S.workspace];
   return saveSetting({ favorites: next }).then(() => renderQuick());
 }
+let favQueue = Promise.resolve();
 function toggleFav(p) {
-  if (!p) return; const on = isFav(p);
-  saveFavs(on ? favList().filter((x) => x !== p) : [...favList(), p]);
-  toast(tr(on ? 'app.fav-removed' : 'app.fav-added', { name: stem(p) }));
+  if (!p) return;
+  favQueue = favQueue.then(() => { // one at a time, each from the settings the previous one saved: two quick stars never overwrite each other
+    const on = isFav(p);
+    toast(tr(on ? 'app.fav-removed' : 'app.fav-added', { name: stem(p) }));
+    return saveFavs(on ? favList().filter((x) => x !== p) : [...favList(), p]);
+  }).catch((e) => toast(e.message, { kind: 'error' }));
 }
 const quickOpen = (k) => S.settings[k] !== false;
 function renderQuick() {
