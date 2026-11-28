@@ -10,6 +10,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-interop-'));
 const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud'), out = path.join(tmp, 'out');
 fs.cpSync(new URL('./fixture', import.meta.url), ws, { recursive: true }); fs.mkdirSync(ud); fs.mkdirSync(out);
 fs.copyFileSync(new URL('../src/templates/Swiss.slides.md', import.meta.url), path.join(ws, 'Swiss.slides.md'));
+// incremental lists and a Marp transition name (#9)
+fs.writeFileSync(path.join(ws, 'Steps.slides.md'), '---\nmarp: true\n---\n\n# Steps\n\n* First\n* Second **bold**\n\n- Stays\n\n::: box #note x=760 y=420 w=400 h=200\n1) One\n2) Two\n:::\n\n<!--\nanimate: #note pulse\n-->\n\n---\n\n<!-- _transition: push -->\n\n# The end\n');
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47587 }));
 
 function run(steps, env = {}) {
@@ -32,6 +34,7 @@ const r1 = await run([
   { js: 'window.__folioSurface.exportHandouts({perPage:3});1', wait: 4000 }, { js: 'window.__folioSurface.exportHandouts({notes:true});1', wait: 4000 },
   open('Swiss.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 6000 },
   open('Motion.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 5000 },
+  open('Steps.slides.md'), { js: "window.__folioRun('export-pptx');1", wait: 5000 },
   { js: 'window.__folioErrors||[]', log: true, wait: 100 },
 ]);
 assert.deepEqual(r1.js.at(-1), [], r1.log.slice(-2000));
@@ -50,6 +53,12 @@ const mz = await JSZip.loadAsync(fs.readFileSync(path.join(out, 'Motion.pptx')))
 const m1 = await mz.file('ppt/slides/slide1.xml').async('string'), m2 = await mz.file('ppt/slides/slide2.xml').async('string');
 assert.match(m1, /<p:transition spd="med"><p:fade\/><\/p:transition><p:timing>/); assert.match(m1, /presetID="2" presetClass="entr" presetSubtype="4"[^>]*nodeType="withEffect"/); assert.match(m1, /<p:bldP spid="\d+" grpId="0" build="p"/); assert.match(m2, /p159:morph/);
 console.log('  ✓ transitions, Morph and animations are native PowerPoint timing (objects named for Morph)');
+const stz = await JSZip.loadAsync(fs.readFileSync(path.join(out, 'Steps.pptx')));
+const st1 = await stz.file('ppt/slides/slide1.xml').async('string'), st2 = await stz.file('ppt/slides/slide2.xml').async('string');
+const clicks = st1.match(/<p:timing>[\s\S]*<\/p:timing>/)[0].split('nodeType="clickEffect"').slice(1).map((x) => (x.match(/<p:pRg st="(\d+)" end="(\d+)"\/>/) || []).slice(1).join('-') || (/<p:animScale/.test(x) ? 'pulse' : '?'));
+assert.deepEqual(clicks, ['1-1', '2-2', '0-0', '1-1', 'pulse'], st1); assert.match(st1, /name="folio-body"[\s\S]*>First</);
+assert.match(st1, /<p:bldP spid="\d+" grpId="0" build="p"/); assert.match(st2, /<p:push dir="l"\/>/);
+console.log('  ✓ incremental list items are one PowerPoint click each, by paragraph, before the slide\'s animations; a Marp transition becomes the matching PowerPoint one');
 const pages = (f) => (fs.readFileSync(path.join(out, f)).toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
 assert.equal(pages('Pitch handouts.pdf'), 4); assert.equal(pages('Pitch notes.pdf'), 11); console.log('  ✓ handouts put three slides on a page; notes pages hold one slide each');
 

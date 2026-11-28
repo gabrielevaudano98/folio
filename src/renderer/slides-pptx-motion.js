@@ -1,7 +1,7 @@
 // Folio — transitions and animations as PowerPoint XML (p:transition, p:timing), written into the package
 // after pptxgenjs, and read back on import. Objects are found by name: `!!id` for placed objects (the name
 // PowerPoint's Morph matches on) and `folio-body` for the slide text.
-import { TRANSITIONS, EFFECTS, buildSteps, parseTransition, parseAnim } from './slides-motion.js';
+import { TRANSITIONS, EFFECTS, buildSteps, parseTransition, parseAnim, withFragments, FRAGMENTS } from './slides-motion.js';
 
 const DIR = { l: 'l', r: 'r', u: 'u', d: 'd' };
 /** a slide transition element (and auto-advance) */
@@ -31,18 +31,19 @@ export function transitionXml(t, advanceSec = null) {
 const FLY = { left: [8, '0-#ppt_w/2', '#ppt_x', 'ppt_x'], right: [2, '1+#ppt_w/2', '#ppt_x', 'ppt_x'], up: [4, '1+#ppt_h/2', '#ppt_y', 'ppt_y'], down: [1, '0-#ppt_h/2', '#ppt_y', 'ppt_y'] };
 const CLASS = { entrance: 'entr', exit: 'exit', emphasis: 'emph', path: 'path' };
 
-/** the timing tree for a slide's animations; spids: target → [{ spid, paras }] */
+/** the timing tree for a slide's animations; spids: target → [{ spid, paras, pick? }] (pick: [first, last] paragraph ranges to build, one per click) */
 export function timingXml(anims, spids, { W = 1280, H = 720 } = {}) {
   const usable = anims.filter((a) => spids[a.target]?.length);
   if (!usable.length) return '';
   let id = 2; const nid = () => ++id;
-  const parts = (a) => (a.by === 'paragraph' ? spids[a.target].reduce((n, s) => n + Math.max(1, s.paras), 0) : 1);
+  const count = (s) => (s.pick ? s.pick.length : Math.max(1, s.paras));
+  const parts = (a) => (a.by === 'paragraph' ? spids[a.target].reduce((n, s) => n + count(s), 0) : 1);
   const steps = buildSteps(usable, parts);
   const bld = new Map();
   const tgt = (a) => {
     // the shape (and paragraph) an effect targets: by=paragraph counts paragraphs across the target's shapes
     if (a.part == null) return spids[a.target].map((s) => ({ spid: s.spid, txt: '' }));
-    let k = a.part; for (const s of spids[a.target]) { const n = Math.max(1, s.paras); if (k < n) { bld.set(s.spid, 'p'); return [{ spid: s.spid, txt: `<p:txEl><p:pRg st="${k}" end="${k}"/></p:txEl>` }]; } k -= n; }
+    let k = a.part; for (const s of spids[a.target]) { const n = count(s); if (k < n) { const [st, end] = s.pick ? s.pick[k] : [k, k]; bld.set(s.spid, 'p'); return [{ spid: s.spid, txt: `<p:txEl><p:pRg st="${st}" end="${end}"/></p:txEl>` }]; } k -= n; }
     return [];
   };
   const cBhvr = (dur, t, attr = '', extra = '') => `<p:cBhvr${extra}><p:cTn id="${nid()}" dur="${dur}" fill="hold"/><p:tgtEl><p:spTgt spid="${t.spid}">${t.txt}</p:spTgt></p:tgtEl>${attr ? `<p:attrNameLst><p:attrName>${attr}</p:attrName></p:attrNameLst>` : ''}</p:cBhvr>`;
@@ -108,14 +109,36 @@ export function shapeIndex(xml) {
   return map;
 }
 
+/** the shapes of a slide part by their exact name, in document order */
+export function shapesByName(xml) {
+  const map = {};
+  for (const m of xml.matchAll(/<p:(sp|pic|cxnSp|graphicFrame)>([\s\S]*?)<\/p:\1>/g)) {
+    const c = m[2].match(/<p:cNvPr id="(\d+)" name="([^"]*)"/); if (!c) continue;
+    (map[c[2].replace(/&amp;/g, '&')] ||= []).push({ spid: c[1], paras: (m[2].match(/<a:p>|<a:p\s/g) || []).length });
+  }
+  return map;
+}
+/**
+ * fragmented list items ({ name, ranges } per text frame, in the order the frames were written) as the target of one
+ * paragraph build: the k-th frame called X is the k-th shape called X
+ */
+export function fragmentTargets(xml, fragments) {
+  const byName = shapesByName(xml); const seen = {}; const out = [];
+  for (const f of fragments || []) { const k = (seen[f.name] = (seen[f.name] ?? -1) + 1); const sh = byName[f.name]?.[k]; if (sh && f.ranges.length) out.push({ spid: sh.spid, paras: sh.paras, pick: f.ranges.filter(([a, b]) => a <= b && b < sh.paras) }); }
+  return out.filter((t) => t.pick.length);
+}
+
 /** write transitions and animations into the slide parts of a package (a JSZip) */
 export async function writeMotion(zip, slides, { W, H } = {}) {
-  for (const { n, transition, advance, animations } of slides) {
+  for (const { n, transition, advance, animations, fragments } of slides) {
     const name = `ppt/slides/slide${n}.xml`; const f = zip.file(name); if (!f) continue;
     let xml = await f.async('string');
     const adv = advance != null ? parseFloat(advance) : null;
     const tr = transitionXml(transition, Number.isFinite(adv) ? adv : null);
-    const tm = animations?.length ? timingXml(animations, shapeIndex(xml), { W, H }) : '';
+    const spids = shapeIndex(xml); const frag = fragmentTargets(xml, fragments);
+    if (frag.length) spids[FRAGMENTS] = frag;
+    const builds = withFragments(animations, frag.length);
+    const tm = builds.length ? timingXml(builds, spids, { W, H }) : '';
     if (!tr && !tm) continue;
     xml = xml.replace(/<p:transition[\s\S]*?(<\/p:transition>|\/>)|<p:timing>[\s\S]*?<\/p:timing>/g, '');
     xml = xml.replace(/(<\/p:clrMapOvr>)/, `$1${tr}${tm}`);

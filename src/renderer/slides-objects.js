@@ -241,6 +241,24 @@ export function inlineSafe(body) {
     || /<\/?[a-zA-Z]/.test(body) || /\[\[|\{\{|\[\^|\$\$/.test(body) || /^\s*\[.+\]:\s*\S/m.test(body));
 }
 
+/**
+ * the list markers a body uses, so the on-canvas editor (which writes `-` and `1.`) can keep `*` and `1)`, the markers of
+ * Marp's incremental lists: { bullet, ordered } each a marker, null (no such list) or 'mixed'
+ */
+export function listMarkers(body) {
+  const seen = { bullet: new Set(), ordered: new Set() };
+  for (const m of String(body).matchAll(/^[ \t]*(?:([-*+])|\d{1,9}([.)]))[ \t]+\S/gm)) { if (m[1]) seen.bullet.add(m[1]); else seen.ordered.add(m[2]); }
+  const one = (set) => (set.size > 1 ? 'mixed' : [...set][0] || null);
+  return { bullet: one(seen.bullet), ordered: one(seen.ordered) };
+}
+/** put back `*` bullets and `1)` numbers in what the editor wrote, when the body used only those */
+export function keepMarkers(md, { bullet, ordered } = {}) {
+  let out = String(md);
+  if (bullet === '*' || bullet === '+') out = out.replace(/^([ \t]*)-([ \t]+\S)/gm, `$1${bullet}$2`);
+  if (ordered === ')') out = out.replace(/^([ \t]*\d{1,9})\.([ \t]+\S)/gm, '$1)$2');
+  return out;
+}
+
 /* ---------- lines and connectors (P5) ----------
    ::: line #id x=100 y=100 w=300 h=0 head=arrow :::      from (x,y) to (x+w, y+h); w and h may be negative
    ::: line #id from=a.right to=b.left head=arrow :::     a connector that follows objects a and b */

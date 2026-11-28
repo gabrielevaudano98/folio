@@ -186,7 +186,7 @@ export function paragraphsOf(root, { opacity = 1 } = {}) {
         close(); const box = n.querySelector(':scope > input[type=checkbox]');
         const type = getComputedStyle(n).listStyleType;
         const pad = parseFloat(getComputedStyle(n.parentElement).paddingLeft) || 0;
-        open(n, { level, bullet: box || type === 'none' ? false : list === 'OL' || /decimal|alpha|roman/.test(type) ? { type: 'number', indent: r2(pad * PT) } : { indent: r2(pad * PT) } });
+        open(n, { level, fragment: n.hasAttribute('data-fragment'), bullet: box || type === 'none' ? false : list === 'OL' || /decimal|alpha|roman/.test(type) ? { type: 'number', indent: r2(pad * PT) } : { indent: r2(pad * PT) } });
         if (box) cur.runs.push({ text: box.checked ? '☑ ' : '☐ ', options: runOptions(n, opacity) });
         walk(n, level, list); close(); continue;
       }
@@ -210,16 +210,17 @@ export function paragraphsOf(root, { opacity = 1 } = {}) {
     if (!Number.isFinite(top)) continue;
     const align = { start: 'left', left: 'left', center: 'center', right: 'right', end: 'right', justify: 'justify' }[ocs.textAlign] || 'left';
     const lines = new Set(rects.map((r) => Math.round(r.bottom / 4))).size;
-    res.push({ lines, runs: p.runs, top, bottom, left, right, lineSpacing: r2(lh * PT), align, bullet: p.bullet, level: p.level || 0 });
+    res.push({ lines, runs: p.runs, top, bottom, left, right, lineSpacing: r2(lh * PT), align, bullet: p.bullet, level: p.level || 0, ...(p.fragment ? { fragment: ++fragSeq } : {}) });
   }
   return res;
 }
-/** paragraphs to pptxgenjs text runs, with the measured gaps as space before */
+let fragSeq = 0;
+/** paragraphs to pptxgenjs text runs, with the measured gaps as space before; a fragmented list item marks its runs (_frag) */
 export function textRuns(paras, top) {
   const runs = []; let prev = top;
   for (const p of paras) {
     const first = runs.length;
-    for (const r of p.runs) runs.push({ text: r.text, options: { ...r.options } });
+    for (const r of p.runs) runs.push({ text: r.text, options: { ...r.options, ...(p.fragment ? { _frag: p.fragment } : {}) } });
     const o = runs[first].options;
     o.align = p.align; o.lineSpacing = p.lineSpacing;
     const gap = Math.round((p.top - prev) * PT * 10) / 10; if (gap > 0.5) o.paraSpaceBefore = gap;
@@ -234,6 +235,21 @@ export function textRuns(paras, top) {
   return runs;
 }
 
+/**
+ * the PowerPoint paragraphs (a:p, counted the way pptxgenjs breaks lines) that hold fragmented list items, as [first, last]
+ * ranges, one per item; the marks are taken off the runs
+ */
+export function fragmentRanges(runs) {
+  const by = new Map(); let p = 0;
+  runs.forEach((r, k) => {
+    const f = r.options?._frag; if (r.options) delete r.options._frag;
+    if (f) { const g = by.get(f); if (g) g[1] = p; else by.set(f, [p, p]); }
+    if (r.options?.breakLine && k < runs.length - 1) p++;
+  });
+  return [...by.values()];
+}
+const unmark = (t) => { if (Array.isArray(t)) for (const r of t) if (r.options) delete r.options._frag; return t; };
+
 /* ---------- the writer: one place that knows how a slide or a master takes objects ---------- */
 function sinkFor(target) {
   if (target.objects) { // a slide master being defined
@@ -242,6 +258,7 @@ function sinkFor(target) {
       // layout objects take one plain string: keep the first run's look for the whole frame
       text: (t, o) => {
         if (!Array.isArray(t)) return target.objects.push({ text: { text: t, options: o } });
+        unmark(t);
         const look = { ...(t[0]?.options || {}) }; delete look.breakLine; delete look.paraSpaceBefore;
         target.objects.push({ text: { text: t.map((r) => r.text + (r.options.breakLine ? '\n' : '')).join(''), options: { ...look, ...o } } });
       },
@@ -254,6 +271,9 @@ function sinkFor(target) {
     master: false,
     // pptxgenjs links runs, not text boxes: a clear shape on top carries the object's link
     text: (t, o) => {
+      // fragmented list items build one per click: the frame gets a name the timing pass can find
+      const frags = Array.isArray(t) ? fragmentRanges(t) : [];
+      if (frags.length) { o = { ...o, objectName: o.objectName || `folio-fragments-${++fragSeq}` }; (target._folioFragments ||= []).push({ name: o.objectName, ranges: frags }); }
       if (!o.hyperlink || o.placeholder) return target.addText(t, o);
       const { hyperlink, ...rest } = o; target.addText(t, rest);
       target.addShape('rect', { x: o.x, y: o.y, w: o.w, h: o.h, ...(o.rotate ? { rotate: o.rotate } : {}), fill: { color: 'FFFFFF', transparency: 100 }, line: { type: 'none' }, hyperlink, objectName: `${o.objectName || 'Text'} link` });
@@ -293,7 +313,7 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote, prepare 
   pptx.company = 'Made with Folio';
 
   const list = deck.slides.filter((s) => !s.master);
-  let palette = null; const anchors = [];
+  let palette = null; const anchors = []; const slides = [];
   // render every slide at 1:1, off-screen, with pictures, icons, charts and live values in place
   // prepare() mounts the slides off-screen, hydrated and fitted, and hands back the host
   const host = await prepare(list.map((s) => renderSlide(deck, s)).join(''));
@@ -321,7 +341,7 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote, prepare 
       }
       if (s.section) section = s.section;
       if (section && !usedSections.has(section)) { pptx.addSection({ title: section }); usedSections.add(section); }
-      const slide = pptx.addSlide({ ...(masterName ? { masterName } : {}), ...(section ? { sectionTitle: section } : {}) });
+      const slide = pptx.addSlide({ ...(masterName ? { masterName } : {}), ...(section ? { sectionTitle: section } : {}) }); slides[k] = slide;
       if (s.hidden) slide.hidden = true;
       await background(ctx, sec, slide);
       const out = sinkFor(slide);
@@ -333,7 +353,7 @@ export async function buildPptx(deck, { dataUrl, renderSlide, readNote, prepare 
     }
   } finally { host.remove(); }
   const bytes = await pptx.write({ outputType: 'uint8array' });
-  const motion = list.map((s, k) => ({ n: k + 1, transition: s.transition ?? deck.global.transition ?? null, advance: s.advance ?? deck.global.advance ?? null, animations: s.animations }));
+  const motion = list.map((s, k) => ({ n: k + 1, transition: s.transition ?? deck.global.transition ?? null, advance: s.advance ?? deck.global.advance ?? null, animations: s.animations, fragments: slides[k]?._folioFragments || [] }));
   return finishPackage(bytes, { palette, fonts: pptx.theme, anchors, motion, W: deck.width, H: deck.height, loop: String(deck.global.loop) === 'true', kiosk: String(deck.global.kiosk) === 'true' });
 }
 
@@ -347,7 +367,7 @@ function themePalette(sec) {
 }
 /** what pptxgenjs cannot write: the deck's colour scheme and how layout placeholders anchor their text */
 export async function finishPackage(bytes, { palette, fonts = {}, anchors = [], motion = [], W = 1280, H = 720, loop = false, kiosk = false } = {}) {
-  const moving = motion.filter((m) => m.transition || m.advance || m.animations?.length);
+  const moving = motion.filter((m) => m.transition || m.advance || m.animations?.length || m.fragments?.length);
   if (!palette && !anchors.length && !moving.length && !loop && !kiosk) return bytes;
   const zip = await JSZip.loadAsync(bytes);
   if (loop || kiosk) {
@@ -530,7 +550,7 @@ function table(ctx, el, out) {
     opt.border = [side('Top'), side('Right'), side('Bottom'), side('Left')];
     if (td.colSpan > 1) opt.colspan = td.colSpan; if (td.rowSpan > 1) opt.rowspan = td.rowSpan;
     const paras = paragraphsOf(td);
-    return { text: paras.length ? textRuns(paras, paras[0].top).map((x) => { delete x.options.paraSpaceBefore; return x; }) : '', options: opt };
+    return { text: paras.length ? unmark(textRuns(paras, paras[0].top)).map((x) => { delete x.options.paraSpaceBefore; return x; }) : '', options: opt };
   }));
   const first = el.rows[0]; const colW = first ? [...first.cells].map((c) => inch(c.getBoundingClientRect().width)) : undefined;
   out.table(rows, { x: inch(r.left - o.left), y: inch(r.top - o.top), w: inch(r.width), colW, rowH: [...el.rows].map((tr) => inch(tr.getBoundingClientRect().height)), autoPage: false });

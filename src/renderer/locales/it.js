@@ -1911,4 +1911,7 @@ export default {
   "app.reminder-toast": "Promemoria: {what} ({when})",
   "app.reminder-dismissed": "Promemoria ignorato. La pagina lo conserva.",
   "rem.notify-title": "Promemoria di Folio",
+  "slides.fragments-note_one": "Elenco progressivo: {n} voce segnata con * o 1) compare con un clic, prima delle animazioni qui sotto.",
+  "slides.fragments-note_other": "Elenco progressivo: {n} voci segnate con * o 1) compaiono una per clic, prima delle animazioni qui sotto.",
+  "slides.mixed-list-markers": "Questa casella mescola segni di elenco (* con - oppure 1) con 1.) che l'editor di testo non può conservare. Modificala nel Markdown della diapositiva qui sotto.",
 };

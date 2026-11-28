@@ -34,9 +34,17 @@ const TRIGGERS = ['click', 'with', 'after'];
 const secs = (v) => { const m = String(v).match(/^(\d*\.?\d+)(ms|s)$/); return m ? (m[2] === 'ms' ? +m[1] / 1000 : +m[1]) : null; };
 const fmt = (s) => (s >= 1 && Number.isInteger(s) ? `${s}s` : s < 1 ? `${Math.round(s * 1000)}ms` : `${s}s`);
 
+/** Marp's built-in transition names (marp-cli bespoke) → the nearest Folio transition, so a Marp deck plays and exports as written */
+export const MARP_TRANSITIONS = {
+  clockwise: 'clock', counterclockwise: 'clock', wiper: 'clock', cover: 'cover-left', coverflow: 'cube', cylinder: 'cube', swap: 'cube',
+  diamond: 'iris', star: 'iris', 'iris-in': 'iris', 'iris-out': 'iris', drop: 'fall', pivot: 'fall', explosion: 'zoom', implode: 'zoom-out', 'in-out': 'zoom-out',
+  'fade-out': 'fade-black', glow: 'fade', overlap: 'dissolve', melt: 'wipe-down', pull: 'uncover-left', push: 'push-left', slide: 'push-left',
+  swipe: 'push-left', swoosh: 'push-left', wipe: 'wipe-left', rotate: 'flip',
+};
 export function parseTransition(v) {
-  const [name = 'none', dur] = String(v || '').trim().split(/\s+/);
-  return { name: TRANSITIONS[name] ? name : 'fade', duration: secs(dur) ?? 0.5 };
+  const [word = 'none', dur] = String(v || '').trim().split(/\s+/);
+  const name = TRANSITIONS[word] ? word : MARP_TRANSITIONS[word] || 'fade';
+  return { name, duration: secs(dur) ?? 0.5 };
 }
 export const transitionText = (t) => (!t || t.name === 'none' ? null : `${t.name}${t.duration && t.duration !== 0.5 ? ' ' + fmt(t.duration) : ''}`);
 
@@ -110,6 +118,12 @@ export function buildSteps(anims, parts = () => 1) {
   }
   return steps;
 }
+/** the build of a slide's fragmented list items (Marp `*` and `1)` lists): each item appears on its own click */
+export const FRAGMENTS = '*fragments'; // not a valid #id, so it never meets an object
+export function fragmentAnim() { return { ...parseAnim('body appear by=paragraph'), target: FRAGMENTS }; }
+/** a slide's builds when it has `n` fragmented items: the items first, in reading order, then its own animation lines */
+export const withFragments = (anims, n) => (n > 0 ? [fragmentAnim(), ...(anims || [])] : anims || []);
+
 /** targets that start hidden: the ones whose first animation is an entrance */
 export function hiddenAtStart(anims) {
   const first = new Map();

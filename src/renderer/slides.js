@@ -11,7 +11,7 @@ import { designIdeas, BLOCKS } from './slides-designer.js';
 import { SCHEMES, FONT_PAIRS, templateInfo, applyTemplate, templateFromDeck } from './slides-templates.js';
 import { LIBRARY, shapeSvg, defaultSize } from './board-core.js';
 import { startTextEdit } from './slides-text.js';
-import { pathBlock, polygonsBlock, simplify, parsePoints, pointsText, replaceImageSrc, parseFill, MASKS, SHADOWS, scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
+import { pathBlock, polygonsBlock, simplify, parsePoints, pointsText, replaceImageSrc, parseFill, MASKS, SHADOWS, scanObjects, addObject, nextId, setMany, setObjectAttrs, setObjectBody, inlineSafe, listMarkers, keepMarkers, textStyle, removeObject, objectSource, retarget, alignPatches, distributePatches, zPatches, nextGroup, geometry, locked, groupOf } from './slides-objects.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -429,12 +429,15 @@ export function mountSlides(host, ctx) {
     const o = objsNow()[i]; if (!isText(o) || locked(o) || textEdit) return;
     const el = frame.querySelector(`.sl-obj[data-obj="${i}"]`); if (!el) return;
     if (!inlineSafe(o.body)) { ctx.toast(tr('slides.this-box-has-blocks-the-text-editor-ca')); return; }
+    // the editor writes - and 1.: a body that builds its list (* or 1), Marp's incremental lists) keeps its markers, a mixed one goes to the code view
+    const marks = listMarkers(o.body);
+    if (marks.bullet === 'mixed' || marks.ordered === 'mixed') { ctx.toast(tr('slides.mixed-list-markers')); return; }
     const target = o.kind === 'shape' ? el.querySelector('.sl-obj-text') : el;
     if (o.kind === 'smartart') el.classList.add('is-sm-editing');
     selected = [i]; canvas?.select([], { notify: false }); editing = i; renderLayers();
     textEdit = startTextEdit({
       el: target, body: o.body.replace(/^\n+/, ''),
-      onChange: (md) => editChunk2k((c) => setObjectBody(c, i, o.kind === 'shape' ? '\n' + md : md)),
+      onChange: (md) => editChunk2k((c) => setObjectBody(c, i, o.kind === 'shape' ? '\n' + keepMarkers(md, marks) : keepMarkers(md, marks))),
       onLink: (prev) => ctx.prompt({ title: prev ? tl('slides', 'Edit link') : tl('slides', 'Add link'), label: tr('slides.address'), value: prev || 'https://', hint: tr('slides.leave-empty-to-remove-the-link'), action: tr('slides.apply'), allowEmpty: true, validate: false }),
       onEnd: () => { textEdit = null; const was = editing; editing = -1; selected = [was]; render({ keepEditor: false }); syncFmt(); stage.focus(); },
     });

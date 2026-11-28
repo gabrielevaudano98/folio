@@ -49,6 +49,16 @@ for (const name of ['left', 'right', 'columns', 'column', 'card', 'center', 'not
   md.use(container.default || container, name, { render: (t, i) => (t[i].nesting === 1 ? `<div class="sx-${name}">\n` : '</div>\n') });
 }
 
+// Marp fragmented lists: `*` bullets and `1)` numbers build one item per click when presenting (`-`, `+` and `1.` do not)
+const FRAGMENT = (t) => t.type === 'list_item_open' && (t.markup === '*' || t.markup === ')');
+md.core.ruler.push('folio_fragments', (state) => { for (const t of state.tokens) if (FRAGMENT(t)) t.attrSet('data-fragment', ''); });
+/** how many list items of a slide build one by one: its flow text and its own boxes and shapes (masters never build) */
+export function fragmentCount(s) {
+  if (!s || s.master) return 0;
+  const texts = [s.content || '', ...(s.objects || []).filter((o) => o.kind === 'box' || o.kind === 'shape').map((o) => o.body || '')];
+  return texts.reduce((n, t) => n + (/^\s*(\*|\d{1,9}\))\s/m.test(t) ? md.parse(t, {}).filter(FRAGMENT).length : 0), 0);
+}
+
 /* ---------- parse ---------- */
 export function parseFrontmatter(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
@@ -144,7 +154,7 @@ export function parseDeck(text, { template = null } = {}) {
     const title = ((content.trim() || withObjects).match(/^\s*#{1,6}\s+(.+)$/m) || [])[1]?.replace(/[*_`]/g, '') || '';
     const mParts = directives.master != null ? String(directives.master).trim().split(/\s+/).filter(Boolean) : null;
     const master = mParts ? (mParts[0] || 'all') : null; const only = !!mParts && mParts.includes('only');
-    return { index: i, src, content: content.trim(), objects, directives, notes, comments, bgs, layout, classes: cls, eff, title, master, only, hidden: directives.hidden != null, section: directives.section || null, animations: anims.map(parseAnim), transition: directives.transition ?? null, advance: directives.advance ?? null };
+    return { index: i, src, content: content.trim(), objects, directives, notes, comments, bgs, layout, classes: cls, eff, title, master, only, hidden: directives.hidden != null, section: directives.section || null, animations: anims.map(parseAnim), transition: directives.transition ?? directives._transition ?? null, advance: directives.advance ?? null };
   });
   let n = 0; for (const sl of slides) sl.number = sl.master ? null : ++n;
   const masters = [...(tpl ? tpl.masters.map((m) => ({ ...m, fromTemplate: true })) : []), ...slides.filter((sl) => sl.master)];

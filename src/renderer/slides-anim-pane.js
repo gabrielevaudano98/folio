@@ -1,7 +1,8 @@
 // Folio — the Animations pane: the slide's transition and the build order of its animations.
 import { EFFECTS, TRANSITIONS, DEFAULT_DUR, parseAnim, animText, setAnimations, buildSteps, parseTransition, transitionText } from './slides-motion.js';
 import { scanObjects, setObjectAttrs, nextId } from './slides-objects.js';
-import { setDirective } from './slides-core.js';
+import { setDirective, fragmentCount } from './slides-core.js';
+import { t as tr } from './i18n.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const KINDS = [['entrance', 'Entrance'], ['emphasis', 'Emphasis'], ['exit', 'Exit'], ['path', 'Motion path']];
@@ -24,7 +25,7 @@ export function createAnimPane(el, api) {
     const own = s.transition != null;
     const steps = buildSteps(s.animations, () => 1);
     const stepOf = new Map(); steps.forEach((st, k) => st.forEach(({ anim }) => stepOf.set(anim, k + 1)));
-    const sel = api.selection();
+    const sel = api.selection(); const frags = fragmentCount(s);
     el.innerHTML = `<div class="fp-head"><b>Animations</b><button type="button" class="dp-x" data-an="close" aria-label="Close">×</button></div>
       <section class="fp-sec"><h4>Transition to this slide</h4>
         <div class="fp-row"><select class="rb-select" data-an="t-name" aria-label="Transition">${Object.entries(TRANSITIONS).map(([n, [l]]) => `<option value="${n}"${n === t.name ? ' selected' : ''}>${l}</option>`).join('')}</select>
@@ -37,6 +38,7 @@ export function createAnimPane(el, api) {
         <p class="fp-note">${sel.length ? 'Each selected object gets its own line, in the order you picked them.' : 'Nothing selected: the slide text builds one paragraph per click.'}</p>
       </section>
       <section class="fp-sec"><h4>Order</h4>
+        ${frags ? `<p class="fp-note an-fragments">${esc(tr('slides.fragments-note', { n: frags }))}</p>` : ''}
         ${s.animations.length ? `<ol class="an-list">${s.animations.map((a, n) => `<li class="an-item" data-n="${n}">
           <div class="an-top"><span class="an-step" title="Click ${stepOf.get(a)}">${a.trigger === 'click' ? stepOf.get(a) : a.trigger === 'with' ? '+' : '→'}</span><span class="an-name">${esc(label(s, a))}</span>
             <button type="button" class="icon-btn" data-an="up" aria-label="Earlier"${n ? '' : ' disabled'}>↑</button><button type="button" class="icon-btn" data-an="down" aria-label="Later"${n < s.animations.length - 1 ? '' : ' disabled'}>↓</button><button type="button" class="icon-btn" data-an="del" aria-label="Remove animation">×</button></div>
@@ -47,7 +49,7 @@ export function createAnimPane(el, api) {
             <label class="sf-field"><span>Repeat</span><select class="rb-select sf-narrow" data-af="repeat">${[1, 2, 3, 5, 'loop'].map((r) => `<option value="${r}"${String(a.repeat === Infinity ? 'loop' : a.repeat) === String(r) ? ' selected' : ''}>${r === 'loop' ? 'Until next click' : r === 1 ? 'Once' : r + ' times'}</option>`).join('')}</select></label>
             <label class="sf-check"><input type="checkbox" data-af="by"${a.by === 'paragraph' ? ' checked' : ''}> By paragraph</label></div>
         </li>`).join('')}</ol>` : '<p class="fp-note">No animations on this slide.</p>'}
-        <div class="fp-row"><button type="button" class="btn" data-an="preview"${s.animations.length ? '' : ' disabled'}>Preview</button>${s.animations.length ? '<button type="button" class="btn btn-quiet" data-an="clear">Remove all</button>' : ''}</div>
+        <div class="fp-row"><button type="button" class="btn" data-an="preview"${s.animations.length || frags ? '' : ' disabled'}>Preview</button>${s.animations.length ? '<button type="button" class="btn btn-quiet" data-an="clear">Remove all</button>' : ''}</div>
       </section>`;
   }
   el.addEventListener('change', (e) => {

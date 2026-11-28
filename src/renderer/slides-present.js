@@ -1,10 +1,12 @@
 // Folio — the slide show: build steps, transitions, Morph, and the controls around them.
-import { buildSteps, hiddenAtStart, keyframes, transitionFrames, parseTransition } from './slides-motion.js';
+import { buildSteps, hiddenAtStart, keyframes, transitionFrames, parseTransition, withFragments, FRAGMENTS } from './slides-motion.js';
 
 const EASE = 'cubic-bezier(.2,.7,.2,1)';
 
 /** the elements an animation moves on a rendered slide */
+const fragmentsIn = (sec) => [...sec.querySelectorAll('[data-fragment]')].filter((el) => !el.closest('.sl-master, .sl-zoom-view'));
 export function targetsOf(sec, slide, a) {
+  if (a.target === FRAGMENTS) return fragmentsIn(sec);
   if (a.target === 'body') {
     const body = sec.querySelector('.sl-body, .sl-phs .sl-ph-body'); if (!body) return [];
     if (a.by !== 'paragraph') return [body];
@@ -20,7 +22,7 @@ export function targetsOf(sec, slide, a) {
 
 /** a rendered slide made ready to build: entrance targets hidden, steps computed */
 export function prepareSlide(sec, slide, { W = 1280, H = 720 } = {}) {
-  const anims = slide.animations || [];
+  const anims = withFragments(slide.animations, fragmentsIn(sec).length);
   const steps = buildSteps(anims, (a) => targetsOf(sec, slide, a).length);
   for (const a of hiddenAtStart(anims)) for (const el of targetsOf(sec, slide, a)) el.style.visibility = 'hidden';
   const running = [];

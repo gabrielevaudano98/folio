@@ -1915,4 +1915,7 @@ export default {
   "app.reminder-toast": "Reminder: {what} ({when})",
   "app.reminder-dismissed": "Reminder dismissed. The page keeps it.",
   "rem.notify-title": "Folio reminder",
+  "slides.fragments-note_one": "Incremental list: {n} item marked with * or 1) appears on its own click, before the animations below.",
+  "slides.fragments-note_other": "Incremental list: {n} items marked with * or 1) appear one per click, before the animations below.",
+  "slides.mixed-list-markers": "This box mixes list markers (* with - or 1) with 1.), which the text editor cannot keep. Edit it in the slide's Markdown below.",
 };

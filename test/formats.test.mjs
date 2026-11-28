@@ -735,6 +735,36 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.equal(Object.keys(M.TRANSITIONS).length >= 24, true); for (const t of Object.keys(M.TRANSITIONS)) assert.equal(M.transitionFrames(t).length, 2); for (const e of Object.keys(M.EFFECTS)) assert(M.keyframes(M.parseAnim(`#x ${e}`)).length >= 2); ok('24+ transitions and every effect have keyframes');
 }
 
+// incremental lists (Marp fragmented lists) and Marp transition names (#9)
+{
+  const M = await import('../src/renderer/slides-motion.js');
+  const { fragmentCount } = await import('../src/renderer/slides-core.js');
+  const src = '---\nmarp: true\ntransition: push\n---\n\n# Steps\n\n* one\n* two\n  * two, deeper\n\n- not built\n\n1) first\n2) second\n\n1. not built\n\n::: box #b x=80 y=80 w=400 h=200\n* in a box\n:::\n\n---\n\n<!-- _transition: iris-in 1s -->\n\n```\n* code is text\n```\n\n<!-- master -->\n';
+  const d = parseDeck(src);
+  assert.deepEqual(d.slides.map(fragmentCount), [6, 0]); ok('fragmented lists: * bullets and 1) numbers build (nested ones too, in boxes too); -, + and 1. lists and code do not');
+  const fm0 = parseFrontmatter(src); assert.equal(joinDeck(fm0.raw, splitSlides(fm0.body)), src); ok('a deck with fragmented lists and Marp transitions round-trips byte for byte');
+  const builds = M.withFragments(d.slides[0].animations, 6); assert.equal(builds[0].target, M.FRAGMENTS); assert.equal(builds[0].effect, 'appear'); assert.equal(M.withFragments([], 0).length, 0);
+  assert.equal(M.buildSteps(M.withFragments([M.parseAnim('#b fade-in')], 3), (a) => (a.target === M.FRAGMENTS ? 3 : 1)).length, 4); ok('fragmented items build one per click before the slide\'s own animation lines');
+  assert.deepEqual(M.hiddenAtStart(builds).map((a) => a.target), [M.FRAGMENTS]); ok('fragmented items start hidden');
+  assert.deepEqual(M.parseTransition(d.global.transition), { name: 'push-left', duration: 0.5 }); assert.equal(d.slides[1].transition, 'iris-in 1s'); assert.deepEqual(M.parseTransition(d.slides[1].transition), { name: 'iris', duration: 1 });
+  for (const [marp, folio] of Object.entries(M.MARP_TRANSITIONS)) { assert(M.TRANSITIONS[folio], `${marp} maps to a Folio transition`); assert.equal(M.parseTransition(marp).name, folio); }
+  assert.equal(M.parseTransition('no-such-thing').name, 'fade'); ok('Marp transition names (push, cover, iris-in, …) and _transition play as the nearest Folio transition; unknown names fade');
+  const PM = await import('../src/renderer/slides-pptx-motion.js');
+  const O = await import('../src/renderer/slides-objects.js');
+  assert.deepEqual(O.listMarkers('* a\n  * b\n1) c'), { bullet: '*', ordered: ')' }); assert.deepEqual(O.listMarkers('- a\n* b\n1. c\n2) d'), { bullet: 'mixed', ordered: 'mixed' }); assert.deepEqual(O.listMarkers('Text *em* here'), { bullet: null, ordered: null });
+  assert.equal(O.keepMarkers('- a\n  - b\n\n1. c\n2. d\n\n- new', { bullet: '*', ordered: ')' }), '* a\n  * b\n\n1) c\n2) d\n\n* new'); assert.equal(O.keepMarkers('- a\n1. b', { bullet: '-', ordered: '.' }), '- a\n1. b'); ok('the on-canvas editor keeps * and 1) markers of a box that builds; mixed markers are detected');
+  assert.equal(PM.transitionXml('wipe 0.3s'), '<p:transition spd="fast"><p:wipe dir="l"/></p:transition>'); ok('a Marp transition exports as the matching PowerPoint transition');
+  const X = await import('../src/renderer/slides-pptx.js');
+  const runs = [{ text: 'Title', options: { breakLine: true } }, { text: 'one', options: { _frag: 1, breakLine: true } }, { text: 'two ', options: { _frag: 2 } }, { text: 'bold', options: { _frag: 2, bold: true, breakLine: true } }, { text: 'line', options: { _frag: 3, breakLine: true } }, { text: 'wrapped', options: { _frag: 3, breakLine: true } }, { text: 'plain', options: {} }];
+  assert.deepEqual(X.fragmentRanges(runs), [[1, 1], [2, 2], [3, 4]]); assert(runs.every((r) => !('_frag' in r.options))); ok('fragmented items map to the PowerPoint paragraphs pptxgenjs writes (runs and line breaks counted), and the marks come off');
+  const slideXml = '<p:sp><p:nvSpPr><p:cNvPr id="2" name="folio-body"/></p:nvSpPr><p:txBody><a:p><a:r><a:t>T</a:t></a:r></a:p><a:p></a:p><a:p></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="5" name="!!b"/></p:nvSpPr><p:txBody><a:p></a:p></p:txBody></p:sp>';
+  const ft = PM.fragmentTargets(slideXml, [{ name: 'folio-body', ranges: [[1, 1], [2, 2]] }, { name: '!!b', ranges: [[0, 0]] }, { name: 'missing', ranges: [[0, 0]] }]);
+  assert.deepEqual(ft, [{ spid: '2', paras: 3, pick: [[1, 1], [2, 2]] }, { spid: '5', paras: 1, pick: [[0, 0]] }]);
+  const tx = PM.timingXml(M.withFragments([M.parseAnim('#b pulse')], 3), { ...PM.shapeIndex(slideXml), [M.FRAGMENTS]: ft });
+  assert.deepEqual([...tx.matchAll(/<p:pRg st="(\d+)" end="(\d+)"\/>/g)].map((m) => [+m[1], +m[2], m.index]).map(([a, b]) => [a, b]), [[1, 1], [2, 2], [0, 0]]);
+  assert.equal((tx.match(/nodeType="clickEffect"/g) || []).length, 4); assert.match(tx, /<p:bldP spid="2" grpId="0" build="p"/); ok('PowerPoint export: each fragmented item is its own click, by paragraph, before the slide\'s animations');
+}
+
 // interactivity: links, zooms, custom shows, auto-advance
 {
   const lt = fx('Links.slides.md'); const ld = parseDeck(lt);

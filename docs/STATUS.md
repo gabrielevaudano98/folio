@@ -46,7 +46,7 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
   (CriticMarkup), paste and import from Word, Google Docs and Notion, backlinks and unlinked mentions, find and replace,
   attachments in `.asset/`, ribbon (compact and full).
 - **Slides** ([SLIDES-PLAN.md](SLIDES-PLAN.md)): free placement, arrange, text on the slide, themes and masters, templates,
-  SmartArt and Design ideas, transitions, animations and Morph, links and Zoom, presenter view with audience window,
+  SmartArt and Design ideas, transitions (Marp names too), animations and Morph, incremental lists (Marp `*` and `1)` lists, built in the show and in PowerPoint), links and Zoom, presenter view with audience window,
   pen and laser, narration, audience Q&A, PowerPoint in and out with native motion, handouts and PDF.
 - **Boards**: draw.io-style canvas on board-md; general, flowchart, UML, ER and architecture shapes; UML connectors;
   auto-layout (dagre); PNG and SVG export.
@@ -150,7 +150,7 @@ Each is an open issue with its milestone. The ones that matter most for a first 
 - Accessibility audit of the board canvas and the sheet grid ([#6](https://github.com/gabrielevaudano98/folio/issues/6)).
 - Boards: connector waypoints ([#11](https://github.com/gabrielevaudano98/folio/issues/11)), sequence messages
   ([#12](https://github.com/gabrielevaudano98/folio/issues/12)), images and pen ([#13](https://github.com/gabrielevaudano98/folio/issues/13)).
-- Slides leftovers: incremental lists ([#9](https://github.com/gabrielevaudano98/folio/issues/9)), rulers and guides
+- Slides leftovers: rulers and guides
   ([#92](https://github.com/gabrielevaudano98/folio/issues/92)), per-word styling and WordArt ([#93](https://github.com/gabrielevaudano98/folio/issues/93)),
   screen recording, screenshots and 3D ([#94](https://github.com/gabrielevaudano98/folio/issues/94)), background removal
   ([#95](https://github.com/gabrielevaudano98/folio/issues/95)), live captions ([#96](https://github.com/gabrielevaudano98/folio/issues/96)),

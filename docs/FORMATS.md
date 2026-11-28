@@ -217,6 +217,14 @@ animate: body appear by=paragraph
 - `animate:` lines live in one comment at the end of the slide, in build order. Each line: target (`#id` or `body` for the slide text), effect, then in any order: trigger `click` (default), `with` (with the previous) or `after` (after the previous ends); a duration; `delay=`; `repeat=2` or `repeat=loop`; `by=paragraph` (one click per paragraph or list item); `path=dx,dy` for `path-custom`.
 - Effects. Entrance: `appear`, `fade-in`, `zoom-in`, `grow-in`, `fly-in-left|right|up|down`, `float-in`, `wipe-in`, `spin-in`, `bounce-in`. Emphasis: `pulse`, `spin`, `grow`, `teeter`, `flash`, `shake`. Exit: `disappear`, `fade-out`, `zoom-out`, `fly-out-left|right|up|down`, `wipe-out`. Motion paths: `path-left|right|up|down|arc|custom`.
 - Objects whose first animation is an entrance start hidden. An unchanged line is written back exactly as typed. Marp ignores both (they are comments).
+- **Incremental lists** (Marp fragmented lists): list items written with `*` bullets or `1)` numbers appear one per click when presenting, in reading order (the slide text, then its boxes and shapes, nested items too); items written with `-`, `+` or `1.` are always shown. They build before the slide's `animate:` lines, and appear as one paragraph build each in PowerPoint. The editing canvas, thumbnails, PDF and handouts show every item. The on-canvas text editor keeps a box's `*` and `1)` markers (a box that mixes `*` with `-`, or `1)` with `1.`, is edited in the Markdown instead).
+
+  ```markdown
+  * Shown on the first click
+  * Then this one
+  - Always visible
+  ```
+- **Marp transition names** play as the nearest Folio transition and export the same way: `push`, `slide`, `swipe`, `swoosh` → `push-left`; `cover` → `cover-left`; `pull` → `uncover-left`; `wipe` → `wipe-left`; `melt` → `wipe-down`; `iris-in`, `iris-out`, `diamond`, `star` → `iris`; `clockwise`, `counterclockwise`, `wiper` → `clock`; `coverflow`, `cylinder`, `swap` → `cube`; `drop`, `pivot` → `fall`; `explosion` → `zoom`; `implode`, `in-out` → `zoom-out`; `fade-out` → `fade-black`; `overlap` → `dissolve`; `glow` → `fade`; `rotate` → `flip`. The file keeps the name as written. `<!-- _transition: … -->` means the same as `<!-- transition: … -->` (this slide only); unlike Marp, a transition directive on a slide does not carry over to the following slides (use front matter for the deck default).
 
 ### Links, zooms and how a show runs
 
