@@ -238,7 +238,7 @@ export async function callFunction(code, name, args) {
   }
   w.deadline = Date.now() + 1000; // one cell gets one second
   setInput(w.vm, '__name', name); setInput(w.vm, '__args', args);
-  const v = evalOrThrow(w.vm, `(() => { const r = globalThis[JSON.parse(globalThis.__name)](...JSON.parse(globalThis.__args)); return r === undefined ? null : JSON.parse(JSON.stringify(r)); })()`, 'call.js', () => Date.now() > w.deadline);
+  const v = evalOrThrow(w.vm, `(() => { const n = JSON.parse(globalThis.__name), p = n.split('.'), owner = p.slice(0, -1).reduce((o, k) => o?.[k], globalThis), f = owner?.[p[p.length - 1]]; if (typeof f !== 'function') throw new Error('No function named ' + n + ' in the scripts'); const r = f.apply(owner, JSON.parse(globalThis.__args)); return r === undefined ? null : JSON.parse(JSON.stringify(r)); })()`, 'call.js', () => Date.now() > w.deadline);
   return v;
 }
 

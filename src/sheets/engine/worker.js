@@ -60,15 +60,26 @@ async function preview(book, targets) {
     return out;
   } finally { h.close(wb); }
 }
+/** a file's bytes, refused once more than `cap` bytes are read (a size check before reading misses a file that grows) */
+async function readCapped(file, cap, tooBig) {
+  const fh = await fs.open(file, 'r');
+  try {
+    const chunks = []; let total = 0;
+    for (;;) {
+      const chunk = Buffer.allocUnsafe(Math.min(1 << 20, cap + 1 - total));
+      const { bytesRead } = await fh.read(chunk, 0, chunk.length, null);
+      if (!bytesRead) break;
+      chunks.push(chunk.subarray(0, bytesRead)); total += bytesRead;
+      if (total > cap) throw new Error(tooBig);
+    }
+    return Buffer.concat(chunks, total);
+  } finally { await fh.close(); }
+}
 async function readFiles(files = {}, kinds = {}) {
   const out = {};
   for (const [rel, abs] of Object.entries(files)) {
     if (kinds[rel] === 'parquet' || kinds[rel] === 'db') { out[rel] = { path: abs }; continue; }
-    let bytes; const fh = await fs.open(abs, 'r'); // one handle: the size checked is the size read
-    try {
-      if ((await fh.stat()).size > 256 * 1024 * 1024) throw new Error(`${rel} is larger than 256 MB: query it with SQL (DuckDB) instead.`);
-      bytes = await fh.readFile();
-    } finally { await fh.close(); }
+    const bytes = await readCapped(abs, 256 * 1024 * 1024, `${rel} is larger than 256 MB: query it with SQL (DuckDB) instead.`);
     out[rel] = kinds[rel] === 'xlsx' ? { bytes } : { text: bytes.toString('utf8').replace(/^﻿/, ''), bytes };
   }
   return out;

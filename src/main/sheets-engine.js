@@ -12,6 +12,21 @@ const IMPORT_EXT = ['xlsx', 'xlsm', 'xltx', 'xltm', 'xls', 'xlsb', 'ods', 'csv',
 const IDLE_MS = 60_000;
 const MAX_IMPORT = 200 * 1024 * 1024;
 
+/** a file's bytes, refused once more than `cap` bytes are read (a size check before reading misses a file that grows) */
+async function readCapped(file, cap, tooBig) {
+  const fh = await fs.open(file, 'r');
+  try {
+    const chunks = []; let total = 0;
+    for (;;) {
+      const chunk = Buffer.allocUnsafe(Math.min(1 << 20, cap + 1 - total));
+      const { bytesRead } = await fh.read(chunk, 0, chunk.length, null);
+      if (!bytesRead) break;
+      chunks.push(chunk.subarray(0, bytesRead)); total += bytesRead;
+      if (total > cap) throw new Error(tooBig);
+    }
+    return Buffer.concat(chunks, total);
+  } finally { await fh.close(); }
+}
 export function createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin, notes, enginePath, wasmPath, env = process.env }) {
   const send = (ch, data) => getWin()?.webContents.send(ch, data);
   const root = componentsRoot(app, env);
@@ -79,11 +94,7 @@ export function createSheetsEngine({ app, net, utilityProcess, dialog, h, getWin
     if (r.canceled || !r.filePaths?.[0]) return null;
     const file = r.filePaths[0], ext = path.extname(file).slice(1).toLowerCase();
     if (!IMPORT_EXT.includes(ext)) throw new Error('Choose an Excel, OpenDocument or CSV file.');
-    let bytes; const fh = await fs.open(file, 'r'); // one handle: the size checked is the size read
-    try {
-      if ((await fh.stat()).size > MAX_IMPORT) throw new Error('This file is too large to import (over 200 MB). Query it with Get data → SQL instead.');
-      bytes = new Uint8Array(await fh.readFile());
-    } finally { await fh.close(); }
+    const bytes = new Uint8Array(await readCapped(file, MAX_IMPORT, 'This file is too large to import (over 200 MB). Query it with Get data → SQL instead.'));
     const out = await call('file.import', { bytes, name: path.basename(file) });
     return { ...out, name: path.basename(file), ext, source: out.keepSource ? bytes : null };
   });
