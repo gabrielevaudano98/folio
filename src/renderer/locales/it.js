@@ -1471,7 +1471,7 @@ export default {
   'menu.close-tab': 'Chiudi scheda',
   'menu.reopen-closed-tab': 'Riapri scheda chiusa',
   'cmd.reopen-tab': 'Riapri scheda chiusa',
-  'cmd.toggle-theme': 'Passa da chiaro a scuro',
+  'cmd.toggle-theme': 'Alterna tema chiaro e scuro',
   'app.no-closed-tab': 'Nessuna scheda chiusa da riaprire',
   'menu.command-palette': 'Tavolozza dei comandi…',
   'menu.connect-ai-assistants': 'Collega assistenti AI…',
