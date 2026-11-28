@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "A Markdown editor your AI assistants can read and edit through MCP.",
   "main": "dist/main.mjs",
   "scripts": {

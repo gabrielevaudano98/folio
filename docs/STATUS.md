@@ -1,6 +1,6 @@
 # Project status
 
-**As of 28 November 2026 · `main` at 1.5.1 (pre-alpha) plus the new app icon (#80) · maintainer: Gabriele Vaudano.**
+**As of 28 November 2026 · `main` at 1.6.0 (pre-alpha) · maintainer: Gabriele Vaudano.**
 
 This is the page to read first when you pick Folio up: what ships, what is half-built and where, what is broken, what
 comes next, and what only a person can do. It is written by hand; update it in the same pull request that changes the
@@ -19,8 +19,8 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 
 | Area | On `main` | In flight | Main gaps |
 |---|---|---|---|
-| App shell (files, tabs, search, undo, history, i18n) | Shipped, with the search window and page actions (Notion stack, 28 Nov) | — | Favourites and recents ([#85](https://github.com/gabrielevaudano98/folio/issues/85)); Linux build is in CI (first AppImage unchecked on a real desktop) |
-| Pages (`.md`) | Pages Studio D0–D16, `.asset/` attachments and Notion gap waves 1–2 shipped (the F1–F6 data and UI fixes of [#81](https://github.com/gabrielevaudano98/folio/issues/81) included) | — | Wave 2 batch 2 ([#85](https://github.com/gabrielevaudano98/folio/issues/85)), #86, #87 |
+| App shell (files, tabs, search, undo, history, i18n) | Shipped, with the search window and page actions (Notion stack, 28 Nov) | — | Linux build is in CI (first AppImage unchecked on a real desktop) |
+| Pages (`.md`) | Pages Studio D0–D16, `.asset/` attachments and Notion gap waves 1–2 shipped (the F1–F6 data and UI fixes of [#81](https://github.com/gabrielevaudano98/folio/issues/81) included) | — | Image options and breadcrumb ([#85](https://github.com/gabrielevaudano98/folio/issues/85)), #86, #87 |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
@@ -74,9 +74,9 @@ dates with time, end date and reminders, per-page appearance) reached `main` on 
 to link or create a page, Reopen closed tab (`Mod+Shift+T`), a light/dark command, weekday names that always look forward.
 The "not done" list of #79 is tracked in [#86](https://github.com/gabrielevaudano98/folio/issues/86).
 
-Wave 2 batch 2 is on `notion-gap-wave2b` ([#85](https://github.com/gabrielevaudano98/folio/issues/85)): Turn into page
+Wave 2 batch 2 ([#117](https://github.com/gabrielevaudano98/folio/pull/117), merged 28 Nov): Turn into page
 (block menu), files dropped on a page copied into `.asset/`, Page info (menu and command, Details panel with backlinks),
-Favorites and Recent in the sidebar. Still open from #85: image options and the clickable breadcrumb. Wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
+Favorites and Recent in the sidebar. Still open from [#85](https://github.com/gabrielevaudano98/folio/issues/85): image options and the clickable breadcrumb. Wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
 
 ### Sheets: Folio Sheets on Univer (`feat/sheets-univer`, no pull request)
 
