@@ -704,6 +704,14 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   const dn = chartSvg({ categories: d.categories, series: [d.series[0]] }, { type: 'donut', labels: true });
   assert.equal(count(dn, /class="ch-slice"/g), 3); assert.match(dn, new RegExp(`class="ch-total"[^>]*>${reEsc(nf(3600))}<`)); assert(dn.includes(`>${nf(1500)}<`)); assert.doesNotMatch(dn, /%</); assert.match(dn, / A[\d.]+,[\d.]+ 0 0 0 /, 'inner arc drawn back');
   assert.match(chartSvg({ categories: ['a'], series: [{ name: 'S', values: [5] }] }, { type: 'donut' }), /fill-rule="evenodd"/); ok('donut draws ring slices, the total in the middle and value labels');
+  { // the centre text fits the hole: shrunk on a small donut, left out when even small text would not fit
+    const big = chartSvg({ categories: ['a', 'b'], series: [{ name: 'A very long series name indeed', values: [123456789.5, 1] }] }, { type: 'donut' }, { width: 640, height: 360 });
+    const sz = Number(big.match(/class="ch-total"[^>]*style="font-size:(\d+)px"/)[1]); assert(sz >= 10 && sz <= 20);
+    const sub = big.match(/class="ch-sub"[^>]*>([^<]*)</)?.[1] || ''; assert(sub.length <= 18 && (sub === '' || sub.endsWith('…')), sub);
+    const tiny = chartSvg({ categories: ['a', 'b'], series: [{ name: 'S', values: [1234567, 7654321] }] }, { type: 'donut' }, { width: 120, height: 110 });
+    assert.doesNotMatch(tiny, /ch-sub/); const ts = tiny.match(/class="ch-total"[^>]*style="font-size:(\d+)px"/); assert(!ts || Number(ts[1]) < 20);
+    ok('the donut total shrinks to fit its hole and the series name is cut or left out');
+  }
   assert.deepEqual(comboLines(d.series, {}), [false, false, true]); assert.deepEqual(comboLines(d.series, { lines: 'costs, margin' }), [false, true, true]); assert.deepEqual(comboLines(d.series, { lines: 'Nope' }), [false, false, true]);
   const cb = chartSvg(d, parseChartSpec('type: combo\nsecondary: true\nlabels: true\nxtitle: Month\nytitle: Euro\ny2title: Margin (%)'));
   assert.equal(count(cb, /class="ch-bar"/g), 6); assert.equal(count(cb, /class="ch-line" d="M\d/g), 1); assert.equal(count(cb, /class="ch-axis"/g), 3); assert.match(cb, /rotate\(-90\)" text-anchor="middle">Euro</); assert.match(cb, /rotate\(90\)" text-anchor="middle">Margin \(%\)</);

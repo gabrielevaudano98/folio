@@ -157,7 +157,7 @@ export function mountSheet(host, ctx) {
     if (type === 'combo') {
       // which series are lines: one check box per series (several allowed); nothing chosen means the last one
       const series = toSeries(rangeValues(c.range), c.by === 'rows' ? 'rows' : 'columns').series, on = comboLines(series, c);
-      html += `<fieldset class="sh-chart-lines"><legend>${tr('sheet.line-series')}</legend>${series.map((x, i) => `<label class="sf-check"><input type="checkbox" data-ch="line" data-name="${esc(x.name)}"${on[i] ? ' checked' : ''}> ${esc(x.name)}</label>`).join('')}</fieldset>
+      html += `<fieldset class="sh-chart-lines"><legend>${tr('sheet.line-series')}</legend>${series.map((x, i) => `<label class="sf-check"><input type="checkbox" data-ch="line" data-name="${esc(x.name)}"${on[i] ? ' checked' : ''}${x.name.includes(',') ? ` disabled title="${esc(tr('sheet.line-series-comma'))}"` : ''}> ${esc(x.name)}</label>`).join('')}</fieldset>
         <div class="sh-chart-axes"><label class="sf-check"><input type="checkbox" data-ch="secondary"${c.secondary ? ' checked' : ''}> ${tr('sheet.secondary-axis')}</label></div>`;
       if (c.secondary) html += `<div class="sh-chart-axes">${field('y2title', tr('sheet.secondary-axis-title'))}</div>`;
     }
@@ -517,7 +517,7 @@ export function mountSheet(host, ctx) {
     if (k === 'stacked') { if (e.target.checked) c.stacked = true; else delete c.stacked; }
     if (k === 'rows') { if (e.target.checked) c.by = 'rows'; else delete c.by; }
     if (k === 'labels' || k === 'secondary') { if (e.target.checked) c[k] = true; else delete c[k]; }
-    if (k === 'line') { // names are joined with commas, so a series whose name has a comma cannot be picked by name
+    if (k === 'line') { // names are joined with commas: a series whose name has a comma is offered disabled, with the reason
       const picked = [...box.querySelectorAll('[data-ch=line]')].filter((x) => x.checked).map((x) => x.dataset.name).filter((nm) => !nm.includes(','));
       if (picked.length) c.lines = picked.join(', '); else delete c.lines;
     }

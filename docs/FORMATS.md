@@ -340,7 +340,8 @@ Order *-- Line "1..*"
 
 A chart is a fenced block named `chart`, the same in pages and slides (inside a box or as slide content). A sheet keeps
 its own charts in its `<!-- sheet: {...} -->` comment instead (see sheet-md). Each line is
-`key: value`; keys are case-insensitive, unknown keys are ignored and kept.
+`key: value`; in a block, keys are case-insensitive (`xTitle` reads as `xtitle`) and unknown keys are ignored and kept.
+In a sheet's JSON the keys are lowercase, exactly as listed here.
 
 ````markdown
 ```chart

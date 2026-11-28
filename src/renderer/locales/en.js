@@ -1931,4 +1931,5 @@ export default {
   'sheet.secondary-axis-title': "Secondary axis title",
   'rich.chart-type': "Chart type",
   'rich.value-labels': "Value labels",
+  'sheet.line-series-comma': "A series whose name contains a comma cannot be chosen here. Rename the series to pick it.",
 };

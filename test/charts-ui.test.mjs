@@ -47,7 +47,8 @@ const steps = [
   { js: read('Budget.sheet.md'), log: true, wait: 100 },
   { js: "(() => { const s = document.querySelector('.sh-chart-svg svg'); return [s.querySelectorAll(':scope > .ch-line').length === 2, s.querySelectorAll('.ch-tick2').length > 0, s.querySelectorAll('.ch-axis').length, s.querySelectorAll('.ch-val').length > 0]; })()", log: true, wait: 100 },
   { js: fire('.sh-chart [data-ch=type]', 'value', 'donut'), wait: 700 },
-  { js: "[document.querySelectorAll('.sh-chart [data-ch=xtitle]').length, document.querySelectorAll('.sh-chart-svg .ch-total').length]", log: true, wait: 100 },
+  { js: "[document.querySelectorAll('.sh-chart [data-ch=xtitle]').length, document.querySelectorAll('.sh-chart-svg .ch-total').length]", log: true, wait: 1500 },
+  { js: read('Budget.sheet.md'), log: true, wait: 1200 },
   { js: 'window.__folioErrors||[]', log: true, wait: 100 },
 ];
 
@@ -77,5 +78,6 @@ assert.equal(meta(sheet).length, 1); assert.match(meta(sheet)[0], /"charts":\[\{
 assert.deepEqual(js[7], [true, true, 2, true]);
 console.log('  ✓ sheet: combo with two line series on a secondary axis, axis titles and value labels are saved with the chart and drawn');
 assert.deepEqual(js[8], [0, 1]);
+assert.match(meta(js[9])[0], /"charts":\[\{"type":"donut",/, 'the donut is saved');
 console.log('  ✓ sheet: a donut hides the axis fields and draws its total');
 fs.rmSync(tmp, { recursive: true, force: true });

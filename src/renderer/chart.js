@@ -169,7 +169,13 @@ export function chartSvg({ categories, series }, spec, { width = 640, height = 3
       if (v / tot > 0.04) out += `<text class="ch-lbl" x="${type === 'donut' ? r1(lx) : lx}" y="${type === 'donut' ? r1(ly + 4) : ly + 4}" text-anchor="${lx > cx ? 'start' : 'end'}">${labels ? fmt(s.values[i]) : `${Math.round((v / tot) * 100)}%`}</text>`;
       a0 = a1;
     });
-    if (type === 'donut' && ri >= 26) out += `<text class="ch-total" x="${cx}" y="${r1(cy + (ri >= 44 ? 2 : 6))}" text-anchor="middle">${fmt(vals.reduce((a, b) => a + b, 0))}</text>${ri >= 44 ? `<text class="ch-sub" x="${cx}" y="${r1(cy + 20)}" text-anchor="middle">${esc(s.name.length > 18 ? s.name.slice(0, 17) + '…' : s.name)}</text>` : ''}`;
+    if (type === 'donut') {
+      // the total and the series name sit in the hole only when they fit its width (slides draw text up to 1.4 times larger)
+      const room = 2 * ri * 0.8, total = fmt(vals.reduce((a, b) => a + b, 0));
+      const size = Math.min(20, Math.floor(room / (total.length * 0.62 * 1.4)));
+      const sub = ri >= 44 ? Math.floor(room / (6.4 * 1.4)) : 0, name = s.name.length > sub ? (sub >= 4 ? s.name.slice(0, sub - 1) + '…' : '') : s.name;
+      if (size >= 10) out += `<text class="ch-total" x="${cx}" y="${r1(cy + (name ? 2 : size * 0.35))}" text-anchor="middle" style="font-size:${size}px">${total}</text>${name ? `<text class="ch-sub" x="${cx}" y="${r1(cy + 20)}" text-anchor="middle">${esc(name)}</text>` : ''}`;
+    }
     return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" ${label}>${title}${out}${legendSvg}</svg>`;
   }
 

@@ -265,14 +265,28 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       return [`::: box ${attrs({ [own(el, 't')]: 1, ...geo })}\n${[head, sep, ...rows.slice(1).map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n')}\n:::`];
     }
     if (el.type === 'chart') {
-      const T = { barChart: el.barDir === 'bar' ? 'bar' : 'column', bar3DChart: 'column', lineChart: 'line', line3DChart: 'line', areaChart: 'area', area3DChart: 'area', pieChart: 'pie', pie3DChart: 'pie', doughnutChart: 'donut', scatterChart: 'scatter' };
-      const items = el.data || []; const cats = items[0]?.values?.map((v) => items[0].xlabels?.[v.x] ?? v.x) || [];
+      const T = (c) => ({ barChart: c.barDir === 'bar' ? 'bar' : 'column', bar3DChart: 'column', lineChart: 'line', line3DChart: 'line', areaChart: 'area', area3DChart: 'area', pieChart: 'pie', pie3DChart: 'pie', doughnutChart: 'donut', scatterChart: 'scatter' }[c.chartType] || 'column');
+      let c = el, items = el.data || [], keys = '';
+      if (el.chartType === 'comboChart') {
+        // a PowerPoint combo: bar groups and line groups in one plot area become type: combo with its line series named
+        const gs = el.groups || [];
+        const bars = gs.filter((g) => /^bar/.test(g.chartType) && g.barDir !== 'bar'), lines = gs.filter((g) => /^line/.test(g.chartType));
+        if (bars.length && lines.length) {
+          const barItems = bars.flatMap((g) => g.data || []), lineItems = lines.flatMap((g) => g.data || []);
+          items = [...barItems, ...lineItems];
+          const ids = (g) => [...(g.axisIds || [])].sort().join(',');
+          const named = lineItems.map((x) => String(x.key)).filter((k) => !k.includes(','));
+          keys = `type: combo\n${bars.some((g) => g.grouping === 'stacked') ? 'stacked: true\n' : ''}${named.length === lineItems.length || lineItems.length > 1 ? `lines: ${named.join(', ')}\n` : ''}${lines.some((g) => ids(g) !== ids(bars[0])) ? 'secondary: true\n' : ''}`;
+        } else { c = gs[0] || {}; items = c.data || []; }
+      }
+      const cats = items[0]?.values?.map((v) => items[0].xlabels?.[v.x] ?? v.x) || [];
       if (!items.length) return [];
+      if (!keys) keys = `type: ${T(c)}\n${(c.grouping || c.barGrouping) === 'stacked' ? 'stacked: true\n' : ''}`;
       // a scatter's x values are data, not categories: Folio reads them from the first series column
-      const table = el.chartType === 'scatterChart'
+      const table = c.chartType === 'scatterChart'
         ? [`| Point | X | ${items.map((s) => s.key).join(' | ')} |`, `|---|---|${items.map(() => '---').join('|')}|`, ...items[0].values.map((v, i) => `| ${i + 1} | ${v.x ?? ''} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)]
-        : [`| | ${items.map((s) => s.key).join(' | ')} |`, `|---|${items.map(() => '---').join('|')}|`, ...cats.map((c, i) => `| ${c} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)];
-      return [`::: box ${attrs({ [own(el, 'c')]: 1, ...geo })}\n\`\`\`chart\ntype: ${T[el.chartType] || 'column'}\n${(el.grouping || el.barGrouping) === 'stacked' ? 'stacked: true\n' : ''}data:\n${table.join('\n')}\n\`\`\`\n:::`];
+        : [`| | ${items.map((s) => s.key).join(' | ')} |`, `|---|${items.map(() => '---').join('|')}|`, ...cats.map((cat, i) => `| ${cat} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)];
+      return [`::: box ${attrs({ [own(el, 'c')]: 1, ...geo })}\n\`\`\`chart\n${keys}data:\n${table.join('\n')}\n\`\`\`\n:::`];
     }
     // shapes and text boxes
     const shapType = el.shapType || 'rect';

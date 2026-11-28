@@ -73,5 +73,6 @@ const back = fs.readdirSync(ws).find((f) => /^Charts \d+\.slides\.md$/.test(f));
 assert.match(fs.readFileSync(path.join(ws, back), 'utf8'), /\`\`\`chart\ntype: donut\n/);
 const backText = fs.readFileSync(path.join(ws, back), 'utf8'); const scat = backText.slice(backText.indexOf('type: scatter'));
 assert.match(scat, /\| Point \| X \| [^|\n]+ \|\n\|---\|---\|---\|\n\| 1 \| 3 \| 30 \|\n\| 2 \| 5 \| 20 \|/, 'scatter x values come back as the first series');
-console.log('  ✓ importing the .pptx brings the doughnut back as type: donut and keeps scatter x values');
+assert.match(backText, /\`\`\`chart\ntype: combo\nlines: Margin\nsecondary: true\ndata:\n\| \| Revenue \| Costs \| Margin \|/, 'a native combo comes back as type: combo with its line series and secondary axis');
+console.log('  ✓ importing the .pptx brings back donut, combo (lines, secondary axis) and scatter x values');
 fs.rmSync(tmp, { recursive: true, force: true });

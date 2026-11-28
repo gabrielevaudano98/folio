@@ -1927,4 +1927,5 @@ export default {
   'sheet.secondary-axis-title': "Titolo dell'asse secondario",
   'rich.chart-type': "Tipo di grafico",
   'rich.value-labels': "Etichette dei valori",
+  'sheet.line-series-comma': "Una serie con una virgola nel nome non si può scegliere qui. Rinomina la serie per sceglierla.",
 };
