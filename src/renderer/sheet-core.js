@@ -19,7 +19,7 @@ const splitRow = (line) => {
   out.push(cur.trim());
   return out;
 };
-const isSep = (line) => /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(line);
+const isSep = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').every((c) => /^:?-+:?$/.test(c.trim()));
 
 export function parseWorkbook(text) {
   const lines = text.split('\n');

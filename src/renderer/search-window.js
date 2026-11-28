@@ -244,5 +244,7 @@ export function createSearchWindow(deps) {
     return deps.open(it.path, { line: it.content?.line, background });
   }
 
-  return { open, close, isOpen, noteOpened, noteMoved };
+  /** the paths opened most recently in this folder, newest first (what the sidebar Recents lists) */
+  const recent = (n = 5) => Object.entries(recentAll()[deps.workspace()] || {}).sort((a, b) => b[1] - a[1]).slice(0, n).map(([p]) => p);
+  return { open, close, isOpen, noteOpened, noteMoved, recent };
 }

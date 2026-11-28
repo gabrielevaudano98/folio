@@ -31,6 +31,7 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 | `page-tools.js` | core | Section-level Markdown edits for AI tools: find a section by heading or `^block-id`, replace, insert after. |
 | `mcp-tools.js` | core | The MCP tool table (zod schemas, descriptions, read/write flags) and `runTool()`; one table for both hosts. See [MCP tools](mcp-tools.md). |
 | `mcp-slides.js` | core | Slide-specific MCP tools (objects, motion, links, alt text, notes, design ideas). |
+| `open-guard.js` | core | Which workspace files "Open" may hand to the system (documents and media; never programs, scripts or shortcuts). |
 | `mcp-board-sheet.js` | core | Structured MCP tools for boards (shapes, connectors, layout) and sheets (cells, sheets). |
 | `sheets-engine.js` | main | Starts and stops Folio Sheets' data engine (utilityProcess), resolves its paths, allows its methods. |
 | `ai-requests.js` | core | Queue of requests the user writes with "Ask AI"; assistants read and close them over MCP. |

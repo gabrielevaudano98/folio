@@ -125,7 +125,9 @@ export function htmlToMd(html) {
   const md = []; for (const [i, l] of lines.entries()) { const isItem = /^\s*(-|\d+\.) /.test(l); const prevItem = i && /^\s*(-|\d+\.) /.test(lines[i - 1]); if (i && !(isItem && prevItem) && l !== '' && md[md.length - 1] !== '') md.push(''); if (l !== '' || md[md.length - 1] !== '') md.push(l); }
   return { md: md.join('\n').replace(/\n{3,}/g, '\n\n').trim(), look };
 }
-const plain = (html) => unxml(String(html || '').replace(/<br\s*\/?>/g, ' ').replace(/<\/(p|li)>/g, '\n').replace(/<[^>]+>/g, '')).replace(/ /g, ' ').split('\n').map((l) => l.trim()).filter(Boolean).join(' ');
+/** repeat a replace until nothing changes, so a tag cannot be rebuilt out of what is left (`<<b>script>`) */
+const until = (s, re, to = '') => { for (let p = null; p !== s;) { p = s; s = s.replace(re, to); } return s; };
+const plain = (html) => unxml(until(String(html || '').replace(/<br\s*\/?>/g, ' ').replace(/<\/(p|li)>/g, '\n'), /<[^>]+>/g)).replace(/ /g, ' ').split('\n').map((l) => l.trim()).filter(Boolean).join(' ');
 
 /* ---------- shapes ---------- */
 export const PRESETS = {
@@ -357,7 +359,7 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
     const lines = [];
     const key = si.layout?.key;
     if (key && key !== 'default') lines.push(`<!-- layout: ${key} -->`);
-    if (sectionOf[si.id] && sectionOf[si.id] !== section) { section = sectionOf[si.id]; lines.push(`<!-- section: ${section.replace(/-->/g, '')} -->`); }
+    if (sectionOf[si.id] && sectionOf[si.id] !== section) { section = sectionOf[si.id]; lines.push(`<!-- section: ${until(section, /--!?>/g)} -->`); }
     if (si.hidden) lines.push('<!-- hidden -->');
     const master = usedKeys.get(key); const mbg = master ? fillAttr(parsed.slides[master.i].fill) : tokens.paper || '#ffffff';
     const bg = fillAttr(s.fill); if (bg && bg !== mbg) lines.push(bg.startsWith('#') ? `<!-- _backgroundColor: ${bg} -->` : `<!-- _backgroundImage: ${bg.replace(/^linear\((#\w+),(#\w+),(\d+)\)$/, 'linear-gradient($3deg, $1, $2)').replace(/^radial\((#\w+),(#\w+)\)$/, 'radial-gradient($1, $2)')} -->`);
@@ -380,7 +382,7 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       const anims = motion.readAnimations(sx, (spid) => spidMap[spid]);
       if (anims.length) lines.push(`<!--\n${anims.map((a) => 'animate: ' + a).join('\n')}\n-->`);
     }
-    const note = plain(s.note); if (note && !synthetic) lines.push(`<!-- ${note.replace(/-->/g, '—>')} -->`);
+    const note = plain(s.note); if (note && !synthetic) lines.push(`<!-- ${until(note, /--!?>/g, '—>')} -->`);
     blocks.push(lines.join('\n\n'));
   }
 
