@@ -92,6 +92,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `update.install` | request | `update:install` | `src/main/updater.js` |
 | `update.openRelease` | request | `update:open-release` | `src/main/updater.js` |
 | `update.setAuto` | request | `update:set-auto` | `src/main/updater.js` |
+| `update.onState` | event | `update:state` | — |
 | `onSwitched` | event | `workspace:switched` | — |
 | `onBeforeClose` | event | `app:before-close` | — |
 | `features.list` | request | `features:list` | `src/main/meeting/service.js` |
