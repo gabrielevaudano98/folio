@@ -36,7 +36,7 @@ child.on('close', () => {
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nfavorites ui'); if (process.env.DEBUG) console.log(JSON.stringify(logs, null, 1));
   assert.equal(logs.length, 6, out.slice(-2000));
-  const [before, label, after, label2, hidden, errors] = [logs[0], logs[1], logs[2], logs[3], logs[4], logs[5]]; assert.deepEqual(logs.at(-1), []);
+  const [before, label, after, label2, hidden] = logs; assert.deepEqual(logs.at(-1), []);
   assert.deepEqual(before, [true, ['b.md', 'a.md']]);
   console.log('  ✓ with no favourites the section is hidden; Recent lists the pages opened, newest first');
   assert.match(label, /Add to Favorites/); assert.deepEqual(after, [['a.md'], ['b.md']]);
