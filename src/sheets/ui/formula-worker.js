@@ -10,6 +10,7 @@ import { IRegisterFunctionService } from '@univerjs/engine-formula';
 import enEngineFormula from '@univerjs/engine-formula/locale/en-US';
 import enSheets from '@univerjs/sheets/locale/en-US';
 import { baselineOf } from '../core/convert.js';
+import { tuneFormulaCache } from '../core/formula-cache.js';
 import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula/worker';
 import { UniverRPCWorkerThreadPlugin } from '@univerjs/rpc/worker';
 import { UniverSheetsPlugin } from '@univerjs/sheets/worker';
@@ -51,3 +52,4 @@ univer.registerPlugin(UniverFormulaEnginePlugin);
 univer.registerPlugin(UniverRPCWorkerThreadPlugin);
 univer.registerPlugin(UniverRemoteSheetsFormulaPlugin);
 univer.registerPlugin(UniverSheetsFilterPlugin);
+tuneFormulaCache(univer); // Univer re-parses every formula at each recalculation above 5,000 formulas (core/formula-cache.js)

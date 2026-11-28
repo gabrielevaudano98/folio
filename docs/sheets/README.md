@@ -190,11 +190,22 @@ the five MCP tools), `test/sheets-components-ui.test.mjs` (4: Settings → data 
 - **Calculation time grows with the formulas in the workbook, not with what is on screen.** Univer 1.6 (the latest
   release) reads every formula again at each recalculation (profiled: building the dependency tree is ~60 % of an edit, 3 s
   of it at 100k formulas), so loading only the visible part would not help. Measured on the formula engine alone
-  (headless, one edit): 2k formulas 50 ms · 10k 0.3 s · 25k 0.85 s · 50k 1.8 s · 100k 3.5 s; opening costs ~2.5× that. The
+  (headless, one edit, before the cache change below): 2k formulas 50 ms · 10k 0.3 s · 25k 0.85 s · 50k 1.8 s · 100k 3.5 s; opening costs ~2.5× that. The
   window is never held by it (worker); a recalculation that lasts more than 0.4 s shows "Calculating…" at the bottom right
   of the grid (`.xs-busy`, hides itself after 2 min if the end never comes) so old totals are not taken for a fault. Not
-  done on purpose: reusing Univer's parsed formulas between recalculations by patching its internals (a stale value
+  done on purpose: patching Univer's internals to reuse dependency trees between recalculations (a stale value
   would be a wrong number). For tables of 50k rows or more the intended route is a query or data model (FQL, DuckDB), whose
   results are values, with formulas on the summaries.
+- **Compiled-formula cache** (`core/formula-cache.js`). Why each recalculation read every formula again: Univer keeps the
+  parsed form of a formula in an LRU cache of 5,000 entries (2,000 for its lexer trees), keyed by sheet, cell and text.
+  A recalculation walks all formulas in order, so above 5,000 formulas each entry is evicted just before it is needed:
+  every recalculation parses everything. Folio raises both limits to 120,000 (about 3 KB per parsed formula, ~360 MB at
+  the limit; beyond it Univer works as before) in the worker, the headless engine and the window. It is Univer's own cache
+  with its own invalidation, so nothing is patched. Measured, one edit (headless): 20k formulas 1.0 s → 0.25 s, 50k
+  2.7 s → 0.55 s, 100k 4.7 s → 1.3 s; in the app (50k rows, 100k formulas) 2.6–3.1 s → 0.75–1.7 s, opening 9.4 → 8.6 s, peak
+  renderer RSS +110 MB. `test/sheets-formula-cache.test.mjs` runs the same random edits (values, formulas, row insert and
+  delete, sheet rename, defined name) on a stock and a tuned engine with 7,500 formulas and demands identical values at
+  every step (default 14 steps; `FOLIO_FUZZ_STEPS=60`, seeds 1–3 clean). What remains per recalculation is building the
+  dependency trees (object construction, ~0.5 s at 50k formulas); `node scripts/sheets-bench.mjs 10000 25000` measures it.
 - **Shared formulas** are only how Univer holds a run of formulas in memory: the file always lists each formula, and
   code that reads Univer data itself (export, scripts, version compare) never sees `si` cells (`expandSharedFormulas`).

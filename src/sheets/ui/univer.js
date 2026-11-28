@@ -1,6 +1,7 @@
 // Folio Sheets — Univer in the window. Univer draws the grid, the formula bar, the sheet bar, menus and panels;
 // Folio draws the ribbon around it (ribbon.js), so Univer's own header and toolbar are off.
 // The theme is read from Folio's design tokens at start, so the grid follows tokens.css (grey, chroma 0) and dark mode.
+import { tuneFormulaCache } from '../core/formula-cache.js';
 import { Univer, LocaleType, mergeLocales, UniverInstanceType, ICommandService } from '@univerjs/core';
 import { defaultTheme } from '@univerjs/themes';
 import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
@@ -111,6 +112,7 @@ export function startUniver(container, { lang = 'en', dark = false, worker: useW
     theme: folioTheme(dark), darkMode: dark, locale,
     locales: { [LocaleType.EN_US]: mergeLocales(...EN), [LocaleType.IT_IT]: mergeLocales(...IT) },
   });
+  tuneFormulaCache(univer); // only used when formulas run on this thread (no worker); costs nothing otherwise
   const fontFamily = tok('--font-sans');
   let worker = null, port = null, heartbeat = 0, lastPong = 0;
   if (useWorker) {

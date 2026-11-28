@@ -19,11 +19,12 @@ import '@univerjs/sheets-conditional-formatting/facade';
 import '@univerjs/sheets-note/facade';
 import '@univerjs/sheets-numfmt/facade';
 import { toRange, splitRef } from '../core/a1.js';
+import { tuneFormulaCache } from '../core/formula-cache.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** one Univer per process; workbooks are units inside it */
-export async function createHeadless({ functions = {} } = {}) {
+export async function createHeadless({ functions = {}, tune = true } = {}) {
   const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: {} } });
   univer.registerPlugin(UniverFormulaEnginePlugin, { notExecuteFormula: false });
   univer.registerPlugin(UniverSheetsPlugin, { notExecuteFormula: false });
@@ -34,6 +35,7 @@ export async function createHeadless({ functions = {} } = {}) {
   univer.registerPlugin(UniverSheetsConditionalFormattingPlugin);
   univer.registerPlugin(UniverSheetsNotePlugin);
   univer.registerPlugin(UniverSheetsNumfmtPlugin);
+  if (tune) tuneFormulaCache(univer);
   const api = FUniver.newAPI(univer);
   const formula = api.getFormula();
   for (const [name, fn] of Object.entries(functions)) formula.registerFunction?.(name, fn);

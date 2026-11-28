@@ -1,9 +1,9 @@
 # Handoff — where work stands
 
-Written by `node scripts/checkpoint.mjs` (2026-11-27T19:53:53Z). Read this first when resuming.
+Written by `node scripts/checkpoint.mjs` (2026-11-28T00:12:52Z). Read this first when resuming.
 
 - Branch: `feat/sheets-univer` (from `origin/main` at `9ffbdb10a`)
-- Last checkpoint: sheets: measured calculation cost per formula count, 'Calculating…' note for recalculations over 0.4 s, docs
+- Last checkpoint: --help
 
 ## Resume in a new session
 
@@ -82,11 +82,21 @@ Robustness pass on Folio Sheets (all 27 areas exist and pass their tests; area 2
    If this must get faster: an own incremental recalculation or an AST cache in Univer's generator, both with a fuzz
    comparison against full recalculation before shipping.
 
+17. ~~**Recalculation 2–4× faster**~~ DONE (README §8 "Compiled-formula cache"): the cause was Univer's AST cache (5,000 entries)
+   being evicted before reuse above 5,000 formulas; `src/sheets/core/formula-cache.js` raises it to 120k (worker, headless,
+   window). In the app (50k rows): edit recalculation 2.6–3.1 s → 0.75–1.7 s. `test/sheets-formula-cache.test.mjs`
+   (same random edits on stock vs tuned engine, identical values) is in `npm test`; benchmark `scripts/sheets-bench.mjs`.
+   **Next for speed:** opening a 50k-row workbook is still ~9 s (worker builds the trees from scratch; ~3 s of it first
+   calculation), a small workbook reloaded behind a big one still waits in the worker queue, and the remaining per-edit cost
+   is building dependency trees (~0.5 s at 50k formulas, object construction). Ideas: measure the open phases, give a
+   hidden big workbook a lower priority, evaluate keeping the dependency trees (needs the same fuzz comparison).
+
 Open next (not started): live sync and presence (contracts ready, §5 of docs/sheets/README.md); area 28 (AI) when
 decided; visual baselines on macOS/Windows for the fixed 93px ribbon; streaming xlsx export above ~200k rows.
 
 ## Commits since main
-- cb92ee7 wip: sheets: measured calculation cost per formula count, 'Calculating…' note for recalculations over 0.4 s, docs
+- 8d44dfb wip: --help
+- edf453f wip: sheets: measured calculation cost per formula count, 'Calculating…' note for recalculations over 0.4 s, docs
 - aa7abfc wip: sheets: computed values of big workbooks kept between sessions (reopen shows numbers at once instead of ~10 s); value-cache tests
 - a3ea89e wip: sheets: keep recent workbooks loaded across tab switches (1.5 s -> ~50 ms, flat memory); fix tab-switch save routing; undo-safe chart drawing
 - d6ca0df wip: fix data loss on fast tab switch: a sheet's delayed save and the page editor's delayed change went into the tab shown next (a note or sheet overwritten); saves now name their document, pending work is flushed and the left tab written before switching; test/tab-switch-save.test.mjs
