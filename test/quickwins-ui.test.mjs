@@ -13,11 +13,13 @@ fs.writeFileSync(path.join(ws, 'main.md'), '# Main\n\nAlpha line\n');
 fs.writeFileSync(path.join(ws, 'Roadmap.md'), '# Roadmap\n');
 fs.writeFileSync(path.join(ws, 'other.md'), '# Other\n');
 const P = "document.querySelector('.rich-prose')";
+// a string literal for the injected step code, with the characters that could end a script or a line escaped
+const lit = (v) => JSON.stringify(String(v)).replace(/[<>/\u2028\u2029]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 const caretEnd = `(() => { const p = ${P}; p.focus(); const el = p.querySelectorAll(':scope > p')[0]; const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()`;
-const type = (t) => `document.execCommand('insertText', false, ${JSON.stringify(t)}); true`;
+const type = (t) => `document.execCommand('insertText', false, ${lit(t)}); true`;
 const key = (k) => `${P}.dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true, cancelable: true })); true`;
 const menu = "[...document.querySelectorAll('.slash-item .slash-label')].map((n) => n.textContent)";
-const palette = (q) => `(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, metaKey: ${process.platform === 'darwin'}, shiftKey: true, bubbles: true })); const i = document.querySelector('#palette-input'); i.value = '>' + ${JSON.stringify(q)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`;
+const palette = (q) => `(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, metaKey: ${process.platform === 'darwin'}, shiftKey: true, bubbles: true })); const i = document.querySelector('#palette-input'); i.value = '>' + ${lit(q)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`;
 const paletteEnter = "document.querySelector('#palette-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); true";
 const tabs = "[...document.querySelectorAll('#tabs .tab')].map((t) => t.dataset.tab)";
 const steps = [
