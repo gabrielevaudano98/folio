@@ -2182,7 +2182,7 @@ async function importDocument() {
 async function pastePlain() {
   if (!isRich() || curType() !== 'md') return document.execCommand?.('paste');
   const at = S.active; const c = await folio.readClipboard();
-  if (S.active !== at) return; // the tab changed while the clipboard was read: do not paste into another page
+  if (S.active !== at || !isRich() || curType() !== 'md') return; // the tab or the view changed while the clipboard was read: do not paste into another page or a hidden editor
   rich.insertPlain(c.text || '');
 }
 const dataUrlImage = (url) => new Promise((res) => { const i = new Image(); i.onload = () => res({ width: i.naturalWidth, height: i.naturalHeight }); i.onerror = () => res({ width: 0, height: 0 }); i.src = url; });
