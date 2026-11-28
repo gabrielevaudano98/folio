@@ -5,6 +5,7 @@ const run = (f, ...args) => execFileSync(process.execPath, [f, ...args], { stdio
 await esbuild.build({ entryPoints: ['test/formats.test.mjs', 'test/mcp-gating.test.mjs'], bundle: true, platform: 'node', format: 'esm', outdir: 'dist/test', outExtension: { '.js': '.mjs' }, logLevel: 'error', loader: { '.md': 'text' }, banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
 run('dist/test/formats.test.mjs');
 run('test/pagetools.test.mjs');
+run('test/ai-requests.test.mjs');
 run('test/board-sheet-tools.test.mjs');
 run('test/ai-hunks.test.mjs');
 run('test/mcp.test.mjs');

@@ -1881,7 +1881,18 @@ function updateHistoryButtons() {
 }
 const historySoon = debounce(() => updateHistoryButtons(), 60);
 
+/** Ask your AI from inside Folio: queue the instruction and the selected text; the assistant fetches it with get_ai_requests. */
+async function askAi() {
+  const t = activeTab(); if (!t) return;
+  const selection = (S.cursor.selection || window.getSelection()?.toString() || '').trim();
+  const text = await prompt({ title: tr('app.ask-ai-title'), label: tr(selection ? 'app.ask-ai-label-selection' : 'app.ask-ai-label'), hint: tr('app.ask-ai-hint'), action: tr('app.ask-ai-send'), validate: false });
+  if (!text) return;
+  try { await folio.askAi({ path: t.path, instruction: text, selection, line: S.cursor.line }); toast(tr('app.ask-ai-queued')); }
+  catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); }
+}
+
 const COMMANDS = [
+  { id: 'ask-ai', title: 'Ask AI about this note…', run: () => askAi() },
   { id: 'undo', title: 'Undo', key: 'Mod+Z', run: () => editUndo('undo') },
   { id: 'redo', title: 'Redo', key: 'Mod+Shift+Z', run: () => editUndo('redo') },
   { id: 'undo-file', title: 'Undo last file action', key: 'Mod+Alt+Z', run: () => fileUndo('undo') },
@@ -2634,6 +2645,7 @@ function bindIpc() {
     else toast(tr('app.p-changed-on-disk-while-you-were-editi', { p: stem(p) }), { action: [tr('app.use-disk-version'), () => { t.saved = content; if (p === S.active) setActiveText(content); else t.text = content; }] });
   });
   folio.onAiEdit(onAiEdit);
+  folio.onAiRequestDone(({ client, instruction, reply }) => toast(tr('app.ask-ai-done', { client, reply: reply || instruction })));
   folio.onAiMove(({ from, to, client }) => { retargetTabs(from, to); refreshTree(); toast(tr('app.client-moved-from-to-to', { client, from: stem(from), to })); });
   folio.onAiActivity((m) => { S.mcp = m; renderAiStatus(); const box = $('#ai-activity'); if (box) box.innerHTML = activityHtml(); });
   folio.onAiAsk(async ({ id, kind, payload }) => {

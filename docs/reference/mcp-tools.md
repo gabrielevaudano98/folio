@@ -34,6 +34,8 @@ The tools Folio offers to AI assistants, over HTTP (in the app) and stdio (the b
 | `restore_version` | yes | Put a saved version back as the document's text. The current text is saved as a version first, so the restore itself can be undone. |
 | `move_note` | yes | Move or rename a note inside the workspace. References to it in other documents are updated. |
 | `open_note` *(app only)* | no | Open a note in Folio so the user sees it, optionally scrolled to a line. |
+| `get_ai_requests` *(app only)* | no | Return the requests the user wrote inside Folio ("Ask AI"): an instruction, the note it is about, the selected text and its line. Answer each by editing that note with the normal tools, then call finish_ai_request. |
+| `finish_ai_request` *(app only)* | no | Mark a request from get_ai_requests as done and tell the user in one or two sentences what you did or why you could not. |
 | `list_slides` | no | List the slides of a deck: number, title, layout, section, hidden, transition, number of placed objects and animations, and whether it has speaker notes. |
 | `list_slide_objects` | no | List the placed objects on a slide with id, kind, geometry in px (the slide is 1280×720 for 16:9), attributes, text and link. Use the ids with the other slide tools. |
 | `add_object` | yes | Place an object on a slide at x, y, w, h (px). kind: box, shape, line, icon, media, path, smartart, zoom. attrs are slides-md attributes (fill, stroke, border, radius, size, color, font, align, valign, type for shapes, name for icons, link, …). text is Markdown for boxes and shapes. For an image use kind=image with attrs.src. Returns the new id. |
@@ -316,6 +318,21 @@ Open a note in Folio so the user sees it, optionally scrolled to a line.
 |---|---|---|---|
 | `path` | string | yes |  |
 | `line` | integer | no |  |
+
+## `get_ai_requests`
+
+Return the requests the user wrote inside Folio ("Ask AI"): an instruction, the note it is about, the selected text and its line. Answer each by editing that note with the normal tools, then call finish_ai_request.
+
+No arguments.
+
+## `finish_ai_request`
+
+Mark a request from get_ai_requests as done and tell the user in one or two sentences what you did or why you could not.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | yes |  |
+| `reply` | string | no |  |
 
 ## `list_slides`
 

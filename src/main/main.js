@@ -21,6 +21,7 @@ import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
 import { createUpdater } from './updater.js';
+import { createRequests } from './ai-requests.js';
 import electronUpdater from 'electron-updater';
 import { writeAtomic, writeAtomicSync } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
@@ -520,6 +521,7 @@ function logActivity(entry) {
   win?.webContents.send('ai:activity', mcpStatus());
 }
 
+const requests = createRequests();
 const appBackend = {
   capabilities: () => ({ app: true, write: settings.allowWrite }),
   async call(name, args, ctx) {
@@ -538,6 +540,7 @@ const appBackend = {
         win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans, aiKept });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
+      requests: { pending: () => requests.pending(), finish: (id, reply) => { const r = requests.finish(id, reply); win?.webContents.send('ai:request-done', { ...r, client: ctx.client }); return r; } },
       openNote: () => askRenderer('open-note'),
       showNote: (a) => { win?.show(); win?.focus(); return askRenderer('show-note', a); },
     });
@@ -604,6 +607,7 @@ async function restartMcp() {
 }
 h('mcp:status', () => mcpStatus());
 h('mcp:token', () => settings.token);
+h('ai:ask', (_e, r) => ({ ...requests.add(r), pending: requests.count() }));
 h('mcp:rotate-token', () => { settings.token = crypto.randomBytes(24).toString('hex'); saveSettings(); return settings.token; });
 
 /* ---------------- connections to AI clients ---------------- */

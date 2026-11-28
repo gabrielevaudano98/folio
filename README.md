@@ -6,7 +6,7 @@
 
 > Based on Folio by Gabriele Vaudano (https://github.com/gabrielevaudano98/folio)
 
-Editor Markdown per **macOS e Windows** con un server **MCP** integrato: Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code (e qualsiasi client MCP) possono leggere, cercare e modificare le tue note, e ogni modifica dell'AI ti appare in tempo reale, evidenziata, con **Annulla** e **Rivedi**.
+Editor Markdown per **macOS, Windows e Linux (AppImage)** con un server **MCP** integrato: Claude, Cursor, VS Code, Windsurf, LM Studio, Claude Code (e qualsiasi client MCP) possono leggere, cercare e modificare le tue note, e ogni modifica dell'AI ti appare in tempo reale, evidenziata, con **Annulla** e **Rivedi**.
 
 Le note restano file `.md` normali sul tuo disco. Quattro tipi di documento, ognuno con vista **Visuale** e vista **Codice** (e Split):
 
@@ -75,7 +75,7 @@ Apri **AI → Connect AI Assistants…** (`⌘⇧A`) oppure clicca il riquadro i
 
 Il bridge stdio usa l'eseguibile stesso di Folio (`--mcp-stdio`), quindi **non serve installare Node**. Se Folio è aperto, le chiamate passano dall'app (evidenziazioni live, undo, nota aperta); se è chiuso, lavora direttamente sull'ultima cartella aperta.
 
-**Strumenti MCP:** 50 strumenti, tra cui `list_notes`, `read_note`, `search_notes`, `get_outline`, `read_section`/`replace_section`, `edit_note` (trova/sostituisci esatto), `suggest_edit` e `add_comment` (proposte da accettare o rifiutare), `get_sheet_values`, la cronologia delle versioni e gli strumenti per slide, lavagne (forme e connettori) e fogli (celle) elemento per elemento. Elenco completo: [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md).
+**Strumenti MCP:** 52 strumenti, tra cui `list_notes`, `read_note`, `search_notes`, `get_outline`, `read_section`/`replace_section`, `edit_note` (trova/sostituisci esatto), `suggest_edit` e `add_comment` (proposte da accettare o rifiutare), `get_sheet_values`, la cronologia delle versioni e gli strumenti per slide, lavagne (forme e connettori) e fogli (celle) elemento per elemento. Elenco completo: [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md).
 
 **Sicurezza:** server solo su `127.0.0.1` con token e controllo Host/Origin; nessun accesso fuori dalla cartella aperta; scrittura solo su `.md/.markdown/.mdx/.txt`; interruttore "Let AI edit notes" per la sola lettura.
 
@@ -91,7 +91,7 @@ npm run dist:mac       # su un Mac → release/Folio-<versione>-universal.dmg
 npm run dist:win       # su Windows → installer x64/arm64 + portable
 ```
 
-Il workflow `.github/workflows/release.yml` compila **macOS (.dmg universale)** e **Windows (.exe)** e pubblica una release quando un merge su `main` cambia la versione in `package.json` (vedi [docs/how-to/release.md](docs/how-to/release.md)).
+Il workflow `.github/workflows/release.yml` compila **macOS (.dmg universale)**, **Windows (.exe)** e **Linux (.AppImage)** e pubblica una release quando un merge su `main` cambia la versione in `package.json` (vedi [docs/how-to/release.md](docs/how-to/release.md)).
 
 ### Firma
 Senza certificati l'app non è firmata: su macOS la prima apertura va fatta con clic destro → Apri; su Windows SmartScreen chiede conferma. Per macOS il workflow di release è pronto: aggiungi i secret indicati in `release.yml` (certificato Developer ID e notarizzazione Apple). La firma per Windows non è ancora configurata (issue #4).
@@ -129,7 +129,7 @@ Il progetto chiede inoltre di riportare ogni miglioramento con una pull request 
 ## Sviluppo e qualità
 
 - `npm test` esegue i test di round-trip dei formati, i test MCP end-to-end e uno smoke test dell'interfaccia (su Linux con `xvfb-run`).
-- La CI (GitHub Actions) li esegue a ogni push e pull request, poi crea i pacchetti Windows e macOS; i tag `v*` pubblicano una release.
+- La CI (GitHub Actions) li esegue a ogni push e pull request, poi crea i pacchetti Windows, macOS e Linux; i tag `v*` pubblicano una release.
 - CodeQL analizza la sicurezza, Dependabot aggiorna le dipendenze.
 - Review con agenti: [cubic](https://cubic.dev) legge `cubic.yaml` e `AGENTS.md`; scrivendo `@claude` in una issue o PR risponde Claude Code (serve il secret `ANTHROPIC_API_KEY`).
 - Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md) e le Issues del repository.
