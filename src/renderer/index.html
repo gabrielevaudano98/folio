@@ -31,6 +31,14 @@
       </label>
 
       <div class="sidebar-scroll" id="sidebar-scroll">
+        <section class="side-section side-quick" id="section-favorites" hidden>
+          <h2 class="side-head"><button type="button" class="side-fold" id="favorites-head" aria-expanded="true" aria-controls="favorites-list" data-i18n="ui.favorites">Favorites</button></h2>
+          <div class="quick-list" id="favorites-list" role="list"></div>
+        </section>
+        <section class="side-section side-quick" id="section-recents" hidden>
+          <h2 class="side-head"><button type="button" class="side-fold" id="recents-head" aria-expanded="true" aria-controls="recents-list" data-i18n="ui.recents">Recent</button></h2>
+          <div class="quick-list" id="recents-list" role="list"></div>
+        </section>
         <section class="side-section" id="section-files">
           <h2 class="side-head" data-i18n="ui.notes">Notes</h2>
           <div class="tree" id="tree" role="tree" aria-label="Notes" data-i18n-attr="aria-label:ui.notes"></div>
