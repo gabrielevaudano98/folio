@@ -244,4 +244,60 @@ await t('meeting:recover and meeting:discard refuse an id that is not one of our
   assert.ok(fs.existsSync(keep)); assert.equal(await handlers['meeting:discard']('0a1b-2c'), true);
 });
 
+/* ---------- offering to record when a call starts ---------- */
+const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+function callService(over = {}) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-detect-')); const handlers = {}, sent = [], toasts = [], reg = { n: 0 }; const win = { webContents: { send: (ch, d) => sent.push([ch, d]) }, isMinimized: () => false, restore() {}, show() {}, focus() {} };
+  const settings = over.settings || { features: { 'meeting-recorder': { enabled: true, detectCalls: true } } };
+  const svc = createFeatures({ app: { getPath: () => tmp, getName: () => 'Folio' }, net: {}, utilityProcess: {}, MessageChannelMain: class {}, h: (name, fn) => { handlers[name] = fn; }, getWin: () => win,
+    settings, saveSettings: () => {}, notes: { resolve: (r) => path.join(tmp, r), root: () => tmp }, workerPath: '', env: { LOCALAPPDATA: tmp, XDG_DATA_HOME: tmp },
+    platform: 'win32', notify: (o) => toasts.push(o), detect: { intervalMs: 15, holdMs: 60, quietMs: 1000, ready: async () => true, ...over.detect },
+    execReg: async () => { reg.n++; return `HKEY_CURRENT_USER\\Software\\x\\NonPackaged\\C:#Program Files#Zoom#bin#Zoom.exe\r\n    LastUsedTimeStart    REG_QWORD    0x5\r\n    LastUsedTimeStop    REG_QWORD    0x0\r\n`; }, ...over.svc });
+  return { handlers, sent, toasts, reg, svc, settings };
+}
+await t('a call that holds the microphone gets one notification; clicking it asks the window to start', async () => {
+  const { handlers, sent, toasts } = callService();
+  await nap(400);
+  assert.equal(toasts.length, 1, 'one notification for the whole call');
+  assert.match(toasts[0].title, /Zoom/); assert.match(toasts[0].title, /microphone/);
+  assert.deepEqual(sent.filter(([c]) => c === 'meeting:auto-start'), [], 'nothing starts before the click');
+  toasts[0].onClick();
+  assert.deepEqual(sent.filter(([c]) => c === 'meeting:auto-start'), [['meeting:auto-start', { title: 'Meeting Zoom' }]]);
+  await handlers['features:set']('meeting-recorder', { detectCalls: false });
+});
+await t('a notification is not shown if the person turned detection off while it was being prepared', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const { handlers, toasts } = callService({ detect: { ready: async () => { await gate; return true; } } });
+  await nap(200); // the call is noticed, the readiness check is waiting
+  await handlers['features:set']('meeting-recorder', { detectCalls: false }); release(); await nap(100);
+  assert.equal(toasts.length, 0);
+});
+await t('nothing is offered while no folder is open', async () => {
+  const { toasts, handlers } = callService({ svc: { notes: { resolve: (r) => r, root: () => { throw new Error('Open a folder first.'); } } } });
+  await nap(300); assert.equal(toasts.length, 0);
+  await handlers['features:set']('meeting-recorder', { detectCalls: false });
+});
+await t('a notification is not shown if the folder was closed while it was being prepared', async () => {
+  let release, open = true; const gate = new Promise((r) => { release = r; });
+  const { handlers, toasts } = callService({ svc: { notes: { resolve: (r) => r, root: () => { if (!open) throw new Error('Open a folder first.'); return '/x'; } } }, detect: { ready: async () => { await gate; return true; } } });
+  await nap(200); open = false; release(); await nap(100);
+  assert.equal(toasts.length, 0); await handlers['features:set']('meeting-recorder', { detectCalls: false });
+});
+await t('nothing is offered while the speech model is not downloaded', async () => {
+  const { toasts, handlers } = callService({ detect: { ready: async () => false } });
+  await nap(300); assert.equal(toasts.length, 0);
+  await handlers['features:set']('meeting-recorder', { detectCalls: false });
+});
+await t('turning the setting off stops the watching; never turned on, nothing is read', async () => {
+  const on = callService(); await nap(120); assert.ok(on.reg.n > 0);
+  await on.handlers['features:set']('meeting-recorder', { detectCalls: false }); const at = on.reg.n; await nap(120);
+  assert.equal(on.reg.n, at, 'no more registry reads'); assert.equal((await on.handlers['features:list']())[0].detectCalls, false);
+  const never = callService({ settings: { features: { 'meeting-recorder': { enabled: true } } } }); await nap(120);
+  assert.equal(never.reg.n, 0); assert.equal(never.toasts.length, 0);
+});
+await t('detection is not offered off Windows', async () => {
+  const { handlers, reg } = callService({ svc: { platform: 'linux' } }); await nap(120);
+  assert.equal(reg.n, 0); assert.equal((await handlers['features:list']())[0].detectSupported, false);
+});
+
 console.log(`  ${n} passed`);

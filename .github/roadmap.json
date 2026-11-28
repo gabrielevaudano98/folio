@@ -54,6 +54,21 @@
       "performance",
       "5c5c5c",
       "Speed and memory"
+    ],
+    [
+      "area:meeting",
+      "ededed",
+      "Meeting recorder"
+    ],
+    [
+      "data-loss",
+      "1c1c1c",
+      "Can lose or overwrite what the person wrote"
+    ],
+    [
+      "needs-person",
+      "5c5c5c",
+      "Needs the maintainer: real hardware, accounts, a decision"
     ]
   ],
   "milestones": [
@@ -76,6 +91,18 @@
     [
       "Later",
       "Bigger bets after 1.3."
+    ],
+    [
+      "v1.6 Pages: Notion parity",
+      "Notion-grade page editing in plain Markdown: PR stack #69 → #77 → #79 and the waves after it. Plan: docs/STATUS.md#in-flight"
+    ],
+    [
+      "Sheets on Univer",
+      "Folio Sheets on Univer (branch feat/sheets-univer): merge, then the open items. Plan: docs/sheets/README.md on that branch"
+    ],
+    [
+      "Public release",
+      "What a first non-pre-alpha release needs: signing, notarisation, updates, measured performance, no known data-loss bug."
     ]
   ],
   "issues": [
@@ -404,6 +431,160 @@
         "area:slides"
       ],
       "Template gallery when creating a deck and in Design; 8 built-in templates; layout placeholders (title/subtitle/body) in masters; master: layout only; colour schemes and font pairs; Save as template into Templates/; guide in docs/TEMPLATES.md, also via MCP get_format_guide type template."
+    ],
+    [
+      "v1.6 Pages: Notion parity",
+      "Data fixes from Notion gap wave 1 are only on PR #77 (toggle titles, resolved comments, CRLF front matter, shortcuts)",
+      [
+        "bug",
+        "area:page",
+        "data-loss"
+      ],
+      "Filed 27 Nov 2026 as #81; the issue on GitHub holds the details."
+    ],
+    [
+      "Public release",
+      "Fast tab switch can write a page's pending change into another document",
+      [
+        "bug",
+        "area:shell",
+        "data-loss"
+      ],
+      "Filed 27 Nov 2026 as #82; the issue on GitHub holds the details."
+    ],
+    [
+      "Public release",
+      "Release workflow: publish with gh release create instead of softprops/action-gh-release",
+      [
+        "area:release"
+      ],
+      "Filed 27 Nov 2026 as #83; the issue on GitHub holds the details."
+    ],
+    [
+      "Sheets on Univer",
+      "Folio Sheets on Univer: open a pull request and merge feat/sheets-univer",
+      [
+        "area:sheet",
+        "needs-person"
+      ],
+      "Filed 27 Nov 2026 as #84; the issue on GitHub holds the details."
+    ],
+    [
+      "v1.6 Pages: Notion parity",
+      "Notion gap wave 2, batch 2: turn into page, drop any file, image options, page info, favourites and recents",
+      [
+        "enhancement",
+        "area:page"
+      ],
+      "Filed 27 Nov 2026 as #85; the issue on GitHub holds the details."
+    ],
+    [
+      "v1.6 Pages: Notion parity",
+      "Notion gap waves 1–2: follow-ups listed in #77 and #79",
+      [
+        "enhancement",
+        "area:page"
+      ],
+      "Filed 27 Nov 2026 as #86; the issue on GitHub holds the details."
+    ],
+    [
+      "v1.6 Pages: Notion parity",
+      "Notion gap wave 3: polish and long tail",
+      [
+        "enhancement",
+        "area:page"
+      ],
+      "Filed 27 Nov 2026 as #87; the issue on GitHub holds the details."
+    ],
+    [
+      "Public release",
+      "Meeting recorder: measure a real call on Windows (go/no-go gates)",
+      [
+        "performance",
+        "area:meeting",
+        "needs-person"
+      ],
+      "Filed 27 Nov 2026 as #88; the issue on GitHub holds the details."
+    ],
+    [
+      "Later",
+      "Meeting recorder on macOS",
+      [
+        "enhancement",
+        "area:meeting"
+      ],
+      "Filed 27 Nov 2026 as #89; the issue on GitHub holds the details."
+    ],
+    [
+      "Public release",
+      "Startup and opening a long page go over the 100 ms budget",
+      [
+        "area:shell",
+        "performance"
+      ],
+      "Filed 27 Nov 2026 as #90; the issue on GitHub holds the details."
+    ],
+    [
+      "Later",
+      "Delete remote branches of merged pull requests",
+      [
+        "quality"
+      ],
+      "Filed 27 Nov 2026 as #91; the issue on GitHub holds the details."
+    ],
+    [
+      "v1.2 Editors",
+      "Slides: rulers, draggable guides, and place a flow block as a free box",
+      [
+        "enhancement",
+        "area:slides"
+      ],
+      "Filed 27 Nov 2026 as #92; the issue on GitHub holds the details."
+    ],
+    [
+      "v1.2 Editors",
+      "Slides: per-word colour and size, text columns, WordArt effects",
+      [
+        "enhancement",
+        "area:slides"
+      ],
+      "Filed 27 Nov 2026 as #93; the issue on GitHub holds the details."
+    ],
+    [
+      "v1.2 Editors",
+      "Slides: insert screen recording, screenshots and 3D models",
+      [
+        "enhancement",
+        "area:slides"
+      ],
+      "Filed 27 Nov 2026 as #94; the issue on GitHub holds the details."
+    ],
+    [
+      "Later",
+      "Slides: remove a picture's background",
+      [
+        "enhancement",
+        "area:slides"
+      ],
+      "Filed 27 Nov 2026 as #95; the issue on GitHub holds the details."
+    ],
+    [
+      "Later",
+      "Slides: live captions while presenting",
+      [
+        "enhancement",
+        "area:slides"
+      ],
+      "Filed 27 Nov 2026 as #96; the issue on GitHub holds the details."
+    ],
+    [
+      "v1.2 Editors",
+      "Slides: export a deck as video, GIF or images",
+      [
+        "enhancement",
+        "area:slides"
+      ],
+      "Filed 27 Nov 2026 as #97; the issue on GitHub holds the details."
     ]
   ]
 }

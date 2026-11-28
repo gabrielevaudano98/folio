@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import chokidar from 'chokidar';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -22,6 +23,8 @@ import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
+import { createUpdater } from './updater.js';
+import electronUpdater from 'electron-updater';
 import { writeAtomic, writeAtomicSync, writeNew } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
 if (process.env.FOLIO_FAKE_MEDIA) { app.commandLine.appendSwitch('use-fake-device-for-media-stream'); app.commandLine.appendSwitch('use-fake-ui-for-media-stream'); }
@@ -47,7 +50,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true, remoteImages: false,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
-  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {},
+  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {}, autoUpdate: false,
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
@@ -250,7 +253,12 @@ h('settings:set', async (patch) => {
   return { ...settings, token: undefined };
 });
 // optional features (meeting recorder): downloads, the recording session and its worker
-const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs') });
+const features = createFeatures({ app, net, utilityProcess, MessageChannelMain, h, getWin: () => win, settings, saveSettings, notes, workerPath: path.join(__dirname, 'meeting-asr.cjs'),
+  // Windows only: a notification when another app starts using the microphone, and the registry query that finds it
+  notify: ({ title, body, onClick }) => { if (!Notification.isSupported()) return; const n = new Notification({ title, body, silent: true }); n.on('click', onClick); n.show(); },
+  execReg: process.platform === 'win32' ? (args) => new Promise((res, rej) => execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe'), args, { windowsHide: true, timeout: 5000, maxBuffer: 1 << 20 }, (e, out) => (e ? rej(e) : res(out)))) : null });
+// updates from GitHub releases: a check at startup and every six hours (Settings → Updates switches it off)
+const updater = createUpdater({ app, shell, h, getWin: () => win, settings, saveSettings, autoUpdater: electronUpdater.autoUpdater });
 h('workspace:choose', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: tl('dlg', 'Open a folder of notes') });
   if (r.canceled || !r.filePaths[0]) return null;
@@ -490,7 +498,7 @@ async function readCapped(res, max) {
   return Buffer.concat(parts, size);
 }
 h('fs:data-url', async (src, noteRel) => {
-  if (/^data:/.test(src)) return src;
+  if (/^data:/i.test(src)) return 'data:' + src.slice(5); // schemes are case-insensitive; hand back one spelling
   if (/^https?:\/\//i.test(src)) {
     // a note can name any address: no private network (checked by name and by what it resolves to), only images, audio, video and fonts, bounded in size and time
     const { net } = await import('electron');
@@ -801,6 +809,7 @@ function lockDownSession() {
   });
 }
 app.whenReady().then(async () => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.folio.markdown'); // notifications carry the app's name
   lockDownSession();
   try { fss.chmodSync(SETTINGS_FILE(), 0o600); } catch {} // settings from before 1.2.2 were readable by other users
   fss.rmSync(undoRoot(), { recursive: true, force: true }); // leftovers from a crashed session
@@ -811,6 +820,7 @@ app.whenReady().then(async () => {
   else settings.workspace = null;
   await startMcp();
   createWindow();
+  updater.schedule();
   const argFile = process.argv.slice(app.isPackaged ? 1 : 2).find((a) => !a.startsWith('-') && fss.existsSync(a));
   if (pendingOpen || argFile) win.webContents.once('did-finish-load', () => openPath(pendingOpen || argFile));
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

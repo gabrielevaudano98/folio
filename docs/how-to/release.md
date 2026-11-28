@@ -8,5 +8,12 @@
    ZIP, and publishes them as a GitHub release tagged `v<version>`. Do not push the tag yourself: a tag push starts the
    same workflow a second time.
 
+## What an update needs
+
+The in-app updater ([updates](../explanation/updates.md)) reads `latest.yml` (Windows) and `latest-mac.yml` (macOS) and the
+`.blockmap` files from the release. electron-builder writes them next to the installers because `build.publish` in
+`package.json` points at this repository, and the workflow uploads `release/latest*.yml` and `release/*.blockmap`. Do not
+remove them from the release or rename the installers by hand: the yml files list the file names and SHA-512 sums.
+
 Running the workflow by hand (`workflow_dispatch`) also publishes a release for the version in `package.json`; use it
 only to republish a version.

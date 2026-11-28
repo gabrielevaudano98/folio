@@ -567,7 +567,7 @@ const FolioImage = PageImage.extend({
       // every address goes through the app's resolver (workspace boundary, web-image consent); a web image or media it holds back registers a retry
       let retry = null, gone = false; const isWeb = (src) => /^https?:\/\//i.test(src);
       const setSrc = (el, src, miss) => {
-        if (/^(data:|blob:)/.test(src)) { el.src = src; return; }
+        if (/^(data:|blob:)/i.test(src)) { el.src = src; return; }
         let r; try { r = opts.resolve?.(src); } catch { r = null; }
         Promise.resolve(r).then((u) => {
           if (gone) return; // the view was destroyed while the address was being checked
@@ -942,13 +942,13 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   });
 
   const codec = createPageCodec(editor.markdown);
-  let emitTimer;
+  let emitTimer = 0;
   function emit() {
     clearTimeout(emitTimer);
-    emitTimer = setTimeout(() => { emitTimer = null; onChange?.(api.getMarkdown()); toc?.refresh(readAppearance(model?.fm || '').toc); }, 220);
+    emitTimer = setTimeout(() => { emitTimer = 0; onChange?.(api.getMarkdown()); toc?.refresh(readAppearance(model?.fm || '').toc); }, 220);
   }
-  /** hand over a change still waiting in the 220 ms debounce now, so the tab's text is what is on screen */
-  function flushChange() { if (emitTimer) { clearTimeout(emitTimer); emitTimer = null; onChange?.(api.getMarkdown()); } }
+  /** report a change still waiting for its pause now (the app calls this before the tab changes) */
+  function flushEmit() { if (!emitTimer) return; clearTimeout(emitTimer); emitTimer = 0; onChange?.(api.getMarkdown()); }
 
   host.querySelector('.rich-unlock').addEventListener('click', () => onUnlock?.());
   const LOCK_OK = /^(find|reviewPane|prevChange|nextChange|app:(focus|outline|help|link-health|daily-note))$/;
@@ -1322,7 +1322,6 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
 
   ready = true;
   const api = {
-    flush: flushChange,
     /** the person allowed web images: try again every one that was held back */
     /** the front matter block of the page, and a way to change it (Appearance): fn gets it and returns the new one */
     getFm() { return model?.fm || ''; },
@@ -1367,6 +1366,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     },
     /** the visual editor state of this document, with its undo history; `md` says which text it matches */
     snapshot() { return { state: editor.view.state, md: api.getMarkdown(), model }; },
+    flush: flushEmit,
     restore(snap) {
       model = snap.model; silent = true;
       try { editor.view.updateState(snap.state); } finally { silent = false; }
