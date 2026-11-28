@@ -71,6 +71,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `dataUrl` | request | `fs:data-url` | `src/main/main.js` |
 | `mcpStatus` | request | `mcp:status` | `src/main/main.js` |
 | `mcpToken` | request | `mcp:token` | `src/main/main.js` |
+| `askAi` | request | `ai:ask` | `src/main/main.js` |
 | `rotateToken` | request | `mcp:rotate-token` | `src/main/main.js` |
 | `connections` | request | `connections:list` | `src/main/main.js` |
 | `install` | request | `connections:install` | `src/main/main.js` |
@@ -82,6 +83,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `onFileChanged` | event | `fs:file-changed` | — |
 | `onAiEdit` | event | `ai:edit` | — |
 | `onAiMove` | event | `ai:move` | — |
+| `onAiRequestDone` | event | `ai:request-done` | — |
 | `onAiAsk` | event | `ai:ask` | — |
 | `onAiActivity` | event | `ai:activity` | — |
 | `onMenu` | event | `menu:command` | — |

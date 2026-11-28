@@ -1,0 +1,25 @@
+// Ask your AI from inside Folio (#20): the request queue and the two MCP tools that serve it.
+import assert from 'node:assert/strict';
+import * as esbuild from 'esbuild';
+const out = 'dist/test/ai-requests.mjs';
+await esbuild.build({ entryPoints: ['src/main/mcp-tools.js'], bundle: true, platform: 'node', format: 'esm', outfile: out, logLevel: 'error', loader: { '.md': 'text' }, external: ['electron'], banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } });
+const { runTool, TOOLS } = await import('../' + out);
+const { createRequests } = await import('../src/main/ai-requests.js');
+console.log('\nask the AI');
+const q = createRequests();
+const r = q.add({ path: 'a.md', instruction: '  Shorten this  ', selection: 'long text', line: 3 });
+assert.equal(r.instruction, 'Shorten this'); assert.equal(q.count(), 1);
+assert.throws(() => q.add({ path: 'a.md', instruction: '   ' }), /instruction/);
+const hooks = { requests: q };
+const got = await runTool({}, 'get_ai_requests', {}, hooks);
+assert.equal(got.length, 1); assert.equal(got[0].selection, 'long text'); assert.equal(got[0].path, 'a.md');
+const done = await runTool({}, 'finish_ai_request', { id: r.id, reply: 'Shortened.' }, hooks);
+assert.equal(done.status, 'done'); assert.equal(q.count(), 0); assert.deepEqual(await runTool({}, 'get_ai_requests', {}, hooks), []);
+await assert.rejects(runTool({}, 'finish_ai_request', { id: 'nope' }, hooks), /No request/);
+await assert.rejects(runTool({}, 'get_ai_requests', {}, {}), /not running/);
+for (let i = 0; i < 25; i++) q.add({ instruction: 'x' + i });
+assert.equal(q.count(), 20);
+const reg = TOOLS.filter((t) => ['get_ai_requests', 'finish_ai_request'].includes(t.name));
+assert.equal(reg.length, 2); assert(reg.every((t) => t.appOnly));
+q.clear(); assert.equal(q.count(), 0);
+console.log('  ✓ requests queue in memory, the assistant reads and closes them, both tools need the app, the queue is capped');

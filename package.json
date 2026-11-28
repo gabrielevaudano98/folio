@@ -8,6 +8,7 @@
     "start": "node build.mjs && electron .",
     "dist": "node build.mjs && electron-builder",
     "dist:mac": "node build.mjs && electron-builder --mac",
+    "dist:linux": "node build.mjs && electron-builder --linux",
     "dist:win": "node build.mjs && electron-builder --win",
     "test:mcp": "node build.mjs && node test/mcp.test.mjs",
     "test": "node build.mjs && node test/run.mjs",
@@ -198,7 +199,10 @@
         "AppImage"
       ],
       "category": "Office",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "executableName": "folio",
+      "synopsis": "Markdown editor for AI assistants",
+      "artifactName": "Folio-${version}-${arch}.${ext}"
     },
     "extraResources": [
       {
