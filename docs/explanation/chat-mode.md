@@ -71,19 +71,31 @@ endpoint the person chooses the address (`https`, or `http` on localhost for loc
 ## Provider matrix
 
 Using a **subscription** (as opposed to an API key) is only acceptable where the provider allows it. Folio does not
-reverse-engineer web sessions or reuse another product's OAuth client. State as of 28 November 2026, from news reports and
-secondary summaries, **not yet checked against each provider's own terms**; read the primary pages before phase 3.
+reverse-engineer web sessions or reuse another product's OAuth client. State as of 28 November 2026. Anthropic's row is
+from its own page, <https://code.claude.com/docs/en/legal-and-compliance> (read 28 Nov); the others are from news reports and
+secondary summaries and **still need a person to read the provider's own terms** before phase 3.
 
 | Provider | API key (BYOK) | Subscription in a third-party app |
 |---|---|---|
-| Anthropic | Yes, phase 1 | Not allowed. Anthropic's February 2026 compliance update says Free/Pro/Max OAuth tokens are only for Claude Code and Claude.ai, not other products or the Agent SDK. Only an unmodified Claude Code the person signed into is reported as acceptable (candidate for phase 3, needs a read of the terms). |
-| OpenAI | Yes, phase 1 (also any OpenAI-compatible endpoint) | Reported as allowed through "Sign in with ChatGPT" (Codex), with reports of limits for third-party clients; unverified. Candidate for phase 3. |
-| Google | Yes, phase 1 | Not allowed: Gemini CLI stopped serving Google AI Pro/Ultra on 18 June 2026 and third-party access to Antigravity/subscription is a terms breach; accounts were banned. API key only. |
-| Local models | Yes, phase 1 (OpenAI-compatible, `http://localhost`) | n/a |
+| Anthropic | Yes, phase 1 | **Not through Folio's own sign-in.** Anthropic's page: it "does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users", and apps "may not collect, store, or intermediate Claude.ai credentials or session tokens". **Allowed route:** the person signs in to the *unmodified Claude Code binary* with their own subscription, and a product may run that binary ("The Claude Code binary must not be modified"). So phase 3 can add a "Claude Code (your subscription)" provider that runs the person's installed `claude` and never touches their credentials. The Consumer Terms page was not read. |
+| OpenAI | Yes, phase 1 (also any OpenAI-compatible endpoint) | Reported as allowed through "Sign in with ChatGPT" (Codex), with limits for third-party clients; unverified. Candidate for phase 3. |
+| Google | Yes, phase 1 | Reported not allowed: Gemini CLI stopped serving Google AI Pro/Ultra on 18 June 2026, third-party access is a terms breach, accounts were banned. API key only. |
+| OpenRouter, xAI (Grok) | Yes, phase 1 (OpenAI wire format, fixed address) | n/a (pay-per-use keys) |
+| Other OpenAI-compatible services | Yes, phase 1 (address field) | n/a |
+| Local models | Phase 2b: one-click download, see below | n/a |
 
-So the answer to "connect my ChatGPT, Claude or Gemini subscription like Dyad does" is: not in phase 1, and for Claude and
-Gemini probably never in the form Dyad-style tools used. Folio ships what is allowed (keys, local models) and adds a
-subscription route only where the provider's own terms say it is fine.
+So "connect my ChatGPT, Claude or Gemini subscription" is: not in phase 1. For Claude the sanctioned way is to drive the
+person's own Claude Code (phase 3); for Gemini probably no way; for ChatGPT to be checked. Folio ships what is allowed and
+adds a subscription route only where the provider's own terms say it is fine.
+
+## Local models (phase 2b)
+
+A simple flow to download a model and run it inside Folio, reusing the pinned-download and `llama-server` machinery of the
+meeting notes ([ADR 0005](../adr/0005-optional-components-are-downloaded.md), [ADR 0007](../adr/0007-llama-server-for-notes.md)).
+At first use Folio reads the computer's cores, RAM and free disk (no special permission), recommends a model, and asks before
+downloading. The catalogue holds at least 12 open models in quantised GGUF form, from a 1B-class model that runs on a dual-core
+PC with 8 GB of RAM up to larger ones for strong machines, each pinned by address and SHA-256, with licence shown. Tool
+calling quality drops with size, so small models start in a read-and-suggest mode and the UI says so. Tracked in [#115](https://github.com/gabrielevaudano98/folio/issues/115).
 
 ## Experience
 

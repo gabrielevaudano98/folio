@@ -8,8 +8,11 @@ export const PROVIDERS = {
   anthropic: { label: 'Anthropic', host: 'https://api.anthropic.com', models: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5'], custom: false },
   openai: { label: 'OpenAI', host: 'https://api.openai.com/v1', models: [], custom: true },
   google: { label: 'Google', host: 'https://generativelanguage.googleapis.com', models: [], custom: false },
+  // OpenAI-compatible services with a fixed address: the same adapter, their own key
+  openrouter: { label: 'OpenRouter', host: 'https://openrouter.ai/api/v1', models: [], custom: false, wire: 'openai' },
+  xai: { label: 'xAI (Grok)', host: 'https://api.x.ai/v1', models: [], custom: false, wire: 'openai' },
 };
-export const DEFAULT_MODEL = { anthropic: 'claude-sonnet-5-5', openai: '', google: '' };
+export const DEFAULT_MODEL = { anthropic: 'claude-sonnet-5-5', openai: '', google: '', openrouter: '', xai: '' };
 
 export class ProviderError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
 
@@ -154,6 +157,7 @@ export function createProvider({ provider, key, model, baseUrl, fetchImpl = glob
   if (!PROVIDERS[provider]) throw new ProviderError('Unknown provider.');
   if (!model) throw new ProviderError('Choose a model in Settings → AI.');
   if (!key && !(provider === 'openai' && baseUrl)) throw new ProviderError('Add an API key in Settings → AI.');
-  const o = { key, model, baseUrl, fetchImpl };
-  return provider === 'anthropic' ? anthropic(o) : provider === 'google' ? google(o) : openai(o);
+  const wire = PROVIDERS[provider].wire || provider;
+  const o = { key, model, baseUrl: wire === 'openai' && provider !== 'openai' ? baseUrl || PROVIDERS[provider].host : baseUrl, fetchImpl };
+  return wire === 'anthropic' ? anthropic(o) : wire === 'google' ? google(o) : openai(o);
 }

@@ -80,6 +80,13 @@ const history = [{ role: 'user', text: 'q' }, { role: 'assistant', text: 'a', to
   for (const bad of ['http://example.com/v1', 'ftp://x', 'nope', 'https://u:p@x.com']) assert.throws(() => checkEndpoint(bad), ProviderError, bad);
   console.log('  ✓ errors are friendly and never contain the key; endpoints must be https or local');
 }
+{
+  const p = createProvider({ provider: 'openrouter', key: 'or-key', model: 'vendor/model', baseUrl: base + '/oa' });
+  const r = await p.stream({ system: 's', messages: history, tools });
+  assert.equal(r.text, 'Hi'); assert.equal(seen.at(-1).headers.authorization, 'Bearer or-key');
+  assert.throws(() => createProvider({ provider: 'xai', key: '', model: 'm' }), /API key/);
+  console.log('  ✓ OpenRouter and xAI use the OpenAI wire format with their own key');
+}
 server.close();
 
 /* ---------- policy ---------- */
