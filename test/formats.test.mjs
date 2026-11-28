@@ -886,6 +886,37 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   ok('slide text pictures keep their address in data-src, so the view checks it before anything is requested');
 }
 
+// escaping: backslashes in board labels, image titles and table cells (one escape pass, backslash first, legacy text left as written)
+{
+  const m = parseBoard('a: rect "C:\\new \\"x\\" \\\\ end" @0,0\nb: rect "plain" @10,10\na -> b "p\\\\q"');
+  const again = parseBoard(serializeBoard(m));
+  assert.deepEqual(again.nodes.map((x) => x.label), m.nodes.map((x) => x.label)); assert.equal(again.edges[0].label, m.edges[0].label);
+  const odd = parseBoard('a: rect "x" @0,0'); odd.nodes[0].label = 'back\\slash \\n "quote"\nline';
+  assert.equal(parseBoard(serializeBoard(odd)).nodes[0].label, odd.nodes[0].label);
+  const legacy = 'a: rect "C:\\folder" @0,0'; assert.equal(serializeBoard(parseBoard(legacy)).trim(), legacy);
+  ok('board labels with backslashes, quotes and newlines round-trip; a legacy label with a lone backslash keeps its bytes');
+}
+assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\ |'); ok('table cells: a backslash before a pipe is doubled, so the pipe stays a pipe');
+{
+  const T = await import('../src/renderer/slides-templates.js');
+  const deck = T.newDeckFrom({ text: '---\nmarp: true\n---\n\n<!-- layout: title -->\n\n# Old title\n\nBody\n', path: 'a.md', name: 'a' }, 'New $& $1 title');
+  assert.ok(deck.includes('# New $& $1 title') && !deck.includes('Old title'), deck); ok('a new deck from a template takes the title literally ($ patterns are not expanded)');
+  const inC = T.newDeckFrom({ text: '---\nmarp: true\n---\n\n<!--\n# not a title\n-->\n\n# Real\n', path: 'a.md', name: 'a' }, 'T');
+  assert.ok(inC.includes('# not a title') && inC.includes('\n# T\n') && !inC.includes('# Real'), inC); ok('a # line inside a comment is not taken for the title');
+  const crlf = T.newDeckFrom({ text: '---\r\nmarp: true\r\n---\r\n\r\n# Old\r\n\r\nBody\r\n', path: 'a.md', name: 'a' }, 'T');
+  assert.ok(crlf.includes('# T\r\n'), JSON.stringify(crlf)); ok('retitling keeps a CRLF line ending');
+}
+{
+  const hostile = '| a |\n|' + ' '.repeat(50000) + '-'.repeat(50000) + 'x';
+  const t0 = Date.now(); parseWorkbook(hostile); assert.ok(Date.now() - t0 < 1000); ok('sheet separator-row check stays fast on hostile input');
+}
+
+{
+  const ext = pageExtensions(); const mgr = new MarkdownManager({ extensions: ext, markedOptions: { gfm: true } });
+  const roundtrip = (md) => mgr.serialize(mgr.parse(md)).trim();
+  for (const md of ['![a](x.png "C:\\folder")', '![a](x.png "say \\"hi\\"")', '| a    | b   |\n| ---- | --- |\n| x\\|y | z   |']) assert.equal(roundtrip(md), md);
+  ok('image titles and table cells with backslashes, quotes and pipes parse and serialize back unchanged');
+}
 
 { // W2-C: page appearance keys: each one adds or removes only its own line; CRLF stays CRLF; defaults leave no trace
   for (const eol of ['\n', '\r\n']) {
