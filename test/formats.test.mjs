@@ -22,6 +22,7 @@ import { sections, moveSection, shiftSection } from '../src/renderer/page-outlin
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
 import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved, RESOLVED as RESOLVED_MARK } from '../src/renderer/page-critic.js';
+import { readAppearance, setAppearance, setCover, coverOf, ownedKeys } from '../src/renderer/page-appearance.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag, setTypeOverrides, inferType } from '../src/renderer/page-props.js';
 import { reactionOf, splitThread, myReaction, commentParts, mentionAt } from '../src/renderer/page-reactions.js';
 import { findMentions, linkMention, linkAllMentions } from '../src/renderer/refs-syntax.js';
@@ -213,6 +214,20 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     });
   }
   ok(`page corpus (${corpus.length} files): opening is byte-identical, editing a paragraph rewrites only that paragraph`);
+
+  // W2-B: a date mention with a time, an end or a reminder is plain text after the day link: lossless, editable, and rewriting
+  // the paragraph writes the same characters back (Folio writes →; a hand-typed -> is read, see FORMATS.md)
+  {
+    const page = '# Dates\n\nCall Ada [[2026-12-01]]{09:00 remind 30m} about **budget**.\n\n- [ ] Trip [[2026-12-03]]{→ 2026-12-05} and [[2026-12-01]]{09:00 → 10:30 remind}\n- [ ] Rent [[2026-12-01]]{remind 1d} [status:: Doing]\n\nNot a tail: [[2026-12-07]]{see notes} and [[Plan]]{x}.\n';
+    const { m, doc, kids } = open(page);
+    assert.equal(codec.save(m, doc), page); assert(!m.blocks.some((b) => b.raw), 'every block stays editable');
+    m.orig = null; assert.equal(codec.save(m, withKids(kids.map((k) => schema.nodeFromJSON(k.toJSON())))), page, 'serializing every block again gives the same text');
+    const next = kids.slice(); next[1] = para('Call Ada [[2026-12-01]]{09:30 remind 1h} about it.');
+    const o2 = open(page); assert.equal(codec.save(o2.m, withKids([o2.kids[0], next[1], ...o2.kids.slice(2)])), page.replace('[[2026-12-01]]{09:00 remind 30m} about **budget**.', '[[2026-12-01]]{09:30 remind 1h} about it.'));
+    const h = markdownIt.render('Due [[2026-12-01]]{09:00 remind 30m} and [[2026-12-07]]{see}');
+    assert(h.includes('wikilink-date is-remind') && h.includes('9:00') && !h.includes('remind 30m') && h.includes('{see}'), h);
+    ok('date mentions with time, end and reminder round-trip byte for byte, edit as text, and read as one date in the Read view');
+  }
 
   const obs = open(fx('pages/obsidian.md'));
   assert(!obs.m.blocks.some((b) => b.raw)); ok('an Obsidian page (footnotes, maths, callouts, comments) is fully editable');
@@ -468,6 +483,12 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.deepEqual((await ins('at', 'next friday'))[0], '[[2026-11-27]]'); assert.equal((await ins('at', 'tomorrow'))[0], '[[2026-11-21]]');
   assert.equal((await ins('at', 'domani'))[0], '[[2026-11-21]]'); assert.equal((await ins('at', 'tra 3 giorni'))[0], '[[2026-11-23]]'); assert.equal((await ins('at', '25 dec'))[0], '[[2026-12-25]]');
   ok('@ understands dates in English and Italian (tomorrow, next friday, domani, tra 3 giorni, 25 dec) and links the daily note');
+  assert.equal((await ins('at', 'tomorrow 9am'))[0], '[[2026-11-21]]{09:00}'); assert.equal((await ins('at', '3 dec - 5 dec'))[0], '[[2026-12-03]]{→ 2026-12-05}');
+  assert.deepEqual((await ins('at', 'remind tomorrow 9am')).slice(0, 1), ['[[2026-11-21]]{09:00 remind}']);
+  assert.deepEqual((await ins('at', 'ricordami domani alle 9')).slice(0, 1), ['[[2026-11-21]]{09:00 remind}']);
+  assert.equal((await ins('at', 'remind monday'))[0], '[[2026-11-23]]{remind}'); assert.equal((await mentionEntries('at', 'rem', ctx))[0].group, 'Reminders');
+  assert.ok((await ins('at', 'remind tomorrow 9am')).every((x) => !/\[\[[^\]]* \d/.test(x)), 'never a time inside the brackets');
+  ok('@tomorrow 9am adds the time, @3 dec - 5 dec a range, and @remind / @ricordami write a reminder after the day link');
   const at = await mentionEntries('at', 'ada', ctx); assert.equal(at[0].group, 'People');
   assert(!at.some((e) => e.insert === '[[2026-11-19]]')); ok('@ puts people first and does not list daily notes as pages');
   assert.deepEqual((await ins('at', 'done')).filter((x) => x.startsWith('[status')), ['[status:: Done]']); assert.equal((await ins('at', 'status')).filter((x) => x.startsWith('[status')).length, 4);
@@ -862,6 +883,35 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   assert.ok(!/<img\b[^>]*\ssrc="/.test(html) && !/srcset/.test(html), html);
   assert.ok(html.includes('data-src="https://example.com/a.png"') && html.includes('data-src="file:///etc/a.png"') && html.includes('data-src="pics/a.png"'), html);
   ok('slide text pictures keep their address in data-src, so the view checks it before anything is requested');
+}
+
+
+{ // W2-C: page appearance keys: each one adds or removes only its own line; CRLF stays CRLF; defaults leave no trace
+  for (const eol of ['\n', '\r\n']) {
+    const body = `# Title${eol}${eol}Text${eol}`;
+    const fmOf = (extra) => `---${eol}title: Hi${eol}${extra}tags: [a]${eol}---${eol}`;
+    const base = fmOf('') + body;
+    for (const [key, val, line] of [['font', 'serif', 'font: serif'], ['font', 'mono', 'font: mono'], ['small-text', true, 'small-text: true'], ['full-width', true, 'full-width: true'], ['toc', true, 'toc: true'], ['cover', '.asset/ab12cd34-pic.png', 'cover: .asset/ab12cd34-pic.png'], ['cover', 'gradient-3', 'cover: gradient-3']]) {
+      const on = setAppearance(base, key, val);
+      assert.equal(on, base.replace(`tags: [a]${eol}`, `tags: [a]${eol}${line}${eol}`), `${key} adds only its line`);
+      assert.equal(setAppearance(on, key, key === 'font' ? '' : false), base, `${key} removed restores the file byte for byte`);
+    }
+    const cov = setAppearance(base, 'cover', '.asset/x.png'); const moved = setAppearance(cov, 'cover-y', 30);
+    assert.equal(moved, cov.replace(`cover: .asset/x.png${eol}`, `cover: .asset/x.png${eol}cover-y: 30${eol}`));
+    assert.equal(setAppearance(moved, 'cover-y', 50), cov, 'the default position removes cover-y');
+    assert.equal(setCover(moved, ''), base, 'removing the cover takes cover-y with it');
+    assert.equal(setCover(moved, 'gradient-2'), moved.replace('cover: .asset/x.png', 'cover: gradient-2').replace(`cover-y: 30${eol}`, ''), 'a new cover resets its position');
+    // a page with no front matter gets one and loses it again
+    const bare = `# T${eol}`; const on = setAppearance(bare, 'toc', true);
+    assert.equal(setAppearance(on, 'toc', false), bare, 'a page with no front matter returns to none');
+  }
+  const a = readAppearance('---\nfont: mono\nsmall-text: true\nfull-width: true\ntoc: true\ncover: .asset/p.png\ncover-y: 20\n---\nx\n');
+  assert.deepEqual([a.font, a.small, a.full, a.toc, a.cover?.kind, a.coverY], ['mono', true, true, true, 'asset', 20]);
+  assert.equal(readAppearance('---\ncover: https://example.com/a.png\n---\n').cover, null, 'a web address is never a cover');
+  assert.equal(coverOf('.asset/../../etc/passwd'), null); assert.equal(coverOf('pics/a.png'), null); assert.equal(coverOf('gradient-9'), null);
+  assert.equal(readAppearance('---\nfont: comic\nsmall-text: false\n---\n').font, '', 'values it does not know are ignored');
+  assert.deepEqual([...ownedKeys('---\nfont: serif\ncover: https://x.y/z.png\ncover-y: 5\nowner: Ada\ntoc: true\n---\n')].sort(), ['font', 'toc'], 'only understood keys are hidden from the properties');
+  ok('page appearance: font, small-text, full-width, toc, cover and cover-y each change only their own line (LF and CRLF), defaults leave no trace, web covers are refused');
 }
 
 console.log(`\n${n} format checks passed`);

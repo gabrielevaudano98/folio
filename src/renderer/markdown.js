@@ -1,7 +1,8 @@
 // Folio — Markdown to safe HTML, with source-line anchors for scroll sync and AI-edit marks.
 import MarkdownIt from 'markdown-it';
 import { FIELD, statusClass, DAY } from './page-mentions.js';
-import { formatDay, fullDay, datePrefs } from './page-dates.js';
+import { formatDay, fullDay, datePrefs, dayTense } from './page-dates.js';
+import { tailLength, parseMention, whenLabel, startOf } from './page-when.js';
 import { parseButton } from './page-templates.js';
 import { parseComment } from './page-critic.js';
 import { refsPlugin } from './refs-syntax.js';
@@ -13,6 +14,7 @@ import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import { icons } from './icons.js';
+import { owns, coverOf } from './page-appearance.js';
 import { parseCallout, CALLOUT_TYPES } from './callouts.js';
 import { mediaKind, webProvider } from './page-syntax.js';
 import container from 'markdown-it-container';
@@ -190,9 +192,12 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
     const t = state.push('html_inline', '', 0);
     const target = m[1].trim();
     const day = DAY.test(target) && !m[2];
-    t.content = `<a class="wikilink${day ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim())}</a>`;
+    const tail = day ? tailLength(src.slice(m[0].length)) : 0; const w = tail ? parseMention(`[[${target}]]` + src.slice(m[0].length, m[0].length + tail)) : null; // the trimmed day, so [[ 2026-12-01 ]]{09:00} still reads // [[2026-12-01]]{09:00 remind}
+    const due = w?.remind != null && (startOf(w) <= new Date() || dayTense(w.day) === 'today');
+    const label = w ? whenLabel(w, (d) => formatDay(d, datePrefs)) : day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim();
+    t.content = `<a class="wikilink${day ? ' wikilink-date' : ''}${w?.remind != null ? ' is-remind' : ''}${due ? ' is-due' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(label)}</a>`;
   }
-  state.pos += m[0].length;
+  state.pos += m[0].length + (DAY.test(m[1].trim()) && !m[2] ? tailLength(src.slice(m[0].length)) : 0);
   return true;
 });
 
@@ -267,9 +272,13 @@ export function render(text) {
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
   // the page icon (front matter `icon:`) is drawn large above the page, as in the Write view, not listed with the properties
   const oneEmoji = (v) => { const s = String(v).trim(); return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].length === 1 && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s); };
-  const icon = meta?.find(([k, v]) => k === 'icon' && oneEmoji(v)); const rest = (meta || []).filter((x) => x !== icon);
+  const icon = meta?.find(([k, v]) => k === 'icon' && oneEmoji(v));
+  const coverKv = meta?.find(([k, v]) => k === 'cover' && coverOf(v)); const hasCover = !!coverKv; const cover = coverKv ? coverOf(coverKv[1]) : null;
+  const coverY = Math.min(100, Math.max(0, Number(meta?.find(([k, v]) => k === 'cover-y' && Number.isFinite(Number(v)) && v !== '')?.[1] ?? 50)));
+  const rest = (meta || []).filter((x) => x !== icon && !owns(x[0], x[1], hasCover)); // appearance keys (font, cover…) are not listed
   if (rest.length) html = `<dl class="frontmatter" data-line="0">${rest.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
   if (icon) html = `<div class="page-icon-read" aria-hidden="true">${escape(icon[1].trim())}</div>` + html;
+  if (cover) html = `<div class="page-cover-read" data-cover="${escape(cover.value)}" data-cover-y="${coverY}" aria-hidden="true"></div>` + html;
   return DOMPurify.sanitize(html, {
     ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align', 'data-host', 'controls', 'preload', 'data-author', 'data-date', 'data-text'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],

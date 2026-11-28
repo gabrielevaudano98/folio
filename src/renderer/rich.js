@@ -1,6 +1,7 @@
 // Folio — "mini Word" rich editor for Markdown. TipTap 3 (ProseMirror) with Markdown in and out.
 import { t as tr, tl, locale } from './i18n.js';
 import { formatDay, fullDay, dayTense } from './page-dates.js';
+import { tailLength, parseMention, mentionText, whenLabel, remindAt, startOf } from './page-when.js';
 import { Editor, Extension, InputRule } from '@tiptap/core';
 import katex from 'katex';
 import Typography from '@tiptap/extension-typography';
@@ -14,6 +15,8 @@ import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
 import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
 import { FindReplace, mountFindBar } from './page-find.js';
 import { mountProps } from './page-props-ui.js';
+import { readAppearance } from './page-appearance.js';
+import { mountToc } from './page-appearance-ui.js';
 import { mountReview } from './page-review.js';
 import { SuggestMode } from './page-critic.js';
 import { SmartPaste, insertMarkdown, insertPlainText } from './page-paste.js';
@@ -160,14 +163,19 @@ function embedCard(target, opts) {
    Chips (Notion style): a [[link]], a day, a person, a status or an inline field is drawn as a small label in place of its
    source; the source text stays in the document (hidden, font-size 0) and shows again while the caret is inside it, as in
    Obsidian's Live Preview. Backspace after a chip removes it whole. */
-const CHIP_RE = /!?\[\[[^\]\n]+\]\]|\[[A-Za-z][\w ]{0,29}?::[ \t]*[^\]\n]{0,80}?[ \t]*\]/g;
+const CHIP_RE = /\[\[\d{4}-\d{2}-\d{2}\]\]\{[^{}\n]{1,60}\}|!?\[\[[^\]\n]+\]\]|\[[A-Za-z][\w ]{0,29}?::[ \t]*[^\]\n]{0,80}?[ \t]*\]/g;
 /** chips of the textblock around `pos`: [{from, to}] in document positions */
 function chipsNear(doc, pos) {
   const $p = doc.resolve(pos); const parent = $p.parent; if (!parent.isTextblock || parent.type.spec.code) return { list: [], off: 0, start: 0 };
   const start = $p.start(); let text = '';
   parent.forEach((ch) => { text += ch.isText ? (ch.marks.some((m) => m.type.name === 'code') ? '\0'.repeat(ch.text.length) : ch.text) : '\0'.repeat(ch.nodeSize); }); // inline code is literal text, never a chip
   const list = []; CHIP_RE.lastIndex = 0; let m;
-  while ((m = CHIP_RE.exec(text))) if (m[0][0] !== '!') list.push({ from: start + m.index, to: start + m.index + m[0].length });
+  while ((m = CHIP_RE.exec(text))) {
+    if (m[0][0] === '!') continue;
+    let len = m[0].length; const end = m[0].indexOf(']]{');
+    if (end > 0 && !tailLength(m[0].slice(end + 2))) { len = end + 2; CHIP_RE.lastIndex = m.index + len; } // braces that are not a date tail are ordinary text
+    list.push({ from: start + m.index, to: start + m.index + len });
+  }
   return { list, off: $p.parentOffset, start };
 }
 /** the chip the caret is strictly inside (its source is shown), or null */
@@ -242,9 +250,14 @@ const Decorate = Extension.create({
             const title = embed ? tl('rich', 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open') : kind === 'missing' ? tl('rich', 'No page with this name yet. Ctrl or ⌘ click to create it') : tl('rich', 'Ctrl or ⌘ click to open');
             if (!embed && !code) {
               const day = kind === 'date' && DAY_ONLY.test(target.trim()) && !m[1].includes('|');
-              const cls = `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}${day ? ' is-' + (opts.dayTense?.(target.trim()) || 'future') : ''}`;
-              const label = day ? (opts.dayLabel?.(target.trim()) || target) : linkLabel(m[1]);
-              if (chip(from, to, cls, label, { 'data-target': target, 'data-day': day ? target.trim() : null, title: day ? (opts.dayTitle?.(target.trim()) || title) : title, role: 'link', tabindex: '-1' })) continue;
+              let bs = 0; while (m.index - 1 - bs >= 0 && n.text[m.index - 1 - bs] === '\\') bs++; // an escaped bracket is literal text, as in the Read view and the scanner
+              const tail = day && !(bs % 2) ? tailLength(n.text.slice(m.index + m[0].length)) : 0; // [[2026-12-01]]{09:00 remind}: one chip
+              const w = tail ? parseMention(n.text.slice(m.index, m.index + m[0].length + tail)) : null;
+              let cls = `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}${day ? ' is-' + (opts.dayTense?.(target.trim()) || 'future') : ''}`;
+              if (w?.remind != null) { cls += ' is-remind'; if ((startOf(w) || remindAt(w)) <= (opts.now?.() || new Date()) || opts.dayTense?.(w.day) === 'today') cls += ' is-due'; } // Notion: red on the day and after
+              const dl = (d) => opts.dayLabel?.(d) || d;
+              const label = w ? whenLabel(w, dl) : day ? dl(target.trim()) : linkLabel(m[1]);
+              if (chip(from, to + tail, cls, label, { 'data-target': target, 'data-day': day ? target.trim() : null, 'data-when': w ? n.text.slice(m.index + m[0].length, m.index + m[0].length + tail) : null, title: day ? (opts.dayTitle?.(target.trim()) || title) : title, role: 'link', tabindex: '-1' })) { re.lastIndex = m.index + m[0].length + tail; continue; }
             }
             deco.push(Decoration.inline(from, to, { class: embed ? 'rich-ref' : `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}`, 'data-target': target, title }));
           }
@@ -273,9 +286,11 @@ const Decorate = Extension.create({
     /* a chip's text, from its document range */
     const chipText = (state, from, to) => state.doc.textBetween(from, to, '\0', '\0');
     /* a menu or the date popover can stay open while the page changes (typing, an AI edit, a reload): only write if the chip is still there */
-    const replaceChip = (view, from, to, text, was) => {
-      const doc = view.state.doc; if (to > doc.content.size || (was != null && doc.textBetween(from, to, '\0', '\0') !== was)) return;
-      const tr = text ? view.state.tr.insertText(text, from, to) : view.state.tr.delete(from, to); view.dispatch(tr); view.focus();
+    const replaceChip = (view, from, to, text, was, { focus = true } = {}) => {
+      const doc = view.state.doc; if (to > doc.content.size || (was != null && doc.textBetween(from, to, '\0', '\0') !== was)) return false;
+      if (text === was) return true;
+      const tr = text ? view.state.tr.insertText(text, from, to) : view.state.tr.delete(from, to); view.dispatch(tr); if (focus) view.focus();
+      return true;
     };
     /* what clicking a chip (or Alt+Enter beside it) does */
     const activate = (view, from, to, el, { modifier = false } = {}) => {
@@ -283,9 +298,15 @@ const Decorate = Extension.create({
       const st = /^\[(status)::[ \t]*([^\]\n]*?)[ \t]*\]$/i.exec(src);
       if (st && opts.onStatus) { opts.onStatus(el, st[2], (v) => replaceChip(view, from, to, `[${st[1]}:: ${v}]`, src)); return true; }
       if (/^\[[A-Za-z][\w ]{0,29}?::/.test(src)) { view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + src.indexOf('::') + 2)).scrollIntoView()); view.focus(); return true; }
-      const lk = /^\[\[([^\]\n]+)\]\]$/.exec(src); if (!lk) return false;
+      const when = parseMention(src);
+      if (when && opts.onDate && !modifier) {
+        // the popover writes as you change it (time, end, reminder) and stays open; each write checks the chip is still there
+        let cur = src;
+        const apply = (v, { live = false } = {}) => { const text = v == null ? '' : typeof v === 'string' ? `[[${v}]]` : mentionText(v); if (replaceChip(view, from, from + cur.length, text, cur, { focus: !live })) cur = text; };
+        opts.onDate(el, when, apply, () => opts.onWikiLink?.(when.day)); return true;
+      }
+      const lk = /^\[\[([^\]\n]+)\]\]/.exec(src); if (!lk) return false;
       const target = lk[1].replace(/\|.*$/, '').trim();
-      if (DAY_ONLY.test(target) && !lk[1].includes('|') && opts.onDate && !modifier) { opts.onDate(el, target, (v) => replaceChip(view, from, to, v ? `[[${v}]]` : '', src), () => opts.onWikiLink?.(target)); return true; }
       opts.onWikiLink?.(target); return true;
     };
     return [new Plugin({
@@ -924,7 +945,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   let emitTimer = 0;
   function emit() {
     clearTimeout(emitTimer);
-    emitTimer = setTimeout(() => { emitTimer = 0; onChange?.(api.getMarkdown()); }, 220);
+    emitTimer = setTimeout(() => { emitTimer = 0; onChange?.(api.getMarkdown()); toc?.refresh(readAppearance(model?.fm || '').toc); }, 220);
   }
   /** report a change still waiting for its pause now (the app calls this before the tab changes) */
   function flushEmit() { if (!emitTimer) return; clearTimeout(emitTimer); emitTimer = 0; onChange?.(api.getMarkdown()); }
@@ -1180,8 +1201,17 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     tags: () => (mentions ? mentions()?.tags?.() : []) || [],
     get: () => model?.fm || '',
     locked: () => !!editor.storage.pageLock?.on,
-    set: (fm) => { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
+    resolveImage, pickCover: () => onPickImage?.(),
+    set: (fm) => setFm(fm),
   });
+  /* per-page appearance (page-appearance.js): font, small text and full width as attributes of the page, the floating contents */
+  function setFm(fm) { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); applyAppearance(); }
+  const toc = mountToc(host.querySelector('.rich-scroll'), { root: () => editor.view.dom });
+  function applyAppearance() {
+    const a = readAppearance(model?.fm || '');
+    for (const [k, v] of [['font', a.font], ['small-text', a.small], ['full-width', a.full]]) { if (v) page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = v === true ? 'true' : v; else delete page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())]; }
+    toc.refresh(a.toc);
+  }
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {
     const v = styleSel.value, c = editor.chain().focus();
@@ -1293,6 +1323,9 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   ready = true;
   const api = {
     /** the person allowed web images: try again every one that was held back */
+    /** the front matter block of the page, and a way to change it (Appearance): fn gets it and returns the new one */
+    getFm() { return model?.fm || ''; },
+    editFm(fn) { const old = model?.fm || ''; const next = fn(old); if (next !== old) { setFm(next); props.render(); } },
     refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,
     /** redraw chips after a setting that changes how they read (date format, language) */
@@ -1328,7 +1361,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       // a loaded document starts with a clean history, so Undo never reaches into the previous tab
       if (!keepHistory) { const st = editor.state; editor.view.updateState(EditorState.create({ schema: st.schema, doc: st.doc, plugins: st.plugins })); }
       host.querySelector('.rich-scroll').scrollTop = 0;
-      props.render(); review.render();
+      props.render(); review.render(); applyAppearance();
       syncToolbar();
     },
     /** the visual editor state of this document, with its undo history; `md` says which text it matches */
@@ -1337,6 +1370,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     restore(snap) {
       model = snap.model; silent = true;
       try { editor.view.updateState(snap.state); } finally { silent = false; }
+      props.render(); applyAppearance();
       syncToolbar();
     },
     undo() { return editor.commands.undo(); },

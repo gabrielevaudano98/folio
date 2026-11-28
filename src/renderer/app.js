@@ -12,6 +12,7 @@ import { NEW_DECK, renderSlide, parseFrontmatter } from './slides-core.js';
 import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
 import { openDatePicker } from './page-date-ui.js';
+import { whenLabel } from './page-when.js';
 import { DATE_STYLES, formatDay, datePrefs } from './page-dates.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
@@ -28,7 +29,10 @@ import { mountHistory } from './history-view.js';
 import { htmlToMarkdown } from './page-paste.js';
 import { pageSetup, pdfOptions, pageCss } from './page-docx.js';
 import { parseProps } from './page-props.js';
+import { readAppearance, setAppearance } from './page-appearance.js';
+import { openAppearance, mountToc, paintCover } from './page-appearance-ui.js';
 import { clean as cleanCm } from './page-critic.js';
+import { createSearchWindow } from './search-window.js';
 import tokensCss from './tokens.css';
 import stylesCss from './styles.css';
 
@@ -183,7 +187,7 @@ async function boot() {
     onPropType: (k, t) => folio.setPropType(k, t).then(setTypeOverrides).catch(() => {}),
     onStatus: (el, cur, apply) => showMenu(el, statusOptions(activeTab()?.text).map((v) => ({ label: (v.toLowerCase() === cur.toLowerCase() ? '✓ ' : '') + v, run: () => apply(v) }))),
     linkKind: (target) => linkKind(target, S.files, S.active || ''),
-    onDate: (el, day, apply, openNote) => openDatePicker(el, day, { onPick: apply, onOpenNote: openNote }),
+    onDate: (el, when, apply, openNote) => openDatePicker(el, when, { onPick: apply, onOpenNote: openNote }),
     dateStyle: () => datePrefs.style,
     preview: previewHtml,
     saveImage: async (src) => {
@@ -432,7 +436,7 @@ async function refreshTree() {
   try {
     S.tree = await folio.tree();
     S.files = flatten(S.tree);
-    renderTree(); tagsStale();
+    renderTree(); tagsStale(); remindersSoon();
   } catch (e) {
     $('#tree').innerHTML = `<div class="side-empty">${esc(tr('app.could-not-read-folder', { message: e.message }))}<br><button class="btn" type="button" data-act="choose">${tr('app.choose-another-folder')}</button></div>`;
   }
@@ -488,7 +492,7 @@ function activate(p, { line } = {}) {
     prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
     prev.rich = docType(prev.path) === 'md' && isRich() ? rich.snapshot() : null;
   }
-  navRecord(p);
+  navRecord(p); searchWin.noteOpened(p);
   S.active = p;
   const t = activeTab();
   hideEmpty();
@@ -646,6 +650,7 @@ async function renderPreview() {
     else resolveImg(src).then((u) => { if (u) m.src = u; });
   }
   el.replaceChildren(tpl.content);
+  applyPreviewAppearance(el, t.text);
   if (blocked.length) {
     const bar = document.createElement('div'); bar.className = 'remote-bar'; bar.setAttribute('role', 'status');
     bar.innerHTML = `<span>${esc(tr('app.remote-images-blocked', { n: blocked.length }))}</span><button type="button" class="btn">${esc(tr('app.load-remote-images'))}</button>`;
@@ -667,6 +672,25 @@ async function renderPreview() {
   hydrateCharts(el, readRelative);
   hydrateRefs(el, refEnv());
   hydrateBreadcrumbs(el, t.path);
+}
+/* per-page appearance in the Read view: font, small text and full width as attributes of the page, its cover, the floating contents */
+let previewToc = null;
+function applyPreviewAppearance(el, text) {
+  const a = readAppearance(text);
+  for (const [k, v] of [['font', a.font], ['smallText', a.small], ['fullWidth', a.full]]) { if (v) el.dataset[k] = v === true ? 'true' : v; else delete el.dataset[k]; }
+  for (const c of el.querySelectorAll('.page-cover-read')) paintCover(c, a.cover, a.coverY, resolveImg);
+  previewToc ||= mountToc($('#pane-preview'), { root: () => $('#preview') });
+  previewToc.refresh(a.toc);
+}
+/** change one appearance option of the open page, in whichever view shows it */
+function setPageAppearance(key, value) {
+  const t = activeTab(); if (!t || curType() !== 'md' || isLocked(S.active)) return;
+  if (isRich()) { rich.editFm((fm) => setAppearance(fm, key, value)); return; }
+  const text = setAppearance(t.text, key, value); if (text === t.text) return;
+  t.text = text; editor.applyRemote(text); autosave(); setSaveState('edited'); renderTabsDirty(); renderPreview(); renderStatus();
+}
+function openPageAppearance(anchor) {
+  openAppearance(anchor, { get: () => (isRich() ? rich.getFm() : activeTab()?.text || ''), apply: setPageAppearance, locked: () => isLocked(S.active) });
 }
 /* open an attached file (relative to the page) with the system's app, or a web address in the browser */
 function openMedia(src) {
@@ -826,6 +850,33 @@ async function renderTags() {
     return `<button type="button" class="tag-item" data-tag="${esc(t.tag)}" style="--depth:${depth}"${active === t.tag.toLowerCase() ? ' aria-current="true"' : ''}><span class="tag-name">#${esc(depth ? name : t.tag)}</span><span class="tag-count">${t.count}</span></button>`; }).join('');
 }
 const tagsSoon = debounce(() => renderTags(), 400);
+/* the Reminders section of the sidebar (X13): every @remind of the workspace, overdue first, with Done and Dismiss.
+   The list comes from the main process, which also fires them; Done and Dismiss are app state, never written in the page. */
+const remindersOpen = () => S.settings.showReminders !== false;
+let reminderList = [], showDoneReminders = false;
+const reminderWhen = (r) => whenLabel(r, (d) => formatDay(d, { style: datePrefs.style, lang: locale() }));
+async function renderReminders() {
+  const sec = $('#section-reminders'), box = $('#reminders-list'); if (!sec || !box) return;
+  const ws = S.workspace;
+  try { reminderList = ws && folio.reminders ? await folio.reminders.list() : []; } catch { reminderList = []; }
+  if (ws !== S.workspace) return; // another workspace opened while the list was pending: its answer is not ours
+  sec.hidden = !reminderList.length;
+  const open = remindersOpen(); $('#reminders-head').setAttribute('aria-expanded', String(open)); box.hidden = !open;
+  const overdue = reminderList.filter((r) => r.state === 'overdue').length; const badge = $('#reminders-badge');
+  badge.hidden = !overdue; badge.textContent = overdue ? String(overdue) : ''; $('#reminders-badge-sr').textContent = overdue ? tr('app.reminders-overdue', { n: overdue }) : ''; // a span cannot carry an aria-label: the count is read from hidden text
+  const shown = reminderList.filter((r) => showDoneReminders || r.state !== 'done'); const done = reminderList.length - reminderList.filter((r) => r.state !== 'done').length;
+  box.innerHTML = shown.map((r) => `<div class="rem-item is-${r.state}" role="listitem" data-id="${esc(r.id)}">
+      <button type="button" class="rem-open" data-open="${esc(r.rel)}" data-line="${r.line}" title="${esc(r.rel)}"><span class="rem-title">${esc(r.title || stem(r.rel))}</span><span class="rem-meta"><span class="rem-when">${esc(reminderWhen(r))}</span>${r.state === 'overdue' ? ` · <span class="rem-late">${tr('app.reminder-overdue')}</span>` : ''} · ${esc(stem(r.rel))}</span></button>
+      <button type="button" class="icon-btn rem-act" data-act="${r.state === 'done' ? 'undo' : 'done'}" aria-label="${r.state === 'done' ? tr('app.reminder-not-done') : tr('app.reminder-done')}" data-tip="${r.state === 'done' ? tr('app.reminder-not-done') : tr('app.reminder-done')}" aria-pressed="${r.state === 'done'}">${icons.check}</button>
+      <button type="button" class="icon-btn rem-act" data-act="dismiss" aria-label="${tr('app.reminder-dismiss')}" data-tip="${tr('app.reminder-dismiss')}">${icons.close}</button></div>`).join('')
+    + (done ? `<button type="button" class="rem-more" data-act="toggle-done">${showDoneReminders ? tr('app.reminders-hide-done') : tr('app.reminders-show-done', { n: done })}</button>` : '');
+}
+const remindersSoon = debounce(() => renderReminders(), 150);
+function onReminderFired(r) {
+  const what = r.title || stem(r.rel);
+  toast(tr('app.reminder-toast', { what, when: reminderWhen(r) }), { action: [tr('app.open'), () => openFile(r.rel, { line: r.line })] });
+  remindersSoon();
+}
 function showTag(tag) {
   const si = $('#sidebar-search'); si.value = '#' + tag.replace(/^#/, '');
   if (app.dataset.sidebar !== 'open') toggleSidebar?.();
@@ -1463,6 +1514,7 @@ function toggleAllToggles(open) {
   rich.setToggles(open ?? c > 0);
 }
 function retargetTabs(from, to) {
+  searchWin.noteMoved(from, to);
   const lp = lockMap();
   if (Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
     const next = {}; for (const [k, v] of Object.entries(lp)) next[k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k] = v;
@@ -1973,7 +2025,8 @@ const COMMANDS = [
 
   { id: 'new-folder', title: 'New folder', run: () => newFolder(dirOf(S.active || '')) },
   { id: 'open-folder', title: 'Open folder…', key: 'Mod+O', run: chooseFolder },
-  { id: 'quick-open', title: 'Go to note…', key: 'Mod+P', run: () => openPalette('files') },
+  { id: 'quick-open', title: 'Search pages…', key: 'Mod+P', run: () => openSearch() },
+  { id: 'go-to-note', title: 'Go to note by name…', run: () => openSearch({ titleOnly: true }) },
   { id: 'search', title: 'Search all notes', key: 'Mod+Shift+F', run: focusSearch },
   { id: 'find', title: 'Find in note', key: 'Mod+F', run: () => (isRich() && curType() === 'md' ? rich.find(false) : editor.run('find')) },
   { id: 'replace', title: 'Find and replace in note', key: 'Mod+H', run: () => (isRich() && curType() === 'md' ? rich.find(true) : editor.run('find')) },
@@ -2085,6 +2138,16 @@ function insertMd(md) {
   if (isRich()) { rich.editor.chain().focus().insertContent(md, { contentType: 'markdown' }).run(); return; }
   editor.insert(md);
 }
+/* the search window (Ctrl+P): recent pages, titles and content, preview; Title only is the old Go to note */
+const searchWin = createSearchWindow({
+  workspace: () => S.workspace, files: () => S.files, isOpen: (p) => !!tabOf(p), stem, dirOf, dirs: () => allDirs(), icons,
+  typeIcon: (p) => typeIcon(docTypeAny(p)), textOf, render: (m) => render(m), absUrl: (rel) => folio.absUrl(normalize(rel)),
+  find: (q, o) => folio.find(q, o), get isMac() { return S.platform === 'darwin'; },
+  open: (p, o) => openFile(p, o).catch((e) => toast(e.message, { kind: 'error' })),
+  commands: (v) => { openPalette('commands'); const i = $('#palette-input'); i.value = v; updatePalette(); },
+  create: async (q) => { try { const p = await folio.create(q.endsWith('.md') ? q : q + '.md', `# ${q.split('/').pop()}\n\n`); await refreshTree(); openFile(p); } catch (e) { toast(e.message, { kind: 'error' }); } },
+});
+function openSearch(o) { if ($('#palette') && !$('#palette').hidden) closePalette(); return searchWin.open(o); }
 let pal = { mode: 'commands', items: [], sel: 0, opener: null };
 function openPalette(mode = 'commands', move = null) {
   pal = { mode, items: [], sel: 0, opener: document.activeElement, move };
@@ -2476,6 +2539,16 @@ function bindChrome() {
   document.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); navGo(e.button === 3 ? -1 : 1); } });
   $('#btn-outline').onclick = toggleOutline;
   $('#tags-head').addEventListener('click', () => { saveSetting({ showTags: !tagsOpen() }); renderTags(); });
+  $('#reminders-head').addEventListener('click', () => { saveSetting({ showReminders: !remindersOpen() }); renderReminders(); });
+  $('#reminders-list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.act === 'toggle-done') { showDoneReminders = !showDoneReminders; return renderReminders(); }
+    if (b.dataset.open) return openFile(b.dataset.open, { line: Number(b.dataset.line) });
+    const id = b.closest('[data-id]')?.dataset.id; if (!id) return;
+    const state = { done: 'done', undo: null, dismiss: 'dismissed' }[b.dataset.act];
+    try { await folio.reminders.set(id, state); } catch (er) { return toast(er.message, { kind: 'error' }); }
+    if (state === 'dismissed') toast(tr('app.reminder-dismissed'), { action: [tr('app.undo'), () => folio.reminders.set(id, null)] });
+  });
   $('#tags-list').addEventListener('click', (e) => { const b = e.target.closest('[data-tag]'); if (b) showTag(b.dataset.tag); });
   $('#tags-list').addEventListener('contextmenu', (e) => {
     const b = e.target.closest('[data-tag]'); if (!b) return; e.preventDefault(); const tag = b.dataset.tag;
@@ -2493,7 +2566,7 @@ function bindChrome() {
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
     ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
       { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }] : []),
-    ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
+    ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('appearance.menu'), run: () => openPageAppearance($('#btn-more')) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
     { label: tr('app.import-word-or-html'), run: importDocument }, '-',
@@ -2633,7 +2706,7 @@ function bindChrome() {
   // empty states
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
-    if (b) { const act = b.dataset.act; if (act === 'choose') chooseFolder(); if (act === 'new') newNote(); if (act === 'ai') openAiSheet(); if (act === 'quick-open') openPalette('files'); }
+    if (b) { const act = b.dataset.act; if (act === 'choose') chooseFolder(); if (act === 'new') newNote(); if (act === 'ai') openAiSheet(); if (act === 'quick-open') openSearch(); }
     const r = e.target.closest('[data-recent]'); if (r) switchWorkspace(r.dataset.recent).catch((er) => toast(er.message, { kind: 'error' }));
   });
 
@@ -2699,10 +2772,11 @@ function bindChrome() {
   document.addEventListener('keydown', (e) => {
     const m = e.metaKey || e.ctrlKey;
     if (m && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openPalette('commands'); }
+    else if (m && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openSearch(); } // also the menu's accelerator; opening twice only refocuses
     if (m && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); insertRef('link'); }
     if (m && e.altKey && e.shiftKey && e.code === 'KeyT') { e.preventDefault(); toggleAllToggles(); } // B8: Notion's Ctrl+Alt+T is Insert template here
     else if (m && e.altKey && !e.shiftKey && e.code === 'KeyT' && curType() === 'md') { e.preventDefault(); insertTemplateCmd(); } // shown in the palette, was never bound
-    if (m && e.key === 'Enter' && curType() === 'slides') { e.preventDefault(); curSurface()?.present(); }
+    if (m && e.key === 'Enter' && curType() === 'slides' && !searchWin.isOpen()) { e.preventDefault(); curSurface()?.present(); }
     if (e.key === 'Escape' && app.classList.contains('focus') && $('#palette').hidden) toggleFocus();
   });
 }
@@ -2719,6 +2793,7 @@ function dragResize(handle, onMove) {
 
 function bindIpc() {
   folio.onTreeChanged(() => { refreshTree(); backlinksSoon(); });
+  if (folio.reminders) { folio.reminders.onChanged(remindersSoon); folio.reminders.onFired(onReminderFired); folio.reminders.onOpen((r) => openFile(r.rel, { line: r.line })); setInterval(remindersSoon, 60000); /* overdue as time passes */ }
   folio.onFileChanged(({ path: p, content }) => {
     tagsStale();
     if (p !== S.active) backlinksSoon();

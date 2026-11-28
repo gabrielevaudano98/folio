@@ -5,9 +5,11 @@
 //   [[Note]]  [[Note#Heading]]  [[Note#^id]]   a link          [[2026-11-21]]  a day (daily note in Journal/)
 //   [[People/Ada]]                              a person       [status:: Done]  a chip (inline field)
 //   #tag                                        a tag          😀               an emoji character
+//   [[2026-12-01]]{09:00 remind 30m}            a date with a time, an end or a reminder (page-when.js)
 import { t as tr, tl } from './i18n.js';
 import { fuzzy, fuzzyItem } from './fuzzy.js';
 import { resolveTarget, docKind, parseRef } from './refs-syntax.js';
+import { mentionText, whenLabel } from './page-when.js';
 
 export const STATUSES = [tl('men', 'Not started'), tl('men', 'In progress'), 'Blocked', 'Done'];
 /** the status words a page offers: front matter `folio: status: [A, B]` (or a `- A` list), else the defaults */
@@ -90,21 +92,54 @@ function keywordDays(q, ref) {
   return out;
 }
 
-/** @tomorrow, @next friday, @domani, @25 dec, and the first letters of any of them → days, in English and Italian */
+/* chrono's reading of a phrase: the day, the time when one was said, the end of a range */
+async function chronoWhen(q, now, lang) {
+  const c = await chrono();
+  for (const parser of lang === 'it' ? [c.it, c] : [c, c.it]) {
+    let r = null; try { r = parser.parse(q.trim(), now, { forwardDate: true })[0]; } catch { /* not a date */ }
+    if (!r) continue;
+    const d = r.start.date(); const hm = (x) => `${pad(x.getHours())}:${pad(x.getMinutes())}`;
+    const time = r.start.isCertain('hour') ? hm(d) : null;
+    const e = r.end?.date(); const endDay = e && ymd(e) > ymd(d) ? ymd(e) : null; const endTime = e && time && r.end.isCertain('hour') ? hm(e) : null;
+    return { day: ymd(d), date: d, time, endDay, endTime, whole: r.index === 0 && r.text.length >= q.trim().length - 1 };
+  }
+  return null;
+}
+/** @tomorrow, @next friday, @domani, @25 dec, @tomorrow 9am, @3 dec - 5 dec, and the first letters of any of them → days, in English and Italian */
 export async function dateEntries(q, now = new Date(), { lang = 'en', label = null } = {}) {
   const ref = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
-  let days = [];
-  if (!q.trim()) days = [ref, addDays(ref, 1), addDays(ref, -1)];
+  let rows = [];
+  if (!q.trim()) rows = [ref, addDays(ref, 1), addDays(ref, -1)].map((d) => ({ day: ymd(d), date: d }));
   else if (/[\p{L}\d]/u.test(q)) {
-    days.push(...keywordDays(q, ref));
-    const c = await chrono();
-    for (const parser of lang === 'it' ? [c.it, c] : [c, c.it]) {
-      let d = null; try { d = parser.parseDate(q.trim(), ref, { forwardDate: true }); } catch { /* not a date */ }
-      if (d) days.push(d);
-    }
+    rows.push(...keywordDays(q, ref).map((d) => ({ day: ymd(d), date: d })));
+    const w = await chronoWhen(q, now, lang);
+    if (w) rows.push(w.time || w.endDay ? w : { day: w.day, date: w.date });
   }
-  const seen = new Set(); days = days.filter((d) => !seen.has(ymd(d)) && seen.add(ymd(d))).slice(0, 4);
-  return days.map((d) => { const rel = relative(d, ref); const name = label ? label(ymd(d)) : rel || longDay(d); return { item: { label: name, desc: label ? longDayIn(d, lang) : rel ? longDay(d) : ymd(d), icon: 'calendar' }, marks: [], group: 'Dates', insert: `[[${ymd(d)}]]` }; });
+  const seen = new Set();
+  rows = rows.map((r) => ({ time: null, endDay: null, endTime: null, remind: null, ...r })).filter((r) => { const k = mentionText(r); return !seen.has(k) && seen.add(k); }).slice(0, 4);
+  return rows.map((r) => {
+    const d = r.date; const rel = relative(d, ref); const name = label ? label(r.day) : rel || longDay(d);
+    const text = r.time || r.endDay ? whenLabel(r, (x) => (x === r.day ? name : label ? label(x) : x)) : name;
+    return { item: { label: text, desc: label ? longDayIn(d, lang) : rel ? longDay(d) : r.day, icon: 'calendar' }, marks: [], group: 'Dates', insert: mentionText(r) };
+  });
+}
+/* "@remind tomorrow 9am", "@ricordami domani alle 9", and the first letters of the word ("@rem", "@ric") */
+const REMIND_WORDS = ['remind me', 'remind', 'ricordami', 'promemoria', 'ricorda'];
+/** reminder entries for the @ menu: [[day]]{HH:MM remind}; with no time, the day itself at 9:00 ([[day]]{remind}) */
+export async function remindEntries(q, now = new Date(), { lang = 'en', label = null } = {}) {
+  const t = fold(q.trimStart()); if (t.length < 3) return [];
+  let rest = null;
+  for (const wd of REMIND_WORDS) { if (t === wd || t.startsWith(wd + ' ')) { rest = q.trimStart().slice(wd.length).trim(); break; } }
+  if (rest == null && !REMIND_WORDS.some((wd) => wd.startsWith(t))) return [];
+  const ref = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  let rows = [];
+  if (!rest) { const tom = addDays(ref, 1); rows = [{ day: ymd(tom), date: tom, time: '09:00' }]; if (now.getHours() < 23) rows.push({ day: ymd(ref), date: ref, time: `${pad(now.getHours() + 1)}:00` }); } // no "today" row once no later hour is left
+  else { const w = await chronoWhen(rest, now, lang); if (w) rows = [{ day: w.day, date: w.date, time: w.time }]; }
+  const dl = (d) => (label ? label(d) : d);
+  return rows.map((r) => {
+    const m = { day: r.day, time: r.time, endDay: null, endTime: null, remind: '0' };
+    return { item: { label: tr('men.remind-me', { when: whenLabel(m, dl) }), desc: longDayIn(r.date, lang) + (r.time ? '' : ' · ' + tr('men.remind-9')), icon: 'bell' }, marks: [], group: 'Reminders', insert: mentionText(m) };
+  });
 }
 const longDayIn = (d, lang) => { const s = d.toLocaleDateString(lang === 'it' ? 'it-IT' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); return s.charAt(0).toUpperCase() + s.slice(1); };
 
@@ -150,7 +185,10 @@ export async function linkEntries(q, ctx) {
 /* ---------- @ ---------- */
 export async function atEntries(q, ctx) {
   const out = [];
-  out.push(...await dateEntries(q, ctx.now ? ctx.now() : new Date(), { lang: ctx.lang?.() || 'en', label: ctx.dayLabel || null }));
+  const when = { lang: ctx.lang?.() || 'en', label: ctx.dayLabel || null }; const now = ctx.now ? ctx.now() : new Date();
+  const remind = await remindEntries(q, now, when);
+  out.push(...remind);
+  if (!remind.length || !/^\S+\s/.test(q.trimStart())) out.push(...await dateEntries(q, now, when));
   out.push(...docEntries(q, ctx, { people: true, limit: q ? 4 : 4 }));
   out.push(...docEntries(q, ctx, { people: false, limit: q ? 6 : 5, skipDays: true }));
   const statuses = ctx.statuses || STATUSES;
