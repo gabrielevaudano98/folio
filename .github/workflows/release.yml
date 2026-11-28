@@ -93,8 +93,13 @@ jobs:
           Updates: the Windows installer updates itself from these releases (Settings → Updates). On macOS, Linux and the Windows portable exe Folio tells you when a new version is out; download it here.
           NOTES
           if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            # Republishing a version (workflow_dispatch, or a later package.json change that kept the version):
-            # replace the assets, keep the release and its notes.
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+              # A later package.json change that kept the version (a dependency bump): never touch
+              # a release people already download from.
+              echo "Release v$VERSION already exists; leaving it unchanged."
+              exit 0
+            fi
+            # Republishing by hand: assets with the same name are replaced, the notes and other assets are kept.
             gh release upload "v$VERSION" dist-all/* --clobber --repo "$GITHUB_REPOSITORY"
           else
             gh release create "v$VERSION" dist-all/* --repo "$GITHUB_REPOSITORY" \
