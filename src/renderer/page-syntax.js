@@ -241,6 +241,7 @@ export function summaryNodes(src) {
   const push = (t) => { if (t) out.push({ type: 'text', text: unescSummary(t), ...(stack.length ? { marks: stack.map((x) => ({ ...x })) } : {}) }); };
   while ((m = re.exec(src))) {
     push(src.slice(at, m.index)); at = m.index + m[0].length;
+    if (m[1] == null && m[2] === 'a' && m[0][1] !== '/') return literal; // a bare <a> has no href: not something summaryHtml writes
     const tag = m[1] != null ? 'a' : m[2]; const type = SUMMARY_TAG.get(tag);
     if (m[0][1] === '/') { if (stack.at(-1)?.type !== type) return literal; stack.pop(); }
     else stack.push(type === 'link' ? { type, attrs: { href: m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&') } } : { type });
@@ -405,7 +406,7 @@ export const PageImage = Image.extend({
   renderMarkdown: (node) => {
     const a = node.attrs || {};
     const alt = (a.alt || '') + (a.size ? `|${a.size}` : '');
-    return `![${alt}](${a.src || ''}${a.title ? ` "${String(a.title).replace(/"/g, '\\"')}"` : ''})`;
+    return `![${alt}](${a.src || ''}${a.title ? ` "${String(a.title).replace(/\\(?=[!-\/:-@[-`{-~]|$)|"/g, '\\$&')}"` : ''})`;
   },
 });
 

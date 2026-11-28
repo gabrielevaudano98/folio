@@ -22,8 +22,10 @@ import { buildServer, runTool, TOOLS } from './mcp-tools.js';
 import { startQa, pollQa, stopQa } from './qa.js';
 import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
+import { mayOpenWithSystem } from './open-guard.js';
 import { createFeatures } from './meeting/service.js';
 import { createUpdater } from './updater.js';
+import { createRequests } from './ai-requests.js';
 import electronUpdater from 'electron-updater';
 import { writeAtomic, writeAtomicSync, writeNew } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
@@ -45,6 +47,7 @@ if (process.env.FOLIO_USER_DATA) app.setPath('userData', process.env.FOLIO_USER_
 
 /* ---------------- settings ---------------- */
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
+const requests = createRequests();
 const BRIDGE_FILE = () => path.join(app.getPath('userData'), 'mcp-bridge.json');
 const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
@@ -197,6 +200,7 @@ if (isWin) systemPreferences.on?.('accent-color-changed', () => win?.webContents
 let watcher = null;
 const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own echo
 async function setWorkspace(dir) {
+  requests.clear(); // a request belongs to the folder it was written in
   await clearTrashed();
   settings.workspace = dir;
   if (dir) settings.recent = [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8);
@@ -431,12 +435,20 @@ h('shell:open', (url) => { if (/^(https?|mailto):/.test(url)) shell.openExternal
 /* templates (D9): the community gallery and links to Markdown files. Text only, 1 MB at most, HTTPS (or this machine) */
 const TEMPLATE_MAX = 1024 * 1024;
 h('templates:fetch', async (url) => {
-  const u = new URL(String(url));
-  const local = u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname);
-  if (u.protocol !== 'https:' && !local) throw new Error('Only https:// links can be downloaded.');
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 12000);
   try {
-    const res = await net.fetch(u.href, { signal: ctl.signal, redirect: 'follow' });
+    // every address, the first and each redirect, must be https on the public internet; only the link the person gave may be http on this machine, a redirect never may; so a link cannot reach the local network
+    let target = new URL(String(url)), res;
+    for (let hop = 0; ; hop++) {
+      if (hop > 5) throw new Error('Too many redirects.');
+      const local = hop === 0 && target.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(target.hostname);
+      if (target.protocol !== 'https:' && !local) throw new Error('Only https:// links can be downloaded.');
+      if (!local) await assertPublicHost(target.hostname);
+      res = await net.fetch(target.href, { signal: ctl.signal, redirect: 'manual' });
+      const next = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+      if (!next) break;
+      target = new URL(next, target);
+    }
     if (!res.ok) throw new Error(`The server answered ${res.status}.`);
     const type = res.headers.get('content-type') || '';
     if (/^(image|video|audio|application\/(pdf|zip|octet-stream))/i.test(type)) throw new Error('That link is not a text file.');
@@ -453,7 +465,7 @@ h('templates:import-files', async () => {
   for (const f of r.filePaths.slice(0, 50)) { const st = await fs.stat(f); if (st.size > TEMPLATE_MAX) continue; out.push({ name: path.basename(f).replace(/\.(md|markdown|txt)$/i, ''), text: await fs.readFile(f, 'utf8') }); }
   return out;
 });
-h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); await fs.access(abs); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
+h('shell:open-file', async (rel) => { const abs = notes.resolve(rel, { allowAsset: true }); if (!mayOpenWithSystem(abs)) throw new Error('Folio opens documents and media only, not programs or scripts.'); if (!(await fs.stat(abs)).isFile()) throw new Error('That is not a file.'); const err = await shell.openPath(abs); if (err) throw new Error(err); return true; });
 h('clipboard:write', (text) => clipboard.writeText(text));
 h('clipboard:read', async () => ({ text: await clipboard.readText(), html: typeof clipboard.readHTML === 'function' ? clipboard.readHTML() : '' })); // Electron 45: readText is async, readHTML is gone
 /* Word and HTML documents become pages: Word is read here with mammoth, the renderer turns the HTML into Markdown */
@@ -590,6 +602,7 @@ const appBackend = {
         win?.webContents.send('ai:edit', { ...r, client: ctx.client, orphans, aiKept });
       },
       onMove: async (r) => win?.webContents.send('ai:move', { ...r, client: ctx.client }),
+      requests: { pending: () => requests.pending(), finish: (id, reply) => { const r = requests.finish(id, reply); win?.webContents.send('ai:request-done', { ...r, client: ctx.client }); return r; } },
       openNote: () => askRenderer('open-note'),
       showNote: (a) => { win?.show(); win?.focus(); return askRenderer('show-note', a); },
     });
@@ -656,6 +669,7 @@ async function restartMcp() {
 }
 h('mcp:status', () => mcpStatus());
 h('mcp:token', () => settings.token);
+h('ai:ask', (_e, r) => ({ ...requests.add(r), pending: requests.count() }));
 h('mcp:rotate-token', () => { settings.token = crypto.randomBytes(24).toString('hex'); saveSettings(); return settings.token; });
 
 /* ---------------- connections to AI clients ---------------- */

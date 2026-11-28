@@ -46,7 +46,8 @@ function parseDelimited(text, delim, { strict = false } = {}) {
   return rows.map((r) => [...r, ...Array(width - r.length).fill('')].map((c) => c.replace(/\n/g, ' ').trim()));
 }
 
-const cellText = (c) => String(c ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+// a pipe is escaped with a backslash; backslashes just before it are doubled so they stay literal (one linear pass)
+const cellText = (c) => { let out = '', run = 0; for (const ch of String(c ?? '').replace(/\n/g, ' ')) { if (ch === '\\') { run++; continue; } out += ch === '|' ? '\\'.repeat(run * 2) + '\\|' : '\\'.repeat(run) + ch; run = 0; } return out + '\\'.repeat(run); };
 /** a GFM table from rows of text; the first row is the header */
 export function gfmTable(rows, aligns = []) {
   const w = Math.max(...rows.map((r) => r.length));

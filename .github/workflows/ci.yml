@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -59,10 +59,13 @@ jobs:
         run: npm run dist:mac -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Build Linux
+        if: runner.os == 'Linux'
+        run: npm run dist:linux -- --publish never
       - name: Packaged app answers MCP over stdio, fuses are as intended
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then BIN="release/win-unpacked/Folio.exe"; else BIN=$(find release -path '*Folio.app/Contents/MacOS/Folio' | head -n 1); fi
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="release/win-unpacked/Folio.exe"; elif [ "$RUNNER_OS" = "Linux" ]; then BIN="release/linux-unpacked/folio"; else BIN=$(find release -path '*Folio.app/Contents/MacOS/Folio' | head -n 1); fi
           test -f "$BIN" || { echo "packaged binary not found"; ls -R release | head -40; exit 1; }
           npx --yes @electron/fuses read --app "$BIN" | tee fuses.txt
           if [ "$RUNNER_OS" = "Windows" ]; then grep -E "RunAsNode is Enabled" fuses.txt; export FOLIO_NODE_MODE=1; else grep -E "RunAsNode is Disabled" fuses.txt; fi
@@ -78,5 +81,6 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.zip
+            release/*.AppImage
           retention-days: 14
           if-no-files-found: error
