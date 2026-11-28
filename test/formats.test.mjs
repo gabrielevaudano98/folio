@@ -756,6 +756,18 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   const pdfo = pdfOptions({ size: 'A5', landscape: true, margins: 'narrow', header: true }, 'T&C'); assert(Math.abs(pdfo.pageSize.width - 148 / 25.4) < 1e-9 && pdfo.landscape && pdfo.margins.left === 0.5 && pdfo.headerTemplate.includes('T&amp;C') && pdfo.footerTemplate.includes('pageNumber'));
   assert.equal(pageCss({ size: 'Letter', landscape: true, margins: 'wide' }), '@page{size:Letter landscape;margin:1in 2in 1in 2in}');
   ok('Word export: headings, lists, table with alignment, code, footnote, contents field, page break, header and footer, page size; suggestions become tracked changes and comments with replies; clean drops them; PDF page setup');
+  { // #86: a resolved thread ([resolved] as its last reply) is a resolved Word comment, and the marker is not a reply
+    const docxOf = async (md) => { const z = await JSZip.loadAsync(await toDocx(new DOMParser().parseFromString('<!DOCTYPE html><body>' + markdownIt.render(md), 'text/html').body, { title: 'R', author: 'Tester' })); const f = (n) => z.file(n)?.async('string'); return { cm: await f('word/comments.xml'), ext: await f('word/commentsExtended.xml') }; };
+    const done = (ext) => [...ext.matchAll(/<w15:commentEx [^>]*?\/>/g)].map((x) => [/w15:paraIdParent=/.test(x[0]), (/w15:done="(\d)"/.exec(x[0]) || [])[1] || '']);
+    const r1 = await docxOf('A {==claim==}{>>Ada, 2026-11-20 14:05: Source?<<}{>>Bob, 2026-11-20 15:00: Added<<}{>>Ada, 2026-11-21 09:00: [resolved]<<} and {==open==}{>>Bob, 2026-11-20 16:00: Later<<}{>>Ada, 2026-11-20 17:00: Ok<<}.\n');
+    assert(!r1.cm.includes('[resolved]'), 'the marker is not exported as a reply'); assert.equal((r1.cm.match(/<w:comment /g) || []).length, 4);
+    assert.deepEqual(done(r1.ext), [[false, '1'], [true, '1'], [false, ''], [true, '']], r1.ext);
+    const r2 = await docxOf('Just {==this==}{>>Ada, 2026-11-20 14:05: Fix<<}{>>Bob, 2026-11-21 10:00: [resolved]<<}.\n');
+    assert(!r2.cm.includes('[resolved]') && r2.cm.includes('Fix')); assert.deepEqual(done(r2.ext), [[false, '1']], 'a resolved comment with no replies is resolved too');
+    const r3 = await docxOf('Re {==this==}{>>Ada, 2026-11-20 14:05: Fix<<}{>>Bob, 2026-11-21 10:00: [resolved]<<}{>>Ada, 2026-11-22 10:00: Not yet<<}.\n');
+    assert(!r3.cm.includes('[resolved]') && r3.cm.includes('Not yet')); assert.deepEqual(done(r3.ext), [[false, ''], [true, '']], 'a reply after [resolved] reopens the thread');
+    ok('Word export: a resolved thread is a resolved Word comment (with or without replies), its [resolved] marker is not a reply; a reopened thread is open');
+  }
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
 }
 

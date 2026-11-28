@@ -2,6 +2,7 @@
 // Headings, lists, tables, footnotes, a contents field, page breaks and images map to Word's own;
 // CriticMarkup suggestions become tracked changes and comments become Word comments with replies.
 import * as D from 'docx';
+import { threadResolved, isResolvedMarker } from './page-critic.js';
 
 /* page setup shared by PDF and Word export */
 export const PAGE_SIZES = { A4: [210, 297], Letter: [215.9, 279.4], Legal: [215.9, 355.6], A5: [148, 210] }; // millimetres, portrait
@@ -122,10 +123,14 @@ export async function toDocx(root, opts = {}) {
     if (has(n, 'critic-hl')) { range = n; for (let s = n.nextSibling; s; s = s.nextSibling) { if (s.nodeType === 3 && !s.data.trim()) continue; if (s.nodeType === 1 && has(s, 'critic-comment')) { marks.push(s); ctx.used.add(s); continue; } break; } }
     else { marks.push(n); for (let s = n.nextSibling; s; s = s.nextSibling) { if (s.nodeType === 3 && !s.data.trim()) continue; if (s.nodeType === 1 && has(s, 'critic-comment')) { marks.push(s); ctx.used.add(s); continue; } break; } }
     if (!marks.length) { inline(range, fmt, out); return; }
-    const ids = marks.map((m, i) => {
-      const id = ctx.cid++; const who = m.getAttribute('data-author') || author;
-      const text = m.getAttribute('data-text') ?? (m.getAttribute('data-tip') || '');
-      ctx.comments.push({ id, author: who, initials: initials(who), date: parseStamp(m.getAttribute('data-date')) || new Date(), children: text.split('\n').map((l) => new D.Paragraph({ children: [new D.TextRun(l)] })), ...(i ? { parentId: ctx.cid - 1 - i } : {}) });
+    // a resolved thread (its last reply is [resolved]) is a resolved Word comment; the markers are state, not replies
+    const all = marks.map((m) => ({ m, text: m.getAttribute('data-text') ?? (m.getAttribute('data-tip') || '') }));
+    const resolved = threadResolved(all);
+    const thread = all.filter((c, i) => !i || !isResolvedMarker(c));
+    let root = -1;
+    const ids = thread.map(({ m, text }, i) => {
+      const id = ctx.cid++; const who = m.getAttribute('data-author') || author; if (!i) root = id;
+      ctx.comments.push({ id, author: who, initials: initials(who), date: parseStamp(m.getAttribute('data-date')) || new Date(), children: text.split('\n').map((l) => new D.Paragraph({ children: [new D.TextRun(l)] })), ...(i ? { parentId: root } : {}), ...(resolved ? { resolved: true } : {}) });
       return id;
     });
     ids.forEach((id) => out.push({ t: 'cstart', id }));
@@ -313,6 +318,9 @@ export async function toDocx(root, opts = {}) {
   const keywords = Array.isArray(props.tags) ? props.tags.join(', ') : props.tags || '';
   const header = page.header ? { default: new D.Header({ children: [new D.Paragraph({ alignment: D.AlignmentType.RIGHT, children: [new D.TextRun({ text: opts.title || '', color: '888888', size: 16 })] })] }) } : undefined;
   const footer = page.pageNumbers ? { default: new D.Footer({ children: [new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.TextRun({ children: [D.PageNumber.CURRENT, ' / ', D.PageNumber.TOTAL_PAGES], color: '888888', size: 16 })] })] }) } : undefined;
+  // docx writes word/commentsExtended.xml (where Word keeps "resolved") only when some comment is a reply. A resolved
+  // comment with no replies still needs it: a parentId no comment has makes docx write the part, with no parent for it.
+  if (ctx.comments.some((c) => c.resolved) && !ctx.comments.some((c) => c.parentId !== undefined)) ctx.comments[0] = { ...ctx.comments[0], parentId: -1 };
   const doc = new D.Document({
     creator: props.author || author, lastModifiedBy: author, title: props.title || opts.title || '', description: props.description || '', subject: props.subject || '', keywords,
     features: ctx.toc ? { updateFields: true } : undefined,
