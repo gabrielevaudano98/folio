@@ -100,7 +100,9 @@ jobs:
               exit 0
             fi
             # Republishing by hand: assets with the same name are replaced, the notes and other assets are kept.
-            gh release upload "v$VERSION" dist-all/* --clobber --repo "$GITHUB_REPOSITORY"
+            # The update manifests go last, so an updater never reads a latest*.yml whose installer is not there yet.
+            find dist-all -maxdepth 1 -type f ! -name 'latest*.yml' -print0 | xargs -0 gh release upload "v$VERSION" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "v$VERSION" dist-all/latest*.yml --clobber --repo "$GITHUB_REPOSITORY"
           else
             gh release create "v$VERSION" dist-all/* --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" --title "Folio $VERSION (pre-alpha)" --prerelease \
