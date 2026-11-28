@@ -14,7 +14,7 @@ import { portableMarkdown, summaryNodes } from '../src/renderer/page-syntax.js';
 import { headings } from '../src/renderer/markdown.js';
 import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
-import { createPageCodec, splitBlocks } from '../src/renderer/page-core.js';
+import { createPageCodec, splitBlocks, refence } from '../src/renderer/page-core.js';
 import { mentionEntries, extractTags, blockIds, linkKind, ymd, statusClass, statusOptions, STATUSES } from '../src/renderer/page-mentions.js';
 import { parseTSV, parseCSV, gfmTable, sheetFromTable, compareCells } from '../src/renderer/page-table.js';
 import { findMatches, replaceAll } from '../src/renderer/page-find.js';
@@ -33,7 +33,7 @@ import { markdownIt } from '../src/renderer/markdown.js';
 import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import { createActionLog, perDoc } from '../src/renderer/history.js';
-import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
+import { parseChartSpec, toSeries, sheetRange, chartSvg, specToText, setSpecKey, comboLines } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
 let n = 0; const ok = (m) => { n++; console.log('  ✓', m); };
@@ -288,6 +288,19 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   const hp = open(fx('pages/html.md')); const r = hp.kids.findIndex((n) => n.type.name === 'folioRaw' && n.attrs.source.startsWith('<p align'));
   const edRaw = codec.save(hp.m, withKids(hp.kids.map((n, i) => (i === r ? n.type.create({ source: '<p align="right">Moved</p>' }) : n))));
   assert.equal(edRaw, fx('pages/html.md').replace('<p align="center">Centred paragraph</p>', '<p align="right">Moved</p>')); ok('a raw block edited as source is written back as typed');
+  {
+    // a code block edited in the editor (here: a chart's type from the page chart bar) keeps the author's fence
+    const page = '# Fences\n\nBefore.\n\n~~~~ chart\ntype:  column\ntitle: Sales\ndata:\n| Month | Sales |\n| --- | --- |\n| Jan | 10 |\n~~~~~\n\n\nAfter.\n\n```js\nlet a = 1;\n```\n';
+    const o = open(page); const at = o.kids.findIndex((n) => n.type.name === 'codeBlock' && n.attrs.language === 'chart'); assert(at >= 0, 'the chart is a code block');
+    const swap = (i, text) => withKids(o.kids.map((n, j) => (j === i ? schema.node('codeBlock', n.attrs, text ? [schema.text(text)] : []) : n)));
+    const typed = setSpecKey(o.kids[at].textContent, 'type', 'donut');
+    assert.equal(codec.save(o.m, swap(at, typed)), page.replace('type:  column', 'type:  donut'));
+    assert.equal(codec.save(o.m, swap(at, setSpecKey(o.kids[at].textContent, 'labels', true))), page.replace('title: Sales\n', 'title: Sales\nlabels: true\n'));
+    const js = o.kids.findIndex((n) => n.attrs?.language === 'js');
+    assert.equal(codec.save(o.m, swap(js, 'let a = 2;\n```\nx')), page.replace('```js\nlet a = 1;\n```', '````js\nlet a = 2;\n```\nx\n````'), 'text that would close the fence gets a longer fence');
+    assert.equal(refence('```js\nx\n```', 'js', ''), '```js\n```'); assert.equal(refence('```js\nx\n```', 'py', 'y'), null); assert.equal(refence('  ```\nx\n  ```', '', 'y'), null);
+    ok('an edited code block keeps its own fence (~~~, length, info string) and the blank lines around it');
+  }
 
   const fmText = fx('pages/obsidian.md'); const fmEd = open(fmText);
   const h = fmEd.kids.slice(); h[0] = schema.node('heading', { level: 1 }, [schema.text('Renamed')]);
@@ -668,6 +681,73 @@ const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nshee
 const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');
 assert.deepEqual(s.categories, ['Q1', 'Q2', 'Q3', 'Q4']); assert.equal(s.series.length, 4); ok('chart series in rows skip text rows');
 assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG');
+{
+  // existing specs keep their exact text; the new keys round-trip in a fixed order
+  for (const t of ['type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows', 'type: column\ntitle: Costs by quarter\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nstacked: true']) assert.equal(specToText(parseChartSpec(t)), t);
+  assert.deepEqual(Object.keys(parseChartSpec('type: pie\ntitle: X')).sort(), ['by', 'stacked', 'title', 'type'], 'no new keys appear on an old spec');
+  const full = 'type: combo\ntitle: Revenue and margin\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nstacked: true\nlines: Margin\nsecondary: true\nlabels: true\nxtitle: Month\nytitle: Euro\ny2title: Margin (%)';
+  const fs1 = parseChartSpec(full); assert.equal(specToText(fs1), full); assert.equal(fs1.labels, true); assert.equal(fs1.secondary, true); assert.equal(fs1.y2title, 'Margin (%)');
+  assert.equal(parseChartSpec('Type: Donut\nxTitle: Month\nLabels: false').xtitle, 'Month'); assert.equal(specToText(parseChartSpec('type: donut\nlabels: false')), 'type: donut');
+  ok('chart spec: old specs byte-identical, donut, combo, axis titles and labels round-trip');
+  // a chart edited from the page bar changes one line and nothing else
+  const block = 'type:   column\ntitle: Sales\ndata:\n| a | b: c |\n| --- | --- |\n| x | 1 |';
+  assert.equal(setSpecKey(block, 'type', 'donut'), block.replace('type:   column', 'type:   donut'));
+  assert.equal(setSpecKey(block, 'labels', true), 'type:   column\ntitle: Sales\nlabels: true\ndata:\n| a | b: c |\n| --- | --- |\n| x | 1 |');
+  assert.equal(setSpecKey(setSpecKey(block, 'labels', true), 'labels', false), block);
+  assert.equal(setSpecKey('type: line\nrange: A1:B3\n', 'xtitle', 'Month'), 'type: line\nrange: A1:B3\nxtitle: Month\n');
+  assert.equal(setSpecKey(block, 'b', 'x'), 'type:   column\ntitle: Sales\nb: x\ndata:\n| a | b: c |\n| --- | --- |\n| x | 1 |', 'data rows are never read as keys');
+  ok('chart spec: setSpecKey rewrites one line in place, adds before data, removes on false');
+  // drawing: donut, combo with a secondary axis, axis titles and value labels
+  const d = { categories: ['Jan', 'Feb', 'Mar'], series: [{ name: 'Revenue', values: [1200, 1500, 900] }, { name: 'Costs', values: [800, 900, 950] }, { name: 'Margin', values: [33, 40, -5] }] };
+  const count = (svg, re) => (svg.match(re) || []).length;
+  // numbers are drawn in the host's locale: build the expected text with the same formatter
+  const nf = (v) => new Intl.NumberFormat(undefined, { notation: Math.abs(v) >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(v);
+  const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const dn = chartSvg({ categories: d.categories, series: [d.series[0]] }, { type: 'donut', labels: true });
+  assert.equal(count(dn, /class="ch-slice"/g), 3); assert.match(dn, new RegExp(`class="ch-total"[^>]*>${reEsc(nf(3600))}<`)); assert(dn.includes(`>${nf(1500)}<`)); assert.doesNotMatch(dn, /%</); assert.match(dn, / A[\d.]+,[\d.]+ 0 0 0 /, 'inner arc drawn back');
+  assert.match(chartSvg({ categories: ['a'], series: [{ name: 'S', values: [5] }] }, { type: 'donut' }), /fill-rule="evenodd"/); ok('donut draws ring slices, the total in the middle and value labels');
+  { // the centre text fits the hole: shrunk on a small donut, left out when even small text would not fit
+    const big = chartSvg({ categories: ['a', 'b'], series: [{ name: 'A very long series name indeed', values: [123456789.5, 1] }] }, { type: 'donut' }, { width: 640, height: 360 });
+    const sz = Number(big.match(/class="ch-total"[^>]*style="font-size:(\d+)px"/)[1]); assert(sz >= 10 && sz <= 20);
+    const sub = big.match(/class="ch-sub"[^>]*>([^<]*)</)?.[1] || ''; assert(sub.length <= 18 && (sub === '' || sub.endsWith('…')), sub);
+    const tiny = chartSvg({ categories: ['a', 'b'], series: [{ name: 'S', values: [1234567, 7654321] }] }, { type: 'donut' }, { width: 120, height: 110 });
+    assert.doesNotMatch(tiny, /ch-sub/); const ts = tiny.match(/class="ch-total"[^>]*style="font-size:(\d+)px"/); assert(!ts || Number(ts[1]) < 20);
+    ok('the donut total shrinks to fit its hole and the series name is cut or left out');
+  }
+  assert.deepEqual(comboLines(d.series, {}), [false, false, true]); assert.deepEqual(comboLines(d.series, { lines: 'costs, margin' }), [false, true, true]); assert.deepEqual(comboLines(d.series, { lines: 'Nope' }), [false, false, true]);
+  const cb = chartSvg(d, parseChartSpec('type: combo\nsecondary: true\nlabels: true\nxtitle: Month\nytitle: Euro\ny2title: Margin (%)'));
+  assert.equal(count(cb, /class="ch-bar"/g), 6); assert.equal(count(cb, /class="ch-line" d="M\d/g), 1); assert.equal(count(cb, /class="ch-axis"/g), 3); assert.match(cb, /rotate\(-90\)" text-anchor="middle">Euro</); assert.match(cb, /rotate\(90\)" text-anchor="middle">Margin \(%\)</);
+  assert(count(cb, /class="ch-tick ch-tick2"/g) >= 3, 'secondary ticks'); assert.match(cb, new RegExp(`class="ch-tick ch-tick2"[^>]*>${reEsc(nf(40))}<`)); assert.equal(count(cb, /class="ch-val"/g), 9);
+  assert.match(cb, /<g transform="translate\(\d+(\.\d+)?,0\)"><path class="ch-line" d="M-2,-4 L14,-4" style="stroke:var\(--ch-3\)"\/><path d="M6,-9.5/, 'the line series shows a line and its mark in the legend');
+  const one = chartSvg(d, parseChartSpec('type: combo')); assert.equal(count(one, /class="ch-tick ch-tick2"/g), 0); assert.equal(count(one, /class="ch-axis"/g), 0); assert.equal(count(one, /class="ch-val"/g), 0);
+  ok('combo draws bars and a line, with a secondary axis only when asked; axis titles and value labels');
+  const hb = chartSvg(d, { type: 'bar', xtitle: 'Euro', labels: true }); assert.match(hb, /class="ch-axis" x="[\d.]+" y="\d+" text-anchor="middle">Euro</); assert(hb.includes(`text-anchor="end">${nf(-5)}<`), 'negative bar label on the left');
+  assert.equal(count(chartSvg(d, { type: 'pie', xtitle: 'x', ytitle: 'y' }), /ch-axis/g), 0); ok('bar labels sit past the bar end; pies ignore axis titles');
+  {
+    // a negative column that reaches the bottom of the axis keeps its label inside the bar, above the category labels
+    const neg = chartSvg({ categories: ['a', 'b'], series: [{ name: 'S', values: [10, -10] }] }, { type: 'column', labels: true });
+    const cat = Number(neg.match(/class="ch-cat" x="[\d.]+" y="([\d.]+)"/)[1]);
+    const lowBar = neg.match(/<rect class="ch-bar" x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"[^>]*><title>S, b/);
+    const negY = Number(neg.match(new RegExp(`class="ch-val" x="[\\d.]+" y="([\\d.]+)"[^>]*>${reEsc(nf(-10))}<`))[1]);
+    assert(negY <= Number(lowBar[1]) + Number(lowBar[2]) && negY < cat - 10, `negative label ${negY} inside the bar, clear of categories at ${cat}`);
+    const room = chartSvg({ categories: ['a', 'b'], series: [{ name: 'S', values: [100, -5] }] }, { type: 'column', labels: true });
+    const rb = room.match(/<rect class="ch-bar" x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"[^>]*><title>S, b/); const ry = Number(room.match(new RegExp(`class="ch-val" x="[\\d.]+" y="([\\d.]+)"[^>]*>${reEsc(nf(-5))}<`))[1]);
+    assert(ry > Number(rb[1]) + Number(rb[2]), 'with room below, the label sits under the negative bar end');
+    // stacked: negatives stack down from zero, so a negative segment is drawn and labelled
+    const st = chartSvg({ categories: ['a'], series: [{ name: 'P', values: [30] }, { name: 'N', values: [-20] }, { name: 'M', values: [-10] }] }, { type: 'column', stacked: true, labels: true });
+    const seg = (nm) => st.match(new RegExp(`<rect class="ch-bar" x="[\\d.]+" y="([\\d.]+)" width="[\\d.]+" height="([\\d.]+)"[^>]*><title>${nm}, a`)).slice(1).map(Number);
+    const [py, ph] = seg('P'), [ny, nh] = seg('N'), [my, mh] = seg('M');
+    assert(nh > 0 && mh > 0, 'negative segments have a height'); assert.equal(Math.round((py + ph) * 10), Math.round(ny * 10), 'N starts at zero, where P ends'); assert.equal(Math.round((ny + nh) * 10), Math.round(my * 10), 'M continues below N');
+    assert(Math.abs(nh - 2 * mh) < 0.01 && Math.abs(ph - 1.5 * nh) < 0.01, 'segment lengths follow the values'); assert(st.includes(`>${nf(-20)}<`), 'negative segment labelled');
+    assert(my + mh <= Number(st.match(/class="ch-cat" x="[\d.]+" y="([\d.]+)"/)[1]) - 16 + 0.01, 'the axis reaches the negative total');
+    // areas: every run between blank cells is closed down to the baseline
+    const ar = chartSvg({ categories: ['a', 'b', 'c', 'd', 'e'], series: [{ name: 'S', values: [1, 2, null, 3, 4] }] }, { type: 'area' });
+    const fills = [...ar.matchAll(/<path class="ch-area" d="([^"]+)"/g)].map((m) => m[1]); assert.equal(fills.length, 2);
+    for (const f of fills) assert.match(f, /^M[\d.]+,[\d.]+ L[\d.]+,[\d.]+ +L[\d.]+,[\d.]+ L[\d.]+,[\d.]+Z$/, f);
+    const one = chartSvg({ categories: ['a', 'b'], series: [{ name: 'S', values: [1, 2] }] }, { type: 'area' }); assert.equal(count(one, /class="ch-area"/g), 1);
+    ok('negative labels stay clear of category labels; stacked negatives stack down from zero; area gaps close each run');
+  }
+}
 
 // paste and Word: HTML from other apps becomes Markdown; a page exports to a Word file with real structure
 {

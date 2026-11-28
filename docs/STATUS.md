@@ -52,6 +52,10 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
   auto-layout (dagre); PNG and SVG export.
 - **Sheets (light)**: grid over Markdown tables, ~390 functions (hot-formula-parser), formats, fill, copy and paste with
   Excel, several sheets, Kanban view, charts, `.xlsx` and CSV export.
+- **Charts** (one spec for pages, slides and sheets, [format](FORMATS.md#charts)): column, bar, line, area, pie, donut,
+  combo (bars and lines, optional secondary axis) and scatter; axis titles and value labels; type and labels from the
+  page chart bar, every option in the sheet chart panel; native PowerPoint charts on export
+  ([#17](https://github.com/gabrielevaudano98/folio/issues/17)). Sheet `.xlsx` export carries the data, not the charts.
 - **AI**: MCP server on `127.0.0.1:47321` with token and Host/Origin checks, stdio bridge inside the app binary, one-click
   setup for Claude Desktop, Cursor, VS Code, Windsurf, LM Studio and a command for Claude Code; 52 tools
   ([reference](reference/mcp-tools.md)); every AI write is highlighted with Undo and kept in version history.
@@ -142,7 +146,6 @@ Each is an open issue with its milestone. The ones that matter most for a first 
   screen recording, screenshots and 3D ([#94](https://github.com/gabrielevaudano98/folio/issues/94)), background removal
   ([#95](https://github.com/gabrielevaudano98/folio/issues/95)), live captions ([#96](https://github.com/gabrielevaudano98/folio/issues/96)),
   video/GIF/image export ([#97](https://github.com/gabrielevaudano98/folio/issues/97)).
-- More chart types and axis titles ([#17](https://github.com/gabrielevaudano98/folio/issues/17)).
 - Meeting recorder on macOS (system sound capture) ([#89](https://github.com/gabrielevaudano98/folio/issues/89)).
 
 Sheet issues [#7](https://github.com/gabrielevaudano98/folio/issues/7), [#14](https://github.com/gabrielevaudano98/folio/issues/14),
