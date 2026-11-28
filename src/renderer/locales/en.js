@@ -474,7 +474,7 @@ export default {
   'app.untitled-page': 'Untitled',
   'blk.turn-into-page': 'Turn into page',
   'app.turned-into-page': 'The blocks became the page “{name}”',
-  'app.turn-into-page-failed': 'Could not replace the blocks. The new page was kept.',
+  'app.turn-into-page-failed': 'The page changed while the new page was being made, so nothing was replaced.',
   'blk.delete': 'Delete',
   'blk.drag-to-move-click-for-options': 'Drag to move, click for options',
   'blk.drag-to-move-click-for-options-2': 'Drag to move · Click for options',

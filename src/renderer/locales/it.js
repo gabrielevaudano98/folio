@@ -470,7 +470,7 @@ export default {
   'app.untitled-page': 'Senza titolo',
   'blk.turn-into-page': 'Trasforma in pagina',
   'app.turned-into-page': 'I blocchi sono diventati la pagina «{name}»',
-  'app.turn-into-page-failed': 'Impossibile sostituire i blocchi. La nuova pagina è stata mantenuta.',
+  'app.turn-into-page-failed': 'La pagina è cambiata mentre si creava la nuova, quindi non è stato sostituito nulla.',
   'blk.delete': 'Elimina',
   'blk.drag-to-move-click-for-options': 'Trascina per spostare, clic per le opzioni',
   'blk.drag-to-move-click-for-options-2': 'Trascina per spostare · Clic per le opzioni',

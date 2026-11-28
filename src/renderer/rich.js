@@ -954,7 +954,9 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     if (!onTurnIntoPage || editor.storage.pageLock?.on) return;
     let md;
     try { md = codec.save(codec.load(''), editor.state.schema.topNodeType.create(null, editor.state.doc.slice(from, to).content)); } catch { return onError?.(tl('rich', 'These blocks cannot become a page.')); }
+    const doc = editor.state.doc; // the blocks are replaced only if the page is still this very document (no edit, no page switch while the file was created)
     onTurnIntoPage(md, (name) => {
+      if (editor.state.doc !== doc) return false;
       try { const { schema } = editor.state; editor.view.dispatch(editor.state.tr.replaceWith(from, to, schema.nodes.paragraph.create(null, schema.text(`[[${name}]]`))).scrollIntoView()); return true; } catch { return false; }
     });
   }

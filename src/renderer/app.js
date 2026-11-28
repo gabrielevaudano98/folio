@@ -2618,7 +2618,7 @@ function bindChrome() {
   $('#btn-outline').onclick = toggleOutline;
   $('#tags-head').addEventListener('click', () => { saveSetting({ showTags: !tagsOpen() }); renderTags(); });
   for (const [sec, key] of [['favorites', 'showFavorites'], ['recents', 'showRecents']]) {
-    $(`#${sec}-head`).addEventListener('click', () => { saveSetting({ [key]: !quickOpen(key) }); renderQuick(); });
+    $(`#${sec}-head`).addEventListener('click', () => { saveSetting({ [key]: !quickOpen(key) }).then(renderQuick); });
     $(`#${sec}-list`).addEventListener('click', (e) => {
       const u = e.target.closest('[data-unfav]'); if (u) return toggleFav(u.dataset.unfav);
       const o = e.target.closest('[data-open]'); if (o) openFile(o.dataset.open);
