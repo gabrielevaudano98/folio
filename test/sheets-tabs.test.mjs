@@ -9,10 +9,12 @@ const w = workspace('sheets-tabs', 47624);
 const book = (n, extra = '') => `## S\n\n| X | Y |\n| --: | --: |\n| ${n} | =A2*2 |\n${extra}`;
 fs.writeFileSync(path.join(w.ws, 'sheets', 'A.sheet.md'), book(1, '\n<!-- sheet: {"charts":[{"type":"column","range":"A1:B2"}]} -->\n\n```script\nfunction onOpen() { const s = SpreadsheetApp.getActiveSheet(); s.getRange("D1").setValue((s.getRange("D1").getValue() || 0) + 1); }\n```\n\n<!-- workbook: {"scripts":{"hooks":true}} -->\n'));
 for (const n of ['B', 'C', 'D']) fs.writeFileSync(path.join(w.ws, 'sheets', `${n}.sheet.md`), book(n.charCodeAt(0)));
+// a value as a JavaScript literal inside injected step code (JSON plus the characters that could end a script)
+const lit = (v) => JSON.stringify(v).replace(/[<>/\u2028\u2029]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 const S = "document.querySelector('.surface-sheet:not([hidden])')?.__surface";
-const click = (f) => `document.querySelector(${JSON.stringify(`[data-file="${f}"]`)}).click()`;
+const click = (f) => `document.querySelector(${lit(`[data-file="${f}"]`)}).click()`;
 const show = (f, wait = 1500) => ({ js: `(async()=>{const t=performance.now(); ${click(f)}; await new Promise(r=>setTimeout(r,${wait})); return JSON.stringify({ms:Math.round(performance.now()-t)})})()`, wait: 100 });
-const state = (label) => ({ js: `(()=>{const s=${S}; return JSON.stringify({label:${JSON.stringify(label)}, unit:s.unitId(), a2:s.read('S!A2')[0][0], b2:s.read('S!B2')[0][0], d1:s.read('S!D1')[0][0], sel:s.selectionRef(), charts:document.querySelectorAll('.surface-sheet:not([hidden]) .xs-chart, .surface-sheet:not([hidden]) [data-chart]').length, ops:s.oplog.ops().length})})()`, log: true, wait: 100 });
+const state = (label) => ({ js: `(()=>{const s=${S}; return JSON.stringify({label:${lit(label)}, unit:s.unitId(), a2:s.read('S!A2')[0][0], b2:s.read('S!B2')[0][0], d1:s.read('S!D1')[0][0], sel:s.selectionRef(), charts:document.querySelectorAll('.surface-sheet:not([hidden]) .xs-chart, .surface-sheet:not([hidden]) [data-chart]').length, ops:s.oplog.ops().length})})()`, log: true, wait: 100 });
 const r = await runApp(w, [{ size: [1300, 900], wait: 1200 },
   show('sheets/A.sheet.md', 2500), state('A first'),
   { js: `${S}.ws().getRange('A2').setValue(5); ${S}.ws().getRange('C3').activate(); 1`, wait: 1200 },

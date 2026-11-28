@@ -17,11 +17,13 @@ fs.writeFileSync(path.join(w.ws, 'sheets', 'Big.sheet.md'), big.join('\n'));
 fs.writeFileSync(path.join(w.ws, 'sheets', 'Small.sheet.md'), '## S\n\n| A | B |\n| --- | --- |\n| 1 | =A2*2 |\n| 2 | =A3*2 |\n');
 console.log(`sheets stress: ${ROWS} rows × 7 columns (${(fs.statSync(path.join(w.ws, 'sheets', 'Big.sheet.md')).size / 2 ** 20).toFixed(1)} MB)`);
 
+// a value as a JavaScript literal inside injected step code (JSON plus the characters that could end a script)
+const lit = (v) => JSON.stringify(v).replace(/[<>/\u2028\u2029]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 const S = "document.querySelector('.surface-sheet:not([hidden])')?.__surface";
 const mem = 'Math.round(performance.memory.usedJSHeapSize/2**20)';
-const ev = (name, body, wait = 200) => ({ js: `(async()=>{try{const v=await (async()=>{${body}})();return JSON.stringify({step:${JSON.stringify(name)},v})}catch(e){return JSON.stringify({step:${JSON.stringify(name)},err:e.message})}})()`, log: true, wait });
-const until = (expr, ms = 120000) => `await new Promise((r,j)=>{const t0=Date.now();const k=()=>{let v;try{v=(${expr})}catch{};if(v)r(v);else if(Date.now()-t0>${ms})j(new Error(${JSON.stringify('timeout: ' + expr.slice(0, 60))}));else setTimeout(k,50)};k()})`;
-const open = (f) => `document.querySelector(${JSON.stringify(`[data-file="${f}"]`)}).click()`;
+const ev = (name, body, wait = 200) => ({ js: `(async()=>{try{const v=await (async()=>{${body}})();return JSON.stringify({step:${lit(name)},v})}catch(e){return JSON.stringify({step:${lit(name)},err:e.message})}})()`, log: true, wait });
+const until = (expr, ms = 120000) => `await new Promise((r,j)=>{const t0=Date.now();const k=()=>{let v;try{v=(${expr})}catch{};if(v)r(v);else if(Date.now()-t0>${ms})j(new Error(${lit('timeout: ' + expr.slice(0, 60))}));else setTimeout(k,50)};k()})`;
+const open = (f) => `document.querySelector(${lit(`[data-file="${f}"]`)}).click()`;
 // long tasks (main thread blocked > 50 ms) while a block runs
 const lt = "window.__lt=[];new PerformanceObserver((l)=>{for(const e of l.getEntries())window.__lt.push(Math.round(e.duration))}).observe({type:'longtask',buffered:false})";
 const ltSum = 'const L=window.__lt.splice(0);return {n:L.length,total:L.reduce((a,b)=>a+b,0),max:Math.max(0,...L)}';
