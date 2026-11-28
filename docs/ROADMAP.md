@@ -53,7 +53,7 @@ branch clean-up [#91](https://github.com/gabrielevaudano98/folio/issues/91).
 
 Releases are on [GitHub Releases](https://github.com/gabrielevaudano98/folio/releases); all are pre-alpha and unsigned.
 
-- **1.6.0** (28 Nov 2026): Notion-parity pass on pages (reminders, search window, page appearance, locks, page dates and icon, duplicate); opt-in automatic update checks from GitHub Releases ([#2](https://github.com/gabrielevaudano98/folio/issues/2)).
+- **1.6.0** (28 Nov 2026): **Notion-parity pass on pages** (reminders, search window, page appearance, locks, page dates and icon, duplicate and move, `+name` links, reopen closed tab, light/dark command, favourites and recent, turn blocks into a page, drop files on a page, page info); **AI**: review each change with Accept/Reject, 9 board and sheet MCP tools, "Ask AI about this note"; **Linux AppImage**; opt-in automatic update checks from GitHub Releases ([#2](https://github.com/gabrielevaudano98/folio/issues/2)); security pass (CodeQL findings, safer Open on attached files, template fetch redirects, Dependabot).
 - **1.5.1** (27 Nov): the speech model uses more threads on bigger processors, at most 5.
 - **1.5.0** (27 Nov): one-click meeting recording from the sidebar; on Windows, an offer to record when another app starts
   a call (reads the microphone consent store, off by default); image fixes.

@@ -1681,6 +1681,18 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .rich-tag, .md-tag { cursor: pointer; }
 /* the Reminders section (X13): grey interface; an overdue reminder is marked with weight and a word, not a colour */
 .side-reminders { margin-top: var(--space-sm, 12px); }
+.is-file-drop { outline: 2px dashed var(--color-focus); outline-offset: -4px; }
+.side-quick { margin-bottom: var(--space-sm, 12px); }
+.quick-list[hidden] { display: none; }
+.quick-item { display: flex; align-items: center; gap: 2px; border-radius: var(--radius-sm); }
+.quick-item:hover { background: var(--color-hover); }
+.quick-open { flex: 1; min-width: 0; padding: 4px 8px; border: 0; background: transparent; text-align: left; font: inherit; color: var(--color-ink-2); cursor: pointer; border-radius: var(--radius-sm); }
+.quick-open.is-active { color: var(--color-ink); font-weight: var(--weight-medium); }
+.quick-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+.quick-act { width: 24px; height: 24px; opacity: 0; }
+.quick-item:hover .quick-act, .quick-act:focus-visible { opacity: 1; }
+.quick-act .icon { width: 14px; height: 14px; }
+.quick-open:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 .reminders-list[hidden] { display: none; }
 .rem-badge { min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--color-ink); color: var(--color-paper); font-size: var(--text-2xs); line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
 .rem-badge[hidden] { display: none; }
@@ -2114,6 +2126,8 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .remote-bar .btn { margin-left: auto; }
 .remote-bar-edit { margin: 0.5em 1em 0; flex: none; }
 img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; outline: 1px dashed var(--color-rule-strong); outline-offset: -1px; }
+.diff-hunk { position: relative; border-block: 1px solid var(--color-rule); }
+.diff-hunk-actions { display: flex; justify-content: flex-end; gap: var(--space-xs); padding: var(--space-2xs) var(--space-sm); background: var(--color-paper-3); }
 
 /* quiet chrome while writing: the ribbon and the side panels step back; any pointer movement brings them back */
 .app .ribbon, .app #sidebar, .app #outline, .app .titlebar { transition: opacity var(--dur-long) var(--ease-out); }

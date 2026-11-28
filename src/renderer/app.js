@@ -1,5 +1,6 @@
 // Folio — renderer.
 import { diffLines } from 'diff';
+import { splitHunks, settleHunk } from './ai-hunks.js';
 import { createEditor } from './editor.js';
 import { EditorView } from '@codemirror/view';
 import { undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -157,6 +158,7 @@ async function boot() {
   rich = createRich($('#pane-rich'), {
     keyLabel,
     onCopyCode: (text) => { folio.copy(text); toast(tr('app.copied')); },
+    onTurnIntoPage: (md, apply) => turnIntoPage(md, apply),
     onUnlock: () => setPageLock(S.active, false),
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
@@ -208,6 +210,35 @@ async function boot() {
     const t = activeTab(); if (!t) return;
     try { const rel = await folio.saveImage(t.path, file.name || 'pasted.png', new Uint8Array(await file.arrayBuffer())); rich.editor.chain().focus().setImage({ src: encodeURI(rel), alt: 'image' }).run(); }
     catch (er) { toast(tr('app.could-not-save-the-image-message', { message: er.message }), { kind: 'error' }); }
+  }, true);
+  /* files dropped from the system onto a page (Notion): copied into the page's .asset folder; pictures are shown, other files
+     become a link that reads as a file card. Dropped on the page, they land where they were let go. */
+  const fileDrag = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  $('#pane-rich').addEventListener('dragover', (e) => { if (!fileDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; $('#pane-rich').classList.add('is-file-drop'); }, true);
+  $('#pane-rich').addEventListener('dragleave', (e) => { if (!e.relatedTarget || !$('#pane-rich').contains(e.relatedTarget)) $('#pane-rich').classList.remove('is-file-drop'); }, true);
+  $('#pane-rich').addEventListener('drop', async (e) => {
+    $('#pane-rich').classList.remove('is-file-drop');
+    const files = [...(e.dataTransfer?.files || [])]; if (!files.length) return;
+    e.preventDefault(); e.stopPropagation();
+    const t = activeTab(); if (!t || !isRich()) return;
+    if (isLocked(t.path)) return toast(tr('app.this-page-is-locked'));
+    const at = rich.editor.view.posAtCoords({ left: e.clientX, top: e.clientY }); const docAtDrop = rich.editor.state.doc;
+    const lines = [], failed = [];
+    for (const f of files) {
+      try {
+        const rel = await folio.saveImage(t.path, f.name || 'file', new Uint8Array(await f.arrayBuffer()));
+        const name = (f.name || 'file').replace(/[\[\]]/g, '');
+        lines.push(f.type.startsWith('image/') ? `![${name.replace(/\.\w+$/, '')}](${encodeURI(rel)})` : `[${name}](${encodeURI(rel)})`);
+      } catch (er) { failed.push(er.message); }
+    }
+    if (failed.length) toast(tr('app.could-not-save-the-image-message', { message: failed[0] }), { kind: 'error' });
+    if (!lines.length || S.active !== t.path || !isRich()) return;
+    { // a new empty line under the block where they were let go (or at the page's end if the page changed meanwhile), so the files never split a sentence
+      const ed = rich.editor; let after = ed.state.doc.content.size;
+      if (at && ed.state.doc === docAtDrop) { const $p = ed.state.doc.resolve(at.pos); after = $p.depth ? $p.after($p.depth) : at.pos; }
+      ed.view.dispatch(ed.state.tr.insert(after, ed.state.schema.nodes.paragraph.create())); ed.commands.setTextSelection(after + 1);
+    }
+    rich.insertMarkdown(lines.join('\n\n'));
   }, true);
   $('.rich-scroll').addEventListener('scroll', () => { if (isRich()) markOutlineCurrent(); }, { passive: true });
   /* quiet chrome while writing (Notion, iA Writer): typing fades the ribbon and the side panels; the pointer brings them back */
@@ -385,7 +416,10 @@ async function renderInfo(refetch) {
   if (!t) { el.innerHTML = `<p class="info-empty">${esc(tr('info.empty'))}</p>`; return; }
   if (refetch || !(t.path in infoFile)) infoFile[t.path] = await folio.info(t.path).catch(() => null);
   if (activeTab()?.path !== t.path || app.dataset.dock !== 'info') return;
+  const bl = curType() === 'md' ? await folio.backlinks(t.path).then((l) => l.length, () => 0) : 0;
+  if (activeTab()?.path !== t.path || app.dataset.dock !== 'info') return;
   const rows = infoRows(curType() === 'md' ? docInfo(t.text) : { words: 0, chars: 0, minutes: 1, tasks: { done: 0, open: 0 }, bytes: new TextEncoder().encode(t.text).length }, t.path, infoFile[t.path]);
+  if (bl) rows.splice(rows.findIndex(([k]) => k === tr('info.path')), 0, [tr('info.backlinks'), String(bl)]);
   const shown = curType() === 'md' ? rows : rows.filter(([k]) => [tr('info.path'), tr('info.size'), tr('info.changed'), tr('info.created')].includes(k));
   el.innerHTML = `<h2 class="side-head">${esc(tr('info.title'))}</h2><dl class="info-list">${shown.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
 }
@@ -418,11 +452,14 @@ function setView(v, { persist = true } = {}) {
 }
 
 /* ============ workspace ============ */
+/** N5 (Notion, browsers): the tabs closed in this folder, newest first, for Reopen closed tab */
+const closedTabs = [];
 async function loadWorkspace(dir, { restore = false } = {}) {
   if (dir !== S.workspace) resetRemote(); // grants and fetched web images never follow you into another folder, however the folder changed
   S.workspace = dir;
   folio.propTypes().then(setTypeOverrides).catch(() => setTypeOverrides({}));
   actions.clear(); nav.list = []; nav.i = -1; // file actions and history belong to one folder
+  closedTabs.length = 0; // a closed tab is a path in this folder: never reopen another folder's file with the same name
   $('#workspace-name').textContent = dir.split(/[\\/]/).filter(Boolean).pop();
   $('#tree').innerHTML = Array.from({ length: 7 }, (_, i) => `<div class="skeleton-row" style="--w:${[62, 48, 70, 40, 56, 66, 44][i]}%;--d:${i % 3 === 2 ? 1 : 0}"></div>`).join('');
   await refreshTree();
@@ -435,7 +472,7 @@ async function loadWorkspace(dir, { restore = false } = {}) {
 async function refreshTree() {
   try {
     S.tree = await folio.tree();
-    S.files = flatten(S.tree);
+    S.files = flatten(S.tree); quickSoon?.();
     renderTree(); tagsStale(); remindersSoon();
   } catch (e) {
     $('#tree').innerHTML = `<div class="side-empty">${esc(tr('app.could-not-read-folder', { message: e.message }))}<br><button class="btn" type="button" data-act="choose">${tr('app.choose-another-folder')}</button></div>`;
@@ -492,7 +529,7 @@ function activate(p, { line } = {}) {
     prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
     prev.rich = docType(prev.path) === 'md' && isRich() ? rich.snapshot() : null;
   }
-  navRecord(p); searchWin.noteOpened(p);
+  navRecord(p); searchWin.noteOpened(p); quickSoon();
   S.active = p;
   const t = activeTab();
   hideEmpty();
@@ -534,11 +571,16 @@ async function closeTab(p = S.active) {
   folio.historySnapshot(t.path, t.text, 'close', false).catch(() => {});
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
+  { const k = closedTabs.indexOf(p); if (k >= 0) closedTabs.splice(k, 1); closedTabs.unshift(p); closedTabs.length = Math.min(closedTabs.length, 20); } // N5: Mod+Shift+T opens it again
   if (S.active === p) {
     const next = S.tabs[i] || S.tabs[i - 1];
     if (next) activate(next.path); else { S.active = null; showNoNote(); renderTabs(); renderTree(); }
   } else renderTabs();
   persistTabs();
+}
+function reopenClosedTab() {
+  while (closedTabs.length) { const p = closedTabs.shift(); if (S.files.includes(p) && !tabOf(p)) return openFile(p).catch(() => reopenClosedTab()); } // a page moved or deleted since is skipped
+  toast(tr('app.no-closed-tab'));
 }
 function persistTabs() { saveSetting({ openTabs: S.tabs.map((t) => t.path) }); }
 
@@ -872,6 +914,36 @@ async function renderReminders() {
     + (done ? `<button type="button" class="rem-more" data-act="toggle-done">${showDoneReminders ? tr('app.reminders-hide-done') : tr('app.reminders-show-done', { n: done })}</button>` : '');
 }
 const remindersSoon = debounce(() => renderReminders(), 150);
+/* Favorites and Recent in the sidebar (N4). Favorites are app state in settings.json (per folder), never written into a page;
+   Recent comes from the pages opened in this window (the search window's list). */
+const favMap = () => S.settings.favorites || {};
+const favList = () => (favMap()[S.workspace] || []).filter((p) => S.files.includes(p));
+const isFav = (p) => favList().includes(p);
+function saveFavs(list) {
+  const next = { ...favMap() }; if (list.length) next[S.workspace] = list; else delete next[S.workspace];
+  return saveSetting({ favorites: next }).then(() => renderQuick());
+}
+let favQueue = Promise.resolve();
+function toggleFav(p) {
+  if (!p) return; const ws = S.workspace;
+  favQueue = favQueue.then(() => { if (S.workspace !== ws) return; // another folder was opened meanwhile: its favourites are not ours to change
+    // one at a time, each from the settings the previous one saved: two quick stars never overwrite each other
+    const on = isFav(p);
+    toast(tr(on ? 'app.fav-removed' : 'app.fav-added', { name: stem(p) }));
+    return saveFavs(on ? favList().filter((x) => x !== p) : [...favList(), p]);
+  }).catch((e) => toast(e.message, { kind: 'error' }));
+}
+const quickOpen = (k) => S.settings[k] !== false;
+function renderQuick() {
+  const favs = favList(); const recents = searchWin.recent(8).filter((p) => S.files.includes(p) && !favs.includes(p)).slice(0, 5);
+  const row = (p, fav) => `<div class="quick-item" role="listitem"><button type="button" class="quick-open${p === S.active ? ' is-active' : ''}" data-open="${esc(p)}" title="${esc(p)}"${p === S.active ? ' aria-current="true"' : ''}><span class="quick-title">${esc(stem(p))}</span></button>${fav ? `<button type="button" class="icon-btn quick-act" data-unfav="${esc(p)}" aria-label="${esc(tr('app.fav-remove'))}" data-tip="${esc(tr('app.fav-remove'))}">${icons.close}</button>` : ''}</div>`;
+  for (const [sec, key, list, fav] of [['favorites', 'showFavorites', favs, true], ['recents', 'showRecents', recents, false]]) {
+    const el = $('#section-' + sec); if (!el) continue; el.hidden = !list.length;
+    const open = quickOpen(key); $(`#${sec}-head`).setAttribute('aria-expanded', String(open)); const box = $(`#${sec}-list`); box.hidden = !open;
+    box.innerHTML = list.map((p) => row(p, fav)).join('');
+  }
+}
+const quickSoon = debounce(() => renderQuick(), 100);
 function onReminderFired(r) {
   const what = r.title || stem(r.rel);
   toast(tr('app.reminder-toast', { what, when: reminderWhen(r) }), { action: [tr('app.open'), () => openFile(r.rel, { line: r.line })] });
@@ -1515,6 +1587,8 @@ function toggleAllToggles(open) {
 }
 function retargetTabs(from, to) {
   searchWin.noteMoved(from, to);
+  const fl = (favMap()[S.workspace] || []);
+  if (fl.some((k) => k === from || k.startsWith(from + '/'))) saveFavs(fl.map((k) => (k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k)));
   const lp = lockMap();
   if (Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
     const next = {}; for (const [k, v] of Object.entries(lp)) next[k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k] = v;
@@ -1548,6 +1622,23 @@ async function duplicatePath(p, isDir) {
       redo: async () => { await untrashRaw(rec); if (r.assets.length) await folio.assetsRestore(r.assets); await refreshTree(); if (!isDir) await openFile(r.to); } });
     toast(tr('app.duplicated-what', { what: isDir ? base(r.to) : stem(r.to) }), { action: [tr('app.undo'), () => fileUndo('undo')] });
     updateHistoryButtons();
+  } catch (e) { toast(e.message, { kind: 'error' }); }
+}
+/** Turn into page: the blocks become a new page next to this one (named after the first heading or line), a [[link]] replaces them */
+async function turnIntoPage(md, apply) {
+  if (!S.active || !S.workspace) return;
+  const lines = md.split('\n'); const first = lines.find((l) => l.trim()) || '';
+  const head = /^#{1,6}\s+(.+)$/.exec(first.trim());
+  let title = (head ? head[1] : first).replace(/^[>*_`~\-\s#]+/, '').replace(/\[\[|\]\]|[*_`~]|!?\[([^\]]*)\]\([^)]*\)/g, (m, t) => t || '').replace(/[\\/:*?"<>|#^\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).trim();
+  if (!title) title = tr('app.untitled-page');
+  const dir = dirOf(S.active); const taken = (n) => S.files.some((f) => f.toLowerCase() === ((dir ? dir + '/' : '') + n + '.md').toLowerCase());
+  let name = title, i = 2; while (taken(name)) name = `${title} ${i++}`;
+  const file = (dir ? dir + '/' : '') + name + '.md';
+  try {
+    const p = await folio.create(file, head ? md.replace(/\s*$/, '\n') : `# ${name}\n\n${md.replace(/\s*$/, '\n')}`);
+    if (!apply(name)) { await trashRaw(p).catch(() => {}); await refreshTree(); return toast(tr('app.turn-into-page-failed'), { kind: 'error' }); }
+    await refreshTree();
+    toast(tr('app.turned-into-page', { name }), { action: [tr('app.open'), () => openFile(p)] });
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 function allDirs(nodes = S.tree || [], out = []) { for (const n of nodes) if (n.type === 'dir') { out.push(n.path); allDirs(n.children, out); } return out; }
@@ -1678,6 +1769,7 @@ function onAiEdit({ path: p, before, after, client, created, orphans, aiKept = t
   }
   if (created) refreshTree(); else renderTree();
   renderTabs();
+  const dd = $('#sheet-diff'); if (dd.open && dd.dataset.path === p && !created) openDiff(p); // a new edit changes the hunks: rebuild so no button points at a stale one
 }
 let settleTimer;
 function highlightAi(p, { fresh }) {
@@ -1729,26 +1821,51 @@ async function undoAi(p = S.active) {
 }
 function openDiff(p = S.active) {
   const rec = S.aiEdits.get(p); if (!rec) return;
-  const parts = diffLines(rec.before ?? '', activeTab()?.text ?? rec.after);
+  const cur = activeTab()?.text ?? rec.after;
+  const { items, count } = splitHunks(rec.before ?? '', cur);
+  const row = (cls, n, sign, l) => `<div class="diff-line ${cls}"><span class="n">${n}</span><span class="s">${sign}</span><span class="t">${esc(l) || ' '}</span></div>`;
+  const lines = (t) => t.replace(/\n$/, '').split('\n');
   let a = 1, b = 1; const rows = [];
-  parts.forEach((part, idx) => {
-    const lines = part.value.replace(/\n$/, '').split('\n');
-    if (!part.added && !part.removed) {
-      const keep = lines.length > 7 && idx !== 0 && idx !== parts.length - 1 ? [...lines.slice(0, 3).map((l, i) => [l, a + i, b + i]), null, ...lines.slice(-3).map((l, i) => [l, a + lines.length - 3 + i, b + lines.length - 3 + i])]
-        : lines.length > 4 && (idx === 0 || idx === parts.length - 1) ? (idx === 0 ? [null, ...lines.slice(-3).map((l, i) => [l, a + lines.length - 3 + i, b + lines.length - 3 + i])] : [...lines.slice(0, 3).map((l, i) => [l, a + i, b + i]), null])
-        : lines.map((l, i) => [l, a + i, b + i]);
-      for (const k of keep) rows.push(k ? `<div class="diff-line"><span class="n">${k[2]}</span><span class="s"></span><span class="t">${esc(k[0]) || ' '}</span></div>` : '<div class="diff-gap">' + tr('app.unchanged-lines-hidden') + '</div>');
-      a += lines.length; b += lines.length;
-    } else if (part.removed) { lines.forEach((l, i) => rows.push(`<div class="diff-line del"><span class="n">${a + i}</span><span class="s">−</span><span class="t">${esc(l) || ' '}</span></div>`)); a += lines.length; }
-    else { lines.forEach((l, i) => rows.push(`<div class="diff-line add"><span class="n">${b + i}</span><span class="s">+</span><span class="t">${esc(l) || ' '}</span></div>`)); b += lines.length; }
+  items.forEach((it, idx) => {
+    if (it.type === 'same') {
+      const ls = lines(it.text), last = idx === items.length - 1;
+      const keep = ls.length > 7 && idx !== 0 && !last ? [...ls.slice(0, 3).map((l, i) => [l, b + i]), null, ...ls.slice(-3).map((l, i) => [l, b + ls.length - 3 + i])]
+        : ls.length > 4 && (idx === 0 || last) ? (idx === 0 ? [null, ...ls.slice(-3).map((l, i) => [l, b + ls.length - 3 + i])] : [...ls.slice(0, 3).map((l, i) => [l, b + i]), null])
+        : ls.map((l, i) => [l, b + i]);
+      for (const k of keep) rows.push(k ? row('', k[1], '', k[0]) : '<div class="diff-gap">' + tr('app.unchanged-lines-hidden') + '</div>');
+      a += ls.length; b += ls.length; return;
+    }
+    const del = it.old ? lines(it.old) : [], add = it.new ? lines(it.new) : [];
+    rows.push(`<div class="diff-hunk" data-hunk="${it.id}">`
+      + del.map((l, i) => row('del', a + i, '−', l)).join('') + add.map((l, i) => row('add', b + i, '+', l)).join('')
+      + `<div class="diff-hunk-actions"><button class="btn" type="button" data-hunk-act="reject" data-hunk-id="${it.id}">${tr('app.hunk-reject')}</button><button class="btn" type="button" data-hunk-act="accept" data-hunk-id="${it.id}">${tr('app.hunk-accept')}</button></div></div>`);
+    a += del.length; b += add.length;
   });
+  const stats = lineChanges(rec.before, cur);
   const d = $('#sheet-diff');
+  d.dataset.path = p;
   d.innerHTML = `
-    <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))}</p></div>
+    <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))} · ${esc(tr('app.hunks-pending', { count, n: count }))}</p></div>
       <button class="icon-btn" type="button" data-close-sheet aria-label="${tr('app.close')}">${icons.close}</button></div>
-    <div class="sheet-body"><div class="diff-summary"><span>+ ${rec.stats.added} added</span><span>− ${rec.stats.removed} removed</span></div><div class="diff">${rows.join('')}</div></div>
+    <div class="sheet-body"><div class="diff-summary"><span>+ ${stats.added} added</span><span>− ${stats.removed} removed</span></div><div class="diff">${rows.join('')}</div></div>
     <div class="sheet-foot"><button class="btn" type="button" data-diff="undo">${tr('app.undo-all-changes')}</button><button class="btn btn-primary" type="button" data-diff="keep">${tr('app.keep-changes')}</button></div>`;
-  d.showModal(); d.querySelector('[data-diff="keep"]').focus();
+  if (!d.open) d.showModal();
+  (d.querySelector('[data-hunk-act="accept"]') || d.querySelector('[data-diff="keep"]')).focus();
+}
+/** Accept or reject one change of the AI edit on `p`; rejecting writes the old lines back. */
+async function settleAiHunk(p, id, action) {
+  const rec = S.aiEdits.get(p); if (!rec) return;
+  const t = tabOf(p); const cur = t?.text ?? rec.after;
+  const next = settleHunk(rec.before ?? '', cur, id, action);
+  if (next.after !== cur) {
+    try { await folio.write(p, next.after); } catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); return; }
+    if (t) { t.saved = next.after; if (p === S.active) setActiveText(next.after); else t.text = next.after; }
+    renderPreview(); renderOutline();
+  }
+  rec.before = next.before; rec.after = next.after; rec.stats = lineChanges(rec.before, next.after);
+  if (!rec.stats.added && !rec.stats.removed) { $('#sheet-diff').close(); dismissAi(p); return; }
+  if (p === S.active) { highlightAi(p, { fresh: false }); showAiBanner(p); }
+  openDiff(p);
 }
 
 /* ============ AI panel ============ */
@@ -1999,7 +2116,19 @@ function updateHistoryButtons() {
 }
 const historySoon = debounce(() => updateHistoryButtons(), 60);
 
+/** Ask your AI from inside Folio: queue the instruction and the selected text; the assistant fetches it with get_ai_requests. */
+async function askAi() {
+  const t = activeTab(); if (!t) return;
+  const line = S.cursor.line; // read before the prompt: the user may switch notes while it is open
+  const selection = (S.cursor.selection || window.getSelection()?.toString() || '').trim();
+  const text = await prompt({ title: tr('app.ask-ai-title'), label: tr(selection ? 'app.ask-ai-label-selection' : 'app.ask-ai-label'), hint: tr('app.ask-ai-hint'), action: tr('app.ask-ai-send'), validate: false });
+  if (!text) return;
+  try { await folio.askAi({ path: t.path, instruction: text, selection, line }); toast(tr('app.ask-ai-queued')); }
+  catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); }
+}
+
 const COMMANDS = [
+  { id: 'ask-ai', title: 'Ask AI about this note…', run: () => askAi() },
   { id: 'undo', title: 'Undo', key: 'Mod+Z', run: () => editUndo('undo') },
   { id: 'redo', title: 'Redo', key: 'Mod+Shift+Z', run: () => editUndo('redo') },
   { id: 'undo-file', title: 'Undo last file action', key: 'Mod+Alt+Z', run: () => fileUndo('undo') },
@@ -2079,7 +2208,11 @@ const COMMANDS = [
   { id: 'duplicate', title: 'Duplicate note', run: () => S.active && duplicatePath(S.active, false) },
   { id: 'move-to', title: 'Move note to…', run: () => S.active && moveToPicker(S.active, false) },
   { id: 'copy-page-link', title: 'Copy link to note', run: () => copyPageLink(S.active) },
+  { id: 'page-info', title: 'Page info', run: () => { if (S.active) setDock('info', { focus: true }); } },
+  { id: 'toggle-favorite', title: 'Add to or remove from favorites', run: () => toggleFav(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
+  { id: 'reopen-tab', title: 'Reopen closed tab', key: 'Mod+Shift+T', run: () => reopenClosedTab() },
+  { id: 'toggle-theme', title: 'Switch between light and dark', run: () => saveSetting({ theme: S.dark ? 'light' : 'dark' }) }, // A7: Notion's Ctrl+Shift+L is Align left here, so no shortcut
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
   { id: 'italic', title: 'Format: italic', key: 'Mod+I', run: () => fmt('italic') },
@@ -2244,7 +2377,9 @@ async function importDocument() {
 }
 async function pastePlain() {
   if (!isRich() || curType() !== 'md') return document.execCommand?.('paste');
-  const c = await folio.readClipboard(); rich.insertPlain(c.text || '');
+  const at = S.active; const c = await folio.readClipboard();
+  if (S.active !== at || !isRich() || curType() !== 'md') return; // the tab or the view changed while the clipboard was read: do not paste into another page or a hidden editor
+  rich.insertPlain(c.text || '');
 }
 const dataUrlImage = (url) => new Promise((res) => { const i = new Image(); i.onload = () => res({ width: i.naturalWidth, height: i.naturalHeight }); i.onerror = () => res({ width: 0, height: 0 }); i.src = url; });
 function bytesOf(url) { const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(url); if (!m) return null; const raw = m[2] ? atob(m[3]) : decodeURIComponent(m[3]); const b = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) b[i] = raw.charCodeAt(i); return { data: b, mime: m[1] }; }
@@ -2539,6 +2674,13 @@ function bindChrome() {
   document.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); navGo(e.button === 3 ? -1 : 1); } });
   $('#btn-outline').onclick = toggleOutline;
   $('#tags-head').addEventListener('click', () => { saveSetting({ showTags: !tagsOpen() }); renderTags(); });
+  for (const [sec, key] of [['favorites', 'showFavorites'], ['recents', 'showRecents']]) {
+    $(`#${sec}-head`).addEventListener('click', () => { saveSetting({ [key]: !quickOpen(key) }).then(renderQuick); });
+    $(`#${sec}-list`).addEventListener('click', (e) => {
+      const u = e.target.closest('[data-unfav]'); if (u) return toggleFav(u.dataset.unfav);
+      const o = e.target.closest('[data-open]'); if (o) openFile(o.dataset.open);
+    });
+  }
   $('#reminders-head').addEventListener('click', () => { saveSetting({ showReminders: !remindersOpen() }); renderReminders(); });
   $('#reminders-list').addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
@@ -2565,7 +2707,9 @@ function bindChrome() {
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
     ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
-      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }] : []),
+      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) },
+      { label: tr(isFav(S.active) ? 'app.fav-remove' : 'app.fav-add'), run: () => toggleFav(S.active) },
+      { label: tr('app.page-info'), run: () => setDock('info', { focus: true }) }] : []),
     ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('appearance.menu'), run: () => openPageAppearance($('#btn-more')) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
@@ -2597,7 +2741,8 @@ function bindChrome() {
       { label: tr('app.open'), run: () => openFile(p) }, '-',
       { label: tr('app.duplicate'), run: () => duplicatePath(p, false) },
       { label: tr('app.move-to'), run: () => moveToPicker(p, false) },
-      { label: tr('app.copy-link'), run: () => copyPageLink(p) }, '-',
+      { label: tr('app.copy-link'), run: () => copyPageLink(p) },
+      { label: tr(isFav(p) ? 'app.fav-remove' : 'app.fav-add'), run: () => toggleFav(p) }, '-',
       { label: tr('app.rename'), run: () => renamePath(p, false) },
       ...(docType(p) === 'md' ? [{ label: tr(isLocked(p) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(p, !isLocked(p)) }] : []),
       { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) },
@@ -2719,6 +2864,7 @@ function bindChrome() {
   document.addEventListener('click', async (e) => {
     const close = e.target.closest('[data-close-sheet]'); if (close) close.closest('dialog').close();
     const url = e.target.closest('[data-open-url]'); if (url) folio.openExternal(url.dataset.openUrl);
+    const hk = e.target.closest('[data-hunk-act]'); if (hk) { if (hk.disabled) return; $$('#sheet-diff [data-hunk-act]').forEach((b) => (b.disabled = true)); settleAiHunk($('#sheet-diff').dataset.path, Number(hk.dataset.hunkId), hk.dataset.hunkAct).finally(() => $$('#sheet-diff [data-hunk-act]').forEach((b) => (b.disabled = false))); return; }
     const diff = e.target.closest('[data-diff]'); if (diff) { $('#sheet-diff').close(); if (diff.dataset.diff === 'undo') undoAi(); else dismissAi(); }
     const inst = e.target.closest('[data-install]');
     if (inst) { inst.disabled = true; inst.textContent = tr('app.connecting'); try { const r = await folio.install(inst.dataset.install); toast(tr('app.connected-restart', { restart: r.restart })); } catch (er) { toast(er.message, { kind: 'error' }); } openAiSheet(); }
@@ -2803,6 +2949,7 @@ function bindIpc() {
     else toast(tr('app.p-changed-on-disk-while-you-were-editi', { p: stem(p) }), { action: [tr('app.use-disk-version'), () => { t.saved = content; if (p === S.active) setActiveText(content); else t.text = content; }] });
   });
   folio.onAiEdit(onAiEdit);
+  folio.onAiRequestDone(({ client, instruction, reply }) => toast(tr('app.ask-ai-done', { client, reply: reply || instruction })));
   folio.onAiMove(({ from, to, client }) => { retargetTabs(from, to); refreshTree(); toast(tr('app.client-moved-from-to-to', { client, from: stem(from), to })); });
   folio.onAiActivity((m) => { S.mcp = m; renderAiStatus(); const box = $('#ai-activity'); if (box) box.innerHTML = activityHtml(); });
   folio.onAiAsk(async ({ id, kind, payload }) => {

@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -55,6 +55,9 @@ jobs:
       - name: Build Windows (installers x64 and arm64, portable)
         if: runner.os == 'Windows'
         run: npm run dist:win -- --publish never
+      - name: Build Linux (AppImage)
+        if: runner.os == 'Linux'
+        run: npm run dist:linux -- --publish never
       - uses: actions/upload-artifact@v7
         with:
           name: folio-${{ runner.os }}
@@ -63,6 +66,7 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.exe
+            release/*.AppImage
             release/*.blockmap
             release/latest*.yml
 
@@ -78,15 +82,29 @@ jobs:
           path: dist-all
           merge-multiple: true
       - run: ls -la dist-all
-      - uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ steps.v.outputs.version }}
-          target_commitish: ${{ github.sha }}
-          name: Folio ${{ steps.v.outputs.version }} (pre-alpha)
-          prerelease: true
-          generate_release_notes: true
-          body: |
-            Pre-alpha builds. Windows: `Folio-Setup-*.exe` (installer) or `Folio-Portable-*.exe` (no install). macOS: open the universal `.dmg` (Apple silicon and Intel).
-            These builds are not code-signed yet, so Windows SmartScreen / Smart App Control and macOS Gatekeeper may warn.
-            Updates: the Windows installer updates itself from these releases (Settings → Updates). On macOS and the Windows portable exe Folio tells you when a new version is out; download it here.
-          files: dist-all/*
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          cat > notes.md <<'NOTES'
+          Pre-alpha builds. Windows: `Folio-Setup-*.exe` (installer) or `Folio-Portable-*.exe` (no install). Linux: `Folio-*.AppImage` (`chmod +x`, then run). macOS: open the universal `.dmg` (Apple silicon and Intel).
+          These builds are not code-signed yet, so Windows SmartScreen / Smart App Control and macOS Gatekeeper may warn.
+          Updates: the Windows installer updates itself from these releases (Settings → Updates). On macOS, Linux and the Windows portable exe Folio tells you when a new version is out; download it here.
+          NOTES
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+              # A later package.json change that kept the version (a dependency bump): never touch
+              # a release people already download from.
+              echo "Release v$VERSION already exists; leaving it unchanged."
+              exit 0
+            fi
+            # Republishing by hand: assets with the same name are replaced, the notes and other assets are kept.
+            # The update manifests go last, so an updater never reads a latest*.yml whose installer is not there yet.
+            find dist-all -maxdepth 1 -type f ! -name 'latest*.yml' -print0 | xargs -0 gh release upload "v$VERSION" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "v$VERSION" dist-all/latest*.yml --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "v$VERSION" dist-all/* --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Folio $VERSION (pre-alpha)" --prerelease \
+              --notes-file notes.md --generate-notes
+          fi
