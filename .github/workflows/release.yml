@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -55,6 +55,9 @@ jobs:
       - name: Build Windows (installers x64 and arm64, portable)
         if: runner.os == 'Windows'
         run: npm run dist:win -- --publish never
+      - name: Build Linux (AppImage)
+        if: runner.os == 'Linux'
+        run: npm run dist:linux -- --publish never
       - uses: actions/upload-artifact@v7
         with:
           name: folio-${{ runner.os }}
@@ -63,6 +66,9 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.exe
+            release/*.AppImage
+            release/*.blockmap
+            release/latest*.yml
 
   publish:
     needs: build
@@ -84,6 +90,7 @@ jobs:
           prerelease: true
           generate_release_notes: true
           body: |
-            Pre-alpha builds. Windows: `Folio-Setup-*.exe` (installer) or `Folio-Portable-*.exe` (no install). macOS: open the universal `.dmg` (Apple silicon and Intel).
+            Pre-alpha builds. Windows: `Folio-Setup-*.exe` (installer) or `Folio-Portable-*.exe` (no install). Linux: `Folio-*.AppImage` (`chmod +x`, then run). macOS: open the universal `.dmg` (Apple silicon and Intel).
             These builds are not code-signed yet, so Windows SmartScreen / Smart App Control and macOS Gatekeeper may warn.
+            Updates: the Windows installer updates itself from these releases (Settings → Updates). On macOS, Linux and the Windows portable exe Folio tells you when a new version is out; download it here.
           files: dist-all/*

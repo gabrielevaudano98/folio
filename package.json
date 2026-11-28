@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "1.4.2",
+  "version": "1.5.1",
   "description": "A Markdown editor your AI assistants can read and edit through MCP.",
   "main": "dist/main.mjs",
   "scripts": {
@@ -8,6 +8,7 @@
     "start": "node build.mjs && electron .",
     "dist": "node build.mjs && electron-builder",
     "dist:mac": "node build.mjs && electron-builder --mac",
+    "dist:linux": "node build.mjs && electron-builder --linux",
     "dist:win": "node build.mjs && electron-builder --win",
     "test:mcp": "node build.mjs && node test/mcp.test.mjs",
     "test": "node build.mjs && node test/run.mjs",
@@ -99,6 +100,7 @@
     "echarts": "^6.1.0",
     "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
+    "electron-updater": "^6.8.11",
     "esbuild": "^0.28.2",
     "gemoji": "^8.1.0",
     "happy-dom": "^21.0.4",
@@ -144,6 +146,14 @@
     "appId": "com.folio.markdown",
     "productName": "Folio",
     "copyright": "Copyright (C) 2026 Gabriele Vaudano. AGPL-3.0. Based on Folio by Gabriele Vaudano.",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "gabrielevaudano98",
+        "repo": "folio",
+        "releaseType": "prerelease"
+      }
+    ],
     "afterPack": "build/afterPack.cjs",
     "directories": {
       "output": "release",
@@ -240,7 +250,10 @@
         "AppImage"
       ],
       "category": "Office",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "executableName": "folio",
+      "synopsis": "Markdown editor for AI assistants",
+      "artifactName": "Folio-${version}-${arch}.${ext}"
     },
     "extraResources": [
       {

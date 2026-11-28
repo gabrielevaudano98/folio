@@ -1,6 +1,8 @@
 // Folio — Markdown to safe HTML, with source-line anchors for scroll sync and AI-edit marks.
 import MarkdownIt from 'markdown-it';
 import { FIELD, statusClass, DAY } from './page-mentions.js';
+import { formatDay, fullDay, datePrefs, dayTense } from './page-dates.js';
+import { tailLength, parseMention, whenLabel, startOf } from './page-when.js';
 import { parseButton } from './page-templates.js';
 import { parseComment } from './page-critic.js';
 import { refsPlugin } from './refs-syntax.js';
@@ -12,6 +14,7 @@ import katex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import { icons } from './icons.js';
+import { owns, coverOf } from './page-appearance.js';
 import { parseCallout, CALLOUT_TYPES } from './callouts.js';
 import { mediaKind, webProvider } from './page-syntax.js';
 import container from 'markdown-it-container';
@@ -35,6 +38,9 @@ const md = new MarkdownIt({
   .use(mark)
   .use(anchor, { slugify, tabIndex: false })
   .use(katex.default || katex, { throwOnError: false });
+
+// URI schemes are case-insensitive: DATA:/HTTPS: become data:/https:, so the sanitizer and the image checks see one spelling
+{ const base = md.normalizeLink.bind(md); md.normalizeLink = (url) => base(url.replace(/^([a-z][a-z0-9+.-]+):/i, (m) => m.toLowerCase())); }
 
 // source line on every block opener -> scroll sync, AI marks, task toggles
 for (const rule of ['paragraph_open', 'heading_open', 'blockquote_open', 'bullet_list_open', 'ordered_list_open', 'list_item_open', 'table_open', 'hr', 'tr_open']) {
@@ -72,15 +78,17 @@ md.core.ruler.after('block', 'callouts', (state) => {
     if (inline.children) { const k = inline.children.findIndex((t) => t.type === 'softbreak' || t.type === 'hardbreak'); inline.children = k >= 0 ? inline.children.slice(k + 1) : []; }
     if (!inline.content.trim()) { tk[i + 1].hidden = true; tk[i + 3].hidden = true; }
     const icon = c.emoji ? `<span class="callout-emoji" aria-hidden="true">${escape(c.emoji)}</span>` : (icons[CALLOUT_TYPES[c.type].icon] || '');
-    const head = `${icon}<span>${escape(c.title || c.label)}</span>`;
-    const cls = `callout callout-${c.type} callout-c-${c.color}`;
+    // Notion: an untitled callout shows only its icon, beside the text; the type's name stays for screen readers
+    const iconOnly = !c.title && !c.fold;
+    const head = iconOnly ? `${icon}<span class="visually-hidden">${escape(c.label)}</span>` : `${icon}<span>${escape(c.title || c.label)}</span>`;
+    const cls = `callout callout-${c.type} callout-c-${c.color}${iconOnly ? ' callout-iconic' : ''}`;
     const html = (content) => { const t = new state.Token('html_block', '', 0); t.content = content; return t; };
     if (c.fold) {
       tk[j] = html('</details>\n');
       tk[i] = html(`<details class="${cls}"${c.fold === '+' ? ' open' : ''}><summary class="callout-title">${head}</summary>\n`);
     } else {
       tk[i].attrJoin('class', cls);
-      tk.splice(i + 1, 0, html(`<div class="callout-title">${head}</div>`));
+      tk.splice(i + 1, 0, html(`<div class="callout-title${iconOnly ? ' callout-icon-only' : ''}">${head}</div>`));
     }
   }
 });
@@ -174,7 +182,8 @@ md.core.ruler.after('inline', 'folio_align', (state) => {
   }
 });
 
-// [[Wiki links]] and [[Note|label]]
+// [[Wiki links]] and [[Note|label]]: a link reads as its label, else the page's name ("Plan › Goals"), never the path
+const linkText = (target) => { const [doc, part] = target.split('#'); const name = doc.trim().split('/').pop().replace(/\.(md|markdown|mdx|txt)$/i, ''); return part && !part.startsWith('^') ? (name ? `${name} › ${part.trim()}` : part.trim()) : name || target; };
 md.inline.ruler.before('link', 'wikilink', (state, silent) => {
   const src = state.src.slice(state.pos);
   const m = src.match(/^\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/);
@@ -182,9 +191,13 @@ md.inline.ruler.before('link', 'wikilink', (state, silent) => {
   if (!silent) {
     const t = state.push('html_inline', '', 0);
     const target = m[1].trim();
-    t.content = `<a class="wikilink${DAY.test(target) ? ' wikilink-date' : ''}" href="#" data-wikilink="${escape(target)}">${escape((m[2] || target).trim())}</a>`;
+    const day = DAY.test(target) && !m[2];
+    const tail = day ? tailLength(src.slice(m[0].length)) : 0; const w = tail ? parseMention(`[[${target}]]` + src.slice(m[0].length, m[0].length + tail)) : null; // the trimmed day, so [[ 2026-12-01 ]]{09:00} still reads // [[2026-12-01]]{09:00 remind}
+    const due = w?.remind != null && (startOf(w) <= new Date() || dayTense(w.day) === 'today');
+    const label = w ? whenLabel(w, (d) => formatDay(d, datePrefs)) : day ? formatDay(target, datePrefs) : (m[2] || linkText(target)).trim();
+    t.content = `<a class="wikilink${day ? ' wikilink-date' : ''}${w?.remind != null ? ' is-remind' : ''}${due ? ' is-due' : ''}" href="#" data-wikilink="${escape(target)}"${day ? ` title="${escape(fullDay(target, datePrefs.lang))}"` : ''}>${escape(label)}</a>`;
   }
-  state.pos += m[0].length;
+  state.pos += m[0].length + (DAY.test(m[1].trim()) && !m[2] ? tailLength(src.slice(m[0].length)) : 0);
   return true;
 });
 
@@ -257,7 +270,15 @@ export function render(text) {
   const { body, meta, offset } = splitFrontmatter(text);
   let html = md.render(body);
   if (offset) html = html.replace(/data-line(-end)?="(\d+)"/g, (_, e, n) => `data-line${e || ''}="${+n + offset}"`);
-  if (meta?.length) html = `<dl class="frontmatter" data-line="0">${meta.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
+  // the page icon (front matter `icon:`) is drawn large above the page, as in the Write view, not listed with the properties
+  const oneEmoji = (v) => { const s = String(v).trim(); return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].length === 1 && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s); };
+  const icon = meta?.find(([k, v]) => k === 'icon' && oneEmoji(v));
+  const coverKv = meta?.find(([k, v]) => k === 'cover' && coverOf(v)); const hasCover = !!coverKv; const cover = coverKv ? coverOf(coverKv[1]) : null;
+  const coverY = Math.min(100, Math.max(0, Number(meta?.find(([k, v]) => k === 'cover-y' && Number.isFinite(Number(v)) && v !== '')?.[1] ?? 50)));
+  const rest = (meta || []).filter((x) => x !== icon && !owns(x[0], x[1], hasCover)); // appearance keys (font, cover…) are not listed
+  if (rest.length) html = `<dl class="frontmatter" data-line="0">${rest.map(([k, v]) => `<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')}</dl>` + html;
+  if (icon) html = `<div class="page-icon-read" aria-hidden="true">${escape(icon[1].trim())}</div>` + html;
+  if (cover) html = `<div class="page-cover-read" data-cover="${escape(cover.value)}" data-cover-y="${coverY}" aria-hidden="true"></div>` + html;
   return DOMPurify.sanitize(html, {
     ADD_ATTR: ['data-line', 'data-line-end', 'data-wikilink', 'data-ref', 'data-label', 'data-spec', 'target', 'aria-hidden', 'data-color', 'data-bg', 'data-align', 'data-host', 'controls', 'preload', 'data-author', 'data-date', 'data-text'],
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation', 'mspace', 'mtext', 'msqrt', 'mover', 'munder', 'mtable', 'mtr', 'mtd'],

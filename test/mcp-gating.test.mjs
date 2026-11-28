@@ -6,6 +6,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer, TOOLS, SERVER_INFO } from '../src/main/mcp-tools.js';
 import { SLIDE_TOOLS } from '../src/main/mcp-slides.js';
+import os from 'node:os';
+import path from 'node:path';
+import { lockedTarget, assertUnlocked, isLockedPage, readLockedPages } from '../src/main/locks.js';
 
 let n = 0; const ok = (m) => { n++; console.log('  ✓', m); };
 console.log('\nmcp gating');
@@ -34,4 +37,30 @@ assert(SLIDE_TOOLS.length > 0 && SLIDE_TOOLS.every((t) => TOOLS.includes(t)), 'e
 const dup = TOOLS.map((t) => t.name).filter((x, i, arr) => arr.indexOf(x) !== i);
 assert.deepEqual(dup, [], 'tool names are unique');
 ok('slide tools are registered and tool names are unique');
+const locks = { '/ws/a': { 'pages/x.md': true }, 'pages/y.md': true };
+assert.equal(lockedTarget(locks, '/ws/a', 'pages/x.md'), 'pages/x.md');
+assert.equal(lockedTarget(locks, '/ws/a', 'pages'), 'pages/x.md', 'moving a folder that holds a locked page is refused');
+assert.equal(lockedTarget(locks, '/ws/a', 'pages/x.md.bak'), null);
+assert.equal(lockedTarget(locks, '/ws/b', 'pages/x.md'), null, 'a lock in one folder does not lock the same path in another');
+assert.equal(lockedTarget(locks, '/ws/a', 'pages/y.md'), null, 'an old flat entry locks nothing');
+assert.equal(lockedTarget(locks, '/ws/a', null), null);
+assert.equal(lockedTarget(locks, '/ws/a', 'Pages/X.md', { fold: true }), 'pages/x.md', 'case is ignored on macOS and Windows');
+assert.equal(lockedTarget(locks, '/ws/a', 'Pages/X.md', { fold: false }), null);
+assert.equal(isLockedPage(locks, '/ws/a', 'PAGES/x.md', { fold: true }), true); assert.equal(isLockedPage(locks, '/ws/a', 'pages', { fold: true }), false);
+const fakeNotes = { resolve: (p) => '/ws/a/' + p, relOf: (abs) => abs.slice('/ws/a/'.length) };
+assert.throws(() => assertUnlocked({ write: true }, { path: 'pages/x.md' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }), /locked in Folio/);
+assert.throws(() => assertUnlocked({ write: true }, { from: 'pages' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }), /locked/);
+assert.doesNotThrow(() => assertUnlocked({ write: false }, { path: 'pages/x.md' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }));
+ok('locked pages are kept per workspace folder and refuse MCP writes to the page or its folder');
+{
+  // the settings file: missing = no locks yet; unreadable or corrupt = refuse (a write must not slip through unlocked)
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-locks-')); const f = path.join(d, 'settings.json');
+  assert.deepEqual(readLockedPages(f), {});
+  fs.writeFileSync(f, '{ not json'); assert.throws(() => readLockedPages(f));
+  for (const bad of ['{ "lockedPages": null }', '{ "lockedPages": [] }', '{ "lockedPages": { "/ws": null } }', '{ "lockedPages": { "/ws": { "a.md": "yes" } } }', '[]']) { fs.writeFileSync(f, bad); assert.throws(() => readLockedPages(f), bad); }
+  fs.writeFileSync(f, '{}'); assert.deepEqual(readLockedPages(f), {});
+  fs.writeFileSync(f, JSON.stringify({ lockedPages: { '/ws': { 'a.md': true } } })); assert.deepEqual(readLockedPages(f), { '/ws': { 'a.md': true } });
+  fs.rmSync(d, { recursive: true, force: true });
+  ok('a missing settings.json means no locks; a corrupt one throws so the write is refused');
+}
 console.log(`\n${n} mcp gating checks passed`);

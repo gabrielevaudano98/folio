@@ -145,11 +145,11 @@ export function mountSlides(host, ctx) {
   function hydrate(root) {
     if (root.querySelector('.chart-block[data-spec]')) hydrateCharts(root, ctx.readNote);
     if (root.querySelector('.sl-icon-svg')) import('./slides-icons.js').then(({ hydrateIcons }) => hydrateIcons(root));
-    for (const m of root.querySelectorAll('.sl-media-el[data-src]')) { const src = m.dataset.src; const set = (u) => { if (u) m.src = u; }; if (/^(data:|blob:)/.test(src)) set(src); else Promise.resolve(ctx.resolveImage(src)).then(set); if (m.dataset.poster) Promise.resolve(ctx.resolveImage(m.dataset.poster)).then((u) => u && (m.poster = u)); }
+    for (const m of root.querySelectorAll('.sl-media-el[data-src]')) { const src = m.dataset.src; const set = (u) => { if (u) m.src = u; }; if (/^(data:|blob:)/i.test(src)) set(src); else Promise.resolve(ctx.resolveImage(src)).then(set); if (m.dataset.poster) Promise.resolve(ctx.resolveImage(m.dataset.poster)).then((u) => u && (m.poster = u)); }
     if (root.querySelector('[data-ref]') && ctx.refEnv) import('./refs.js').then(({ hydrateRefs }) => hydrateRefs(root, ctx.refEnv()));
     for (const img of root.querySelectorAll('img[data-src]')) {
       const src = img.dataset.src;
-      if (/^(data:|blob:)/.test(src)) img.src = src;
+      if (/^(data:|blob:)/i.test(src)) img.src = src;
       else Promise.resolve(ctx.resolveImage(src)).then((u) => { if (u) img.src = u; });
     }
   }

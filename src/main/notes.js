@@ -4,6 +4,7 @@ import fss from 'node:fs';
 import path from 'node:path';
 import { findRefs, resolveTarget, rewriteRefs, findMentions } from '../renderer/refs-syntax.js';
 import { writeAtomic } from './atomic.js';
+import { parseQuery, matchContent, iconOf } from '../renderer/search-core.js';
 
 export const NOTE_EXT = ['.md', '.markdown', '.mdx', '.txt'];
 const IGNORE = new Set(['node_modules', '.git', '.obsidian', '.trash', '.DS_Store', 'dist', 'build']);
@@ -193,6 +194,50 @@ export function createNotes(getRoot) {
     return results;
   }
 
+  /*
+   * The search window (Ctrl+P): every note's text is kept in memory, keyed by path and checked against mtime and size,
+   * so after the first pass only changed notes are read again. An empty query returns every note with its last edit and
+   * page icon (the recent list); a query returns the notes whose text has every term, with a snippet. Read in batches,
+   * so the main process never holds the CPU for long.
+   */
+  const textCache = { root: '', map: new Map(), bytes: 0 };
+  const CACHE_MAX = 96 * 1024 * 1024, CACHE_FILE_MAX = 2 * 1024 * 1024;
+  async function loadNote(abs) {
+    const st = await fs.stat(abs).catch(() => null);
+    if (!st) return null;
+    const c = textCache.map.get(abs);
+    if (c && c.m === st.mtimeMs && c.s === st.size) return c;
+    if (c) { textCache.bytes -= c.text.length * 4; textCache.map.delete(abs); }
+    if (st.size > CACHE_FILE_MAX * 4) return { m: st.mtimeMs, s: st.size, text: '', low: '', icon: '' }; // a huge file is listed, not searched
+    const text = await fs.readFile(abs, 'utf8').catch(() => '');
+    const e = { m: st.mtimeMs, s: st.size, text, low: text.toLowerCase(), icon: iconOf(text) };
+    const prev = textCache.map.get(abs); if (prev) { textCache.bytes -= prev.text.length * 4; textCache.map.delete(abs); } // a concurrent find may have stored it meanwhile
+    if (st.size <= CACHE_FILE_MAX && textCache.bytes + text.length * 4 <= CACHE_MAX) { textCache.map.set(abs, e); textCache.bytes += text.length * 4; }
+    return e;
+  }
+  async function find(query = '', { folder = '', limit = 400 } = {}) {
+    const base = root();
+    if (textCache.root !== base) { textCache.root = base; textCache.map.clear(); textCache.bytes = 0; }
+    const q = parseQuery(query);
+    const files = [];
+    await walk(folder ? resolve(folder) : base, files);
+    if (!folder) { const seen = new Set(files); for (const [k, v] of textCache.map) if (!seen.has(k)) { textCache.bytes -= v.text.length * 4; textCache.map.delete(k); } }
+    const out = [];
+    for (let i = 0; i < files.length; i += 48) {
+      const batch = files.slice(i, i + 48);
+      const notes = await Promise.all(batch.map(loadNote));
+      batch.forEach((abs, k) => {
+        const n = notes[k]; if (!n) return;
+        const row = { path: relOf(abs), modified: Math.round(n.m), icon: n.icon };
+        if (!q.terms.length) { out.push(row); return; }
+        const hit = matchContent(n.text, q.terms, { low: n.low });
+        if (hit) out.push({ ...row, ...hit });
+      });
+    }
+    if (q.terms.length && out.length > limit) out.sort((a, b) => b.total - a.total).length = limit;
+    return out;
+  }
+
   async function outline(rel) {
     const text = await read(rel);
     const out = [];
@@ -222,15 +267,17 @@ export function createNotes(getRoot) {
     return { files, texts };
   }
   /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten, with `.failed`
-   * listing the files that could not be updated (one failure does not stop the others) */
-  async function rewriteAfterMove(from, to, onBefore) {
+   * listing the files that could not be updated (one failure does not stop the others) and `.skipped` the ones `skip(rel)`
+   * left as they are (a locked page keeps its old link) */
+  async function rewriteAfterMove(from, to, onBefore, { skip } = {}) {
     const { files, texts } = await allTexts();
     const before = files.map((f) => (f === to ? from : f));
-    const changed = []; changed.failed = [];
+    const changed = []; changed.failed = []; changed.skipped = [];
     for (let i = 0; i < files.length; i++) {
       if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
       const next = rewriteRefs(texts[i], before[i], from, to, before);
       if (next === texts[i]) continue;
+      if (skip?.(files[i], before[i])) { changed.skipped.push(files[i]); continue; }
       try { if (onBefore) await onBefore(files[i], texts[i]); await writeAtomic(resolve(files[i]), next); changed.push(files[i]); } catch { changed.failed.push(files[i]); }
     }
     return changed;
@@ -253,14 +300,16 @@ export function createNotes(getRoot) {
     files.forEach((f, i) => { if (f === want || !/\.(md|markdown|mdx|txt)$/i.test(f)) return; for (const m of findMentions(texts[i], name)) if (out.length < 300) out.push({ path: f, name, ...m }); });
     return out;
   }
+  const isDayRef = (t) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(t).split('#')[0].trim()); if (!m) return false; const d = new Date(0); d.setUTCFullYear(+m[1], +m[2] - 1, +m[3]); return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]; };
   async function brokenLinks(only) {
     const { files, texts } = await allTexts(); const out = [];
     files.forEach((f, i) => {
       if (only && f !== relOf(resolve(only))) return;
-      for (const r of findRefs(texts[i])) if (r.target && !resolveTarget(r.target, files, f)) out.push({ path: f, line: texts[i].slice(0, r.start).split('\n').length, ref: r.raw });
+      // a day link ([[2026-11-23]]) is a date, not a missing page: its daily note is made when it is first opened
+      for (const r of findRefs(texts[i])) if (r.target && !isDayRef(r.target) && !resolveTarget(r.target, files, f)) out.push({ path: f, line: texts[i].slice(0, r.start).split('\n').length, ref: r.raw });
     });
     return out;
   }
 
-  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, outline, move, rewriteAfterMove, backlinks, unlinkedMentions, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
+  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, find, outline, move, rewriteAfterMove, backlinks, unlinkedMentions, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
 }

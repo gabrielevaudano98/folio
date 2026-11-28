@@ -16,6 +16,7 @@
       <div class="sidebar-top drag">
         <div class="traffic-space"></div>
         <button class="icon-btn no-drag" type="button" id="btn-new" aria-label="New note" data-tip="New note (⌘N)" data-i18n-attr="aria-label:ui.new-note;data-tip:ui.new-note-cmdn"></button>
+        <button class="icon-btn no-drag" type="button" id="btn-record" hidden aria-label="Record a meeting" data-tip="Record a meeting" data-i18n-attr="aria-label:mtg.record;data-tip:mtg.record"></button>
       </div>
 
       <button class="workspace-switch no-drag" type="button" id="workspace-switch" aria-haspopup="menu">
@@ -37,6 +38,10 @@
         <section class="side-section" id="section-results" hidden>
           <h2 class="side-head" id="results-head">Results</h2>
           <div class="results" id="results"></div>
+        </section>
+        <section class="side-section side-reminders" id="section-reminders" hidden>
+          <h2 class="side-head"><button type="button" class="side-fold" id="reminders-head" aria-expanded="true" aria-controls="reminders-list"><span data-i18n="ui.reminders">Reminders</span> <span class="rem-badge" id="reminders-badge" hidden aria-hidden="true"></span><span class="visually-hidden" id="reminders-badge-sr"></span></button></h2>
+          <div class="reminders-list" id="reminders-list" role="list"></div>
         </section>
         <section class="side-section side-tags" id="section-tags">
           <h2 class="side-head"><button type="button" class="side-fold" id="tags-head" aria-expanded="true" aria-controls="tags-list" data-i18n="ui.tags">Tags</button></h2>

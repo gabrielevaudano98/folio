@@ -57,7 +57,7 @@ export const TABS = [
   ] },
   { id: 'review', label: 'Review', groups: [
     { label: 'Proofing', rank: 1, items: [big('app:spellcheck', 'Spelling', 'spell', null, { pressable: true }), [[txt('counts', 'Word count', 'counter', 'Mod+Shift+C')], [txt('find', 'Find', 'find', 'Mod+F')], [txt('replace', 'Replace', 'replace', 'Mod+H')]]] },
-    { label: 'Comments', rank: 4, items: [big('comment', 'New comment', 'comment', 'Mod+Alt+M'), [[txt('reviewPane', 'Show comments', 'outline', null, { pressable: true })], [txt('resolveAll', 'Resolve all', 'check', null, { tip: 'Remove every comment; the text stays' })], [txt('hiddenComment', 'Hidden note', 'commentHidden')]]] },
+    { label: 'Comments', rank: 4, items: [big('comment', 'New comment', 'comment', 'Mod+Alt+M'), [[txt('reviewPane', 'Show comments', 'outline', null, { pressable: true })], [txt('resolveAll', 'Resolve all', 'check', null, { tip: 'Mark every comment resolved; they stay in the file' })], [txt('hiddenComment', 'Hidden note', 'commentHidden')]]] },
     { label: 'Tracking', rank: 5, items: [big('suggest', 'Suggesting', 'rename', null, { pressable: true, tip: 'What you type and delete becomes a suggestion to accept or reject ({++ ++} {-- --})' })] },
     { label: 'Changes', rank: 3, items: [big('acceptChange', 'Accept', 'check', null, { tip: 'Accept the change at the cursor and go to the next one' }), big('rejectChange', 'Reject', 'close', null, { tip: 'Reject the change at the cursor and go to the next one' }), [[txt('prevChange', 'Previous', 'arrowUp')], [txt('nextChange', 'Next', 'arrowDown')]], [[txt('acceptAll', 'Accept all', 'check')], [txt('rejectAll', 'Reject all', 'close')]]] },
     { label: 'Notes', rank: 2, items: [big('footnote', 'Footnote', 'footnote', 'Mod+Alt+F')] },

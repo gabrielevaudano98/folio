@@ -1,18 +1,22 @@
 // Folio — "mini Word" rich editor for Markdown. TipTap 3 (ProseMirror) with Markdown in and out.
-import { t as tr, tl } from './i18n.js';
+import { t as tr, tl, locale } from './i18n.js';
+import { formatDay, fullDay, dayTense } from './page-dates.js';
+import { tailLength, parseMention, mentionText, whenLabel, remindAt, startOf } from './page-when.js';
 import { Editor, Extension, InputRule } from '@tiptap/core';
 import katex from 'katex';
 import Typography from '@tiptap/extension-typography';
 import Suggestion, { exitSuggestion } from '@tiptap/suggestion';
-import { filterInserts, runInsert, INSERTS } from './inserts.js';
+import { filterInserts, runInsert, INSERTS, turnIdAtSelection } from './inserts.js';
 import { mentionEntries, TAG, FIELD, statusClass } from './page-mentions.js';
 import { highlight } from './fuzzy.js';
-import { BlockHandles } from './page-blocks.js';
+import { BlockHandles, blockCmd, currentBlock } from './page-blocks.js';
 import { CalloutUI, HeadingFold, HFOLD, TocView, BreadcrumbView, PageBreakView } from './page-ui.js';
 import { buildRibbon, wireRibbon, COMPACT_INSERTS } from './page-ribbon.js';
 import { TableHandles, tableCmd, tableAt, popupMenu, tableMenuItems, sheetFromTable } from './page-table.js';
 import { FindReplace, mountFindBar } from './page-find.js';
 import { mountProps } from './page-props-ui.js';
+import { readAppearance } from './page-appearance.js';
+import { mountToc } from './page-appearance-ui.js';
 import { mountReview } from './page-review.js';
 import { SuggestMode } from './page-critic.js';
 import { SmartPaste, insertMarkdown, insertPlainText } from './page-paste.js';
@@ -78,8 +82,18 @@ const CodeHighlight = Extension.create({
     })];
   },
 });
+/* X3: a locked page takes no edit from any path (keys, input rules, paste, drop); loading the file (setContent without update) still works */
+const PageLockGuard = Extension.create({
+  name: 'pageLockGuard',
+  addProseMirrorPlugins() {
+    const ed = this.editor;
+    return [new Plugin({ key: new PluginKey('pageLockGuard'), filterTransaction: (tr) => !(ed.storage.pageLock?.on && tr.docChanged && !tr.getMeta('preventUpdate')) })];
+  },
+});
 const FolioCodeBlock = CodeBlock.extend({
-  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null }; },
+  addOptions() { return { ...this.parent?.(), readNote: null, isDark: () => false, onTemplateButton: null, onCopy: null }; },
+  /* Mod+Alt+C is the Format painter; TipTap's default would also toggle a code block. Code stays on the / menu, the ribbon and ``` */
+  addKeyboardShortcuts() { const k = { ...this.parent?.() }; delete k['Mod-Alt-c']; return k; },
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('div'); dom.className = 'rich-code';
@@ -87,7 +101,7 @@ const FolioCodeBlock = CodeBlock.extend({
       const preview = document.createElement('div'); preview.className = 'rich-code-preview'; preview.contentEditable = 'false';
       const bar = document.createElement('div'); bar.className = 'rich-code-bar'; bar.contentEditable = 'false';
       dom.append(bar, preview, pre);
-      let lang = node.attrs.language || '', timer, editing = false;
+      let lang = node.attrs.language || '', timer, editing = false, wrapped = false;
       const opts = this.options;
       const draw = (text) => {
         clearTimeout(timer);
@@ -107,7 +121,9 @@ const FolioCodeBlock = CodeBlock.extend({
         dom.classList.toggle('is-visual', visual); dom.classList.toggle('is-editing', !visual || editing);
         const known = LANGS.some(([v]) => v === lang);
         const select = `<select class="rich-code-lang" aria-label="${tr('rich.code-language')}">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
-        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select;
+        const tools = `<span class="rich-code-tools"><button type="button" class="rich-code-tool" data-tool="copy" aria-label="${tr('rich.copy-code')}">${tr('rich.copy-code')}</button><button type="button" class="rich-code-tool" data-tool="wrap" aria-pressed="${wrapped}" aria-label="${tr('rich.wrap-code')}">${tr('rich.wrap-code')}</button></span>`;
+        dom.classList.toggle('is-wrapped', wrapped);
+        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select + tools;
         if (visual) draw(n.textContent); else preview.innerHTML = '';
       };
       bar.addEventListener('change', (e) => {
@@ -115,7 +131,13 @@ const FolioCodeBlock = CodeBlock.extend({
         editor.view.dispatch(editor.state.tr.setNodeMarkup(getPos(), undefined, { ...node.attrs, language: sel.value || null }));
         editor.commands.focus();
       });
+      bar.addEventListener('click', (e) => { // Copy puts the code on the clipboard; Wrap only changes how it is drawn (never saved)
+        const tool = e.target.closest('.rich-code-tool'); if (!tool) return;
+        if (tool.dataset.tool === 'copy') opts.onCopy?.(node.textContent); else { wrapped = !wrapped; dom.classList.toggle('is-wrapped', wrapped); tool.setAttribute('aria-pressed', String(wrapped)); }
+      });
       bar.addEventListener('mousedown', (e) => {
+        const tool = e.target.closest('.rich-code-tool');
+        if (tool) { e.preventDefault(); return; } // keep the caret; the action runs on click, so Enter and Space work too
         if (!e.target.closest('button')) return;
         e.preventDefault(); editing = !editing; sync(node);
         if (editing && typeof getPos === 'function') editor.chain().focus().setTextSelection(getPos() + 1).run();
@@ -137,15 +159,73 @@ function embedCard(target, opts) {
   return box;
 }
 
-/* callouts and [[wiki links]] are drawn, the Markdown text stays as written */
+/* callouts and [[wiki links]] are drawn, the Markdown text stays as written.
+   Chips (Notion style): a [[link]], a day, a person, a status or an inline field is drawn as a small label in place of its
+   source; the source text stays in the document (hidden, font-size 0) and shows again while the caret is inside it, as in
+   Obsidian's Live Preview. Backspace after a chip removes it whole. */
+const CHIP_RE = /\[\[\d{4}-\d{2}-\d{2}\]\]\{[^{}\n]{1,60}\}|!?\[\[[^\]\n]+\]\]|\[[A-Za-z][\w ]{0,29}?::[ \t]*[^\]\n]{0,80}?[ \t]*\]/g;
+/** chips of the textblock around `pos`: [{from, to}] in document positions */
+function chipsNear(doc, pos) {
+  const $p = doc.resolve(pos); const parent = $p.parent; if (!parent.isTextblock || parent.type.spec.code) return { list: [], off: 0, start: 0 };
+  const start = $p.start(); let text = '';
+  parent.forEach((ch) => { text += ch.isText ? (ch.marks.some((m) => m.type.name === 'code') ? '\0'.repeat(ch.text.length) : ch.text) : '\0'.repeat(ch.nodeSize); }); // inline code is literal text, never a chip
+  const list = []; CHIP_RE.lastIndex = 0; let m;
+  while ((m = CHIP_RE.exec(text))) {
+    if (m[0][0] === '!') continue;
+    let len = m[0].length; const end = m[0].indexOf(']]{');
+    if (end > 0 && !tailLength(m[0].slice(end + 2))) { len = end + 2; CHIP_RE.lastIndex = m.index + len; } // braces that are not a date tail are ordinary text
+    list.push({ from: start + m.index, to: start + m.index + len });
+  }
+  return { list, off: $p.parentOffset, start };
+}
+/** the chip the caret is strictly inside (its source is shown), or null */
+function chipUnderCaret(state) {
+  const head = state.selection.head; const { list } = chipsNear(state.doc, head);
+  return list.find((c) => head > c.from && head < c.to) || null;
+}
+const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/; // the same days linkKind() and link health accept
+/** what a [[link]] reads as: its alias, else "Name" or "Name › Heading" (folders and .md dropped) */
+function linkLabel(inner) {
+  const [target, alias] = inner.split('|'); if (alias && alias.trim()) return alias.trim().replace(/^@/, '');
+  const [doc, part] = target.split('#'); const name = doc.trim().split('/').pop().replace(/\.(md|markdown|mdx|txt)$/i, '');
+  return part && !part.startsWith('^') ? `${name || ''} › ${part.trim()}`.replace(/^ › /, '') : name || target;
+}
+function chipEl(cls, label, data) {
+  const s = document.createElement('span'); s.className = cls; s.contentEditable = 'false'; s.textContent = label;
+  for (const [k, v] of Object.entries(data)) if (v != null) s.setAttribute(k, String(v));
+  return s;
+}
+
 const Decorate = Extension.create({
   name: 'folioDecorate',
-  addOptions() { return { onWikiLink: null, resolveValue: null, linkKind: null, preview: null, onTag: null, onStatus: null }; },
+  addOptions() { return { onWikiLink: null, resolveValue: null, linkKind: null, preview: null, onTag: null, onStatus: null, onDate: null, dayLabel: null, dayTitle: null, dayTense: null }; },
   addProseMirrorPlugins() {
     const opts = this.options;
     const hover = { el: null, card: null, timer: 0, seq: 0, hide() { clearTimeout(this.timer); this.seq++; this.card?.remove(); this.card = null; this.el = null; } };
-    const build = (doc) => {
+    /* open a page preview after a short rest on a link */
+    const onOver = (view, e) => {
+          const el = e.target.closest?.('.rich-wikilink:not(.is-missing):not(.is-date)');
+          if (!el || !opts.preview || el === hover.el) return false;
+          hover.hide(); hover.el = el;
+          hover.timer = setTimeout(async () => {
+            const n = ++hover.seq; const html = await Promise.resolve(opts.preview(el.dataset.target)).catch(() => null);
+            if (!html || n !== hover.seq || hover.el !== el || !el.isConnected) return;
+            const card = document.createElement('div'); card.className = 'rich-hover prose'; card.setAttribute('role', 'tooltip'); card.innerHTML = html;
+            document.body.append(card); hover.card = card;
+            const r = el.getBoundingClientRect(), h = card.offsetHeight;
+            card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px';
+            card.style.top = (innerHeight - r.bottom - 8 >= h ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+          }, 450);
+          return false;
+        };
+    const build = (doc, reveal) => {
       const deco = [];
+      const chip = (from, to, cls, label, data) => {
+        if (reveal && reveal.from === from) return false;
+        deco.push(Decoration.inline(from, to, { class: 'rich-chip-src', 'aria-hidden': 'true' }));
+        deco.push(Decoration.widget(from, () => chipEl(`rich-chip ${cls}`, label, { ...data, 'data-from': from, 'data-to': to }), { side: 1, key: `chip:${from}:${to}:${cls}:${label}`, ignoreSelection: true }));
+        return true;
+      };
       doc.descendants((n, pos) => {
         if (n.type.name === 'paragraph' && n.childCount === 1 && n.firstChild.isText && opts.preview) {
           const em = /^!\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]$/.exec(n.firstChild.text.trim());
@@ -159,19 +239,38 @@ const Decorate = Extension.create({
           }
         }
         if (n.isText) {
+          const code = n.marks.some((mk) => mk.type.name === 'code') || doc.resolve(pos).parent.type.spec.code; // inline code and code blocks stay literal
           const bid = /\s\^[A-Za-z0-9-]+\s*$/.exec(n.text);
           if (bid && pos + n.nodeSize === doc.resolve(pos).end()) deco.push(Decoration.inline(pos + bid.index, pos + n.text.length, { class: 'rich-block-id', title: tr('rich.block-id-links-like-note-id-point-here') }));
           const re = /\[\[([^\]\n]+)\]\]/g; let m;
           while ((m = re.exec(n.text))) {
             const embed = n.text[m.index - 1] === '!';
             const target = m[1].replace(/\|.*$/, ''); const kind = embed ? null : opts.linkKind?.(target);
-            deco.push(Decoration.inline(pos + m.index - (embed ? 1 : 0), pos + m.index + m[0].length, { class: embed ? 'rich-ref' : `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}`, 'data-target': target, title: embed ? tl('rich', 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open') : kind === 'missing' ? tl('rich', 'No page with this name yet. Ctrl or ⌘ click to create it') : tl('rich', 'Ctrl or ⌘ click to open') }));
+            const from = pos + m.index - (embed ? 1 : 0), to = pos + m.index + m[0].length;
+            const title = embed ? tl('rich', 'Embedded in the Read view and on slides. Ctrl or ⌘ click to open') : kind === 'missing' ? tl('rich', 'No page with this name yet. Ctrl or ⌘ click to create it') : tl('rich', 'Ctrl or ⌘ click to open');
+            if (!embed && !code) {
+              const day = kind === 'date' && DAY_ONLY.test(target.trim()) && !m[1].includes('|');
+              let bs = 0; while (m.index - 1 - bs >= 0 && n.text[m.index - 1 - bs] === '\\') bs++; // an escaped bracket is literal text, as in the Read view and the scanner
+              const tail = day && !(bs % 2) ? tailLength(n.text.slice(m.index + m[0].length)) : 0; // [[2026-12-01]]{09:00 remind}: one chip
+              const w = tail ? parseMention(n.text.slice(m.index, m.index + m[0].length + tail)) : null;
+              let cls = `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}${day ? ' is-' + (opts.dayTense?.(target.trim()) || 'future') : ''}`;
+              if (w?.remind != null) { cls += ' is-remind'; if ((startOf(w) || remindAt(w)) <= (opts.now?.() || new Date()) || opts.dayTense?.(w.day) === 'today') cls += ' is-due'; } // Notion: red on the day and after
+              const dl = (d) => opts.dayLabel?.(d) || d;
+              const label = w ? whenLabel(w, dl) : day ? dl(target.trim()) : linkLabel(m[1]);
+              if (chip(from, to + tail, cls, label, { 'data-target': target, 'data-day': day ? target.trim() : null, 'data-when': w ? n.text.slice(m.index + m[0].length, m.index + m[0].length + tail) : null, title: day ? (opts.dayTitle?.(target.trim()) || title) : title, role: 'link', tabindex: '-1' })) { re.lastIndex = m.index + m[0].length + tail; continue; }
+            }
+            deco.push(Decoration.inline(from, to, { class: embed ? 'rich-ref' : `rich-wikilink${kind && kind !== 'doc' ? ' is-' + kind : ''}`, 'data-target': target, title }));
           }
-          if (!n.marks.some((mk) => mk.type.name === 'code')) {
+          if (!code) {
             TAG.lastIndex = 0; let t;
             while ((t = TAG.exec(n.text))) { const from = pos + t.index + t[1].length; deco.push(Decoration.inline(from, from + t[2].length + 1, { class: 'rich-tag', title: tr('rich.tag-ctrl-or-click-to-see-every-page-wi') })); }
             FIELD.lastIndex = 0; let f;
-            while ((f = FIELD.exec(n.text))) { const key = f[1].trim().toLowerCase(); deco.push(Decoration.inline(pos + f.index, pos + f.index + f[0].length, { class: key === 'status' ? `rich-field rich-status is-${statusClass(f[2])}` : 'rich-field', 'data-key': key, title: key === 'status' ? tl('rich', 'Status') : f[1] })); }
+            while ((f = FIELD.exec(n.text))) {
+              const key = f[1].trim().toLowerCase(); const from = pos + f.index, to = from + f[0].length;
+              const cls = key === 'status' ? `rich-field rich-status is-${statusClass(f[2])}` : 'rich-field';
+              if (!chip(from, to, cls, f[2].trim() || '—', { 'data-key': key, 'data-name': key === 'status' ? null : f[1].trim(), title: key === 'status' ? tl('rich', 'Status') : f[1], role: key === 'status' ? 'button' : null, tabindex: '-1' }))
+                deco.push(Decoration.inline(from, to, { class: cls, 'data-key': key }));
+            }
           }
           const rv = /\{\{([^}\n]+?)\}\}/g;
           while ((m = rv.exec(n.text))) {
@@ -183,53 +282,94 @@ const Decorate = Extension.create({
       });
       return deco;
     };
+    const KEY = new PluginKey('folioDecorate');
+    /* a chip's text, from its document range */
+    const chipText = (state, from, to) => state.doc.textBetween(from, to, '\0', '\0');
+    /* a menu or the date popover can stay open while the page changes (typing, an AI edit, a reload): only write if the chip is still there */
+    const replaceChip = (view, from, to, text, was, { focus = true } = {}) => {
+      const doc = view.state.doc; if (to > doc.content.size || (was != null && doc.textBetween(from, to, '\0', '\0') !== was)) return false;
+      if (text === was) return true;
+      const tr = text ? view.state.tr.insertText(text, from, to) : view.state.tr.delete(from, to); view.dispatch(tr); if (focus) view.focus();
+      return true;
+    };
+    /* what clicking a chip (or Alt+Enter beside it) does */
+    const activate = (view, from, to, el, { modifier = false } = {}) => {
+      const src = chipText(view.state, from, to);
+      const st = /^\[(status)::[ \t]*([^\]\n]*?)[ \t]*\]$/i.exec(src);
+      if (st && opts.onStatus) { opts.onStatus(el, st[2], (v) => replaceChip(view, from, to, `[${st[1]}:: ${v}]`, src)); return true; }
+      if (/^\[[A-Za-z][\w ]{0,29}?::/.test(src)) { view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + src.indexOf('::') + 2)).scrollIntoView()); view.focus(); return true; }
+      const when = parseMention(src);
+      if (when && opts.onDate && !modifier) {
+        // the popover writes as you change it (time, end, reminder) and stays open; each write checks the chip is still there
+        let cur = src;
+        const apply = (v, { live = false } = {}) => { const text = v == null ? '' : typeof v === 'string' ? `[[${v}]]` : mentionText(v); if (replaceChip(view, from, from + cur.length, text, cur, { focus: !live })) cur = text; };
+        opts.onDate(el, when, apply, () => opts.onWikiLink?.(when.day)); return true;
+      }
+      const lk = /^\[\[([^\]\n]+)\]\]/.exec(src); if (!lk) return false;
+      const target = lk[1].replace(/\|.*$/, '').trim();
+      opts.onWikiLink?.(target); return true;
+    };
     return [new Plugin({
-      key: new PluginKey('folioDecorate'),
-      state: { init: (_, s) => DecorationSet.create(s.doc, build(s.doc)), apply: (tr, old) => (tr.docChanged ? DecorationSet.create(tr.doc, build(tr.doc)) : old) },
+      key: KEY,
+      state: {
+        init: (_, s) => { const reveal = chipUnderCaret(s); return { set: DecorationSet.create(s.doc, build(s.doc, reveal)), reveal }; },
+        apply: (tr, old, _o, s) => {
+          const reveal = tr.selectionSet || tr.docChanged ? chipUnderCaret(s) : old.reveal;
+          const same = (reveal?.from ?? -1) === (old.reveal?.from ?? -1) && (reveal?.to ?? -1) === (old.reveal?.to ?? -1);
+          if (tr.docChanged || !same || tr.getMeta('folioRedecorate')) return { set: DecorationSet.create(tr.doc, build(tr.doc, reveal)), reveal };
+          return old;
+        },
+      },
+      /* the link preview card belongs to a chip: when the page changes and the chip is redrawn, the card goes with it */
+      view: () => ({ update(v, prev) { if (v.state.doc !== prev.doc) { hover.hide(); hover.typing = true; } else if (hover.el && !hover.el.isConnected) hover.hide(); }, destroy() { hover.hide(); } }), // while typing no card opens until the pointer really moves (Notion)
       props: {
-        decorations(state) { return this.getState(state); },
+        decorations(state) { return KEY.getState(state).set; },
         handleDOMEvents: {
-          mouseover(view, e) {
-            const el = e.target.closest?.('.rich-wikilink:not(.is-missing)');
-            if (!el || !opts.preview || el === hover.el) return false;
-            hover.hide(); hover.el = el;
-            hover.timer = setTimeout(async () => {
-              const n = ++hover.seq; const html = await Promise.resolve(opts.preview(el.dataset.target)).catch(() => null);
-              if (!html || n !== hover.seq || hover.el !== el || !el.isConnected) return;
-              const card = document.createElement('div'); card.className = 'rich-hover prose'; card.setAttribute('role', 'tooltip'); card.innerHTML = html;
-              document.body.append(card); hover.card = card;
-              const r = el.getBoundingClientRect(), h = card.offsetHeight;
-              card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px';
-              card.style.top = (innerHeight - r.bottom - 8 >= h ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
-            }, 450);
-            return false;
-          },
+          mousemove(view, e) { if (!hover.typing) return false; hover.typing = false; return onOver(view, e); }, // the first real move counts as the hover
+          mouseover(view, e) { return hover.typing ? false : onOver(view, e); },
           mouseout(view, e) { const el = e.target.closest?.('.rich-wikilink'); if (el && el === hover.el && !el.contains(e.relatedTarget)) hover.hide(); return false; },
           keydown() { hover.hide(); return false; },
           scroll() { hover.hide(); return false; },
+          /* a chip is one thing: a press never puts the caret into its hidden source */
+          mousedown(view, e) {
+            const el = e.target.closest?.('.rich-chip'); if (!el || e.button !== 0) return false;
+            e.preventDefault(); hover.hide();
+            const from = +el.dataset.from, to = +el.dataset.to; if (!(to > from)) return true;
+            if (e.altKey) { view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + 1))); view.focus(); return true; } // Alt-click: edit the source
+            activate(view, from, to, el, { modifier: e.ctrlKey || e.metaKey });
+            return true;
+          },
         },
-        /* from the keyboard: Alt+Enter with the caret in a status, tag or link does what clicking it does */
+        /* from the keyboard: Alt+Enter with the caret in or right beside a chip does what clicking it does;
+           Backspace right after a chip (Delete right before it) removes the whole chip */
         handleKeyDown(view, e) {
+          const { state } = view; const sel = state.selection;
+          if ((e.key === 'Backspace' || e.key === 'Delete') && sel.empty && !e.altKey && !e.ctrlKey && !e.metaKey) {
+            const at = sel.head; const { list } = chipsNear(state.doc, at);
+            const c = list.find((x) => (e.key === 'Backspace' ? x.to === at : x.from === at));
+            if (c && !chipUnderCaret(state)) { e.preventDefault(); view.dispatch(state.tr.delete(c.from, c.to)); return true; }
+            return false;
+          }
           if (e.key !== 'Enter' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
-          let node = view.root.getSelection?.()?.anchorNode; if (!node || !view.dom.contains(node)) { try { node = view.domAtPos(view.state.selection.from).node; } catch { return false; } }
-          const el = (node.nodeType === 3 ? node.parentElement : node)?.closest?.('.rich-status, .rich-tag, .rich-wikilink, .rich-ref'); if (!el) return false;
+          const at = sel.head; const { list } = chipsNear(state.doc, at);
+          const c = list.find((x) => at >= x.from && at <= x.to);
+          if (c) {
+            e.preventDefault();
+            const el = view.dom.querySelector(`.rich-chip[data-from="${c.from}"]`) || view.domAtPos(c.from).node.parentElement || view.dom;
+            activate(view, c.from, c.to, el); return true;
+          }
+          let node = view.root.getSelection?.()?.anchorNode; if (!node || !view.dom.contains(node)) { try { node = view.domAtPos(sel.from).node; } catch { return false; } }
+          const tag = (node.nodeType === 3 ? node.parentElement : node)?.closest?.('.rich-tag, .rich-ref'); if (!tag) return false;
           e.preventDefault();
-          if (el.classList.contains('rich-status') && opts.onStatus) { const from = view.posAtDOM(el, 0); const m = /^\[status::[ \t]*([^\]\n]*?)[ \t]*\]/.exec(view.state.doc.textBetween(from, Math.min(view.state.doc.resolve(from).end(), from + 100), '\n', '\0')); if (m) opts.onStatus(el, m[1], (v) => { view.dispatch(view.state.tr.insertText(`[status:: ${v}]`, from, from + m[0].length)); view.focus(); }); return true; }
-          if (el.classList.contains('rich-tag')) { const { $from } = view.state.selection; const at = $from.parentOffset, txt = $from.parent.textContent; let tag = el.textContent; for (const m of txt.matchAll(/#[\p{L}\p{N}_\/-]+/gu)) if (at >= m.index && at <= m.index + m[0].length) tag = m[0]; opts.onTag?.(tag.replace(/^#/, '')); return true; } // the chip can be split in two by an open suggestion: read the whole tag from the text
-          if (el.dataset.target) { opts.onWikiLink?.(el.dataset.target); return true; }
+          if (tag.classList.contains('rich-tag')) { const { $from } = sel; const off = $from.parentOffset, txt = $from.parent.textContent; let t = tag.textContent; for (const m of txt.matchAll(/#[\p{L}\p{N}_\/-]+/gu)) if (off >= m.index && off <= m.index + m[0].length) t = m[0]; opts.onTag?.(t.replace(/^#/, '')); return true; } // the chip can be split in two by an open suggestion: read the whole tag from the text
+          if (tag.dataset.target) { opts.onWikiLink?.(tag.dataset.target); return true; }
           return false;
         },
         handleClick(view, pos, event) {
           const tag = event.target.closest?.('.rich-tag');
           if (tag && (event.metaKey || event.ctrlKey)) { opts.onTag?.(tag.textContent.replace(/^#/, '')); return true; }
-          const st = event.target.closest?.('.rich-status');
-          if (st && opts.onStatus && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
-            const from = view.posAtDOM(st, 0); const end = view.state.doc.resolve(from).end();
-            const m = /^\[status::[ \t]*([^\]\n]*?)[ \t]*\]/.exec(view.state.doc.textBetween(from, Math.min(end, from + 100), '\n', '\0'));
-            if (m) { opts.onStatus(st, m[1], (v) => { const tr = view.state.tr.insertText(`[status:: ${v}]`, from, from + m[0].length); view.dispatch(tr); view.focus(); }); return true; }
-          }
           const el = event.target.closest?.('.rich-wikilink, .rich-ref');
-          if (el && (event.metaKey || event.ctrlKey)) { opts.onWikiLink?.(el.dataset.target); return true; }
+          if (el && !el.classList.contains('rich-chip') && (event.metaKey || event.ctrlKey)) { opts.onWikiLink?.(el.dataset.target); return true; }
           return false;
         },
       },
@@ -427,7 +567,7 @@ const FolioImage = PageImage.extend({
       // every address goes through the app's resolver (workspace boundary, web-image consent); a web image or media it holds back registers a retry
       let retry = null, gone = false; const isWeb = (src) => /^https?:\/\//i.test(src);
       const setSrc = (el, src, miss) => {
-        if (/^(data:|blob:)/.test(src)) { el.src = src; return; }
+        if (/^(data:|blob:)/i.test(src)) { el.src = src; return; }
         let r; try { r = opts.resolve?.(src); } catch { r = null; }
         Promise.resolve(r).then((u) => {
           if (gone) return; // the view was destroyed while the address was being checked
@@ -526,43 +666,91 @@ export const pageCmd = {
   },
   hiddenComment(editor) { return editor.chain().focus().toggleMark('hiddenComment').run(); },
 };
+/* the block actions of the / menu (inserts.js BLOCK_ITEMS), on the block the caret is in */
+function blockAction(editor, a, arg, opts) {
+  const b = currentBlock(editor.state); if (!b) return false;
+  switch (a) {
+    case 'duplicate': return blockCmd.duplicate(editor, b);
+    case 'up': return blockCmd.move(editor, -1, b);
+    case 'down': return blockCmd.move(editor, 1, b);
+    case 'delete': return blockCmd.remove(editor, b);
+    case 'link': { const id = blockCmd.ensureId(editor, b); if (id) opts.onCopyLink?.(id); return true; }
+    case 'colour': return blockCmd.colour(editor, arg, b);
+    case 'below': { // under a list item, the new block goes below the whole list (a paragraph cannot sit in a list)
+      let blk = b; const $b = editor.state.doc.resolve(b.pos + 1);
+      if (/^(listItem|taskItem)$/.test(b.node.type.name)) { const top = $b.before(1); blk = { pos: top, node: editor.state.doc.nodeAt(top) }; }
+      const end = blk.pos + blk.node.nodeSize; const tr = editor.state.tr.insert(end, editor.state.schema.nodes.paragraph.create()); tr.setSelection(TextSelection.create(tr.doc, end + 1)); editor.view.dispatch(tr); return true; }
+    default: return false;
+  }
+}
 /* The / menu: everything you can insert or turn a block into (inserts.js), Notion style */
 const SLASH = new PluginKey('slashMenu');
 const SlashMenu = Extension.create({
   name: 'slashMenu',
-  addOptions() { return { ctx: () => ({}), keyLabel: (k) => k }; },
+  addOptions() { return { ctx: () => ({}), keyLabel: (k) => k, onCopyLink: null }; },
   addProseMirrorPlugins() {
     const opts = this.options;
     return [Suggestion({
-      editor: this.editor, char: '/', pluginKey: SLASH, allowSpaces: false, startOfLine: false,
+      editor: this.editor, char: '/', pluginKey: SLASH, allowSpaces: true, startOfLine: false,
       allow: ({ state, range }) => {
         const $f = state.doc.resolve(range.from);
         if ($f.parent.type.spec.code || $f.parent.type.name === 'detailsSummary') return false;
-        return !state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code);
+        if (state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code)) return false;
+        /* a space may be part of the query ("2 col", "move up"), but a space with nothing matching ends it, as in Notion */
+        const q = state.doc.textBetween(range.from + 1, range.to, ' ', ' ');
+        const hasText = $f.parent.isTextblock && $f.parent.textContent.length > q.length + 1;
+        return !/\s/.test(q) || (!/^\s|\s{2}/.test(q) && filterInserts(q, { recent: [], hasText }).length > 0);
       },
-      items: ({ query }) => (query.length > 24 ? [] : filterInserts(query)),
+      items: ({ query, editor }) => {
+        if (query.length > 24) return [];
+        const $f = editor.state.selection.$from;
+        const hasText = $f.parent.isTextblock && $f.parent.textContent.length > query.length + 1;
+        return filterInserts(query, { hasText });
+      },
       command: ({ editor, range, props }) => {
-        editor.chain().focus().deleteRange(range).run();
-        Promise.resolve(runInsert(editor, props, opts.ctx())).catch((e) => console.error(e));
+        // "Alpha /h2": the space typed to open the menu goes too, when nothing follows it
+        const $to = editor.state.doc.resolve(range.to);
+        const from = range.from > $to.start() && $to.parentOffset === $to.parent.content.size && editor.state.doc.textBetween(range.from - 1, range.from) === ' ' ? range.from - 1 : range.from;
+        editor.chain().focus().deleteRange({ from, to: range.to }).run();
+        Promise.resolve(runInsert(editor, props, { ...opts.ctx(), block: (a, arg) => blockAction(editor, a, arg, opts) })).catch((e) => console.error(e));
       },
       render: () => slashRenderer(opts),
     })];
   },
 });
 function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
-  let el, list, items = [], sel = 0, props = null, view = null;
-  const iconOf = (it) => (it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
+  let el, list, items = [], sel = 0, props = null, view = null; const insertMenu = key === SLASH;
+  const iconOf = (it) => (it.swatch !== undefined ? `<span class="slash-swatch${it.bg ? ' is-bg' : ''}" data-c="${it.swatch}">A</span>` : it.badge ? `<span class="slash-badge">${it.badge}</span>` : icons[it.icon] || icons.plus);
   const paint = () => {
     let html = '', group = null;
+    const curTurn = insertMenu && props?.editor ? turnIdAtSelection(props.editor.state) : null;
     items.forEach((x, i) => {
       if (x.group !== group) { if (group !== null) html += '</div>'; group = x.group; html += `<div class="slash-group" role="group" aria-label="${tl('grp', group)}"><div class="slash-head" aria-hidden="true">${tl('grp', group)}</div>`; }
-      const k = x.item.key ? `<kbd>${opts.keyLabel(x.item.key)}</kbd>` : '';
-      html += `<div class="slash-item" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${k}</div>`;
+      /* the hint on the right: the Markdown you could type instead (Notion: "#", "##", "-", "[]"), else the shortcut */
+      const mdh = typeof x.item.md === 'string' && /^(#{1,6}|-|1\.|>|- \[ \]|\$\$|```) ?$/.test(x.item.md) ? x.item.md.trim().replace('- [ ]', '[]') : '';
+      const k = mdh ? `<kbd class="slash-md">${mdh.replace(/</g, '&lt;')}</kbd>` : x.item.key ? `<kbd>${opts.keyLabel(x.item.key)}</kbd>` : '';
+      const turnTag = x.mode === 'turn' && x.group !== 'Turn into' ? `<span class="slash-turn"> · ${tr('blk.turn-into')}</span>` : '';
+      const isCur = x.mode === 'turn' && curTurn && x.item.id === curTurn;
+      html += `<div class="slash-item${x.item.danger ? ' is-danger' : ''}${isCur ? ' is-current' : ''}" role="option" id="slash-${i}" data-i="${i}" aria-selected="${i === sel}"${isCur ? ' aria-current="true"' : ''}><span class="slash-ic" aria-hidden="true">${iconOf(x.item)}</span><span class="slash-text"><span class="slash-label">${highlight(x.item.label, x.marks || [])}${turnTag}</span>${x.item.desc ? `<span class="slash-desc">${x.item.desc.replace(/</g, '&lt;')}</span>` : ''}</span>${isCur ? `<span class="slash-check" aria-hidden="true">${icons.check}</span>` : ''}${k}</div>`;
     });
     if (group !== null) html += '</div>';
     list.innerHTML = html || (props?.loading ? '' : '<div class="slash-empty">' + tr('rich.no-matches-keep-typing-or-press-esc') + '</div>');
     view?.dom.setAttribute('aria-activedescendant', items.length ? `slash-${sel}` : '');
+    const foot = el?.querySelector('.slash-foot'); if (foot) foot.textContent = (insertMenu && items[sel]?.item.desc) || tr('rich.to-move-enter-to-choose-esc-to-close');
     list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+    ghostPaint();
+  };
+  /* @dom → "ani" in faint text after the caret, as Notion does; Tab or Enter takes it */
+  let ghost = null;
+  const ghostPaint = () => {
+    const q = props?.query || '', label = items[sel]?.item.label || '';
+    const show = key === MENTION_KEYS.at && q.length >= 2 && label.length > q.length && label.toLowerCase().startsWith(q.toLowerCase());
+    if (!show) { ghost?.remove(); ghost = null; return; }
+    const r = props.clientRect?.(); if (!r) return;
+    if (!ghost) { ghost = document.createElement('span'); ghost.className = 'mention-ghost'; ghost.setAttribute('aria-hidden', 'true'); document.body.append(ghost); }
+    const at = view.domAtPos(view.state.selection.from).node; const cs = getComputedStyle(at.nodeType === 1 ? at : at.parentElement);
+    Object.assign(ghost.style, { left: `${r.right}px`, top: `${r.top}px`, height: `${r.height}px`, lineHeight: `${r.height}px`, font: cs.font });
+    ghost.textContent = label.slice(q.length);
   };
   const place = () => {
     const r = props?.clientRect?.(); if (!r || !el) return;
@@ -574,15 +762,15 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   return {
     onStart(p) {
       props = p; view = p.editor.view; items = p.items; sel = 0;
-      el = document.createElement('div'); el.className = 'slash-menu';
+      el = document.createElement('div'); el.className = `slash-menu${insertMenu ? ' is-insert' : ''}`;
       el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">' + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
       list = el.firstChild; document.body.append(el);
       view.dom.setAttribute('aria-controls', 'slash-list'); // aria-expanded is not allowed on a textbox: the list is announced through aria-activedescendant
       list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
-      list.addEventListener('mousemove', (e) => { const it = e.target.closest('.slash-item'); if (it && +it.dataset.i !== sel) { sel = +it.dataset.i; list.querySelectorAll('.slash-item').forEach((n) => n.setAttribute('aria-selected', String(+n.dataset.i === sel))); view.dom.setAttribute('aria-activedescendant', `slash-${sel}`); } });
+      list.addEventListener('mousemove', (e) => { const it = e.target.closest('.slash-item'); if (it && +it.dataset.i !== sel) { sel = +it.dataset.i; list.querySelectorAll('.slash-item').forEach((n) => n.setAttribute('aria-selected', String(+n.dataset.i === sel))); view.dom.setAttribute('aria-activedescendant', `slash-${sel}`); const foot = el.querySelector('.slash-foot'); if (foot && insertMenu) foot.textContent = items[sel]?.item.desc || ''; } });
       paint(); place();
     },
-    onUpdate(p) { props = p; items = p.items; sel = Math.min(sel, Math.max(0, items.length - 1)); if (!p.query) sel = Math.min(sel, items.length - 1); paint(); place(); },
+    onUpdate(p) { const typed = p.query !== props?.query; props = p; items = p.items; sel = typed ? 0 : Math.max(0, Math.min(sel, items.length - 1)); paint(); place(); }, // a new query starts at its best match
     onKeyDown({ event }) {
       if (event.key === 'Escape') { exitSuggestion(view, key); return true; }
       if (!items.length) return false;
@@ -593,7 +781,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
       return false;
     },
     onExit() {
-      el?.remove(); el = null;
+      el?.remove(); el = null; ghost?.remove(); ghost = null;
       view?.dom.removeAttribute('aria-controls'); view?.dom.removeAttribute('aria-activedescendant'); view?.dom.removeAttribute('aria-expanded');
     },
   };
@@ -684,9 +872,10 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null, onCopyCode = null, onUnlock = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
+    <div class="rich-lock" hidden><span class="rich-lock-badge">${icons.lock}<span>${tr('rich.locked')}</span></span><button type="button" class="btn btn-quiet rich-unlock">${tr('rich.unlock')}</button></div>
     <div class="rich-scroll"><div class="rich-page"></div></div>
     <div class="bubble" role="toolbar" aria-label="${tr('rich.selection')}">
       <label class="visually-hidden" for="rb-turn">${tr('rich.turn-into')}</label>
@@ -722,13 +911,13 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     element: page,
     extensions: [
       ...pageExtensions({
-        codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
+        codeBlock: FolioCodeBlock.configure({ readNote, isDark, onTemplateButton: (b, pos) => onTemplate?.(b, pos), onCopy: (t) => onCopyCode?.(t), plusIcon: icons.plus, HTMLAttributes: { spellcheck: 'false' } }),
         image: FolioImage.configure({ resolve: resolveImage, blocked, inline: false, allowBase64: true, openFile: (src) => openMedia?.(src), openUrl: (u) => openMedia?.(u) }),
         raw: RawBlock,
         views: [InlineMathView, BlockMathView, FootnoteRefView, FootnoteInlineView, FootnoteDefView, NoAlignKeys, TocView, BreadcrumbView.configure({ html: breadcrumb }), PageBreakView],
       }),
       SmartTypography.configure({ enabled: smartTypography }),
-      SlashMenu.configure({ keyLabel, ctx: insertCtx }),
+      SlashMenu.configure({ keyLabel, ctx: insertCtx, onCopyLink: (id) => onCopyBlockLink?.(id) }),
       TableHandles.configure({ icons, toSheet: (e) => tableToSheet(e) }),
       FindReplace,
       SuggestMode,
@@ -737,11 +926,12 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       CodeHighlight,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
-      BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock } }),
+      PageLockGuard,
+        BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock, check: icons.check } }),
       MarkdownLinkInput,
-      Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply) }),
+      Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply), onDate: onDate ? (el, day, apply, open) => onDate(el, day, apply, open) : null, dayLabel: (d) => formatDay(d, { style: dateStyle(), lang: locale() }), dayTitle: (d) => fullDay(d, locale()), dayTense: (d) => dayTense(d) }),
       Markdown.configure({ markedOptions: { gfm: true } }),
-      Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : tl('rich', 'Write, or select text to format it')) }),
+      Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'heading' ? 'Heading' : tl('rich', 'Write, or press / for commands')) }),
       BubbleMenu.configure({ element: bubble, shouldShow: ({ editor: e, state }) => !state.selection.empty && !e.isActive('codeBlock') && !e.isActive('image') && !(state.selection instanceof NodeSelection) }),
       WordKeys,
     ],
@@ -755,13 +945,16 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   let emitTimer = 0;
   function emit() {
     clearTimeout(emitTimer);
-    emitTimer = setTimeout(() => { emitTimer = 0; onChange?.(api.getMarkdown()); }, 220);
+    emitTimer = setTimeout(() => { emitTimer = 0; onChange?.(api.getMarkdown()); toc?.refresh(readAppearance(model?.fm || '').toc); }, 220);
   }
   /** report a change still waiting for its pause now (the app calls this before the tab changes) */
   function flushEmit() { if (!emitTimer) return; clearTimeout(emitTimer); emitTimer = 0; onChange?.(api.getMarkdown()); }
 
+  host.querySelector('.rich-unlock').addEventListener('click', () => onUnlock?.());
+  const LOCK_OK = /^(find|reviewPane|prevChange|nextChange|app:(focus|outline|help|link-health|daily-note))$/;
   const run = (id, btn) => {
     if (!id) return false;
+    if (editor.storage.pageLock?.on && !LOCK_OK.test(id)) return false; // a locked page changes through no command
     if (id.startsWith('ins:')) return api.insert(id.slice(4));
     if (id.startsWith('app:')) { const r = onCommand?.(id.slice(4)); setTimeout(syncToolbar, 50); return r; }
     if (id.startsWith('style:')) return setStyle(id.slice(6));
@@ -1007,8 +1200,18 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     icons, onTag: (t) => onTag?.(t), onLink: (n) => onWikiLink?.(n), onType: (k, t) => onPropType?.(k, t),
     tags: () => (mentions ? mentions()?.tags?.() : []) || [],
     get: () => model?.fm || '',
-    set: (fm) => { if (!model) model = codec.load(''); const old = model.fm; model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); },
+    locked: () => !!editor.storage.pageLock?.on,
+    resolveImage, pickCover: () => onPickImage?.(),
+    set: (fm) => setFm(fm),
   });
+  /* per-page appearance (page-appearance.js): font, small text and full width as attributes of the page, the floating contents */
+  function setFm(fm) { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); applyAppearance(); }
+  const toc = mountToc(host.querySelector('.rich-scroll'), { root: () => editor.view.dom });
+  function applyAppearance() {
+    const a = readAppearance(model?.fm || '');
+    for (const [k, v] of [['font', a.font], ['small-text', a.small], ['full-width', a.full]]) { if (v) page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = v === true ? 'true' : v; else delete page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())]; }
+    toc.refresh(a.toc);
+  }
   const styleSel = host.querySelector('#rb-style');
   styleSel.addEventListener('change', () => {
     const v = styleSel.value, c = editor.chain().focus();
@@ -1120,8 +1323,30 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   ready = true;
   const api = {
     /** the person allowed web images: try again every one that was held back */
+    /** the front matter block of the page, and a way to change it (Appearance): fn gets it and returns the new one */
+    getFm() { return model?.fm || ''; },
+    editFm(fn) { const old = model?.fm || ''; const next = fn(old); if (next !== old) { setFm(next); props.render(); } },
     refreshImages() { for (const fn of [...blockedViews]) fn(); },
     editor,
+    /** redraw chips after a setting that changes how they read (date format, language) */
+    /** X3: a locked page opens read-only (state kept by the app, never in the file) and shows a Locked badge with Unlock */
+    setLocked(on) {
+      editor.storage.pageLock = { on: !!on };
+      host.classList.toggle('is-locked', !!on); host.querySelector('.rich-lock').hidden = !on;
+      editor.setEditable(!on && !host.classList.contains('is-viewing'));
+      props.render(); review.render(); // their controls follow the lock
+    },
+    /** B8: open or close every toggle in one transaction (one undo step); returns how many changed */
+    setToggles(open) {
+      if (editor.storage.pageLock?.on) return 0;
+      const t2 = editor.state.tr; let n = 0;
+      editor.state.doc.descendants((node, pos) => { if (node.type.name === 'details' && !!node.attrs.open !== open) { t2.setNodeMarkup(pos, undefined, { ...node.attrs, open }); n++; } });
+      if (n) editor.view.dispatch(t2);
+      return n;
+    },
+    /** how many toggles are open and closed: the toggle-all command opens them all unless they all are */
+    toggleCount() { let open = 0, closed = 0; editor.state.doc.descendants((node) => { if (node.type.name === 'details') (node.attrs.open ? open++ : closed++); }); return { open, closed }; },
+    refreshDecorations() { editor.view.dispatch(editor.state.tr.setMeta('folioRedecorate', true).setMeta('addToHistory', false)); },
     /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
     setMarkdown(md, { keepHistory = false } = {}) {
       const oldFm = model ? model.fm : '';
@@ -1136,7 +1361,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       // a loaded document starts with a clean history, so Undo never reaches into the previous tab
       if (!keepHistory) { const st = editor.state; editor.view.updateState(EditorState.create({ schema: st.schema, doc: st.doc, plugins: st.plugins })); }
       host.querySelector('.rich-scroll').scrollTop = 0;
-      props.render(); review.render();
+      props.render(); review.render(); applyAppearance();
       syncToolbar();
     },
     /** the visual editor state of this document, with its undo history; `md` says which text it matches */
@@ -1145,6 +1370,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     restore(snap) {
       model = snap.model; silent = true;
       try { editor.view.updateState(snap.state); } finally { silent = false; }
+      props.render(); applyAppearance();
       syncToolbar();
     },
     undo() { return editor.commands.undo(); },
@@ -1157,7 +1383,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     },
     focus(where) { editor.commands.focus(where); },
     run,
-    insert(id) { const item = INSERTS.find((i) => i.id === id); return item ? runInsert(editor, { item }, insertCtx()) : false; },
+    insert(id) { if (editor.storage.pageLock?.on) return false; const item = INSERTS.find((i) => i.id === id); return item ? runInsert(editor, { item }, insertCtx()) : false; },
     headings() { const out = []; editor.state.doc.descendants((n, pos) => { if (n.type.name === 'heading') out.push(pos); }); return out; },
     scrollToHeading(i) {
       const pos = api.headings()[i]; if (pos == null) return;
@@ -1188,6 +1414,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     review: () => review,
     /* put a filled template in this page: its properties join the page's, its body goes at the cursor (or at pos) */
     insertTemplate(text, pos = null) {
+      if (editor.storage.pageLock?.on) return false;
       const { fm, body: raw } = splitTemplate(text); const body = text.startsWith('```template-button') ? raw : intoPage(raw);
       if (fm) { const merged = mergeProps(model?.fm || '', fm); if (merged !== (model?.fm || '')) { const old = model.fm; model.fm = merged; model.text = merged + model.text.slice(old.length); props.render(); } }
       const nodes = body.trim() ? codec.load(body).json.content : [];
