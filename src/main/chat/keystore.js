@@ -39,7 +39,7 @@ export function createKeyStore({ file, safeStorage }) {
       if (!key) throw new Error('Paste the key first.');
       if (/\s/.test(key) || key.length > 400) throw new Error('That does not look like an API key.');
       if (!usable()) throw new Error('This computer has no secure place to keep a key (no keychain or keyring), so Folio will not store it.');
-      const j = await load(); j[provider] = { v: safeStorage.encryptString(key).toString('base64'), last4: key.slice(-4) };
+      const j = await load(); j[provider] = { v: safeStorage.encryptString(key).toString('base64'), last4: key.length >= 16 ? key.slice(-4) : '' };
       await fs.mkdir(file().replace(/[\\/][^\\/]*$/, ''), { recursive: true });
       await save(j);
   }

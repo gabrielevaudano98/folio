@@ -50,12 +50,13 @@ The classification is a pure function (`src/main/chat/policy.js`), tested on its
 |---|---|---|
 | Read, list, search, outline, links, versions | auto | no change |
 | Create a note, append, insert, edit text, comment, suggest, slide/board/sheet edits | auto | small, shown live, undo, kept in history |
-| `write_note` over an existing note, `replace_section`, `restore_version` | ask | replaces content |
+| `write_note` over an existing note, `replace_section`, `restore_version`, `apply_design_idea` | ask | replaces content |
+| `remove_object` (slide) | ask, every time | removes content |
 | `delete_path` (note or folder; other file types are refused) | ask, every time | goes to the system Trash |
 | `create_folder` | auto | an empty folder; no content to lose (no version entry, so no undo; the person can delete it) |
 | `move_note` | auto for the first two file moves of a turn; ask for a folder or from the third | bulk reorganisation |
 | Any path outside the folder, hidden path, other file type | deny | no approval can lift it; `resolve()` refuses it |
-| Anything when "Let AI edit notes" is off | deny (read-only) | invariant 3; the chat offers a button to turn it on |
+| Any write when "Let AI edit notes" is off | deny (reads still work) | invariant 3; the chat offers a button to turn it on |
 
 An approval card says what will happen and shows the target. The choices are *Allow once*, *Allow overwrites in this chat*
 (only for the "ask" class, never for deletes) and *Don't allow*; the model is told when a step was declined and carries on.
@@ -78,13 +79,13 @@ vendor pages and forum threads as noted per row; the Consumer Terms of Anthropic
 
 | Provider | API key (BYOK) | Subscription in a third-party app |
 |---|---|---|
-| Anthropic | Yes, phase 1 | **Not through Folio's own sign-in.** Anthropic's page: it "does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users", and apps "may not collect, store, or intermediate Claude.ai credentials or session tokens". **Allowed route:** the person signs in to the *unmodified Claude Code binary* with their own subscription, and a product may run that binary ("The Claude Code binary must not be modified"). So phase 3 can add a "Claude Code (your subscription)" provider that runs the person's installed `claude` and never touches their credentials. The Consumer Terms page was not read. |
+| Anthropic | Yes, phase 1 | **Not through Folio's own sign-in.** Anthropic's page: it "does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users", and apps "may not collect, store, or intermediate Claude.ai credentials or session tokens". **Allowed route:** the person signs in to the *unmodified Claude Code binary* with their own subscription, and a product may run that binary ("The Claude Code binary must not be modified"). So phase 3 can add a "Claude Code (your subscription)" provider that runs the person's installed `claude` and never touches their credentials. Anthropic also says products that run it must agree to its Commercial Terms, so that must be checked before building it. The Consumer Terms page was not read. |
 | OpenAI | Yes, phase 1 (also any OpenAI-compatible endpoint) | **Possible, for approved partners and open-source tools only.** OpenAI's help page ([Using your ChatGPT plan in other apps and sites](https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites)): plan use works in "participating commercial apps and sites", "launched with a limited set of partners", commercial developers complete an interest form, and "supported open-source tools remain available to all ChatGPT users" (Go, Plus, Pro, Business; usage counts against the plan). The developer rules are in the Sign in with ChatGPT developer docs (developers.openai.com/siwc), **not yet read**. Folio is AGPL open source, so it may qualify: check there. |
 | Google | Yes, phase 1 | **Not allowed.** A Gemini CLI maintainer (GitHub discussion #20632, 27 Feb 2026): using "third-party software, tools, or services to harvest or piggyback on Gemini CLI's OAuth authentication ... is a direct violation", same for Antigravity quotas. Forum replies (unverified as staff) say consumer plans are for first-party surfaces only and accounts can be suspended. One later forum note says launching the unmodified `antigravity-acp` binary may be allowed: undocumented, do not rely on it. API key only. |
 | Mistral | Yes, phase 1 (Mistral's own API; also reachable as OpenAI-compatible) | **Nothing official.** Mistral's Vibe 2.0 post offers Vibe with Le Chat Pro/Team or "your own API key" and says nothing on third-party apps. Community notes describe undocumented sign-in endpoints. Treat as not allowed. Mistral's terms not read. |
 | OpenRouter, xAI (Grok) | Yes, phase 1 (OpenAI wire format, fixed address) | OpenRouter: n/a (pay-per-use). xAI: reported by a competitor's blog only (not xAI's pages) that SuperGrok sign-in works in Grok Build and OpenCode; unverified, with reports of HTTP 403. |
 | Other OpenAI-compatible services | Yes, phase 1 (address field) | n/a |
-| Local models | Phase 2b: one-click download, see below | n/a |
+| Local models | Yes, phase 1 (OpenAI-compatible server on `http://localhost`, such as Ollama or LM Studio); phase 2b adds one-click download, see below | n/a |
 
 So "connect my ChatGPT, Claude or Gemini subscription" is: not in phase 1. For Claude the sanctioned way is to drive the
 person's own Claude Code (phase 3); for Gemini probably no way; for ChatGPT to be checked. Folio ships what is allowed and
@@ -104,7 +105,7 @@ calling quality drops with size, so small models start in a read-and-suggest mod
 - A segmented **Work | Chat** control in the title bar (also in the command palette). The choice is remembered per folder.
 - **Chat, full:** the chat fills the window. A header names the folder, model and a conversation menu (new, switch,
   delete). The composer sends on Enter, Shift+Enter for a new line, a stop button replaces send while it runs.
-- **Chat, minimised:** the chat becomes a 380 px panel on the right and the normal editor shows beside it. The same
+- **Chat, minimised:** the chat becomes a side panel on the right, up to 380 px wide and narrower in small windows, and the normal editor shows beside it. The same
   conversation continues; edits it makes light up in the margin exactly as they do for an outside assistant.
 - Tool steps show as quiet one-line rows ("Read Roadmap.md", "Edited Plan.md", "Created Ideas/") that link to the note.
   Approvals are cards in the stream. After a delete, the row has a *Restore* button.

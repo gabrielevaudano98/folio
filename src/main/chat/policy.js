@@ -19,6 +19,8 @@ export async function classify(tool, args, ctx) {
     case 'replace_section': return ctx.allowOverwrites ? { decision: 'auto' } : { decision: 'ask', reason: 'Replace a section', remember: true };
     case 'move_note': if (await ctx.isDir?.(args.from)) return { decision: 'ask', reason: 'Move a whole folder', remember: false };
       return ctx.moves >= 2 ? { decision: 'ask', reason: 'Move several files in one go', remember: false } : { decision: 'auto' };
+    case 'remove_object': return { decision: 'ask', reason: 'Remove an object from a slide', remember: false };
+    case 'apply_design_idea': return ctx.allowOverwrites ? { decision: 'auto' } : { decision: 'ask', reason: 'Replace the layout of a slide', remember: true };
     default: return { decision: 'auto' };
   }
 }

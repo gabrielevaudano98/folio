@@ -52,7 +52,7 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
     if (!el) { const keep = stick(); el = document.createElement('div'); el.className = 'chat-step'; el.dataset.id = ev.id; log.appendChild(el); keep(); }
     el.dataset.status = ev.status;
     const p = ev.args?.path || ev.args?.to || ev.args?.from;
-    const open = p && NOTE.test(p) && ev.status === 'done' ? `<button class="chat-link" type="button" data-open="${esc(ev.args.to || p)}">${esc(tr('chat.open'))}</button>` : '';
+    const open = p && NOTE.test(p) && ev.status === 'done' && ev.name !== 'delete_path' ? `<button class="chat-link" type="button" data-open="${esc(ev.args.to || p)}">${esc(tr('chat.open'))}</button>` : '';
     const detail = ev.status === 'error' || ev.status === 'denied' ? ` <span class="chat-step-detail">${esc(ev.detail || '')}</span>` : '';
     const keepTok = el.querySelector('[data-restore]')?.outerHTML || '';
     el.innerHTML = `<span class="chat-step-dot" aria-hidden="true"></span><span class="chat-step-line"><span class="sr-only">${esc(tr(STEP[ev.status] || 'chat.step-error'))}: </span>${esc(stepLabel(ev.name, ev.args))}${detail}</span>${open}${keepTok}`;
@@ -63,7 +63,7 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
     const target = [ev.args?.path, ev.args?.from && `${ev.args.from} → ${ev.args.to}`].filter(Boolean).join(', ');
     card.innerHTML = `<p class="chat-approve-title">${esc(ev.reason || '')}</p><p class="chat-approve-target">${esc(target)}</p>${ev.args?.reason ? `<p class="chat-approve-why">${esc(ev.args.reason)}</p>` : ''}
       <div class="chat-approve-btns"><button class="btn" type="button" data-answer="once">${esc(tr('chat.allow-once'))}</button>${ev.remember ? `<button class="btn" type="button" data-answer="chat">${esc(tr('chat.allow-chat'))}</button>` : ''}<button class="btn btn-quiet" type="button" data-answer="deny">${esc(tr('chat.deny'))}</button></div>`;
-    el.after(card); card.querySelector('button').focus({ preventScroll: false });
+    el.after(card); card.querySelector('[data-answer="deny"]').focus({ preventScroll: false }); // a stray Enter declines, never approves
     card.onclick = async (e) => { const b = e.target.closest('[data-answer]'); if (!b) return; card.remove(); (log.querySelector('.chat-approve [data-answer]') || input).focus(); try { await folio.chat.approve(ev.id, b.dataset.answer); } catch (er) { toast(er.message, { kind: 'error' }); } };
     scroll.scrollTop = scroll.scrollHeight;
   }
@@ -103,7 +103,7 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
       <ul class="chat-ideas">${['chat.idea-1', 'chat.idea-2', 'chat.idea-3'].map((k) => `<li><button type="button" class="chat-idea" data-idea="${esc(tr(k))}">${esc(tr(k))}</button></li>`).join('')}</ul></div>`
       : `<div class="chat-empty"><h2>${esc(tr('chat.setup-title'))}</h2><p>${esc(tr('chat.setup-body', { provider: st?.providers?.[st.config.provider]?.label || '' }))}</p><button class="btn btn-primary" type="button" data-settings>${esc(tr('chat.add-key'))}</button><p class="chat-privacy">${esc(tr('chat.privacy'))}</p></div>`;
   }
-  const ready = () => !!st && (st.keys[st.config.provider]?.has || (st.config.provider === 'openai' && st.config.openaiBase));
+  const ready = () => !!st && !!st.config.models?.[st.config.provider] && (st.keys[st.config.provider]?.has || (st.config.provider === 'openai' && st.config.openaiBase));
 
   /* ---------- state ---------- */
   function paintLayoutBtn() {
@@ -129,7 +129,7 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
     log.querySelector('.chat-empty')?.remove();
     userBubble(text); input.value = ''; grow(); bubble = null;
     try { const r = await folio.chat.send(text); convId = r.id; }
-    catch (e) { line(e.message, 'chat-sys chat-error'); setBusy(false); }
+    catch (e) { line(e.message, 'chat-sys chat-error'); refresh().then(() => setBusy(!!st?.busy)).catch(() => setBusy(false)); } // the turn may already be running: ask, don't assume
   }
   const grow = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 200) + 'px'; input.style.overflowY = input.scrollHeight > 200 ? 'auto' : 'hidden'; };
   input.addEventListener('input', grow);

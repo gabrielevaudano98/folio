@@ -15,6 +15,6 @@ export function buildSystem({ instructions, folderName, files, more, open, today
     writeAllowed ? '' : 'Editing is switched off in Folio right now, so you can only read. Say so if asked to change something.',
     instructions ? `The person's standing instructions for this folder:\n${instructions}` : '',
     open ? `The note open in the editor right now: ${open}.` : '',
-    `Notes in the folder (${files.length}${more ? ' of more' : ''}, newest first):\n${list}${more ? '\n(There are more. Use list_notes or search_notes to find them.)' : ''}`,
+    `Notes in the folder (${more ? 'first ' : ''}${files.length}${more ? ', more not shown' : ', newest first'}):\n${list}${more ? '\n(There are more. Use list_notes or search_notes to find them.)' : ''}`,
   ].filter(Boolean).join('\n\n');
 }

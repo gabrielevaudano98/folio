@@ -46,7 +46,7 @@ const j = r.js; const at = (i) => j[i];
 assert.deepEqual(at(0), { mode: 'chat', layout: 'full', visible: true, w: at(0).w, checked: 'true', empty: true, input: true }); assert.ok(at(0).w > 900, 'full layout fills the window');
 assert.deepEqual(at(1).steps, [['done', 'create note Plan.md']]); assert.equal(at(1).ai, 'All done.'); assert.equal(at(1).busy, 'false');
 assert.match(at(2), /Start here/);
-assert.equal(at(3).card, true); assert.equal(at(3).title, 'Move to the Trash'); assert.equal(at(3).target, 'Plan.md'); assert.deepEqual(at(3).btns, ['once', 'deny']); assert.equal(at(3).focus, 'once');
+assert.equal(at(3).card, true); assert.equal(at(3).title, 'Move to the Trash'); assert.equal(at(3).target, 'Plan.md'); assert.deepEqual(at(3).btns, ['once', 'deny']); assert.equal(at(3).focus, 'deny');
 assert.equal(at(4).card, false); assert.ok(at(4).steps.includes('denied')); assert.equal(at(4).busy, 'false'); assert.equal(at(5), 'still there');
 assert.equal(at(6).layout, 'dock'); assert.ok(at(6).w >= 370 && at(6).w <= 390, 'minimised: a side panel'); assert.ok(Math.abs(at(6).right - at(6).w) <= 2, 'the editor area ends where the chat begins');
 assert.equal(at(7).convs, 1); assert.deepEqual(at(8), [['Plan.md', 'Folio chat']], 'the live AI-edit event arrived'); assert.deepEqual(at(9), [], 'no errors in the window');

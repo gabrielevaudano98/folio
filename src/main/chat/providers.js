@@ -22,6 +22,7 @@ export function checkEndpoint(url) {
   const local = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(u.hostname);
   if (u.protocol !== 'https:' && !(u.protocol === 'http:' && local)) throw new ProviderError('Use https, or http only for a model on this computer.');
   if (u.username || u.password) throw new ProviderError('Leave the user name and password out of the address.');
+  if (u.search || u.hash) throw new ProviderError('Leave the ? and # parts out of the address.');
   return u.toString().replace(/\/+$/, '');
 }
 
@@ -41,7 +42,7 @@ async function* sse(res, signal) {
 
 async function post(fetchImpl, url, headers, body, signal, secret) {
   let res;
-  try { res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal }); }
+  try { res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal, redirect: 'error' /* a redirect would carry the key's header to another host */ }); }
   catch (e) { if (signal?.aborted) throw e; throw new ProviderError(`Could not reach the provider: ${e.cause?.code || e.message}`); }
   if (!res.ok) {
     let detail = ''; try { const j = await res.json(); detail = j?.error?.message || j?.message || ''; } catch { /* not json */ }
@@ -101,7 +102,7 @@ function openai({ key, fetchImpl, baseUrl, model }) {
     for (const m of messages.filter(keepable)) {
       if (m.role === 'user') out.push({ role: 'user', content: m.text });
       else if (m.role === 'assistant') out.push({ role: 'assistant', content: m.text || null, ...(m.toolCalls?.length ? { tool_calls: m.toolCalls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args || {}) } })) } : {}) });
-      else for (const r of m.results) out.push({ role: 'tool', tool_call_id: r.id, content: r.text });
+      else for (const r of m.results) out.push({ role: 'tool', tool_call_id: r.id, content: r.isError ? `Error: ${r.text}` : r.text });
     }
     return out;
   };

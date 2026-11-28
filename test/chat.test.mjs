@@ -60,7 +60,7 @@ const history = [{ role: 'user', text: 'q' }, { role: 'assistant', text: 'a', to
 {
   const p = createProvider({ provider: 'google', key: 'g-key', model: 'gem', baseUrl: base });
   const r = await p.stream({ system: 'sys', messages: history, tools });
-  assert.equal(r.text, 'Yo'); assert.deepEqual(r.toolCalls.map((c) => [c.name, c.args]), [['read_note', { path: 'a.md' }]]); assert.match(r.toolCalls[0].id, /^g.+_0$/, 'ids are unique per answer'); assert.equal(r.stop, 'tools');
+  assert.equal(r.text, 'Yo'); assert.deepEqual(r.toolCalls.map((c) => [c.name, c.args]), [['read_note', { path: 'a.md' }]]); assert.match(r.toolCalls[0].id, /^g.+_0$/); { const r2 = await p.stream({ system: 'sys', messages: history, tools }); assert.notEqual(r2.toolCalls[0].id, r.toolCalls[0].id, 'ids are unique across answers'); } assert.equal(r.stop, 'tools');
   const s = seen.at(-1); assert.equal(s.headers['x-goog-api-key'], 'g-key'); assert.ok(!s.url.includes('g-key'), 'the key is a header, never in the address');
   const decl = s.body.tools[0].functionDeclarations[0].parameters; assert.equal(decl.$schema, undefined); assert.equal(decl.additionalProperties, undefined); assert.equal(decl.properties.n.exclusiveMinimum, undefined);
   assert.equal(s.body.contents[2].parts[0].functionResponse.name, 'read_note');
@@ -75,7 +75,7 @@ const history = [{ role: 'user', text: 'q' }, { role: 'assistant', text: 'a', to
   assert.match(e.message, /key was refused/); assert.match(e2.message, /key was refused/); assert.match(e.message, /\[key\]/, 'an echoed key is replaced');
   assert.throws(() => createProvider({ provider: 'anthropic', key: '', model: 'm' }), /API key/);
   assert.throws(() => createProvider({ provider: 'anthropic', key: 'k', model: '' }), /model/);
-  assert.equal(createProvider({ provider: 'openai', key: '', model: 'llama', baseUrl: 'http://localhost:11434/v1' }) != null, true, 'a local model needs no key');
+  assert.equal(typeof createProvider({ provider: 'openai', key: '', model: 'llama', baseUrl: 'http://localhost:11434/v1' }).stream, 'function', 'a local model needs no key');
   assert.equal(checkEndpoint('http://localhost:11434/v1/'), 'http://localhost:11434/v1'); assert.equal(checkEndpoint('https://openrouter.ai/api/v1'), 'https://openrouter.ai/api/v1');
   for (const bad of ['http://example.com/v1', 'ftp://x', 'nope', 'https://u:p@x.com']) assert.throws(() => checkEndpoint(bad), ProviderError, bad);
   console.log('  ✓ errors are friendly and never contain the key; endpoints must be https or local');
@@ -85,6 +85,8 @@ const history = [{ role: 'user', text: 'q' }, { role: 'assistant', text: 'a', to
   const r = await p.stream({ system: 's', messages: history, tools });
   assert.equal(r.text, 'Hi'); assert.equal(seen.at(-1).headers.authorization, 'Bearer or-key');
   assert.throws(() => createProvider({ provider: 'xai', key: '', model: 'm' }), /API key/);
+  { const xp = createProvider({ provider: 'xai', key: 'x-key', model: 'grok', baseUrl: base + '/oa' }); const xr = await xp.stream({ system: 's', messages: history, tools }); assert.equal(xr.text, 'Hi'); assert.equal(seen.at(-1).headers.authorization, 'Bearer x-key'); }
+  assert.throws(() => checkEndpoint('https://h.example/v1?x=1'), /\?/);
   console.log('  ✓ OpenRouter and xAI use the OpenAI wire format with their own key');
 }
 server.close();
@@ -97,6 +99,7 @@ server.close();
   assert.equal((await classify(T('edit_note'), { path: 'a.md' }, ctx({ allowWrite: false }))).decision, 'deny');
   assert.equal((await classify(T('create_note'), {}, ctx())).decision, 'auto');
   { const v = await classify(T('write_note'), { path: 'new.md' }, ctx()); assert.equal(v.decision, 'auto'); assert.equal(v.create, true, 'a new note is created exclusively'); }
+  assert.equal((await classify(T('remove_object'), { slide: 1, id: 'a' }, ctx())).decision, 'ask', 'removing a slide object asks'); assert.equal((await classify(T('apply_design_idea'), {}, ctx())).decision, 'ask');
   assert.equal((await classify(T('move_note'), { from: 'dir' }, ctx({ isDir: async () => true }))).decision, 'ask', 'moving a folder asks');
   assert.equal((await classify(T('write_note'), { path: 'old.md' }, ctx())).decision, 'ask');
   assert.equal((await classify(T('write_note'), { path: 'old.md' }, ctx({ allowOverwrites: true }))).decision, 'auto');
@@ -112,7 +115,7 @@ server.close();
   const file = path.join(tmp, 'keys', 'ai-keys.json');
   const ks = createKeyStore({ file: () => file, safeStorage: fake() });
   await ks.set('anthropic', '  sk-ant-abcdef1234 ');
-  const raw = await fs.readFile(file, 'utf8'); assert.ok(!raw.includes('abcdef1234') || raw.includes('"last4"'), 'only the last four characters are readable'); assert.ok(!raw.includes('sk-ant'), 'the key is not in the file as text');
+  const raw = await fs.readFile(file, 'utf8'); assert.ok(!raw.includes('abcdef1234'), 'only the last four characters are readable'); assert.ok(!raw.includes('sk-ant'), 'the key is not in the file as text');
   assert.equal(await ks.get('anthropic'), 'sk-ant-abcdef1234'); assert.deepEqual(await ks.status(), { anthropic: { has: true, last4: '1234' } });
   if (process.platform !== 'win32') assert.equal((await fs.stat(file)).mode & 0o777, 0o600);
   await fs.writeFile(file, '{ not json'); await assert.rejects(ks.set('openai', 'sk-xyz1234'), /damaged/); assert.equal(await fs.readFile(file, 'utf8'), '{ not json', 'a damaged file is not overwritten'); assert.deepEqual(await ks.status(), {});
@@ -141,7 +144,7 @@ server.close();
     await st2.remove(c2.id); // removes from the current folder only: harmless
   }
   { const b = await st.load(c.id); b.grants = { overwrites: true }; await st.save(b); assert.deepEqual((await st.load(c.id)).grants, {}, 'a stored grant is not trusted'); }
-  { const r2 = path.join(tmp, 'ws2'); await fs.mkdir(r2); await fs.symlink(tmp, path.join(r2, '.folio')); const st3 = createChatStore(() => r2); const c3 = st3.create(); c3.messages.push({ role: 'user', text: 'x' }); await assert.rejects(st3.save(c3), /link/); }
+  { const r2 = path.join(tmp, 'ws2'); await fs.mkdir(r2); try { await fs.symlink(tmp, path.join(r2, '.folio'), process.platform === 'win32' ? 'junction' : 'dir'); const st3 = createChatStore(() => r2); const c3 = st3.create(); c3.messages.push({ role: 'user', text: 'x' }); await assert.rejects(st3.save(c3), /link/); await assert.rejects(st3.remove(c3.id), /link/); } catch (e) { if (e.code !== 'EPERM') throw e; } }
   await st.remove(c.id); assert.equal(await st.load(c.id), null);
   console.log('  ✓ conversations round-trip through .folio/chat, bad ids refused');
 }

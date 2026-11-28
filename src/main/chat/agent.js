@@ -2,7 +2,7 @@
 // network or Electron (test/chat-agent.test.mjs).
 export const LIMITS = { steps: 24, toolResultChars: 30000, contextChars: 400000 };
 
-const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
+const asText = (v) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? '');
 const clip = (s) => (s.length > LIMITS.toolResultChars ? s.slice(0, LIMITS.toolResultChars) + `\n[cut: ${s.length - LIMITS.toolResultChars} more characters. Ask for a narrower range or section.]` : s);
 
 /** drops the oldest tool results from a copy of the messages until the text fits the budget */

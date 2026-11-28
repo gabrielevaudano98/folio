@@ -31,6 +31,6 @@ export function createChatStore(getRoot) {
       for (const n of names.filter((x) => x.endsWith('.json'))) { try { const c = JSON.parse(await fs.readFile(path.join(dir(), n), 'utf8')); out.push({ id: c.id, title: c.title || '', updated: c.updated || 0 }); } catch { /* damaged file: skipped */ } }
       return out.sort((a, b) => b.updated - a.updated);
     },
-    async remove(id) { await fs.rm(file(id), { force: true }); },
+    async remove(id) { plain(getRoot()); await fs.rm(file(id), { force: true }); },
   };
 }

@@ -201,7 +201,7 @@ if (isWin) systemPreferences.on?.('accent-color-changed', () => win?.webContents
 let watcher = null;
 const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own echo
 async function setWorkspace(dir) {
-  chat?.reset();
+  if (dir !== settings.workspace) chat?.reset(); // opening the same folder again must not cut a running answer
   requests.clear(); // a request belongs to the folder it was written in
   await clearTrashed();
   settings.workspace = dir;

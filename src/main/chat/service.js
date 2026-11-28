@@ -67,9 +67,12 @@ export function createChat({ h, getWin, settings, saveSettings, notes, backend, 
   h('chat:state', state);
   h('chat:config', async (patch = {}) => {
     const c = settings.chat;
-    if (patch.provider !== undefined) { if (!Object.hasOwn(PROVIDERS, patch.provider)) throw new Error('Unknown provider.'); c.provider = patch.provider; }
+    // check everything first, then change: a refused address must not leave a half-applied setting
+    if (patch.provider !== undefined && !Object.hasOwn(PROVIDERS, patch.provider)) throw new Error('Unknown provider.');
+    const base = patch.openaiBase !== undefined ? (patch.openaiBase ? checkEndpoint(patch.openaiBase) : '') : undefined;
+    if (patch.provider !== undefined) c.provider = patch.provider;
     if (patch.model !== undefined) c.models[patch.provider || c.provider] = String(patch.model).trim().slice(0, 120);
-    if (patch.openaiBase !== undefined) c.openaiBase = patch.openaiBase ? checkEndpoint(patch.openaiBase) : '';
+    if (base !== undefined) c.openaiBase = base;
     saveSettings(); return state();
   });
   h('chat:key-set', async (provider, key) => { if (!Object.hasOwn(PROVIDERS, provider)) throw new Error('Unknown provider.'); await keys.set(provider, key); return state(); });
