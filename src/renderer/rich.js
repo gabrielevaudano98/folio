@@ -763,7 +763,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
     onStart(p) {
       props = p; view = p.editor.view; items = p.items; sel = 0;
       el = document.createElement('div'); el.className = `slash-menu${insertMenu ? ' is-insert' : ''}`;
-      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">' + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
+      el.innerHTML = `<div class="slash-list" role="listbox" id="slash-list" aria-label="${String(label).replace(/[&"<]/g, (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;' }[c]))}"></div><div class="slash-foot" aria-hidden="true">` + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
       list = el.firstChild; document.body.append(el);
       view.dom.setAttribute('aria-controls', 'slash-list'); // aria-expanded is not allowed on a textbox: the list is announced through aria-activedescendant
       list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
@@ -787,9 +787,9 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
   };
 }
 
-/* [[ @ # : — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
-const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji') };
-const MENTION_LABEL = { link: tl('rich', 'Link to a page'), at: tl('rich', 'Mention a person, page or date'), tag: 'Tags', emoji: 'Emoji' };
+/* [[ @ # : + — inline pickers (page-mentions.js). They only ever write plain Markdown text, so the page stays portable. */
+const MENTION_KEYS = { link: new PluginKey('mentionLink'), at: new PluginKey('mentionAt'), tag: new PluginKey('mentionTag'), emoji: new PluginKey('mentionEmoji'), plus: new PluginKey('mentionPlus') };
+const MENTION_LABEL = { link: tl('rich', 'Link to a page'), at: tl('rich', 'Mention a person, page or date'), tag: 'Tags', emoji: 'Emoji', plus: tl('rich', 'Link to a page or create one') };
 const Mentions = Extension.create({
   name: 'folioMentions',
   addOptions() { return { ctx: () => null, keyLabel: (k) => k }; },
@@ -803,15 +803,17 @@ const Mentions = Extension.create({
         const $f = state.doc.resolve(range.from);
         if ($f.parent.type.spec.code || state.doc.rangeHasMark(range.from, range.to, state.schema.marks.code)) return false;
         const q = state.doc.textBetween(range.from + char.length, range.to, ' ', ' ');
-        return q.length >= min && q.length <= 48 && !/[\]\n]/.test(q) && !(spaces && /^\s/.test(q)) && (kind !== 'emoji' || /^[\w+\-]*$/.test(q));
+        return q.length >= min && q.length <= 48 && !/[\]\n]/.test(q) && !(spaces && /^\s/.test(q)) && (kind !== 'emoji' || /^[\w+\-]*$/.test(q)) && (kind !== 'plus' || /^\p{L}/u.test(q)); // +name (Notion): a letter first, so 1 + 1 and +39 stay text
       },
       items: async ({ query }) => { const c = opts.ctx(); return c ? mentionEntries(kind, query, c) : []; },
       command: async ({ editor, range, props: entry }) => {
         if (entry.disabled) return;
         if (entry.create) {
+          const typed = editor.state.doc.textBetween(range.from, range.to, ' ', ' ');
           editor.chain().focus().deleteRange(range).run();
-          const made = await opts.ctx()?.createDoc?.({ type: 'md', name: entry.create });
-          if (made) editor.chain().focus().insertContent({ type: 'text', text: `[[${made.ref}]]` }).run();
+          const made = await opts.ctx()?.createDoc?.({ type: 'md', name: entry.create }).catch?.(() => null);
+          // a page that could not be made gives back what was typed ([[name, +name) instead of losing it
+          editor.chain().focus().insertContent({ type: 'text', text: made ? `[[${made.ref}]]` : typed }).run();
           return;
         }
         // a trailing space after a tag is for typing on; at the end of a block it would only leave a stray space in the file
@@ -821,7 +823,7 @@ const Mentions = Extension.create({
       },
       render: () => slashRenderer(opts, MENTION_KEYS[kind], MENTION_LABEL[kind]),
     });
-    return [make('link', '[[', { spaces: true, anywhere: true }), make('at', '@', { spaces: true }), make('tag', '#', { min: 1 }), make('emoji', ':', { min: 2 })];
+    return [make('link', '[[', { spaces: true, anywhere: true }), make('at', '@', { spaces: true }), make('tag', '#', { min: 1 }), make('emoji', ':', { min: 2 }), make('plus', '+', { spaces: true, min: 1 })];
   },
 });
 
@@ -872,7 +874,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null, onCopyCode = null, onUnlock = null }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null, onCopyCode = null, onUnlock = null, onTurnIntoPage = null }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-lock" hidden><span class="rich-lock-badge">${icons.lock}<span>${tr('rich.locked')}</span></span><button type="button" class="btn btn-quiet rich-unlock">${tr('rich.unlock')}</button></div>
@@ -927,7 +929,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
       CalloutUI.configure({ icons }),
       HeadingFold.configure({ icons }),
       PageLockGuard,
-        BlockHandles.configure({ keyLabel, onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock, check: icons.check } }),
+        BlockHandles.configure({ keyLabel, onTurnIntoPage: (range) => turnIntoPage(range), onCopyLink: (id) => onCopyBlockLink?.(id), onDelete: (n) => onBlockDeleted?.(() => editor.chain().focus().undo().run(), n), icons: { plus: icons.plus, grip: icons.grip, quote: icons.quote, listBullet: icons.listBullet, listOrdered: icons.listOrdered, listTask: icons.listTask, codeBlock: icons.codeBlock, check: icons.check } }),
       MarkdownLinkInput,
       Decorate.configure({ onWikiLink, resolveValue, linkKind, preview, onTag: (t) => onTag?.(t), onStatus: (el, cur, apply) => onStatus?.(el, cur, apply), onDate: onDate ? (el, day, apply, open) => onDate(el, day, apply, open) : null, dayLabel: (d) => formatDay(d, { style: dateStyle(), lang: locale() }), dayTitle: (d) => fullDay(d, locale()), dayTense: (d) => dayTense(d) }),
       Markdown.configure({ markedOptions: { gfm: true } }),
@@ -948,6 +950,18 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     emitTimer = setTimeout(() => { emitTimer = 0; onChange?.(api.getMarkdown()); toc?.refresh(readAppearance(model?.fm || '').toc); }, 220);
   }
   /** report a change still waiting for its pause now (the app calls this before the tab changes) */
+  /* Turn into page (Notion): the chosen blocks become a page of their own and a [[link]] takes their place. The app creates the
+     file; the blocks are replaced only after it exists, as one undo step. */
+  function turnIntoPage({ from, to }) {
+    if (!onTurnIntoPage || editor.storage.pageLock?.on) return;
+    let md;
+    try { md = codec.save(codec.load(''), editor.state.schema.topNodeType.create(null, editor.state.doc.slice(from, to).content)); } catch { return onError?.(new Error(tl('rich', 'These blocks cannot become a page.'))); }
+    const doc = editor.state.doc; // the blocks are replaced only if the page is still this very document (no edit, no page switch while the file was created)
+    onTurnIntoPage(md, (name) => {
+      if (editor.state.doc !== doc) return false;
+      try { const { schema } = editor.state; editor.view.dispatch(editor.state.tr.replaceWith(from, to, schema.nodes.paragraph.create(null, schema.text(`[[${name}]]`))).scrollIntoView()); return true; } catch { return false; }
+    });
+  }
   function flushEmit() { if (!emitTimer) return; clearTimeout(emitTimer); emitTimer = 0; onChange?.(api.getMarkdown()); }
 
   host.querySelector('.rich-unlock').addEventListener('click', () => onUnlock?.());

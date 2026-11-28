@@ -53,7 +53,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true, remoteImages: false,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
-  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {}, autoUpdate: false,
+  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {}, favorites: {}, autoUpdate: false,
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
@@ -734,6 +734,7 @@ function buildMenu() {
       { type: 'separator' },
       { label: tl('menu', 'Save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },
       { label: tl('menu', 'Close Tab'), accelerator: 'CmdOrCtrl+W', click: cmd('close-tab') },
+      { label: tl('menu', 'Reopen Closed Tab'), accelerator: 'CmdOrCtrl+Shift+T', click: cmd('reopen-tab') },
       { type: 'separator' },
       { label: tl('menu', 'Import Word or HTML…'), click: cmd('import-document') },
       { label: tl('menu', 'Import PowerPoint…'), click: cmd('import-pptx') },
