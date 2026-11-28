@@ -23,6 +23,11 @@ export function fitContext(messages, budget = LIMITS.contextChars) {
     if (m.role !== 'tool') continue;
     for (const r of m.results) { if (total <= budget) break; const was = r.text.length; r.text = '[older result removed to save space; read it again if needed]'; total -= was - r.text.length; }
   }
+  for (let i = 0; i < out.length - 1 && total > budget; i++) { // last resort: long older messages from the person or the model keep their start and end
+    const m = out[i]; if ((m.role !== 'user' && m.role !== 'assistant') || (m.text?.length || 0) <= 4000) continue;
+    const t = m.text.slice(0, 2000) + '\n[…older text removed to save space…]\n' + m.text.slice(-1000);
+    total -= m.text.length - t.length; out[i] = { ...m, text: t };
+  }
   return out;
 }
 

@@ -156,6 +156,7 @@ server.close();
   const fit = fitContext(msgs, 1500);
   assert.match(fit[1].results[0].text, /removed/); assert.equal(fit[3].results[0].text.length, 1000, 'the newest result stays'); assert.equal(msgs[1].results[0].text.length, 1000, 'the stored conversation is not changed');
   { const big = { role: 'assistant', text: '', toolCalls: [{ id: 'w', name: 'write_note', args: { path: 'a.md', content: 'y'.repeat(3000) } }] }; const f2 = fitContext([{ role: 'user', text: 'hi' }, big, { role: 'tool', results: [{ id: 'w', name: 'write_note', text: 'ok', isError: false }] }, { role: 'user', text: 'next' }], 1000); assert.ok(JSON.stringify(f2[1]).length < 1000, 'old note bodies are trimmed'); assert.equal(f2[1].toolCalls[0].args.path, 'a.md'); assert.equal(big.toolCalls[0].args.content.length, 3000); }
+  { const f3 = fitContext([{ role: 'user', text: 'a'.repeat(9000) }, { role: 'assistant', text: 'ok' }, { role: 'user', text: 'next' }], 3000); assert.ok(f3[0].text.length < 4000, 'a long older message is shortened'); assert.equal(f3[2].text, 'next'); }
   const c = { messages: [{ role: 'assistant', text: '', toolCalls: [{ id: 'a', name: 'x' }] }] }; repair(c); assert.equal(c.messages.at(-1).role, 'tool');
   console.log('  ✓ old tool results are dropped from the context only, an unanswered tool call is closed');
 }
