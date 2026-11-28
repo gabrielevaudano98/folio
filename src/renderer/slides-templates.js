@@ -36,11 +36,22 @@ export async function listTemplates(env) {
 export const workspacePath = (t) => t.path || `${TEMPLATE_DIR}/${t.name.replace(/[\\/:*?"<>|]/g, '-')}.slides.md`;
 export const refFor = (path) => path.replace(/\.md$/i, '');
 
+/** the first `# heading` line outside HTML comments gets the new title (a plain scan: no regexp that backtracks over comments) */
+function retitle(text, title) {
+  let i = 0;
+  while (i < text.length) {
+    if (text.startsWith('<!--', i)) { const e = text.indexOf('-->', i + 4); if (e < 0) break; i = e + 3; continue; }
+    const nl = text.indexOf('\n', i), end = nl < 0 ? text.length : nl;
+    if (/^#[ \t]/.test(text.slice(i, end)) && (i === 0 || text[i - 1] === '\n')) return text.slice(0, i) + `# ${title}` + text.slice(end);
+    i = end + 1;
+  }
+  return text;
+}
 /** a new deck that uses a template: linked for theme, fonts and masters, with copies of its sample slides */
 export function newDeckFrom(t, title) {
   const fm = `---\nmarp: true\ntemplate: ${refFor(workspacePath(t))}\ntitle: ${title}\n---\n`;
   const samples = splitSlides(parseFrontmatter(t.text).body).filter((c) => !/<!--\s*master\b/.test(c));
-  const first = samples[0] ? samples[0].replace(/^#[ \t]+.*$/m, () => `# ${title}`) : `\n# ${title}\n`;
+  const first = samples[0] ? retitle(samples[0], title) : `\n# ${title}\n`;
   return joinDeck(fm, [first, ...samples.slice(1)].map((c) => '\n' + c.replace(/^\n+/, '')));
 }
 /** front matter keys that a template provides; applying a template removes them from the deck so the template shows */

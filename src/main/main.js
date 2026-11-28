@@ -404,7 +404,7 @@ h('templates:fetch', async (url) => {
     let target = new URL(String(url)), res;
     for (let hop = 0; ; hop++) {
       if (hop > 5) throw new Error('Too many redirects.');
-      const local = target.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(target.hostname);
+      const local = hop === 0 && target.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(target.hostname);
       if (target.protocol !== 'https:' && !local) throw new Error('Only https:// links can be downloaded.');
       if (!local) await assertPublicHost(target.hostname);
       res = await net.fetch(target.href, { signal: ctl.signal, redirect: 'manual' });

@@ -864,14 +864,15 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   ok('slide text pictures keep their address in data-src, so the view checks it before anything is requested');
 }
 
-// escaping: a backslash in a label, title or table cell survives a round trip (one escape pass, backslash first)
+// escaping: backslashes in board labels, image titles and table cells (one escape pass, backslash first, legacy text left as written)
 {
   const m = parseBoard('a: rect "C:\\new \\"x\\" \\\\ end" @0,0\nb: rect "plain" @10,10\na -> b "p\\\\q"');
   const again = parseBoard(serializeBoard(m));
   assert.deepEqual(again.nodes.map((x) => x.label), m.nodes.map((x) => x.label)); assert.equal(again.edges[0].label, m.edges[0].label);
   const odd = parseBoard('a: rect "x" @0,0'); odd.nodes[0].label = 'back\\slash \\n "quote"\nline';
   assert.equal(parseBoard(serializeBoard(odd)).nodes[0].label, odd.nodes[0].label);
-  ok('board labels with backslashes, quotes and newlines round-trip');
+  const legacy = 'a: rect "C:\\folder" @0,0'; assert.equal(serializeBoard(parseBoard(legacy)).trim(), legacy);
+  ok('board labels with backslashes, quotes and newlines round-trip; a legacy label with a lone backslash keeps its bytes');
 }
 assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\ |'); ok('table cells: a backslash before a pipe is doubled, so the pipe stays a pipe');
 {
@@ -884,4 +885,10 @@ assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\
   const t0 = Date.now(); parseWorkbook(hostile); assert.ok(Date.now() - t0 < 1000); ok('sheet separator-row check stays fast on hostile input');
 }
 
+{
+  const ext = pageExtensions(); const mgr = new MarkdownManager({ extensions: ext, markedOptions: { gfm: true } });
+  const roundtrip = (md) => mgr.serialize(mgr.parse(md)).trim();
+  for (const md of ['![a](x.png "C:\\folder")', '![a](x.png "say \\"hi\\"")', '| a    | b   |\n| ---- | --- |\n| x\\|y | z   |']) assert.equal(roundtrip(md), md);
+  ok('image titles and table cells with backslashes, quotes and pipes parse and serialize back unchanged');
+}
 console.log(`\n${n} format checks passed`);

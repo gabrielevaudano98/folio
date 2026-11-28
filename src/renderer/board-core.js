@@ -56,7 +56,8 @@ const NODE_RE = /^([A-Za-z_][\w-]*)\s*:\s*([a-z-]+)?\s*(?:"((?:[^"\\]|\\.)*)")?\
 
 export const defaultSize = (shape) => SIZE[shape] || [120, 60];
 const unq = (s) => (s ?? '').replace(/\\(["n\\])/g, (m, c) => (c === 'n' ? '\n' : c)); // one pass, so \\n stays a backslash and an n
-const q = (s) => `"${String(s).replace(/[\\"\n]/g, (c) => (c === '\n' ? '\\n' : '\\' + c))}"`;
+// a backslash is doubled only where the reader would take it for an escape (before \, " or n, or at the end), so `C:\folder` stays as written
+const q = (s) => `"${String(s).replace(/\\(?=["n\\]|$)|"|\n/g, (c) => (c === '\n' ? '\\n' : '\\' + c))}"`;
 function parseStyle(s) {
   const out = {};
   if (!s) return out;

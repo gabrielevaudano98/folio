@@ -127,7 +127,7 @@ export function htmlToMd(html) {
 }
 /** repeat a replace until nothing changes, so a tag cannot be rebuilt out of what is left (`<<b>script>`) */
 const until = (s, re, to = '') => { for (let p = null; p !== s;) { p = s; s = s.replace(re, to); } return s; };
-const plain = (html) => unxml(until(String(html || '').replace(/<br\s*\/?>/g, ' ').replace(/<\/(p|li)>/g, '\n'), /<[^>]*>/g)).replace(/ /g, ' ').split('\n').map((l) => l.trim()).filter(Boolean).join(' ');
+const plain = (html) => unxml(until(String(html || '').replace(/<br\s*\/?>/g, ' ').replace(/<\/(p|li)>/g, '\n'), /<[^>]+>/g)).replace(/ /g, ' ').split('\n').map((l) => l.trim()).filter(Boolean).join(' ');
 
 /* ---------- shapes ---------- */
 export const PRESETS = {
