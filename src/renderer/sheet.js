@@ -1,7 +1,7 @@
 // Folio — sheet surface: an Excel-style grid over sheet-md.
 import { t as tr, tl } from './i18n.js';
 import { parseWorkbook, serializeWorkbook, evaluator, display, colName, colIndex, addr, parseAddr, shiftFormula, FORMATS, formulaRefs } from './sheet-core.js';
-import { chartHtml, CHART_TYPES, specToText } from './chart.js';
+import { chartHtml, CHART_TYPES, specToText, toSeries } from './chart.js';
 import { perDoc } from './history.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -138,13 +138,30 @@ export function mountSheet(host, ctx) {
     if (!list.length) { panel.innerHTML = ''; return; }
     panel.innerHTML = `<h3 class="bd-ins-h">${tr('sheet.charts')}</h3>` + list.map((c, i) => `<section class="sh-chart" data-chart="${i}">
       <div class="sh-chart-head"><input class="input" data-ch="title" value="${esc(c.title || '')}" placeholder="${tr('sheet.chart-title')}" aria-label="${tr('sheet.chart-title')}">
-        <select class="select" data-ch="type" aria-label="${tr('sheet.chart-type')}">${CHART_TYPES.map(([v, l]) => `<option value="${v}"${(c.type || 'column') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <select class="select" data-ch="type" aria-label="${tr('sheet.chart-type')}">${CHART_TYPES.map(([v, l]) => `<option value="${v}"${(c.type || 'column') === v ? ' selected' : ''}>${tl('chart', l)}</option>`).join('')}</select></div>
       <div class="sh-chart-svg">${chartHtml(rangeValues(c.range), c, { width: 420, height: 260 })}</div>
       <div class="bd-ins-row"><button class="btn btn-quiet" type="button" data-ch-act="select">${esc(c.range)}</button>
         <label class="sf-check"><input type="checkbox" data-ch="stacked"${c.stacked ? ' checked' : ''}> ${tr('sheet.stacked')}</label>
-        <label class="sf-check"><input type="checkbox" data-ch="rows"${c.by === 'rows' ? ' checked' : ''}> ${tr('sheet.series-in-rows')}</label></div>
+        <label class="sf-check"><input type="checkbox" data-ch="rows"${c.by === 'rows' ? ' checked' : ''}> ${tr('sheet.series-in-rows')}</label>
+        <label class="sf-check"><input type="checkbox" data-ch="labels"${c.labels ? ' checked' : ''}> ${tr('sheet.value-labels')}</label></div>
+      ${chartAxes(c)}
       <div class="bd-ins-row"><button class="btn" type="button" data-ch-act="copy">${tr('sheet.copy-for-slides-or-pages')}</button><button class="btn" type="button" data-ch-act="delete">${tr('sheet.delete')}</button></div>
     </section>`).join('');
+  }
+  /** axis titles (not for pies) and, for a combo, which series is the line and whether it gets its own axis */
+  function chartAxes(c) {
+    const type = c.type || 'column';
+    if (type === 'pie' || type === 'donut') return '';
+    const field = (k, label) => `<input class="input" data-ch="${k}" value="${esc(c[k] || '')}" placeholder="${label}" aria-label="${label}">`;
+    let html = `<div class="sh-chart-axes">${field('xtitle', tr('sheet.horizontal-axis-title'))}${field('ytitle', tr('sheet.vertical-axis-title'))}</div>`;
+    if (type === 'combo') {
+      const names = toSeries(rangeValues(c.range), c.by === 'rows' ? 'rows' : 'columns').series.map((x) => x.name);
+      const pick = names.find((nm) => nm.toLowerCase() === String(c.lines || '').toLowerCase());
+      html += `<div class="sh-chart-axes"><select class="select" data-ch="lines" aria-label="${tr('sheet.line-series')}"><option value=""${pick ? '' : ' selected'}>${tr('sheet.line-series-last')}</option>${names.map((nm) => `<option value="${esc(nm)}"${nm === pick ? ' selected' : ''}>${esc(tr('sheet.line-series-name', { name: nm }))}</option>`).join('')}</select>
+        <label class="sf-check"><input type="checkbox" data-ch="secondary"${c.secondary ? ' checked' : ''}> ${tr('sheet.secondary-axis')}</label></div>`;
+      if (c.secondary) html += `<div class="sh-chart-axes">${field('y2title', tr('sheet.secondary-axis-title'))}</div>`;
+    }
+    return html;
   }
   const errorHelp = (v) => ({ '#DIV/0!': tl('sheet', 'Division by zero'), '#NAME?': tl('sheet', 'Unknown function or name'), '#REF!': tl('sheet', 'Reference to a cell that does not exist'), '#VALUE!': tl('sheet', 'Wrong type of value'), '#N/A': tl('sheet', 'Value not found'), '#CYCLE!': tl('sheet', 'The formula refers to itself'), '#ERROR!': tl('sheet', 'The formula could not be read'), '#NUM!': tl('sheet', 'Invalid number') }[v] || 'Error');
   function cellEl(r, c) { return table.tBodies[0].rows[r]?.cells[c + 1]; }
@@ -499,6 +516,8 @@ export function mountSheet(host, ctx) {
     if (k === 'title') c.title = e.target.value;
     if (k === 'stacked') { if (e.target.checked) c.stacked = true; else delete c.stacked; }
     if (k === 'rows') { if (e.target.checked) c.by = 'rows'; else delete c.by; }
+    if (k === 'labels' || k === 'secondary') { if (e.target.checked) c[k] = true; else delete c[k]; }
+    if (['xtitle', 'ytitle', 'y2title', 'lines'].includes(k)) { const v = e.target.value.trim(); if (v) c[k] = v; else delete c[k]; }
     commit();
   });
   chartsPanel.addEventListener('click', async (e) => {

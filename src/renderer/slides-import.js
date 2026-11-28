@@ -265,7 +265,7 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       return [`::: box ${attrs({ [own(el, 't')]: 1, ...geo })}\n${[head, sep, ...rows.slice(1).map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n')}\n:::`];
     }
     if (el.type === 'chart') {
-      const T = { barChart: el.barDir === 'bar' ? 'bar' : 'column', bar3DChart: 'column', lineChart: 'line', line3DChart: 'line', areaChart: 'area', area3DChart: 'area', pieChart: 'pie', pie3DChart: 'pie', doughnutChart: 'pie', scatterChart: 'scatter' };
+      const T = { barChart: el.barDir === 'bar' ? 'bar' : 'column', bar3DChart: 'column', lineChart: 'line', line3DChart: 'line', areaChart: 'area', area3DChart: 'area', pieChart: 'pie', pie3DChart: 'pie', doughnutChart: 'donut', scatterChart: 'scatter' };
       const items = el.data || []; const cats = items[0]?.values?.map((v) => items[0].xlabels?.[v.x] ?? v.x) || [];
       if (!items.length) return [];
       const table = [`| | ${items.map((s) => s.key).join(' | ')} |`, `|---|${items.map(() => '---').join('|')}|`, ...cats.map((c, i) => `| ${c} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)];

@@ -4,7 +4,7 @@
 // pictures, tables, charts and media; masters become PowerPoint slide layouts with real placeholders.
 import PptxGenJS from 'pptxgenjs';
 import JSZip from 'jszip';
-import { parseChartSpec, resolveChart, toSeries } from './chart.js';
+import { parseChartSpec, resolveChart, toSeries, comboLines } from './chart.js';
 import { mastersFor, placeholdersFor } from './slides-core.js';
 import { geometry, linePoints, linePath, parsePoints, pointsPath } from './slides-objects.js';
 
@@ -540,19 +540,43 @@ async function chart(ctx, el, out) {
   const r = el.getBoundingClientRect(); const o = ctx.origin;
   let spec, series, categories;
   try { spec = parseChartSpec(decodeURIComponent(el.dataset.spec)); ({ categories, series } = toSeries(await resolveChart(spec, ctx.readNote), spec.by === 'rows' ? 'rows' : 'columns')); } catch { const svg = el.querySelector('svg'); if (svg) svgPicture(ctx, svg, out); return; }
-  const T = { column: 'bar', bar: 'bar', line: 'line', area: 'area', pie: 'pie', scatter: 'scatter' };
-  const type = T[spec.type] || 'bar';
-  const sec = el.closest('section.slide'); const scs = getComputedStyle(sec);
+  const T = { column: 'bar', bar: 'bar', line: 'line', area: 'area', pie: 'pie', donut: 'doughnut', combo: 'bar', scatter: 'scatter' };
+  const type = T[spec.type] || 'bar', round = type === 'pie' || type === 'doughnut', labels = !!spec.labels;
+  const scs = getComputedStyle(el.closest('section.slide'));
   const shades = [1, 2, 3, 4, 5, 6].map((n) => cssColor(scs.getPropertyValue('--ch-' + n).trim())?.hex).filter(Boolean);
   const ink = cssColor(scs.color)?.hex || '1F1F1F', muted = cssColor(scs.getPropertyValue('--sl-muted').trim())?.hex || '6B6B6B', rule = cssColor(scs.getPropertyValue('--sl-rule').trim())?.hex || 'DDDDDD';
-  const data = type === 'scatter' ? [{ name: 'X', values: series[0]?.values || [] }, { name: series[1]?.name || 'Y', values: (series[1] || series[0])?.values || [] }] : series.map((se) => ({ name: se.name, labels: categories, values: se.values.map((v) => v ?? 0) }));
+  const row = (se) => ({ name: se.name, labels: categories, values: se.values.map((v) => v ?? 0) });
+  const data = type === 'scatter' ? [{ name: 'X', values: series[0]?.values || [] }, { name: series[1]?.name || 'Y', values: (series[1] || series[0])?.values || [] }] : series.map(row);
   const body = pickFont(scs.fontFamily);
-  out.chart(ctx.pptx.ChartType[type], data, {
+  // axis titles: xtitle is the horizontal axis, so on a bar chart (categories run down) it names the value axis
+  const xT = round ? '' : String(spec.xtitle || '').trim(), yT = round ? '' : String(spec.ytitle || '').trim();
+  const [catT, valT] = spec.type === 'bar' ? [yT, xT] : [xT, yT];
+  const axisTitle = { titleColor: ink, catAxisTitleColor: muted, valAxisTitleColor: muted, catAxisTitleFontFace: body, valAxisTitleFontFace: body, catAxisTitleFontSize: 11, valAxisTitleFontSize: 11 };
+  const barLabelPos = spec.stacked ? 'ctr' : 'outEnd';
+  const opts = {
     x: inch(r.left - o.left), y: inch(r.top - o.top), w: inch(r.width), h: inch(Math.max(r.height, 120)), barDir: spec.type === 'bar' ? 'bar' : 'col', barGrouping: spec.stacked ? 'stacked' : 'clustered',
-    chartColors: type === 'pie' ? shades.slice(0, Math.max(1, categories.length)) : shades, showLegend: series.length > 1 || type === 'pie', legendPos: 'b', legendFontFace: body,
+    chartColors: round ? shades.slice(0, Math.max(1, categories.length)) : shades, showLegend: series.length > 1 || round, legendPos: 'b', legendFontFace: body,
     showTitle: !!spec.title, title: spec.title || '', titleFontSize: 14, titleFontFace: body, catAxisLabelColor: muted, valAxisLabelColor: muted, legendColor: ink, titleColor: ink,
-    catAxisLabelFontFace: body, valAxisLabelFontFace: body, showPercent: type === 'pie', dataLabelColor: ink, valGridLine: { color: rule, size: 0.5 }, catGridLine: { style: 'none' },
-  });
+    catAxisLabelFontFace: body, valAxisLabelFontFace: body, showPercent: round && !labels, dataLabelColor: ink, valGridLine: { color: rule, size: 0.5 }, catGridLine: { style: 'none' },
+    ...(catT ? { showCatAxisTitle: true, catAxisTitle: catT } : {}), ...(valT ? { showValAxisTitle: true, valAxisTitle: valT } : {}), ...(catT || valT ? axisTitle : {}),
+    ...(labels ? { showValue: true, dataLabelFontFace: body, dataLabelFontSize: 10, dataLabelFormatCode: 'General', dataLabelPosition: round ? 'bestFit' : type === 'bar' ? barLabelPos : type === 'scatter' ? 'r' : type === 'line' ? 't' : undefined } : {}), // area charts take no label position
+    ...(type === 'doughnut' ? { holeSize: 58 } : {}),
+  };
+  if (spec.type !== 'combo') { out.chart(ctx.pptx.ChartType[type], data, opts); return; }
+  // combo: one chart with a bar group and a line group; the line group can sit on a secondary value axis
+  const isLine = comboLines(series, spec);
+  const group = (on) => ({ data: series.filter((_, i) => isLine[i] === on).map(row), colors: series.map((_, i) => shades[i % shades.length]).filter((_, i) => isLine[i] === on) });
+  const bars = group(false), lines = group(true);
+  const twoAxes = !!spec.secondary && bars.data.length > 0 && lines.data.length > 0;
+  const types = [];
+  if (bars.data.length) types.push({ type: ctx.pptx.ChartType.bar, data: bars.data, options: { barDir: 'col', barGrouping: spec.stacked ? 'stacked' : 'clustered', chartColors: bars.colors, ...(labels ? { dataLabelPosition: barLabelPos } : {}) } });
+  if (lines.data.length) types.push({ type: ctx.pptx.ChartType.line, data: lines.data, options: { chartColors: lines.colors, lineDataSymbolSize: 7, ...(labels ? { dataLabelPosition: 't' } : {}), ...(twoAxes ? { secondaryValAxis: true, secondaryCatAxis: true } : {}) } });
+  if (twoAxes) {
+    const y2 = String(spec.y2title || '').trim();
+    opts.valAxes = [{ ...(valT ? { showValAxisTitle: true, valAxisTitle: valT } : {}), valGridLine: { color: rule, size: 0.5 } }, { showValAxisTitle: !!y2, valAxisTitle: y2, valAxisTitleColor: muted, valAxisTitleFontFace: body, valAxisTitleFontSize: 11, valGridLine: { style: 'none' } }];
+    opts.catAxes = [{ ...(catT ? { showCatAxisTitle: true, catAxisTitle: catT } : {}) }, { catAxisHidden: true, showCatAxisTitle: false }];
+  }
+  out.chart(types, opts);
 }
 
 /** a picture where the page shows it, honouring object-fit and the frame it sits in */

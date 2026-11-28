@@ -36,7 +36,8 @@ copilot (area 28), streaming export of very large workbooks.
 - Slides: incremental lists [#9](https://github.com/gabrielevaudano98/folio/issues/9), rulers and guides [#92](https://github.com/gabrielevaudano98/folio/issues/92), per-word styling and WordArt [#93](https://github.com/gabrielevaudano98/folio/issues/93), screen recording,
   screenshots and 3D [#94](https://github.com/gabrielevaudano98/folio/issues/94), video/GIF/image export [#97](https://github.com/gabrielevaudano98/folio/issues/97).
 - Boards: connector waypoints [#11](https://github.com/gabrielevaudano98/folio/issues/11), sequence diagrams [#12](https://github.com/gabrielevaudano98/folio/issues/12), images and pen [#13](https://github.com/gabrielevaudano98/folio/issues/13).
-- Charts: more types and axis titles [#17](https://github.com/gabrielevaudano98/folio/issues/17).
+- Charts: more types and axis titles [#17](https://github.com/gabrielevaudano98/folio/issues/17) — done: donut, combo with a secondary axis, axis titles,
+  value labels, the same as native PowerPoint charts.
 
 ## Next: v1.3 AI-native
 

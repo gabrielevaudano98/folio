@@ -33,7 +33,7 @@ import { markdownIt } from '../src/renderer/markdown.js';
 import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import { createActionLog, perDoc } from '../src/renderer/history.js';
-import { parseChartSpec, toSeries, sheetRange, chartSvg } from '../src/renderer/chart.js';
+import { parseChartSpec, toSeries, sheetRange, chartSvg, specToText, setSpecKey, comboLines } from '../src/renderer/chart.js';
 
 const fx = (f) => fs.readFileSync(new URL(`../test/fixture/${f}`, new URL('../', import.meta.url)), 'utf8');
 let n = 0; const ok = (m) => { n++; console.log('  ✓', m); };
@@ -666,6 +666,38 @@ const spec = parseChartSpec('type: line\ntitle: T\nsource: Budget.sheet.md\nshee
 const s = toSeries(sheetRange(sheetText, spec.sheet, spec.range), 'rows');
 assert.deepEqual(s.categories, ['Q1', 'Q2', 'Q3', 'Q4']); assert.equal(s.series.length, 4); ok('chart series in rows skip text rows');
 assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG');
+{
+  // existing specs keep their exact text; the new keys round-trip in a fixed order
+  for (const t of ['type: line\ntitle: T\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nby: rows', 'type: column\ntitle: Costs by quarter\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nstacked: true']) assert.equal(specToText(parseChartSpec(t)), t);
+  assert.deepEqual(Object.keys(parseChartSpec('type: pie\ntitle: X')).sort(), ['by', 'stacked', 'title', 'type'], 'no new keys appear on an old spec');
+  const full = 'type: combo\ntitle: Revenue and margin\nsource: Budget.sheet.md\nsheet: Costs\nrange: A1:G5\nstacked: true\nlines: Margin\nsecondary: true\nlabels: true\nxtitle: Month\nytitle: Euro\ny2title: Margin (%)';
+  const fs1 = parseChartSpec(full); assert.equal(specToText(fs1), full); assert.equal(fs1.labels, true); assert.equal(fs1.secondary, true); assert.equal(fs1.y2title, 'Margin (%)');
+  assert.equal(parseChartSpec('Type: Donut\nxTitle: Month\nLabels: false').xtitle, 'Month'); assert.equal(specToText(parseChartSpec('type: donut\nlabels: false')), 'type: donut');
+  ok('chart spec: old specs byte-identical, donut, combo, axis titles and labels round-trip');
+  // a chart edited from the page bar changes one line and nothing else
+  const block = 'type:   column\ntitle: Sales\ndata:\n| a | b: c |\n| --- | --- |\n| x | 1 |';
+  assert.equal(setSpecKey(block, 'type', 'donut'), block.replace('type:   column', 'type:   donut'));
+  assert.equal(setSpecKey(block, 'labels', true), 'type:   column\ntitle: Sales\nlabels: true\ndata:\n| a | b: c |\n| --- | --- |\n| x | 1 |');
+  assert.equal(setSpecKey(setSpecKey(block, 'labels', true), 'labels', false), block);
+  assert.equal(setSpecKey('type: line\nrange: A1:B3\n', 'xtitle', 'Month'), 'type: line\nrange: A1:B3\nxtitle: Month\n');
+  assert.equal(setSpecKey(block, 'b', 'x'), 'type:   column\ntitle: Sales\nb: x\ndata:\n| a | b: c |\n| --- | --- |\n| x | 1 |', 'data rows are never read as keys');
+  ok('chart spec: setSpecKey rewrites one line in place, adds before data, removes on false');
+  // drawing: donut, combo with a secondary axis, axis titles and value labels
+  const d = { categories: ['Jan', 'Feb', 'Mar'], series: [{ name: 'Revenue', values: [1200, 1500, 900] }, { name: 'Costs', values: [800, 900, 950] }, { name: 'Margin', values: [33, 40, -5] }] };
+  const count = (svg, re) => (svg.match(re) || []).length;
+  const dn = chartSvg({ categories: d.categories, series: [d.series[0]] }, { type: 'donut', labels: true });
+  assert.equal(count(dn, /class="ch-slice"/g), 3); assert.match(dn, /class="ch-total"[^>]*>3,600</); assert.match(dn, />1,500</); assert.doesNotMatch(dn, /%</); assert.match(dn, / A[\d.]+,[\d.]+ 0 0 0 /, 'inner arc drawn back');
+  assert.match(chartSvg({ categories: ['a'], series: [{ name: 'S', values: [5] }] }, { type: 'donut' }), /fill-rule="evenodd"/); ok('donut draws ring slices, the total in the middle and value labels');
+  assert.deepEqual(comboLines(d.series, {}), [false, false, true]); assert.deepEqual(comboLines(d.series, { lines: 'costs, margin' }), [false, true, true]); assert.deepEqual(comboLines(d.series, { lines: 'Nope' }), [false, false, true]);
+  const cb = chartSvg(d, parseChartSpec('type: combo\nsecondary: true\nlabels: true\nxtitle: Month\nytitle: Euro\ny2title: Margin (%)'));
+  assert.equal(count(cb, /class="ch-bar"/g), 6); assert.equal(count(cb, /class="ch-line" d="M\d/g), 1); assert.equal(count(cb, /class="ch-axis"/g), 3); assert.match(cb, /rotate\(-90\)" text-anchor="middle">Euro</); assert.match(cb, /rotate\(90\)" text-anchor="middle">Margin \(%\)</);
+  assert(count(cb, /class="ch-tick ch-tick2"/g) >= 3, 'secondary ticks'); assert.match(cb, /class="ch-tick ch-tick2"[^>]*>40</); assert.equal(count(cb, /class="ch-val"/g), 9);
+  assert.match(cb, /<g transform="translate\(\d+(\.\d+)?,0\)"><path class="ch-line" d="M-2,-4 L14,-4" style="stroke:var\(--ch-3\)"\/><path d="M6,-9.5/, 'the line series shows a line and its mark in the legend');
+  const one = chartSvg(d, parseChartSpec('type: combo')); assert.equal(count(one, /class="ch-tick ch-tick2"/g), 0); assert.equal(count(one, /class="ch-axis"/g), 0); assert.equal(count(one, /class="ch-val"/g), 0);
+  ok('combo draws bars and a line, with a secondary axis only when asked; axis titles and value labels');
+  const hb = chartSvg(d, { type: 'bar', xtitle: 'Euro', labels: true }); assert.match(hb, /class="ch-axis" x="[\d.]+" y="\d+" text-anchor="middle">Euro</); assert.match(hb, /text-anchor="end">-5</, 'negative bar label on the left');
+  assert.equal(count(chartSvg(d, { type: 'pie', xtitle: 'x', ytitle: 'y' }), /ch-axis/g), 0); ok('bar labels sit past the bar end; pies ignore axis titles');
+}
 
 // paste and Word: HTML from other apps becomes Markdown; a page exports to a Word file with real structure
 {
