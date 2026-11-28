@@ -47,6 +47,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Notion callout (icon, colour) | `> [!callout|💡 yellow] Title` | Obsidian metadata after `|`: an emoji and/or a colour from the list below. Works on any type. |
 | Toggle | `<details>`, `<summary>Title</summary>`, a blank line, the content, `</details>` | `<details open>` starts open. Toggles can nest. |
 | Toggle heading | `<summary><h2>Title</h2></summary>` inside a toggle | h1 to h3. |
+| Formatting in a toggle title | `<summary><strong>Bold</strong> and <a href="https://…">link</a></summary>` | `<summary>` is HTML, so a title's formatting uses inline tags: `<strong>`, `<em>`, `<s>`, `<u>`, `<mark>`, `<sup>`, `<sub>`, `<code>`, `<a href="…">`, nested in that order (a link outside, code inside). In a formatted title `<` before a letter is written `&lt;` and `&` before an entity `&amp;`. Any other text in a title, `**Bold**` included, is kept literally as written. |
 | Columns | `:::: columns`, then two to five `::: column` … `:::`, then `::::` | The outer fence has four colons so it can hold the inner ones. |
 | Table of contents | `[TOC]` on its own line | Live list of the page's headings. |
 | Breadcrumb | `[BREADCRUMB]` on its own line | Where the page sits in the workspace. Folio only. |
@@ -69,6 +70,7 @@ A page is plain Markdown (CommonMark, GFM, Obsidian syntax) plus a few extension
 | Template button (Folio) | ```` ```template-button ```` with `label: New meeting`, `template: Meeting notes`, optional `where: above` | Drawn as a button; inserts the template from `Templates/` (or a starter). Other editors show a code block. |
 | Suggested insertion, deletion, replacement | `{++new text++}`, `{--old text--}`, `{~~old~>new~~}` | CriticMarkup. Accept or reject in the review pane; Suggesting mode writes them as you type. |
 | Comment | `{==quoted text==}{>>Ada, 2026-11-20 14:05: Comment<<}` | CriticMarkup. The `Author, date time:` prefix is optional; comments that follow each other are replies. |
+| Resolved comment | `{==quoted text==}{>>Ada, …: Comment<<}{>>Bob, 2026-11-27 10:05: [resolved]<<}` | Resolve adds a reply whose text is exactly `[resolved]`; the comments and the highlight stay in the file. A thread is resolved while that reply is its last one (one-emoji reactions aside), so a later reply reopens it; Reopen removes the marker. Resolved threads are hidden in the review pane until Show resolved. Delete thread removes the comments and keeps the text. |
 | Text colour, background (Folio) | `[text]{color=red}`, `[text]{bg=yellow}`, `[text]{color=blue bg=yellow}` | Colours: gray, brown, orange, yellow, green, blue, purple, pink, red. |
 | Alignment (Folio) | a paragraph, then `{align=center}` on the next line; a heading: `## Title {align=right}` | left, center, right, justify. |
 

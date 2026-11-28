@@ -2438,12 +2438,14 @@ function bindChrome() {
   });
   // drag to move
   let dragPath = null;
+  /* a folder row drops into that folder; a note row drops into the folder that holds the note (not the root) */
+  const dropDir = (t) => { const row = t.closest('.tree-row'); if (row?.dataset.file) { const dir = dirOf(row.dataset.file); return dir ? $$('[data-dir]', tree).find((x) => x.dataset.dir === dir) || null : null; } return t.closest('[data-dir]'); };
   tree.addEventListener('dragstart', (e) => { const r = e.target.closest('.tree-row'); dragPath = r?.dataset.file || r?.dataset.dir; e.dataTransfer.effectAllowed = 'move'; });
-  tree.addEventListener('dragover', (e) => { const d = e.target.closest('[data-dir]'); if (!dragPath) return; e.preventDefault(); $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target')); d?.classList.add('drop-target'); });
-  tree.addEventListener('dragleave', (e) => e.target.closest('[data-dir]')?.classList.remove('drop-target'));
+  tree.addEventListener('dragover', (e) => { const d = dropDir(e.target); if (!dragPath) return; e.preventDefault(); $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target')); d?.classList.add('drop-target'); });
+  tree.addEventListener('dragleave', () => $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target')));
   tree.addEventListener('drop', (e) => {
     e.preventDefault(); $$('.drop-target', tree).forEach((x) => x.classList.remove('drop-target'));
-    const d = e.target.closest('[data-dir]'); const to = d ? d.dataset.dir : '';
+    const d = dropDir(e.target); const to = d ? d.dataset.dir : '';
     if (!dragPath || to === dragPath || to.startsWith(dragPath + '/') || dirOf(dragPath) === to) return (dragPath = null);
     const isDir = !!tree.querySelector(`[data-dir="${CSS.escape(dragPath)}"]`);
     movePath(dragPath, (to ? to + '/' : '') + base(dragPath), isDir); if (to) S.expanded.add(to); dragPath = null;

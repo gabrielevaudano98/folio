@@ -5,6 +5,7 @@
 // editor's marks and nodes, then suggest mode (typing becomes {++ ++}, deleting becomes {-- --}).
 import { Mark, Node, Extension, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { reactionOf } from './page-reactions.js';
 
 /* ---------- pure (shared with the MCP tools: src/main/critic-text.js) ---------- */
 import { CRITIC, parseComment, stamp, commentBody, listChanges, accept, reject, resolveAll, clean } from '../main/critic-text.js';
@@ -71,6 +72,7 @@ export function docReview(doc) {
     flush();
     return false;
   });
+  for (const x of items) if (x.kind === 'thread') x.resolved = threadResolved(x.comments);
   return items;
 }
 
@@ -83,8 +85,32 @@ export function settle(state, item, ok, tr = state.tr) {
   else if (item.kind === 'sub') { const t = ok ? item.new : item.old; if (t) tr.replaceWith(from, to, schema.text(t, state.doc.resolve(item.from).marks())); else tr.delete(from, to); }
   return tr;
 }
-/** resolve a thread: its comments go, the highlighted text stays */
-export function resolveThread(state, t, tr = state.tr) {
+/* Resolved threads stay in the file: Resolve adds a reply whose text is exactly [resolved] (with the usual author and
+   time), {>>Ada, 2026-11-27 10:05: [resolved]<<}. A thread is resolved while that reply is its last message (reactions
+   aside), so a new reply reopens it, as in Google Docs. Other editors show the marker as an ordinary short reply. */
+export const RESOLVED = '[resolved]';
+export const isResolvedMarker = (c) => String(c?.text ?? '').trim() === RESOLVED;
+/** is a thread (its parsed comments) resolved */
+export function threadResolved(comments) {
+  for (let k = comments.length - 1; k > 0; k--) { if (isResolvedMarker(comments[k])) return true; if (!reactionOf(comments[k].text)) return false; }
+  return false;
+}
+/** resolve a thread losslessly: a [resolved] reply goes after its last comment; the comments and the highlight stay */
+export function resolveThread(state, t, tr = state.tr, author = '') {
+  if (threadResolved(t.comments)) return tr;
+  tr.insert(tr.mapping.map(t.end), state.schema.nodes.criticComment.create({ body: commentBody(author, RESOLVED) }));
+  return tr;
+}
+/** reopen a resolved thread: the trailing [resolved] replies go */
+export function reopenThread(state, t, tr = state.tr) {
+  for (let k = t.comments.length - 1; k > 0; k--) {
+    const c = t.comments[k];
+    if (isResolvedMarker(c)) tr.delete(tr.mapping.map(c.pos), tr.mapping.map(c.pos + 1)); else if (!reactionOf(c.text)) break;
+  }
+  return tr;
+}
+/** delete a thread: its comments go, the highlighted text stays (the explicit Delete; Resolve keeps them) */
+export function deleteThread(state, t, tr = state.tr) {
   for (const c of [...t.comments].reverse()) tr.delete(tr.mapping.map(c.pos), tr.mapping.map(c.pos + 1));
   if (t.hl) tr.removeMark(tr.mapping.map(t.from), tr.mapping.map(t.to), state.schema.marks.criticHl);
   return tr;

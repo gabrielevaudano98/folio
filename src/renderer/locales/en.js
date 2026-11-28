@@ -20,6 +20,8 @@ export default {
   'links.linkAll': 'Link all ({n})', 'links.linked': 'Linked “{name}” {n} times.', 'links.undo': 'Undo',
   'links.title': 'Link check', 'links.summary': '{n} broken references in {files} pages.', 'links.none': 'Every reference points to a page that exists.', 'links.line': 'line {n}', 'links.create': 'Create page', 'links.created': 'Created {name}.',
   'review.reactions': 'Reactions', 'review.reactedBy': '{emoji} from {who}', 'review.react': 'React with {emoji}', 'review.addReaction': 'Add a reaction', 'review.people': 'People',
+  'review.resolve': 'Resolve', 'review.resolveTip': 'Resolve: the thread is marked resolved and hidden; it stays in the file', 'review.reopen': 'Reopen', 'review.resolved': 'Resolved', 'review.resolvedBy': 'Resolved by {who}',
+  'review.deleteThread': 'Delete thread', 'review.deleteThreadTip': 'Delete: the comments go, the text stays', 'review.showResolved_one': 'Show {n} resolved', 'review.showResolved_other': 'Show {n} resolved', 'review.hideResolved': 'Hide resolved',
   // index.html (data-i18n / data-i18n-attr)
   'ui.workspace': 'Workspace',
   'ui.new-note': 'New note',
@@ -908,7 +910,7 @@ export default {
   'rib.reject': 'Reject',
   'rib.reject-all': 'Reject all',
   'rib.reject-the-change-at-the-cursor-and-go-to-the-next-one': 'Reject the change at the cursor and go to the next one',
-  'rib.remove-every-comment-the-text-stays': 'Remove every comment; the text stays',
+  'rib.mark-every-comment-resolved-they-stay-in-the-file': 'Mark every comment resolved; they stay in the file',
   'rib.replace': 'Replace',
   'rib.reset-zoom': 'Reset zoom',
   'rib.resolve-all': 'Resolve all',

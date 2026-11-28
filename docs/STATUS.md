@@ -20,7 +20,7 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 | Area | On `main` | In flight | Main gaps |
 |---|---|---|---|
 | App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Linux build |
-| Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 on the PR stack | Data bugs fixed only on #77 ([#81](https://github.com/gabrielevaudano98/folio/issues/81)) |
+| Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 on the PR stack | Notion gap waves 1–2 still to merge |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
@@ -131,11 +131,6 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 
 | Bug | Impact | Where the fix is | Issue |
 |---|---|---|---|
-| Bold, italic, link or code in a toggle title are lost on save (F1) | Data loss | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Resolve removes a comment thread (F2); on `main` this is the intended design ("the comments go, the text stays"), PR #77 keeps resolved threads instead | Feature gap, can surprise | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Editing a property rewrites CRLF front matter as LF (F3) | Unrelated bytes change (invariant 1) | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | The same delayed-change problem in the slides, board and sheet surfaces: a change they report after a pause is applied to whichever tab is then active (the page editor is fixed). Found in review of the #82 fix; not reproduced yet | Possible data loss | Needs surfaces to name their document, as `d6ca0df` does for sheets | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
 | Startup and opening a long page go over the 100 ms budget | Responsiveness | — | [#90](https://github.com/gabrielevaudano98/folio/issues/90) |
 

@@ -21,7 +21,7 @@ import { findMatches, replaceAll } from '../src/renderer/page-find.js';
 import { sections, moveSection, shiftSection } from '../src/renderer/page-outline.js';
 import { TABS, COMPACT, buildRibbon } from '../src/renderer/page-ribbon.js';
 import { EditorState } from '@tiptap/pm/state';
-import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread } from '../src/renderer/page-critic.js';
+import { listChanges, accept as acceptCm, reject as rejectCm, clean as cleanCm, resolveAll, parseComment, commentBody, docReview, settle, resolveThread, reopenThread, deleteThread, threadResolved } from '../src/renderer/page-critic.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, renameTag, setTypeOverrides, inferType } from '../src/renderer/page-props.js';
 import { reactionOf, splitThread, myReaction, commentParts, mentionAt } from '../src/renderer/page-reactions.js';
 import { findMentions, linkMention, linkAllMentions } from '../src/renderer/refs-syntax.js';
@@ -224,6 +224,25 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   const kinds = new Set(); st.doc.descendants((n) => { kinds.add(n.type.name + (n.attrs?.heading ? n.attrs.heading : '')); });
   for (const k of ['breadcrumb', 'toc', 'blockquote', 'details', 'details2', 'columns', 'column', 'pageBreak']) assert(kinds.has(k), k);
   ok('toggles, toggle headings, columns, contents, breadcrumb, page breaks and callouts are editable blocks');
+  { // F1: formatting in a toggle title is written as inline HTML inside <summary> and comes back as marks
+    const lit = '<details>\n<summary>**Bold** title</summary>\n\nBody text\n\n</details>\n';
+    const l = open(lit); assert.equal(l.kids[0].child(0).textContent, '**Bold** title'); assert.equal(codec.save(l.m, l.doc), lit);
+    const t = '<details>\n<summary>Plain <strong>bold <em>both</em></strong> <a href="https://x.org/?a=1&amp;b=2">link</a> <code>a&lt;b</code> <s>x</s></summary>\n\nBody text\n\n</details>\n';
+    const o = open(t); const sum = o.kids[0].child(0);
+    assert.deepEqual(sum.content.content.map((x) => [x.text, x.marks.map((mk) => mk.type.name).join('+')]), [['Plain ', ''], ['bold ', 'bold'], ['both', 'bold+italic'], [' ', ''], ['link', 'link'], [' ', ''], ['a<b', 'code'], [' ', ''], ['x', 'strike']]);
+    assert.equal(sum.child(4).marks[0].attrs.href, 'https://x.org/?a=1&b=2'); assert.equal(codec.save(o.m, o.doc), t);
+    // a mark added in the editor (what the bubble menu does) is saved, and loads back as the same mark
+    const { bold, italic } = schema.marks;
+    const mk = (title, h = 0) => schema.nodes.details.create({ heading: h }, [schema.nodes.detailsSummary.create(null, title), schema.nodes.detailsContent.create(null, [para('Body text')])]);
+    const edited = open(lit); const doc2 = withKids([mk([schema.text('Bold', [bold.create()]), schema.text(' title <em> & &amp;')])]);
+    const saved = codec.save(edited.m, doc2); assert.equal(saved, '<details>\n<summary><strong>Bold</strong> title &lt;em> & &amp;amp;</summary>\n\nBody text\n\n</details>\n');
+    const back = open(saved); assert.equal(back.kids[0].child(0).textContent, 'Bold title <em> & &amp;'); assert.deepEqual(back.kids[0].child(0).child(0).marks.map((x) => x.type.name), ['bold']); assert.equal(codec.save(back.m, back.doc), saved);
+    const hd = codec.save(edited.m, withKids([mk([schema.text('Big', [italic.create()])], 2)])); assert.equal(hd, '<details>\n<summary><h2><em>Big</em></h2></summary>\n\nBody text\n\n</details>\n');
+    assert.equal(open(hd).kids[0].child(0).child(0).marks[0].type.name, 'italic');
+    // hand-written HTML Folio would write differently stays literal text, byte for byte
+    for (const raw of ['<em><strong>x</strong></em> y', '<strong>open', '<b>old</b> tag', 'a < b &lt; <strong>c</strong>']) { const x = `<details>\n<summary>${raw}</summary>\n\nBody text\n\n</details>\n`; const r = open(x); assert.equal(codec.save(r.m, r.doc), x, raw); }
+    const { markdownIt: mdi } = await import('../src/renderer/markdown.js'); assert.match(mdi.render(t), /<summary>Plain <strong>bold <em>both<\/em><\/strong> <a href="https:\/\/x.org\/\?a=1&amp;b=2">link<\/a>/);
+    ok('toggle titles keep bold, italic, links and code as inline HTML in <summary>; literal titles stay byte-identical; the Read view shows them'); }
   { const { parseCallout, calloutMarker } = await import('../src/renderer/callouts.js');
     assert.deepEqual(['faq', 'tldr', 'error', 'cite', 'weird'].map((k) => parseCallout(`[!${k}] x`).type), ['question', 'abstract', 'danger', 'quote', 'note']);
     const c = parseCallout('[!callout|💡 yellow]- Read me'); assert.deepEqual([c.emoji, c.color, c.fold, c.title, c.label], ['💡', 'yellow', '-', 'Read me', 'Callout']);
@@ -403,9 +422,22 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     assert.equal(items[3].comments[0].text, 'Check with legal.');
     let st = EditorState.create({ doc: r.doc }); const tr = st.tr; for (const it of items.filter((i) => i.kind !== 'thread')) settle(st, it, true, tr); st = st.apply(tr);
     assert.equal(codec.save(r.m, st.doc), '# Contract review\n\nThe supplier will deliver within 30 days.\nPayment terms 30 days. {==Liability is capped.==}{>>Check with legal.<<}\n\nNormal paragraph without marks.\n');
-    st = EditorState.create({ doc: r.doc }); st = st.apply(resolveThread(st, docReview(st.doc)[3]));
+    st = EditorState.create({ doc: r.doc }); st = st.apply(deleteThread(st, docReview(st.doc)[3]));
     assert(codec.save(r.m, st.doc).includes('days. Liability is capped.\n\nNormal'));
-    ok('CriticMarkup opens as editable marks and nodes, saves byte-identical; accept all and resolve a thread change only those blocks'); }
+    ok('CriticMarkup opens as editable marks and nodes, saves byte-identical; accept all and delete a thread change only those blocks');
+    // F2: Resolve keeps the thread and marks it resolved with a [resolved] reply; Reopen removes the marker; a reply reopens it
+    const src = fx('pages/review.md'); st = EditorState.create({ doc: r.doc });
+    st = st.apply(resolveThread(st, docReview(st.doc)[3], st.tr, 'Bob'));
+    const res = codec.save(r.m, st.doc); const mk = /\{>>Bob, \d{4}-\d{2}-\d{2} \d{2}:\d{2}: \[resolved\]<<\}/;
+    assert.match(res, new RegExp('\\{==Liability is capped\\.==\\}\\{>>Check with legal\\.<<\\}' + mk.source)); assert.equal(res.replace(mk, ''), src);
+    const th = docReview(st.doc)[3]; assert.equal(th.resolved, true); assert.equal(th.comments[0].text, 'Check with legal.');
+    assert.equal(resolveThread(st, th).docChanged, false, 'resolving twice adds nothing');
+    const reo = open(res); assert.equal(codec.save(reo.m, reo.doc), res); assert.equal(docReview(reo.doc).at(-1).resolved, true, 'resolved survives a reload');
+    let s2 = EditorState.create({ doc: reo.doc }); s2 = s2.apply(reopenThread(s2, docReview(s2.doc).at(-1))); assert.equal(codec.save(reo.m, s2.doc), src); assert.equal(docReview(s2.doc).at(-1).resolved, false);
+    s2 = EditorState.create({ doc: reo.doc }); s2 = s2.apply(s2.tr.insert(docReview(s2.doc).at(-1).end, s2.schema.nodes.criticComment.create({ body: commentBody('Ada', 'Not yet', '2026-11-27 11:00') })));
+    assert.equal(docReview(s2.doc).at(-1).resolved, false, 'a reply after [resolved] reopens'); s2 = s2.apply(s2.tr.insert(docReview(s2.doc).at(-1).end, s2.schema.nodes.criticComment.create({ body: commentBody('Ada', '👍', '2026-11-27 11:00') })));
+    assert.equal(threadResolved([{ text: 'a' }, { text: '[resolved]' }, { text: '👍' }]), true); assert.equal(threadResolved([{ text: '[resolved]' }]), false);
+    ok('Resolve keeps the comments and adds a [resolved] reply (lossless, survives reload); Reopen and a new reply reopen; Delete removes'); }
   const empty = codec.load(''); const ed = schema.nodeFromJSON({ type: 'doc', content: [{ type: 'paragraph' }] }); codec.bind(empty, ed);
   assert.equal(codec.save(empty, ed), ''); assert.equal(splitBlocks('\n\n').blocks.length, 0); ok('an empty page stays empty');
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
@@ -501,6 +533,15 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(setProp('# Hi\n', 'tags', ['a'], 'tags'), '---\ntags:\n  - a\n---\n\n# Hi\n'); assert.equal(removeProp('---\nx: 1\n---\n# Hi\n', 'x'), '# Hi\n');
   assert.equal(setProp('', 'done', false, 'checkbox'), '---\ndone: false\n---\n'); assert.equal(newKey(t), 'property'); assert.equal(newKey(setProp(t, 'property', '')), 'property 2');
   ok('the first property creates the front matter; removing the last removes it');
+  { // F3: a CRLF file keeps CRLF; only the edited property's line changes
+    const c = t.replace(/\n/g, '\r\n');
+    assert.equal(setProp(c, 'done', true), c.replace('done: false', 'done: true'));
+    assert.equal(setProp(c, 'aliases', ['One', 'Three']), c.replace('  - "Two: x"', '  - Three'));
+    assert.equal(removeProp(c, 'count'), c.replace('count: 3\r\n', '')); assert.equal(renameProp(c, 'due', 'deadline'), c.replace('due:', 'deadline:'));
+    assert.equal(setProp(c, 'new', 'hi'), c.replace('  status: [a, b]\r\n', '  status: [a, b]\r\nnew: hi\r\n'));
+    assert.equal(setProp('# Hi\r\n', 'done', true), '---\r\ndone: true\r\n---\r\n\r\n# Hi\r\n');
+    assert.equal(setProp('---  \nx: 1\n---\t\n# Hi\n', 'x', 2), '---  \nx: 2\n---\t\n# Hi\n'); assert.equal(setProp('---\r\nx: 1\r\n---', 'x', 2), '---\r\nx: 2\r\n---');
+    ok('a property edit keeps the file\'s line ending (CRLF) and the --- lines as written'); }
   assert.equal(renameTag(t, 'project', 'work'), t.replace('project/alpha', 'work/alpha'));
   assert.equal(renameTag('a #q4 b `#q4` #q4x (#q4)\n```\n#q4\n```\n#Q4.', 'q4', 'q1'), 'a #q1 b `#q4` #q4x (#q1)\n```\n#q4\n```\n#q1.');
   assert.equal(renameTag(t, 'q4', 'bad tag'), t);

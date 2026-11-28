@@ -103,11 +103,15 @@ function lines(key, value, type, style) {
   if (style === 'quoted' && v) return [`${key}: ${JSON.stringify(v)}`];
   return [`${key}: ${v === '' ? '' : quote(v)}`.trimEnd()];
 }
-/* put new front matter lines back in front of the body; no front matter when nothing is left */
+/* put new front matter lines back in front of the body; no front matter when nothing is left. The file's own line
+   ending (CRLF or LF, the one after the opening ---) and the --- lines are kept as written. */
 function rebuild(text, fmLines) {
   const m = FM.exec(text); const body = m ? text.slice(m[0].length) : text;
   if (!fmLines.length) return m ? body.replace(/^\r?\n/, '') : text;
-  return `---\n${fmLines.join('\n')}\n---\n${m ? body : body ? `\n${body}` : ''}`;
+  if (!m) { const eol = /\r\n/.test(text.split('\n', 1)[0] + '\n') ? '\r\n' : '\n'; return `---${eol}${fmLines.join(eol)}${eol}---${eol}${body ? `${eol}${body}` : ''}`; }
+  const open = /^---[ \t]*(\r?\n)/.exec(m[0]); const eol = open[1];
+  const close = /---[ \t]*(?:\r?\n)?$/.exec(m[0].slice(open[0].length + (m[1] || '').length))?.[0] ?? `---${eol}`;
+  return `${open[0]}${fmLines.join(eol)}${eol}${close}${body}`;
 }
 
 /** set a property (added at the end when new); returns the new text */

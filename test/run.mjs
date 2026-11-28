@@ -15,6 +15,7 @@ run('test/security.test.mjs');
 run('scripts/docs-reference.mjs', '--check');
 run('test/docs-map.test.mjs');
 run('test/atomic.test.mjs');
+run('test/tokens.test.mjs');
 run('test/features.test.mjs');
 run('test/updater.test.mjs');
 run('test/mic-watch.test.mjs');
