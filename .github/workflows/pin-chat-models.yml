@@ -3,9 +3,6 @@
 name: Pin chat models
 on:
   workflow_dispatch:
-  push: # temporary: lets the first run happen from this branch, before the workflow exists on main
-    branches: [claude/project-thread-v7hqgg]
-    paths: ['.github/workflows/pin-chat-models.yml']
 permissions:
   contents: write
 jobs:
