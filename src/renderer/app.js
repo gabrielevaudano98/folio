@@ -1885,10 +1885,11 @@ const historySoon = debounce(() => updateHistoryButtons(), 60);
 /** Ask your AI from inside Folio: queue the instruction and the selected text; the assistant fetches it with get_ai_requests. */
 async function askAi() {
   const t = activeTab(); if (!t) return;
+  const line = S.cursor.line; // read before the prompt: the user may switch notes while it is open
   const selection = (S.cursor.selection || window.getSelection()?.toString() || '').trim();
   const text = await prompt({ title: tr('app.ask-ai-title'), label: tr(selection ? 'app.ask-ai-label-selection' : 'app.ask-ai-label'), hint: tr('app.ask-ai-hint'), action: tr('app.ask-ai-send'), validate: false });
   if (!text) return;
-  try { await folio.askAi({ path: t.path, instruction: text, selection, line: S.cursor.line }); toast(tr('app.ask-ai-queued')); }
+  try { await folio.askAi({ path: t.path, instruction: text, selection, line }); toast(tr('app.ask-ai-queued')); }
   catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); }
 }
 
