@@ -6,18 +6,22 @@ import { writeAtomic } from '../atomic.js';
 
 const ID = /^[a-z0-9-]{8,40}$/;
 export function createChatStore(getRoot) {
-  const dir = () => { const r = getRoot(); if (!r) throw new Error('No folder is open.'); return path.join(path.resolve(r), '.folio', 'chat'); };
-  const file = (id) => { if (!ID.test(id)) throw new Error('Bad conversation id.'); return path.join(dir(), id + '.json'); };
+  const dirOf = (r) => { if (!r) throw new Error('No folder is open.'); return path.join(path.resolve(r), '.folio', 'chat'); };
+  const dir = () => dirOf(getRoot());
+  const file = (id, r) => { if (!ID.test(id)) throw new Error('Bad conversation id.'); return path.join(dirOf(r ?? getRoot()), id + '.json'); };
+  // a conversation belongs to the folder it was made or opened in: a late save after a folder switch never lands in the new folder
+  const own = (c) => { Object.defineProperty(c, '_root', { value: getRoot(), enumerable: false, writable: true }); return c; };
   return {
-    create() { return { id: crypto.randomUUID(), title: '', created: Date.now(), updated: Date.now(), grants: {}, messages: [] }; },
+    create() { return own({ id: crypto.randomUUID(), title: '', created: Date.now(), updated: Date.now(), grants: {}, messages: [] }); },
     async save(conv) {
       if (!conv.messages.length) return;
       if (!conv.title) { const first = conv.messages.find((m) => m.role === 'user'); conv.title = (first?.text || '').replace(/\s+/g, ' ').trim().slice(0, 60); }
       conv.updated = Date.now();
-      await fs.mkdir(dir(), { recursive: true });
-      await writeAtomic(file(conv.id), JSON.stringify(conv), { mode: 0o600 });
+      const r = conv._root ?? getRoot();
+      await fs.mkdir(dirOf(r), { recursive: true });
+      await writeAtomic(file(conv.id, r), JSON.stringify(conv), { mode: 0o600 });
     },
-    async load(id) { try { const c = JSON.parse(await fs.readFile(file(id), 'utf8')); return Array.isArray(c.messages) ? c : null; } catch { return null; } },
+    async load(id) { try { const c = JSON.parse(await fs.readFile(file(id), 'utf8')); return Array.isArray(c.messages) ? own(c) : null; } catch { return null; } },
     async list() {
       let names; try { names = await fs.readdir(dir()); } catch { return []; }
       const out = [];

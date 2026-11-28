@@ -91,7 +91,7 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
     for (const m of c.messages) {
       if (m.role === 'user') userBubble(m.text);
       else if (m.role === 'assistant') {
-        if (m.text) await paintBubble(assistantBubble(), m.text);
+        if (m.text) { await paintBubble(assistantBubble(), m.text); bubble = null; }
         for (const call of m.toolCalls || []) { const r = results.get(call.id); step({ id: call.id, name: call.name, args: call.args, status: !r ? 'error' : r.isError ? (/^(Not allowed|The person declined)/.test(r.text) ? 'denied' : 'error') : 'done', detail: r?.isError ? r.text.slice(0, 160) : '' }); }
       }
     }

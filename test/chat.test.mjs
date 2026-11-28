@@ -132,6 +132,12 @@ server.close();
   assert.equal((await st.list())[0].id, c.id);
   assert.ok((await fs.readdir(path.join(root, '.folio', 'chat'))).every((n) => !n.startsWith('.') || n.endsWith('.json')), 'no temp file is left');
   await assert.rejects(st.load('../../etc/passwd').then((x) => { if (x === null) throw new Error('none'); }), /none|Bad/);
+  { // a save that lands after the folder was switched still goes to the folder the chat belongs to
+    let cur = root; const st2 = createChatStore(() => cur); const c2 = st2.create(); c2.messages.push({ role: 'user', text: 'x' });
+    const other = path.join(tmp, 'other'); await fs.mkdir(other); cur = other; await st2.save(c2);
+    assert.deepEqual(await fs.readdir(other), [], 'nothing written into the new folder'); assert.ok((await fs.readdir(path.join(root, '.folio', 'chat'))).includes(c2.id + '.json'));
+    await st2.remove(c2.id); // removes from the current folder only: harmless
+  }
   await st.remove(c.id); assert.equal(await st.load(c.id), null);
   console.log('  ✓ conversations round-trip through .folio/chat, bad ids refused');
 }
