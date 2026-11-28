@@ -333,6 +333,7 @@ customer: table "customer" @560,420 [
 ]
 
 // connectors: from -> to "label" {style}
+// inside a quoted label: \" is a quote, \n a line break, \\ a backslash
 user -> api "HTTPS"
 api -> db "SQL" {route: curved}
 Order ..|> Payable

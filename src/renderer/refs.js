@@ -32,7 +32,7 @@ const tableHtml = (grid, head = true) => `<table class="ref-table">${grid.map((r
 function section(text, part) {
   const lines = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').split('\n');
   if (!part) return lines.join('\n');
-  if (part.startsWith('^')) { const l = lines.find((x) => x.trimEnd().endsWith(' ' + part)); if (l == null) throw new RefError(`no block ${part}`); return l.replace(new RegExp(`\\s*\\${part}\\s*$`), ''); }
+  if (part.startsWith('^')) { const l = lines.find((x) => x.trimEnd().endsWith(' ' + part)); if (l == null) throw new RefError(`no block ${part}`); return l.trimEnd().slice(0, -part.length).trimEnd(); }
   const want = part.toLowerCase(); let fence = false, start = -1, level = 0;
   for (let i = 0; i < lines.length; i++) {
     if (/^\s*(```|~~~)/.test(lines[i])) fence = !fence;

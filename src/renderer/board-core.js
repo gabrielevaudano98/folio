@@ -55,8 +55,9 @@ const ARROW_RE = /^([\w.-]+?)(?:\.(top|right|bottom|left))?\s*(<->|\.\.\|>|-\|>|
 const NODE_RE = /^([A-Za-z_][\w-]*)\s*:\s*([a-z-]+)?\s*(?:"((?:[^"\\]|\\.)*)")?\s*(?:@\s*(-?[\d.]+)\s*,\s*(-?[\d.]+))?\s*(?:(\d+)\s*[x×]\s*(\d+))?\s*(?:\{([^}]*)\})?\s*(\[)?\s*$/;
 
 export const defaultSize = (shape) => SIZE[shape] || [120, 60];
-const unq = (s) => (s ?? '').replace(/\\"/g, '"').replace(/\\n/g, '\n');
-const q = (s) => `"${String(s).replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+const unq = (s) => (s ?? '').replace(/\\(["n\\])/g, (m, c) => (c === 'n' ? '\n' : c)); // one pass, so \\n stays a backslash and an n
+// a backslash is doubled only where the reader would take it for an escape (before \, " or n, or at the end), so `C:\folder` stays as written
+const q = (s) => `"${String(s).replace(/\\(?=["n\\]|$)|"|\n/g, (c) => (c === '\n' ? '\\n' : '\\' + c))}"`;
 function parseStyle(s) {
   const out = {};
   if (!s) return out;

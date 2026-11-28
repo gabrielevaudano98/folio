@@ -380,7 +380,7 @@ export async function finishPackage(bytes, { palette, fonts = {}, anchors = [], 
   if (anchors.length) {
     for (const name of Object.keys(zip.files).filter((n) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(n))) {
       let xml = await zip.file(name).async('string');
-      const lname = (xml.match(/<p:cSld name="([^"]*)"/) || [])[1]; const mine = anchors.filter((a) => a.layout === lname.replace(/&amp;/g, '&').replace(/&#183;|&middot;/g, '·'));
+      const lname = (xml.match(/<p:cSld name="([^"]*)"/) || [])[1]; const mine = anchors.filter((a) => a.layout === lname.replace(/&(amp|#183|middot);/g, (m, k) => (k === 'amp' ? '&' : '·')));
       if (!mine.length) continue;
       xml = xml.replace(/<p:sp>[\s\S]*?<\/p:sp>/g, (sp) => {
         const idx = +(sp.match(/<p:ph[\s\S]*?idx="(\d+)"/) || [])[1]; const a = mine.find((m) => m.idx === idx);

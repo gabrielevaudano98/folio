@@ -1,6 +1,6 @@
 # Project status
 
-**As of 27 November 2026 · `main` at 1.5.1 (pre-alpha) plus the new app icon (#80) · maintainer: Gabriele Vaudano.**
+**As of 28 November 2026 · `main` at 1.5.1 (pre-alpha) plus the new app icon (#80) · maintainer: Gabriele Vaudano.**
 
 This is the page to read first when you pick Folio up: what ships, what is half-built and where, what is broken, what
 comes next, and what only a person can do. It is written by hand; update it in the same pull request that changes the
@@ -19,8 +19,8 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 
 | Area | On `main` | In flight | Main gaps |
 |---|---|---|---|
-| App shell (files, tabs, search, undo, history, i18n) | Shipped | Search window, favourites, page actions (PR stack [#69](https://github.com/gabrielevaudano98/folio/pull/69) → [#77](https://github.com/gabrielevaudano98/folio/pull/77) → [#79](https://github.com/gabrielevaudano98/folio/pull/79)) | Linux build is in CI on this branch (first AppImage unchecked on a real desktop) |
-| Pages (`.md`) | Pages Studio D0–D16 and `.asset/` attachments shipped | Notion gap waves 1–2 on the PR stack | Data bugs fixed only on #77 ([#81](https://github.com/gabrielevaudano98/folio/issues/81)) |
+| App shell (files, tabs, search, undo, history, i18n) | Shipped, with the search window and page actions (Notion stack, 28 Nov) | — | Favourites and recents ([#85](https://github.com/gabrielevaudano98/folio/issues/85)); Linux build is in CI (first AppImage unchecked on a real desktop) |
+| Pages (`.md`) | Pages Studio D0–D16, `.asset/` attachments and Notion gap waves 1–2 shipped (the F1–F6 data and UI fixes of [#81](https://github.com/gabrielevaudano98/folio/issues/81) included) | — | Wave 2 batch 2 ([#85](https://github.com/gabrielevaudano98/folio/issues/85)), #86, #87 |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
@@ -64,26 +64,19 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
 
 Work that exists in code but is not on `main`. Nothing here ships until it is merged.
 
-### Pages: the Notion gap (stacked pull requests)
+### Pages: the Notion gap
 
-The plan lives in the Folio project notes (`NOTION-GAP-PLAN.md`, `NOTION-EXECUTION-PLAN.md`); the pull requests carry the
-summary. They are **stacked**: each one's base is the previous branch, so they merge in this order.
+The plan lives in the Folio project notes (`NOTION-GAP-PLAN.md`, `NOTION-EXECUTION-PLAN.md`). The stack is **merged**:
+[#69](https://github.com/gabrielevaudano98/folio/pull/69) (chips, date popover, callouts, page icon, compact `/` menu),
+[#77](https://github.com/gabrielevaudano98/folio/pull/77) (data fixes, Duplicate, Move to…, Copy link, Lock page, code
+Copy/Wrap, expand/collapse all) and [#79](https://github.com/gabrielevaudano98/folio/pull/79) (search window on `Mod+P`,
+dates with time, end date and reminders, per-page appearance) reached `main` on 28 Nov 2026. Quick wins on top: `+name`
+to link or create a page, Reopen closed tab (`Mod+Shift+T`), a light/dark command, weekday names that always look forward.
+The "not done" list of #79 is tracked in [#86](https://github.com/gabrielevaudano98/folio/issues/86).
 
-| Order | PR | Branch | What | State |
-|---|---|---|---|---|
-| 1 | [#69](https://github.com/gabrielevaudano98/folio/pull/69) | `pages-ui-notion-pass` → `main` | Chips for dates, links, people, status; date popover and Settings → Date format; callouts with icon gutter; page icon; compact `/` menu | Open since 22 Nov; has merge conflicts with `main` (`mergeable_state: dirty`): rebase on 1.5.x |
-| 2 | [#77](https://github.com/gabrielevaudano98/folio/pull/77) | `notion-gap-wave1` → `pages-ui-notion-pass` | Data fixes F1–F3, shortcut/UI fixes F4–F6, Duplicate page, Move to…, Copy link, Lock page, code block Copy/Wrap, expand/collapse all | Open; **no CI has run on it** (see below); its description reports 547 checks green locally |
-| 3 | [#79](https://github.com/gabrielevaudano98/folio/pull/79) | `notion-gap-wave2` → `notion-gap-wave1` | Search window on `Mod+P`, dates with time, end date and reminders, per-page appearance (font, width, cover, floating TOC) | Open; no CI has run on it; its "not done" list is tracked in [#86](https://github.com/gabrielevaudano98/folio/issues/86) |
-
-**CI does not run on #77 and #79**: `ci.yml` and `codeql.yml` start only for pull requests whose base is `main`, so a
-stacked PR is untested in CI until it is retargeted to `main` or the one below it merges. Run `xvfb-run -a npm test`
-locally on each branch before merging. The stack adds 12 files to `src/` (for example `page-dates.js`, `main/locks.js`,
-`main/reminders.js`, `search-window.js`): each needs a line in the [source map](reference/source-map.md), or
-`test/docs-map.test.mjs` fails.
-
-Not started from the same plan: wave 2 batch 2 (turn blocks into pages, drop any file on a page, image options, page
-info, favourites and recents, clickable breadcrumb) in [#85](https://github.com/gabrielevaudano98/folio/issues/85), and
-wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
+Wave 2 batch 2 is on `notion-gap-wave2b` ([#85](https://github.com/gabrielevaudano98/folio/issues/85)): Turn into page
+(block menu), files dropped on a page copied into `.asset/`, Page info (menu and command, Details panel with backlinks),
+Favorites and Recent in the sidebar. Still open from #85: image options and the clickable breadcrumb. Wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
 
 ### Sheets: Folio Sheets on Univer (`feat/sheets-univer`, no pull request)
 
@@ -131,11 +124,6 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 
 | Bug | Impact | Where the fix is | Issue |
 |---|---|---|---|
-| Bold, italic, link or code in a toggle title are lost on save (F1) | Data loss | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Resolve removes a comment thread (F2); on `main` this is the intended design ("the comments go, the text stays"), PR #77 keeps resolved threads instead | Feature gap, can surprise | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Editing a property rewrites CRLF front matter as LF (F3) | Unrelated bytes change (invariant 1) | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
-| Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | The same delayed-change problem in the slides, board and sheet surfaces: a change they report after a pause is applied to whichever tab is then active (the page editor is fixed). Found in review of the #82 fix; not reproduced yet | Possible data loss | Needs surfaces to name their document, as `d6ca0df` does for sheets | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
 | Startup and opening a long page go over the 100 ms budget | Responsiveness | — | [#90](https://github.com/gabrielevaudano98/folio/issues/90) |
 
@@ -143,7 +131,6 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 
 Each is an open issue with its milestone. The ones that matter most for a first public release are in bold.
 
-- Release workflow without a third-party publish action ([#83](https://github.com/gabrielevaudano98/folio/issues/83)).
 - Signed and notarised builds for macOS ([#3](https://github.com/gabrielevaudano98/folio/issues/3)) and Windows
   ([#4](https://github.com/gabrielevaudano98/folio/issues/4)): **not possible for now, there are no certificates**; kept open only for the day they exist.
 - Auto-update ([#2](https://github.com/gabrielevaudano98/folio/issues/2)) is built, see [updates](explanation/updates.md); it needs a manual check on Windows after the first release that carries `latest.yml`.
@@ -171,7 +158,7 @@ Things an agent cannot do from a cloud machine.
 | Turn on *Offer to record when a call starts* and join a call | Maintainer | Call detection is tested only with sample data | [#88](https://github.com/gabrielevaudano98/folio/issues/88) |
 | Buy or set up signing (Apple Developer ID, a Windows route such as Azure Trusted Signing) and add the secrets | Maintainer | Unsigned builds warn on first open | [#3](https://github.com/gabrielevaudano98/folio/issues/3), [#4](https://github.com/gabrielevaudano98/folio/issues/4) |
 | Open an `.xlsm` with VBA through Folio Sheets and back in Excel | Maintainer | Last unchecked Excel round trip | [#84](https://github.com/gabrielevaudano98/folio/issues/84) |
-| Decide merge order: the Notion PR stack and the Univer branch both change `app.js`, `page-ribbon.js` and the locales | Maintainer | Whichever merges second needs a rebase | [#84](https://github.com/gabrielevaudano98/folio/issues/84) |
+| Rebase the Univer branch on `main`: the Notion stack (merged 28 Nov) changed `app.js`, `page-ribbon.js` and the locales | Maintainer | The Univer branch needs a rebase before its PR | [#84](https://github.com/gabrielevaudano98/folio/issues/84) |
 
 ## How to pick up work
 
