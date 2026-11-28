@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('folio', {
   create: (p, c) => call('fs:create', p, c),
   mkdir: (p) => call('fs:mkdir', p),
   rename: (a, b) => call('fs:rename', a, b),
+  duplicate: (p, suffix) => call('fs:duplicate', p, suffix),
   trash: (p) => call('fs:trash', p),
   untrash: (t) => call('fs:untrash', t),
   search: (q, o) => call('fs:search', q, o),

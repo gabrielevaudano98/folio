@@ -78,6 +78,18 @@ const database = (kanban) => ({
   },
 });
 
+/* the "Turn into" id of a block node (Notion marks the current type with a check) */
+export function turnIdOfNode(node) {
+  const n = node?.type?.name;
+  if (n === 'heading') return 'h' + node.attrs.level;
+  return { paragraph: 'text', blockquote: 'quote', codeBlock: 'code', bulletList: 'bullet', orderedList: 'ordered', taskList: 'task' }[n] || null;
+}
+/* the type of the block holding the caret: the innermost heading, code, quote or list it sits in, else text */
+export function turnIdAtSelection(state) {
+  const $f = state.selection.$from;
+  for (let d = $f.depth; d >= 0; d--) { const id = turnIdOfNode($f.node(d)); if (id && id !== 'text') return id; }
+  return 'text';
+}
 export const INSERTS = [
   { id: 'text', label: tl('ins', 'Text'), cat: 'Basic', badge: 'T', key: 'Mod+Alt+0', desc: tl('ins', 'Plain paragraph'), aliases: ['paragraph', 'p', 'plain', 'normal'], md: '', turn: (e) => e.chain().focus().setParagraph().run() },
   heading(1), heading(2), heading(3), heading(4), heading(5), heading(6),
@@ -86,7 +98,7 @@ export const INSERTS = [
 
   { id: 'bullet', label: tl('ins', 'Bulleted list'), cat: 'Lists', icon: 'listBullet', key: 'Mod+Shift+8', desc: tl('ins', 'A simple list'), aliases: ['ul', 'bullets', 'unordered', '-'], md: '- ', turn: (e) => e.chain().focus().toggleBulletList().run() },
   { id: 'ordered', label: tl('ins', 'Numbered list'), cat: 'Lists', icon: 'listOrdered', key: 'Mod+Shift+7', desc: tl('ins', 'A list with numbers'), aliases: ['ol', 'numbers', 'ordered', '1.'], md: '1. ', turn: (e) => e.chain().focus().toggleOrderedList().run() },
-  { id: 'task', label: tl('ins', 'Checklist'), cat: 'Lists', icon: 'listTask', key: 'Mod+L', desc: tl('ins', 'Tasks with checkboxes'), aliases: ['todo', 'to-do', 'tasks', 'checkbox', '[]'], md: '- [ ] ', turn: (e) => e.chain().focus().toggleTaskList().run() },
+  { id: 'task', label: tl('ins', 'Checklist'), cat: 'Lists', icon: 'listTask', key: 'Mod+L', desc: tl('ins', 'Tasks with checkboxes'), aliases: ['todo', 'to-do', 'to-do list', 'tasks', 'checkbox', '[]'], md: '- [ ] ', turn: (e) => e.chain().focus().toggleTaskList().run() },
 
   { id: 'table', label: tl('ins', 'Table'), cat: tl('ins', 'Media and data'), icon: 'table', desc: tl('ins', 'Type /3x4 for a size'), aliases: ['grid', 'rows', 'spreadsheet', 'cells'], md: '\n| Column | Column |\n| --- | --- |\n|  |  |\n',
     run: (e, _c, a = {}) => {
@@ -151,6 +163,25 @@ export const INSERTS = [
 ];
 export const CATEGORIES = ['Basic', 'Lists', 'Layout', tl('ins', 'Media and data'), 'Databases', 'Advanced', 'Callouts', tl('ins', 'Links and embeds')];
 
+/*
+ * The / menu is the whole block menu, as in Notion: after what you can insert come the actions on this block and its
+ * colour. They run through ctx.block(action, arg), which the editor provides (page-blocks.js), so this file stays pure.
+ */
+const COLOUR_NAMES = { gray: tl('ins', 'Gray'), brown: tl('ins', 'Brown'), orange: tl('ins', 'Orange'), yellow: tl('ins', 'Yellow'), green: tl('ins', 'Green'), blue: tl('ins', 'Blue'), purple: tl('ins', 'Purple'), pink: tl('ins', 'Pink'), red: tl('ins', 'Red') };
+const IT_COLOUR = { gray: 'grigio', brown: 'marrone', orange: 'arancione', yellow: 'giallo', green: 'verde', blue: 'blu', purple: 'viola', pink: 'rosa', red: 'rosso' };
+const act = (id, label, key, icon, aliases, extra = {}) => ({ id: `act-${id}`, label, cat: 'Actions', icon, key, aliases, block: true, run: (e, c) => c.block?.(id), ...extra });
+export const BLOCK_ITEMS = [
+  act('duplicate', tl('ins', 'Duplicate'), 'Mod+D', 'copy', ['duplicate', 'copy block', 'clone', 'duplica']),
+  act('up', tl('ins', 'Move up'), 'Mod+Shift+Up', 'arrowUp', ['move up', 'sposta su', 'raise']),
+  act('down', tl('ins', 'Move down'), 'Mod+Shift+Down', 'arrowDown', ['move down', 'sposta giù', 'lower']),
+  act('link', tl('ins', 'Copy link to block'), 'Mod+Alt+L', 'link', ['copy link', 'block link', 'anchor', 'copia link']),
+  act('delete', tl('ins', 'Delete'), 'Delete', 'trash', ['delete', 'remove', 'elimina', 'cancella'], { danger: true }),
+  { id: 'colour-default', label: tl('ins', 'Default colour'), cat: 'Colour', swatch: '', aliases: ['default colour', 'default color', 'no colour', 'reset colour', 'predefinito'], block: true, run: (e, c) => c.block?.('colour', { color: null, bg: null }) },
+  ...Object.entries(COLOUR_NAMES).map(([k, name]) => ({ id: `colour-${k}`, label: tr('ins.colour-text', { c: name }), cat: 'Colour', swatch: k, aliases: [k, `${k} text`, `${k} color`, `testo ${IT_COLOUR[k]}`, IT_COLOUR[k]], block: true, run: (e, c) => c.block?.('colour', { color: k }) })),
+  ...Object.entries(COLOUR_NAMES).map(([k, name]) => ({ id: `bg-${k}`, label: tr('ins.colour-bg', { c: name }), cat: 'Colour', swatch: k, bg: true, aliases: [`${k} background`, `${k} highlight`, `sfondo ${IT_COLOUR[k]}`], block: true, run: (e, c) => c.block?.('colour', { bg: k }) })),
+];
+const TURNABLE = new Set(['text', 'h1', 'h2', 'h3', 'h4', 'quote', 'bullet', 'ordered', 'task', 'code']);
+
 /* recently used items, per person, in this browser */
 const RECENT = 'folio.inserts.recent';
 export function recentIds() { try { return JSON.parse(localStorage.getItem(RECENT) || '[]').filter((id) => INSERTS.some((i) => i.id === id)); } catch { return []; } }
@@ -160,27 +191,45 @@ export function remember(id) { try { localStorage.setItem(RECENT, JSON.stringify
  * Items for a query. Empty query: recent items, then every category. Otherwise the best matches.
  * "3x4" or "table3x4" gives a table of that size. Returns [{ item, marks, args, group }].
  */
-export function filterInserts(query, { recent = recentIds() } = {}) {
+export function filterInserts(query, { recent = recentIds(), hasText = false } = {}) {
   const q = query.trim();
   const size = q.match(/^(?:t(?:able)?)?\s*(\d{1,2})\s*[x×]\s*(\d{1,2})$/i);
   if (size) {
     const rows = Math.min(50, Math.max(1, +size[1])), cols = Math.min(20, Math.max(1, +size[2]));
     return [{ item: { ...INSERTS.find((i) => i.id === 'table'), label: tr('ins.table-size', { rows, cols }), desc: tr('ins.table-size-desc', { rows, cols }) }, marks: [], args: { rows, cols }, group: tl('ins', 'Media and data') }];
   }
+  /* on a line that already has text, a block you can turn into is offered twice, as in Notion: insert it below, or turn this line into it */
+  const turnRow = (item, marks = []) => ({ item, marks, group: 'Turn into', mode: 'turn' });
   if (!q) {
     const rec = recent.map((id) => INSERTS.find((i) => i.id === id)).filter(Boolean).map((item) => ({ item, marks: [], group: 'Recent' }));
-    return [...rec, ...CATEGORIES.flatMap((cat) => INSERTS.filter((i) => i.cat === cat).map((item) => ({ item, marks: [], group: cat })))];
+    const mode = hasText ? { mode: 'insert' } : {};
+    return [...rec.map((r) => (r.item.turn ? { ...r, ...mode } : r)),
+      ...CATEGORIES.flatMap((cat) => INSERTS.filter((i) => i.cat === cat).map((item) => ({ item, marks: [], group: cat, ...(item.turn ? mode : {}) }))),
+      ...(hasText ? INSERTS.filter((i) => TURNABLE.has(i.id)).map((i) => turnRow(i)) : []),
+      ...BLOCK_ITEMS.map((item) => ({ item, marks: [], group: item.cat }))];
   }
-  return INSERTS.map((item) => ({ item, f: fuzzyItem(q, item.label, item.aliases) }))
-    .filter((x) => x.f)
-    .sort((a, b) => b.f.score - a.f.score + (recent.includes(b.item.id) ? 5 : 0) - (recent.includes(a.item.id) ? 5 : 0))
-    .slice(0, 12)
-    .map(({ item, f }) => ({ item, marks: f.marks, group: 'Results' }));
+  /* /turn, /trasforma: every block this line can become (Notion) */
+  const ql = q.toLowerCase();
+  if (hasText && ql.length >= 3 && ['turn into', tr('blk.turn-into').toLowerCase()].some((w) => w.startsWith(ql) || ql.startsWith(w))) return INSERTS.filter((i) => TURNABLE.has(i.id)).map((i) => turnRow(i));
+  let hits = [...INSERTS, ...BLOCK_ITEMS].map((item) => ({ item, f: fuzzyItem(q, item.label, item.aliases) }))
+    .filter((x) => x.f);
+  /* scattered letters only count when nothing matches better: /red is not Breadcrumb */
+  const top = Math.max(0, ...hits.map((x) => x.f.score));
+  hits = hits.filter((x) => top < 50 || x.f.score >= 30)
+    .sort((a, b) => b.f.score - a.f.score + (recent.includes(b.item.id) ? 5 : 0) - (recent.includes(a.item.id) ? 5 : 0) + (a.item.block ? 8 : 0) - (b.item.block ? 8 : 0))
+    .slice(0, 12);
+  const out = [];
+  for (const { item, f } of hits) {
+    if (hasText && item.turn) { out.push({ item, marks: f.marks, group: 'Results', mode: 'insert' }); if (TURNABLE.has(item.id)) out.push({ ...turnRow(item, f.marks), group: 'Results' }); }
+    else out.push({ item, marks: f.marks, group: 'Results' });
+  }
+  return out.slice(0, 14);
 }
 
 /* run an item: change the current block or insert */
 export function runInsert(editor, entry, ctx = {}) {
   const { item, args } = entry;
-  remember(item.id);
+  if (!item.block) remember(item.id);
+  if (item.turn && entry.mode === 'insert') ctx.block?.('below'); // a new empty line under this one, then make it that block
   return item.turn ? item.turn(editor) : item.run(editor, ctx, args);
 }

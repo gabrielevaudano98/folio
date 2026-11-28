@@ -54,6 +54,7 @@ export const icons = {
   chart: p('<path d="M2.5 13.5h11"/><rect x="3.5" y="8" width="2.5" height="5.5" rx=".5"/><rect x="7" y="4.5" width="2.5" height="9" rx=".5"/><rect x="10.5" y="6.5" width="2.5" height="7" rx=".5"/>'),
   minus: p('<path d="M3.5 8h9"/>'),
   plus: p('<path d="M8 3.5v9M3.5 8h9"/>'),
+  smile: p('<circle cx="8" cy="8" r="5.75"/><path d="M5.8 9.4c.5.8 1.3 1.2 2.2 1.2s1.7-.4 2.2-1.2"/><path d="M6.1 6.4h.01M9.9 6.4h.01" stroke-width="1.8" stroke-linecap="round"/>'),
   mic: p('<rect x="6" y="1.75" width="4" height="7.5" rx="2"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.25M5.75 14.25h4.5"/>'),
   compose: p('<path d="M9.5 2.5H4a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5"/><path d="M12.4 1.9a1.3 1.3 0 0 1 1.8 1.8L8.5 9.4 6 10l.6-2.5z"/>'),
   sidebar: p('<rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M6 2.75v10.5"/>'),

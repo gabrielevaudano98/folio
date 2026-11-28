@@ -20,6 +20,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `create` | request | `fs:create` | `src/main/main.js` |
 | `mkdir` | request | `fs:mkdir` | `src/main/main.js` |
 | `rename` | request | `fs:rename` | `src/main/main.js` |
+| `duplicate` | request | `fs:duplicate` | `src/main/main.js` |
 | `trash` | request | `fs:trash` | `src/main/main.js` |
 | `untrash` | request | `fs:untrash` | `src/main/main.js` |
 | `search` | request | `fs:search` | `src/main/main.js` |

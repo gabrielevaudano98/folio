@@ -21,6 +21,8 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 | `notes.js` | core (Node fs) | Every file operation: `resolve()` checks that a path stays inside the workspace, then tree, read, write, rename/move with link rewriting, search, backlinks. Shared by the app, the HTTP MCP server and the stdio bridge. (Moving to the system trash is `fs:trash` in `main.js`.) |
 | `atomic.js` | core | Atomic writes: temp file in the same folder, flush, rename ([ADR 0008](../adr/0008-atomic-writes.md)). |
 | `assets.js` | core (Node fs) | The hidden `.asset/` folder beside each page: content-hashed copies of pictures and attachments, unused/missing checks, refusal of folders that link outside. |
+| `duplicate.js` | core (Node fs) | Duplicate a page or a folder of pages next to the original: every attachment gets its own copy in the copy's `.asset`, links stay as written; atomic, removes only what it made on failure. |
+| `locks.js` | core (Node fs) | Locked pages, kept per workspace in the app settings (never in the `.md`); read by the window, the MCP write gate and the stdio bridge. |
 | `history.js` | core (Node fs) | Version history in `<workspace>/.folio/history/`: content-addressed gzip objects plus an index per document. |
 | `history-diff.js` | core | Line diff helpers for the history view (also used by the window). |
 | `git-log.js` | core | Read-only `git log` / `git show` for a page, for the version timeline. |
@@ -95,6 +97,9 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `page-mentions.js` | core | What the `[[`, `@`, `#` and `:` pickers offer (pages, people, dates, tags, emoji). |
 | `page-props.js` | core | YAML front matter as typed properties; edits rewrite only that property's lines. |
 | `page-props-ui.js` | surface | The Properties panel above the title. |
+| `page-dates.js` | core | How a day link (`[[2026-11-23]]`) is shown: Today, Friday, 3 Dec…; parsing of typed dates. The file keeps the ISO day. |
+| `page-date-ui.js` | surface | The date popover of a day chip: natural-language field, quick picks, month grid, open the daily note, remove. |
+| `page-icon.js` | surface | Emoji picker for the page icon and callouts: search, categories, random, remove. |
 | `page-critic.js` | core | Comments and suggestions in CriticMarkup: list, accept, reject, thread. |
 | `page-review.js` | surface | Review pane: comment threads and suggestions beside the text. |
 | `page-reactions.js` | core | Emoji reactions and mentions in comments, without new syntax. |

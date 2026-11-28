@@ -76,20 +76,37 @@ let chronoLib = null;
 const chrono = async () => (chronoLib ||= await import('chrono-node'));
 const relative = (d, now) => { const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()), b = new Date(now.getFullYear(), now.getMonth(), now.getDate()); const n = Math.round((a - b) / 864e5); return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n === -1 ? 'Yesterday' : null; };
 
-/** @tomorrow, @next friday, @domani, @25 dec → days, in English and Italian */
-export async function dateEntries(q, now = new Date()) {
+/* words a date can start with, in English and Italian, so "@tod", "@dom", "@ven" already offer the day (Notion) */
+const WEEKDAYS = [['sunday', 'domenica'], ['monday', 'lunedì', 'lunedi'], ['tuesday', 'martedì', 'martedi'], ['wednesday', 'mercoledì', 'mercoledi'], ['thursday', 'giovedì', 'giovedi'], ['friday', 'venerdì', 'venerdi'], ['saturday', 'sabato']];
+const fold = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+function keywordDays(q, ref) {
+  const t = fold(q.trim()); if (t.length < 2) return [];
+  const out = []; const hit = (words) => words.some((w) => fold(w).startsWith(t));
+  if (hit(['today', 'oggi', 'now', 'adesso'])) out.push(ref);
+  if (hit(['tomorrow', 'domani'])) out.push(addDays(ref, 1));
+  if (hit(['yesterday', 'ieri'])) out.push(addDays(ref, -1));
+  if (hit(['next week', 'prossima settimana', 'tra una settimana'])) out.push(addDays(ref, 7));
+  WEEKDAYS.forEach((names, dow) => { if (hit(names) || hit(names.map((n) => 'next ' + n)) || hit(names.map((n) => n + ' prossimo'))) out.push(addDays(ref, ((dow - ref.getDay() + 7) % 7) || 7)); });
+  return out;
+}
+
+/** @tomorrow, @next friday, @domani, @25 dec, and the first letters of any of them → days, in English and Italian */
+export async function dateEntries(q, now = new Date(), { lang = 'en', label = null } = {}) {
   const ref = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
   let days = [];
   if (!q.trim()) days = [ref, addDays(ref, 1), addDays(ref, -1)];
   else if (/[\p{L}\d]/u.test(q)) {
-    const c = await chrono(); const seen = new Set();
-    for (const parser of [c, c.it]) {
+    days.push(...keywordDays(q, ref));
+    const c = await chrono();
+    for (const parser of lang === 'it' ? [c.it, c] : [c, c.it]) {
       let d = null; try { d = parser.parseDate(q.trim(), ref, { forwardDate: true }); } catch { /* not a date */ }
-      if (d && !seen.has(ymd(d))) { seen.add(ymd(d)); days.push(d); }
+      if (d) days.push(d);
     }
   }
-  return days.map((d) => ({ item: { label: relative(d, ref) || longDay(d), desc: relative(d, ref) ? longDay(d) : ymd(d), icon: 'calendar' }, marks: [], group: 'Dates', insert: `[[${ymd(d)}]]` }));
+  const seen = new Set(); days = days.filter((d) => !seen.has(ymd(d)) && seen.add(ymd(d))).slice(0, 4);
+  return days.map((d) => { const rel = relative(d, ref); const name = label ? label(ymd(d)) : rel || longDay(d); return { item: { label: name, desc: label ? longDayIn(d, lang) : rel ? longDay(d) : ymd(d), icon: 'calendar' }, marks: [], group: 'Dates', insert: `[[${ymd(d)}]]` }; });
 }
+const longDayIn = (d, lang) => { const s = d.toLocaleDateString(lang === 'it' ? 'it-IT' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); return s.charAt(0).toUpperCase() + s.slice(1); };
 
 /* ---------- documents ---------- */
 function docEntries(q, ctx, { people, limit, skipDays = false }) {
@@ -133,7 +150,7 @@ export async function linkEntries(q, ctx) {
 /* ---------- @ ---------- */
 export async function atEntries(q, ctx) {
   const out = [];
-  out.push(...await dateEntries(q, ctx.now ? ctx.now() : new Date()));
+  out.push(...await dateEntries(q, ctx.now ? ctx.now() : new Date(), { lang: ctx.lang?.() || 'en', label: ctx.dayLabel || null }));
   out.push(...docEntries(q, ctx, { people: true, limit: q ? 4 : 4 }));
   out.push(...docEntries(q, ctx, { people: false, limit: q ? 6 : 5, skipDays: true }));
   const statuses = ctx.statuses || STATUSES;

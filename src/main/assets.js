@@ -25,13 +25,16 @@ const SKIP = new Set(['node_modules', '.git', '.folio', '.obsidian', 'dist', 'bu
 /* a reference to an asset inside any text: `.asset/x.png`, `../.asset/x.png`, `sub/assets/x.png`.
    Works for images, links, slide `src=`, `poster=`, front matter fonts and wiki embeds, because it only looks at the path. */
 const REF = /(?<![\w.%/:-])((?:(?:\.\.?|[\w%~-][\w%.~-]*)\/)*)(\.asset|assets)\/((?:[^\s()"'<>[\]|,{}\\]|\([^\s()"'<>[\]|,{}\\]*\))+)/g; // balanced (1) in a name, as CommonMark allows
+/** a relative path as it is written in a Markdown reference: URI-encoded, and # and ? escaped too, because refsIn reads them back as part of the file name */
+const encodeRef = (p) => encodeURI(p).replace(/#/g, '%23').replace(/\?/g, '%3F');
 export function refsIn(text) {
   const out = [];
   for (const m of String(text).matchAll(REF)) {
     let name = m[3].replace(/[.:;!?]+$/, '');
     if (!name || name.startsWith('.trash/') || name.includes('/')) continue;
     const raw = m[1] + m[2] + '/' + name;
-    let decoded; try { decoded = decodeURI(raw); } catch { decoded = raw; }
+    // each path segment fully decoded, so `a%23b.png` is the file `a#b.png`; a segment that would decode to a separator stays as written
+    const decoded = raw.split('/').map((seg) => { try { const d = decodeURIComponent(seg); return /[\\/]/.test(d) ? seg : d; } catch { return seg; } }).join('/');
     out.push({ start: m.index, end: m.index + raw.length, raw, prefix: m[1], dir: m[2], name, decoded });
   }
   return out;
@@ -264,11 +267,56 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
       if (!inside(src) || !(await exists(src))) continue;
       let target = done.get(src);
       if (!target) { target = await place(assetDirOf(newDir), path.basename(src), { src }); done.set(src, target); copied++; }
-      out += text.slice(last, r.start) + encodeURI(path.relative(newDir, target).split(path.sep).join('/')); last = r.end;
+      out += text.slice(last, r.start) + encodeRef(path.relative(newDir, target).split(path.sep).join('/')); last = r.end;
     }
     return { text: out + text.slice(last), copied };
   }
   const assetDirOf = (dir) => path.join(dir, ASSET_DIR);
+
+  /* ---- duplicating pages ---- */
+  /** a fresh copy of a file in `dir`: `<hash>-<name>`, or `<hash>-<name>-2`… when that name is taken, so the copy never shares a file */
+  async function placeCopy(dir, src) {
+    await ensureDir(dir);
+    const [realDir, realRoot] = await Promise.all([fs.realpath(dir), fs.realpath(root())]);
+    if (realDir !== realRoot && !realDir.startsWith(realRoot + path.sep)) throw new NotesError('The asset folder leads outside the workspace through a link.');
+    let name = path.basename(src).replace(/^[0-9a-f]{8}-(?=.)/, '');
+    if (/[#?%()\s"'<>[\]|,{}\\]/.test(name)) name = safeName(name); // a name a reference could not carry as written gets a plain one
+    const ext = path.extname(name); const stem = name.slice(0, name.length - ext.length);
+    const h = (await hashFile(src)).slice(0, 8);
+    for (let i = 1; i < 1000; i++) {
+      const target = path.join(dir, `${h}-${stem}${i > 1 ? '-' + i : ''}${ext}`);
+      if (await exists(target)) continue;
+      const tmp = path.join(dir, `.tmp-${crypto.randomBytes(6).toString('hex')}`);
+      try { await fs.copyFile(src, tmp); await fs.rename(tmp, target); } catch (e) { await fs.unlink(tmp).catch(() => {}); throw e; }
+      return target;
+    }
+    throw new NotesError('Could not store the file (name clash).');
+  }
+  /** a page was duplicated: every file it uses gets its own new copy next to the copy, and its references follow (text returned, not written) */
+  async function copyFor(fromRel, toRel, text) {
+    const oldDir = noteDir(fromRel), newDir = noteDir(toRel);
+    const realRoot = await fs.realpath(root());
+    let out = '', last = 0; const done = new Map(); const copied = [];
+    try {
+      for (const r of refsIn(text)) {
+        // the same checks as every other path: inside the workspace, nothing hidden (`../%2Egit/assets/x` is refused) but `.asset`
+        let src; try { src = notes.contain(path.resolve(oldDir, r.decoded), { allowAsset: true }); } catch { continue; }
+        if (isNote(src) && r.dir !== ASSET_DIR) continue; // a note in a legacy `assets` folder is a page; any file in `.asset` is an attachment
+        let target = done.get(src);
+        if (!target) {
+          const real = await fs.realpath(src).catch(() => null); // a file that is a link out of the workspace is not copied
+          if (!real || (real !== realRoot && !real.startsWith(realRoot + path.sep)) || !(await fs.stat(real)).isFile()) continue;
+          target = await placeCopy(assetDirOf(newDir), real); done.set(src, target); copied.push(rel(target));
+        }
+        const to = path.relative(newDir, target).split(path.sep).join('/');
+        out += text.slice(last, r.start) + (to === r.decoded ? r.raw : encodeRef(to)); last = r.end;
+      }
+    } catch (e) { // nothing half done: the copies made so far go again
+      for (const p of copied) await fs.unlink(path.join(root(), p)).catch(() => {});
+      throw e;
+    }
+    return { text: out + text.slice(last), copied };
+  }
 
   /** move every `assets/` folder to `.asset` and rewrite the references; originals go to the asset trash. onBefore(rel, text) lets the caller snapshot first. */
   async function migrateLegacy({ onBefore } = {}) {
@@ -285,7 +333,7 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
           while (await exists(d) && !(await sameContent(d, src))) d = path.join(dir, `${path.basename(src, path.extname(src))}-${++n}${path.extname(src)}`);
           dest = d; plan.set(src, dest);
         }
-        const target = encodeURI(path.relative(noteDir(files[i]), dest).split(path.sep).join('/'));
+        const target = encodeRef(path.relative(noteDir(files[i]), dest).split(path.sep).join('/'));
         out += texts[i].slice(last, r.start) + target; last = r.end; changed = true;
       }
       if (changed) edits.set(files[i], out + texts[i].slice(last));
@@ -297,5 +345,5 @@ export function createAssets(notes, { now = () => Date.now() } = {}) {
     return { notes: edits.size, files: plan.size, changed: [...edits.keys()] };
   }
 
-  return { save, importFile, refsOf, stillUsed, remove, restore, purgeTrash, usage, orphans, heal, relocate, migrateLegacy, assetDir, isAssetPath };
+  return { save, importFile, refsOf, stillUsed, remove, restore, purgeTrash, usage, orphans, heal, relocate, copyFor, migrateLegacy, assetDir, isAssetPath };
 }

@@ -222,15 +222,17 @@ export function createNotes(getRoot) {
     return { files, texts };
   }
   /** after a move, point every reference that targeted `from` at `to`; returns the paths rewritten, with `.failed`
-   * listing the files that could not be updated (one failure does not stop the others) */
-  async function rewriteAfterMove(from, to, onBefore) {
+   * listing the files that could not be updated (one failure does not stop the others) and `.skipped` the ones `skip(rel)`
+   * left as they are (a locked page keeps its old link) */
+  async function rewriteAfterMove(from, to, onBefore, { skip } = {}) {
     const { files, texts } = await allTexts();
     const before = files.map((f) => (f === to ? from : f));
-    const changed = []; changed.failed = [];
+    const changed = []; changed.failed = []; changed.skipped = [];
     for (let i = 0; i < files.length; i++) {
       if (!texts[i] || !/\[\[|\{\{/.test(texts[i])) continue;
       const next = rewriteRefs(texts[i], before[i], from, to, before);
       if (next === texts[i]) continue;
+      if (skip?.(files[i], before[i])) { changed.skipped.push(files[i]); continue; }
       try { if (onBefore) await onBefore(files[i], texts[i]); await writeAtomic(resolve(files[i]), next); changed.push(files[i]); } catch { changed.failed.push(files[i]); }
     }
     return changed;
@@ -253,11 +255,13 @@ export function createNotes(getRoot) {
     files.forEach((f, i) => { if (f === want || !/\.(md|markdown|mdx|txt)$/i.test(f)) return; for (const m of findMentions(texts[i], name)) if (out.length < 300) out.push({ path: f, name, ...m }); });
     return out;
   }
+  const isDayRef = (t) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(t).split('#')[0].trim()); if (!m) return false; const d = new Date(0); d.setUTCFullYear(+m[1], +m[2] - 1, +m[3]); return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]; };
   async function brokenLinks(only) {
     const { files, texts } = await allTexts(); const out = [];
     files.forEach((f, i) => {
       if (only && f !== relOf(resolve(only))) return;
-      for (const r of findRefs(texts[i])) if (r.target && !resolveTarget(r.target, files, f)) out.push({ path: f, line: texts[i].slice(0, r.start).split('\n').length, ref: r.raw });
+      // a day link ([[2026-11-23]]) is a date, not a missing page: its daily note is made when it is first opened
+      for (const r of findRefs(texts[i])) if (r.target && !isDayRef(r.target) && !resolveTarget(r.target, files, f)) out.push({ path: f, line: texts[i].slice(0, r.start).split('\n').length, ref: r.raw });
     });
     return out;
   }

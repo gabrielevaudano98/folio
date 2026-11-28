@@ -3,6 +3,9 @@
 import { t as tr, tl } from './i18n.js';
 import { parseProps, setProp, removeProp, renameProp, newKey, TYPES } from './page-props.js';
 import { popupMenu } from './page-table.js';
+import { openEmojiPicker } from './page-icon.js';
+/* the page icon (Notion): front matter `icon:`, drawn above the title, not listed with the properties */
+const ICON_KEY = 'icon';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TYPE_LABEL = { text: tr('props.text'), number: 'Number', checkbox: 'Checkbox', date: 'Date', datetime: tl('props', 'Date and time'), list: 'List', tags: 'Tags', link: tl('props', 'Link to a page'), object: tl('props', 'Nested (edit in source)') };
@@ -19,12 +22,12 @@ const convert = (v, t) => {
   return one === true ? 'true' : one === false ? 'false' : String(one ?? '');
 };
 
-export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType }) {
+export function mountProps(page, { icons, get, set, tags = async () => [], onLink, onTag, onAdded, onType, locked = () => false }) {
   const box = document.createElement('section'); box.className = 'props'; box.setAttribute('aria-label', tl('props', 'Properties'));
   page.prepend(box);
   let open = true, adding = null;
   const ic = (n) => icons[n] || '';
-  const commit = (fn) => { const before = get(); const after = fn(before); if (after !== before) set(after); render(); };
+  const commit = (fn) => { if (locked()) return render(); const before = get(); const after = fn(before); if (after !== before) set(after); render(); };
 
   const valueHtml = (p) => {
     const id = `prop-${p.key.replace(/\W+/g, '-')}`;
@@ -42,9 +45,13 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   };
 
   function render() {
-    const p = parseProps(get());
+    const all = parseProps(get()); const iconProp = all.props.find((x) => x.key === ICON_KEY && !x.readOnly && typeof x.value === 'string' && x.value.trim());
+    const p = { ...all, props: all.props.filter((x) => x !== iconProp) };
     box.classList.toggle('is-empty', !p.props.length && !adding);
-    box.innerHTML = `${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
+    box.classList.toggle('has-icon', !!iconProp);
+    box.innerHTML = `${iconProp ? `<button type="button" class="page-icon" aria-label="${esc(tr('icon.change'))}" title="${esc(tr('icon.change'))}">${esc(iconProp.value.trim())}</button>` : ''}
+      <div class="page-head-actions">${iconProp ? '' : `<button type="button" class="props-icon-add">${ic('smile') || ic('plus')}<span>${esc(tr('icon.add'))}</span></button>`}</div>
+      ${p.props.length ? `<button type="button" class="props-head" aria-expanded="${open}">${ic('chevron')}<span>${tr('props.properties')}</span><span class="props-count">${p.props.length}</span></button>` : ''}
       <div class="props-rows"${open ? '' : ' hidden'}>${p.props.map((x) => `<div class="prop-row" data-key="${esc(x.key)}" data-type="${x.type}">
         <button type="button" class="prop-key" aria-haspopup="menu" aria-label="${esc(x.key)}: ${TYPE_LABEL[x.type]}. Change type, rename or remove" data-tip="${TYPE_LABEL[x.type]}">${ic(TYPE_ICON[x.type])}<span>${esc(x.key)}</span></button>
         <div class="prop-value">${valueHtml(x)}</div></div>`).join('')}
@@ -53,6 +60,7 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
       <button type="button" class="props-add"${open || !p.props.length ? '' : ' hidden'}>${ic('plus')}<span>${tr('props.add-property')}</span></button>
       <datalist id="prop-tag-list"></datalist>`;
     if (adding) { const k = box.querySelector('.prop-new-key'); k.focus(); k.select(); }
+    if (locked()) box.querySelectorAll('input, .prop-key, .page-icon').forEach((el) => { el.disabled = true; }); // X3: read, not changed
   }
 
   const keyOf = (el) => el.closest('.prop-row')?.dataset.key;
@@ -76,12 +84,14 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
 
   box.addEventListener('click', (e) => {
     if (e.target.closest('.props-head')) { open = !open; render(); return; }
-    if (e.target.closest('.props-add')) { open = true; adding = newKey(get()); render(); return; }
+    const pi = e.target.closest('.page-icon, .props-icon-add');
+    if (pi) { const had = !!e.target.closest('.page-icon'); const back = () => box.querySelector('.page-icon, .props-icon-add')?.focus(); openEmojiPicker(pi, { onPick: (em) => { commit((t) => setProp(t, ICON_KEY, em, 'text')); back(); }, onRemove: had ? () => { commit((t) => removeProp(t, ICON_KEY)); back(); } : null }); return; }
+    if (e.target.closest('.props-add')) { if (locked()) return; open = true; adding = newKey(get()); render(); return; }
     const rm = e.target.closest('[data-remove]');
     if (rm) { const key = keyOf(rm); const p = propOf(key); const list = p.value.filter((_, i) => i !== +rm.dataset.remove); commit((t) => setProp(t, key, list, p.type)); return; }
     const tag = e.target.closest('[data-tag]'); if (tag) { onTag?.(tag.dataset.tag); return; }
-    const link = e.target.closest('.prop-link');
-    if (link) { if (e.ctrlKey || e.metaKey) onLink?.(link.dataset.link); else { link.hidden = true; const i = link.parentElement.querySelector('input'); i.hidden = false; i.focus(); } return; }
+    const link = e.target.closest('.prop-link'); // on a locked page a plain click opens the page: there is nothing to edit
+    if (link) { if (e.ctrlKey || e.metaKey || locked()) onLink?.(link.dataset.link); else { link.hidden = true; const i = link.parentElement.querySelector('input'); i.hidden = false; i.focus(); } return; }
     const key = e.target.closest('.prop-key');
     if (key && !key.closest('.is-new')) openMenu(key);
   });
@@ -134,5 +144,5 @@ export function mountProps(page, { icons, get, set, tags = async () => [], onLin
   }
 
   render();
-  return { render, add() { open = true; adding = newKey(get()); render(); }, el: box };
+  return { render, pickIcon() { const b = box.querySelector('.page-icon, .props-icon-add'); if (b) b.click(); }, add() { if (locked()) return; open = true; adding = newKey(get()); render(); }, el: box };
 }

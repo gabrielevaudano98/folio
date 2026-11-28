@@ -29,7 +29,7 @@ const steps = [
   { js: "document.querySelector('#dock-tab-info').click(); true", wait: 600 }, audit('light info'),
   { js: "document.querySelector('#dock-tab-outline').click(); true", wait: 300 },
   // keyboard: Alt+Enter on the status chip opens its menu, arrows move, a letter jumps
-  { js: caretIn('.rich-status', 12), wait: 300 },
+  { js: caretIn('.rich-chip-src', 12), wait: 300 },
   { js: altEnter, wait: 500 },
   { js: "(() => { const items = [...document.querySelectorAll('#menu .menu-item')]; return [items.length > 1, document.activeElement === items[0], document.querySelector('#menu').getAttribute('role')]; })()", log: true, wait: 100 },
   { js: key('ArrowDown'), wait: 100 },
