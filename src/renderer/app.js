@@ -210,6 +210,34 @@ async function boot() {
     try { const rel = await folio.saveImage(t.path, file.name || 'pasted.png', new Uint8Array(await file.arrayBuffer())); rich.editor.chain().focus().setImage({ src: encodeURI(rel), alt: 'image' }).run(); }
     catch (er) { toast(tr('app.could-not-save-the-image-message', { message: er.message }), { kind: 'error' }); }
   }, true);
+  /* files dropped from the system onto a page (Notion): copied into the page's .asset folder; pictures are shown, other files
+     become a link that reads as a file card. Dropped on the page, they land where they were let go. */
+  const fileDrag = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  $('#pane-rich').addEventListener('dragover', (e) => { if (!fileDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; $('#pane-rich').classList.add('is-file-drop'); }, true);
+  $('#pane-rich').addEventListener('dragleave', (e) => { if (!e.relatedTarget || !$('#pane-rich').contains(e.relatedTarget)) $('#pane-rich').classList.remove('is-file-drop'); }, true);
+  $('#pane-rich').addEventListener('drop', async (e) => {
+    $('#pane-rich').classList.remove('is-file-drop');
+    const files = [...(e.dataTransfer?.files || [])]; if (!files.length) return;
+    e.preventDefault(); e.stopPropagation();
+    const t = activeTab(); if (!t || !isRich()) return;
+    if (isLocked(t.path)) return toast(tr('app.this-page-is-locked'));
+    const at = rich.editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+    const lines = [], failed = [];
+    for (const f of files) {
+      try {
+        const rel = await folio.saveImage(t.path, f.name || 'file', new Uint8Array(await f.arrayBuffer()));
+        const name = (f.name || 'file').replace(/[\[\]]/g, '');
+        lines.push(f.type.startsWith('image/') ? `![${name.replace(/\.\w+$/, '')}](${encodeURI(rel)})` : `[${name}](${encodeURI(rel)})`);
+      } catch (er) { failed.push(er.message); }
+    }
+    if (failed.length) toast(tr('app.could-not-save-the-image-message', { message: failed[0] }), { kind: 'error' });
+    if (!lines.length || S.active !== t.path || !isRich()) return;
+    if (at) { // a new empty line under the block where they were let go, so the files never split a sentence
+      const ed = rich.editor, $p = ed.state.doc.resolve(at.pos); const after = $p.depth ? $p.after(1) : at.pos;
+      ed.view.dispatch(ed.state.tr.insert(after, ed.state.schema.nodes.paragraph.create())); ed.commands.setTextSelection(after + 1);
+    }
+    rich.insertMarkdown(lines.join('\n\n'));
+  }, true);
   $('.rich-scroll').addEventListener('scroll', () => { if (isRich()) markOutlineCurrent(); }, { passive: true });
   /* quiet chrome while writing (Notion, iA Writer): typing fades the ribbon and the side panels; the pointer brings them back */
   let lastXY = null;
@@ -386,7 +414,10 @@ async function renderInfo(refetch) {
   if (!t) { el.innerHTML = `<p class="info-empty">${esc(tr('info.empty'))}</p>`; return; }
   if (refetch || !(t.path in infoFile)) infoFile[t.path] = await folio.info(t.path).catch(() => null);
   if (activeTab()?.path !== t.path || app.dataset.dock !== 'info') return;
+  const bl = curType() === 'md' ? await folio.backlinks(t.path).then((l) => l.length, () => 0) : 0;
+  if (activeTab()?.path !== t.path || app.dataset.dock !== 'info') return;
   const rows = infoRows(curType() === 'md' ? docInfo(t.text) : { words: 0, chars: 0, minutes: 1, tasks: { done: 0, open: 0 }, bytes: new TextEncoder().encode(t.text).length }, t.path, infoFile[t.path]);
+  if (bl) rows.splice(rows.findIndex(([k]) => k === tr('info.path')), 0, [tr('info.backlinks'), String(bl)]);
   const shown = curType() === 'md' ? rows : rows.filter(([k]) => [tr('info.path'), tr('info.size'), tr('info.changed'), tr('info.created')].includes(k));
   el.innerHTML = `<h2 class="side-head">${esc(tr('info.title'))}</h2><dl class="info-list">${shown.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
 }
@@ -2124,6 +2155,7 @@ const COMMANDS = [
   { id: 'duplicate', title: 'Duplicate note', run: () => S.active && duplicatePath(S.active, false) },
   { id: 'move-to', title: 'Move note to…', run: () => S.active && moveToPicker(S.active, false) },
   { id: 'copy-page-link', title: 'Copy link to note', run: () => copyPageLink(S.active) },
+  { id: 'page-info', title: 'Page info', run: () => { if (S.active) setDock('info', { focus: true }); } },
   { id: 'toggle-favorite', title: 'Add to or remove from Favorites', run: () => toggleFav(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
@@ -2619,7 +2651,8 @@ function bindChrome() {
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
     ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
       { label: tr('app.copy-link'), run: () => copyPageLink(S.active) },
-      { label: tr(isFav(S.active) ? 'app.fav-remove' : 'app.fav-add'), run: () => toggleFav(S.active) }] : []),
+      { label: tr(isFav(S.active) ? 'app.fav-remove' : 'app.fav-add'), run: () => toggleFav(S.active) },
+      { label: tr('app.page-info'), run: () => setDock('info', { focus: true }) }] : []),
     ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('appearance.menu'), run: () => openPageAppearance($('#btn-more')) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },

@@ -1681,6 +1681,7 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 .rich-tag, .md-tag { cursor: pointer; }
 /* the Reminders section (X13): grey interface; an overdue reminder is marked with weight and a word, not a colour */
 .side-reminders { margin-top: var(--space-sm, 12px); }
+.is-file-drop { outline: 2px dashed var(--color-focus); outline-offset: -4px; }
 .side-quick { margin-bottom: var(--space-sm, 12px); }
 .quick-list[hidden] { display: none; }
 .quick-item { display: flex; align-items: center; gap: 2px; border-radius: var(--radius-sm); }

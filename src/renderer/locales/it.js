@@ -58,6 +58,8 @@ export default {
   'ui.no-folder': 'Nessuna cartella',
   'ui.results': 'Risultati',
   'ui.tags': 'Tag',
+  'info.backlinks': 'Backlink',
+  'app.page-info': 'Info pagina',
   'ui.favorites': 'Preferiti',
   'ui.recents': 'Recenti',
   'app.fav-add': 'Aggiungi ai Preferiti',

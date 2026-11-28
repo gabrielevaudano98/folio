@@ -62,6 +62,8 @@ export default {
   'ui.no-folder': 'No folder',
   'ui.results': 'Results',
   'ui.tags': 'Tags',
+  'info.backlinks': 'Backlinks',
+  'app.page-info': 'Page info',
   'ui.favorites': 'Favorites',
   'ui.recents': 'Recent',
   'app.fav-add': 'Add to Favorites',
