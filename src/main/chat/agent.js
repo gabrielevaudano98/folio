@@ -7,10 +7,17 @@ const clip = (s) => (s.length > LIMITS.toolResultChars ? s.slice(0, LIMITS.toolR
 
 /** drops the oldest tool results from a copy of the messages until the text fits the budget */
 export function fitContext(messages, budget = LIMITS.contextChars) {
+  const shrink = (v) => (typeof v === 'string' && v.length > 500 ? v.slice(0, 200) + ' […older text removed to save space]' : v);
   const size = (m) => (m.text?.length || 0) + (m.results?.reduce((n, r) => n + r.text.length, 0) || 0) + (m.toolCalls ? JSON.stringify(m.toolCalls).length : 0);
   let total = messages.reduce((n, m) => n + size(m), 0);
   if (total <= budget) return messages;
   const out = messages.map((m) => (m.role === 'tool' ? { ...m, results: m.results.map((r) => ({ ...r })) } : m));
+  for (let i = 0; i < out.length - 1 && total > budget; i++) { // note bodies the assistant wrote earlier are the other big part
+    const m = out[i]; if (m.role !== 'assistant' || !m.toolCalls?.length) continue;
+    const before = JSON.stringify(m.toolCalls).length;
+    out[i] = { ...m, toolCalls: m.toolCalls.map((c) => ({ ...c, args: Object.fromEntries(Object.entries(c.args || {}).map(([k, v]) => [k, shrink(v)])) })) };
+    total -= before - JSON.stringify(out[i].toolCalls).length;
+  }
   for (const m of out) {
     if (total <= budget) break;
     if (m.role !== 'tool') continue;
@@ -71,9 +78,10 @@ export function createAgent(d) {
               if (answer === 'deny') { d.emit({ ...base, status: 'denied', detail: 'You declined' }); results.push(res('The person declined this step. Do not retry it; ask what they want instead.', true)); continue; }
               if (answer === 'chat' && verdict.remember) conv.grants = { ...conv.grants, overwrites: true };
             }
+            if (signal?.aborted) { results.push(res('Stopped by the person.', true)); continue; } // Stop may have arrived while the step was being judged
             try {
               d.emit({ ...base, status: 'run' });
-              const out = asText(await d.runTool(c.name, c.args || {}, c.id));
+              const out = asText(await d.runTool(c.name, c.args || {}, c.id, { create: !!verdict.create }));
               if (c.name === 'move_note') moves++;
               d.emit({ ...base, status: 'done', detail: out.slice(0, 200) });
               results.push(res(out));

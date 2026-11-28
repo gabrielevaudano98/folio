@@ -1,8 +1,8 @@
 // Folio — the chat's system prompt. Pure: tested in test/chat.test.mjs.
 export function buildSystem({ instructions, folderName, files, more, open, today, writeAllowed }) {
-  const list = files.length ? files.map((f) => `- ${f}`).join('\n') : '(no notes yet)';
+  const list = files.length ? files.map((f) => `- ${JSON.stringify(String(f))}`).join('\n') : '(no notes yet)';
   return [
-    `You are Folio's chat assistant, working inside one folder of Markdown notes called "${folderName}". Today is ${today}.`,
+    `You are Folio's chat assistant, working inside one folder of Markdown notes called ${JSON.stringify(String(folderName))}. Today is ${today}.`,
     `You help the person plan, write, organise and manage this folder. Use the tools to read and change it; never guess what a note says, read it.`,
     `How to work:
 - Prefer small exact edits (edit_note, append_to_note, insert_after, replace_section) over rewriting a note; the person's formatting must survive.

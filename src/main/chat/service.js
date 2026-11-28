@@ -1,7 +1,7 @@
 // Folio — chat mode in the main process: settings, keys, conversations, the agent run and the IPC the window uses.
 // The agent calls tools through the same backend as an outside MCP client, so every guard (workspace boundary, locks,
 // "Let AI edit notes", version history, the live ai:edit highlight and undo) applies unchanged.
-import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import { z } from 'zod';
 import { PROVIDERS, DEFAULT_MODEL, createProvider, checkEndpoint } from './providers.js';
 import { createKeyStore } from './keystore.js';
@@ -26,12 +26,16 @@ export function createChat({ h, getWin, settings, saveSettings, notes, backend, 
 
   const preview = (a) => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, typeof v === 'string' && v.length > 300 ? v.slice(0, 300) + '…' : v]));
   let cur = null, run = null; const approvals = new Map();
+  const isDir = async (p) => { try { return (await fs.stat(notes.resolve(p))).isDirectory(); } catch { return false; } };
   const exists = async (p) => { try { notes.resolve(p); return !!(await notes.read(p).then(() => true, () => false)); } catch { return false; } };
 
-  async function runTool(name, args, callId) {
+  async function runTool(name, args, callId, opts = {}) {
+    if (run?.root !== settings.workspace) throw new Error('The folder changed while the chat was working, so this step was not run.');
+    if (opts.create && name === 'write_note') name = 'create_note'; // judged as a new note: never replaces one that appeared meanwhile
     const chatTool = CHAT_TOOLS.find((t) => t.name === name);
     if (!chatTool) return backend.call(name, args, { client: CLIENT });
     if (!settings.workspace) throw new Error('No folder is open in Folio.');
+    if (!settings.allowWrite) throw new Error('Folio is set to read-only for AI. Turn on "Let AI edit notes" to let the chat change files.');
     assertUnlocked(chatTool, args, { notes, lockedPages: settings.lockedPages, workspace: settings.workspace });
     guardAsset(args.path);
     return runChatTool(name, args, { mkdir, trash, onTrashed: (rel, token) => send(cur?.id, { type: 'trashed', id: callId, path: rel, token }) });
@@ -41,7 +45,7 @@ export function createChat({ h, getWin, settings, saveSettings, notes, backend, 
     provider: () => run.provider, tools: wire, runTool, classify,
     ask: (req) => new Promise((resolve) => { approvals.set(req.id, resolve); send(cur.id, { type: 'approval', ...req, args: preview(req.args) }); }),
     emit: (ev) => send(cur?.id, ev), save: (c) => store.save(c),
-    allowWrite: () => !!settings.allowWrite, exists,
+    allowWrite: () => !!settings.allowWrite, exists, isDir,
   });
 
   function providerNow(key) {
@@ -63,13 +67,13 @@ export function createChat({ h, getWin, settings, saveSettings, notes, backend, 
   h('chat:state', state);
   h('chat:config', async (patch = {}) => {
     const c = settings.chat;
-    if (patch.provider !== undefined) { if (!PROVIDERS[patch.provider]) throw new Error('Unknown provider.'); c.provider = patch.provider; }
+    if (patch.provider !== undefined) { if (!Object.hasOwn(PROVIDERS, patch.provider)) throw new Error('Unknown provider.'); c.provider = patch.provider; }
     if (patch.model !== undefined) c.models[patch.provider || c.provider] = String(patch.model).trim().slice(0, 120);
     if (patch.openaiBase !== undefined) c.openaiBase = patch.openaiBase ? checkEndpoint(patch.openaiBase) : '';
     saveSettings(); return state();
   });
-  h('chat:key-set', async (provider, key) => { if (!PROVIDERS[provider]) throw new Error('Unknown provider.'); await keys.set(provider, key); return state(); });
-  h('chat:key-remove', async (provider) => { await keys.remove(provider); return state(); });
+  h('chat:key-set', async (provider, key) => { if (!Object.hasOwn(PROVIDERS, provider)) throw new Error('Unknown provider.'); await keys.set(provider, key); return state(); });
+  h('chat:key-remove', async (provider) => { if (!Object.hasOwn(PROVIDERS, provider)) throw new Error('Unknown provider.'); await keys.remove(provider); return state(); });
   h('chat:key-test', async () => {
     const r = await providerNow(await needKey()).stream({ system: 'Reply with the single word: ok', messages: [{ role: 'user', text: 'ping' }], tools: [] });
     return { ok: true, text: r.text.slice(0, 40) };
@@ -89,15 +93,18 @@ export function createChat({ h, getWin, settings, saveSettings, notes, backend, 
     text = String(text || '').trim(); if (!text) throw new Error('Write a message first.');
     if (run) throw new Error('Still answering. Stop it first.');
     if (!settings.workspace) throw new Error('Open a folder first: the chat works on one folder.');
-    const provider = providerNow(await needKey());
+    const ctrl = new AbortController(); run = { ctrl, root: settings.workspace, provider: null }; // reserved before any await, so two sends cannot both start
+    let provider; try { provider = providerNow(await needKey()); } catch (e) { run = null; throw e; }
     cur = cur || store.create();
+    let system;
+    try {
     const [list, open] = await Promise.all([notes.list({ limit: 301 }).catch(() => []), askOpenNote().catch(() => null)]);
-    const system = buildSystem({
+    system = buildSystem({
       instructions: String(settings.chatInstructions?.[settings.workspace] || '').slice(0, 4000), folderName: settings.workspace.split(/[\\/]/).pop(),
       files: list.slice(0, 300).map((f) => f.path), more: list.length > 300, open: open?.path || '', today: new Date().toISOString().slice(0, 10), writeAllowed: !!settings.allowWrite,
     });
-    const ctrl = new AbortController(); const conv = cur;
-    run = { provider, ctrl };
+    } catch (e) { run = null; throw e; }
+    const conv = cur; run.provider = provider;
     send(conv.id, { type: 'start', title: conv.title });
     agent.run(conv, text, { system, signal: ctrl.signal }).catch((e) => send(conv.id, { type: 'error', message: e.message })).finally(() => { for (const r of approvals.values()) r('deny'); approvals.clear(); run = null; send(conv.id, { type: 'idle', title: conv.title }); });
     return { id: conv.id };

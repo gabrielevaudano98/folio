@@ -64,7 +64,7 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
     card.innerHTML = `<p class="chat-approve-title">${esc(ev.reason || '')}</p><p class="chat-approve-target">${esc(target)}</p>${ev.args?.reason ? `<p class="chat-approve-why">${esc(ev.args.reason)}</p>` : ''}
       <div class="chat-approve-btns"><button class="btn" type="button" data-answer="once">${esc(tr('chat.allow-once'))}</button>${ev.remember ? `<button class="btn" type="button" data-answer="chat">${esc(tr('chat.allow-chat'))}</button>` : ''}<button class="btn btn-quiet" type="button" data-answer="deny">${esc(tr('chat.deny'))}</button></div>`;
     el.after(card); card.querySelector('button').focus({ preventScroll: false });
-    card.onclick = async (e) => { const b = e.target.closest('[data-answer]'); if (!b) return; card.remove(); try { await folio.chat.approve(ev.id, b.dataset.answer); } catch (er) { toast(er.message, { kind: 'error' }); } };
+    card.onclick = async (e) => { const b = e.target.closest('[data-answer]'); if (!b) return; card.remove(); (log.querySelector('.chat-approve [data-answer]') || input).focus(); try { await folio.chat.approve(ev.id, b.dataset.answer); } catch (er) { toast(er.message, { kind: 'error' }); } };
     scroll.scrollTop = scroll.scrollHeight;
   }
   const line = (text, cls = 'chat-sys') => add(esc(text), cls);
@@ -140,8 +140,8 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
   $('#chat-new').onclick = async () => { try { await folio.chat.newChat(); await showConversation(null); await refresh(); input.focus(); } catch (e) { toast(e.message, { kind: 'error' }); } };
   $('#chat-history').onclick = (e) => {
     const list = st?.conversations || []; document.querySelector('.chat-menu')?.remove();
-    const m = document.createElement('div'); m.className = 'chat-menu'; m.setAttribute('role', 'menu');
-    m.innerHTML = list.length ? list.map((c) => `<div class="chat-menu-row"><button type="button" role="menuitem" data-conv="${esc(c.id)}">${esc(c.title || tr('chat.untitled'))}</button><button class="icon-btn" type="button" data-del="${esc(c.id)}" aria-label="${esc(tr('chat.delete'))}">${icons.close}</button></div>`).join('') : `<p class="chat-menu-empty">${esc(tr('chat.no-conversations'))}</p>`;
+    const m = document.createElement('div'); m.className = 'chat-menu'; m.setAttribute('aria-label', tr('chat.conversations'));
+    m.innerHTML = list.length ? list.map((c) => `<div class="chat-menu-row"><button type="button" data-conv="${esc(c.id)}">${esc(c.title || tr('chat.untitled'))}</button><button class="icon-btn" type="button" data-del="${esc(c.id)}" aria-label="${esc(tr('chat.delete'))}">${icons.close}</button></div>`).join('') : `<p class="chat-menu-empty">${esc(tr('chat.no-conversations'))}</p>`;
     root.appendChild(m); const close = (ev) => { if (!m.contains(ev.target)) { m.remove(); document.removeEventListener('pointerdown', close, true); } }; setTimeout(() => document.addEventListener('pointerdown', close, true));
     m.onclick = async (ev) => {
       const o = ev.target.closest('[data-conv]'), d = ev.target.closest('[data-del]');
@@ -150,7 +150,7 @@ export function createChat({ folio, host, toast, openSettings, openNote, setLayo
         else if (d) { await folio.chat.delete(d.dataset.del); d.closest('.chat-menu-row').remove(); if (convId === d.dataset.del) { await showConversation(null); } await refresh(); }
       } catch (er) { toast(er.message, { kind: 'error' }); }
     };
-    m.querySelector('button')?.focus(); m.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { m.remove(); $('#chat-history').focus(); } });
+    m.querySelector('button')?.focus(); m.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { m.remove(); document.removeEventListener('pointerdown', close, true); $('#chat-history').focus(); } });
   };
   root.addEventListener('click', async (e) => {
     const t = e.target;

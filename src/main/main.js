@@ -571,7 +571,12 @@ chat = createChat({
   h, getWin: () => win, settings, saveSettings, notes, backend: appBackend, TOOLS, safeStorage, guardAsset,
   keyFile: () => path.join(app.getPath('userData'), 'ai-keys.json'),
   mkdir: async (rel) => { guardAsset(rel); await fs.mkdir(notes.resolve(rel, { notRoot: true }), { recursive: true }); },
-  trash: trashPath, askOpenNote: () => askRenderer('open-note', null, 800),
+  trash: async (rel) => { // the chat deletes notes and folders, never other kinds of file
+    const st = await fs.stat(notes.resolve(rel, { notRoot: true })).catch(() => null);
+    if (!st) throw new Error('That path does not exist.');
+    if (!st.isDirectory() && !NOTE_EXT.includes(path.extname(rel).toLowerCase())) throw new Error('Only notes and folders can be deleted from the chat.');
+    return trashPath(rel);
+  }, askOpenNote: () => askRenderer('open-note', null, 800),
 });
 
 function tokenOk(header) {

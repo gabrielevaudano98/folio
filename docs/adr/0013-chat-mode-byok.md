@@ -21,8 +21,9 @@ and it needs an AI account without Folio running a service.
 
 The loop lives in `src/main/chat/`. It calls Anthropic, OpenAI (and compatible endpoints) and Google directly with the
 person's own key, stored with `safeStorage`, and runs tools through `appBackend.call`, so each existing guard applies.
-Risky steps need approval by a pure policy (`policy.js`). Subscriptions are not used: Anthropic and Google forbid it in
-third-party apps and OpenAI's route is unverified (see the provider matrix in [chat mode](../explanation/chat-mode.md)).
+Risky steps need approval by a pure policy (`policy.js`). Subscriptions are not used in phase 1: per the sources read so far, Anthropic and Google do not allow third-party sign-in and
+OpenAI allows it only for partners and open-source tools (see the provider matrix, with what was and was not read, in
+[chat mode](../explanation/chat-mode.md)).
 
 ## Consequences
 

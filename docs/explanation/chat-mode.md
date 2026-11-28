@@ -49,10 +49,11 @@ The classification is a pure function (`src/main/chat/policy.js`), tested on its
 | Step | Decision | Why |
 |---|---|---|
 | Read, list, search, outline, links, versions | auto | no change |
-| Create a note or folder, append, insert, edit text, comment, suggest, slide/board/sheet edits | auto | small, shown live, undo, kept in history |
+| Create a note, append, insert, edit text, comment, suggest, slide/board/sheet edits | auto | small, shown live, undo, kept in history |
 | `write_note` over an existing note, `replace_section`, `restore_version` | ask | replaces content |
-| `delete_path` (note or folder) | ask, every time | goes to the system Trash; a session copy allows restore |
-| `move_note` | auto for the first two moves of a turn, ask from the third | bulk reorganisation |
+| `delete_path` (note or folder; other file types are refused) | ask, every time | goes to the system Trash |
+| `create_folder` | auto | an empty folder; no content to lose (no version entry, so no undo; the person can delete it) |
+| `move_note` | auto for the first two file moves of a turn; ask for a folder or from the third | bulk reorganisation |
 | Any path outside the folder, hidden path, other file type | deny | no approval can lift it; `resolve()` refuses it |
 | Anything when "Let AI edit notes" is off | deny (read-only) | invariant 3; the chat offers a button to turn it on |
 

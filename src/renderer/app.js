@@ -1845,18 +1845,24 @@ function chatMod() {
 }
 const chatLayout = () => (S.settings.chatLayout === 'dock' ? 'dock' : 'full');
 const appMode = () => (S.workspace && S.settings.chatModes?.[S.workspace] === 'chat' ? 'chat' : 'work');
+let chatShown = { mode: 'work', ws: null };
 function applyAppMode() {
   const mode = appMode(), layout = chatLayout();
   app.dataset.appMode = mode; app.dataset.chatLayout = layout;
   $('#chat').hidden = mode !== 'chat'; $('#chat').dataset.folder = S.workspace ? S.workspace.split(/[\\/]/).filter(Boolean).pop() : '';
   $$('#mode-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.setMode === mode)));
-  if (mode === 'chat') chatMod().then(({ view }) => { view.paintLayoutBtn(); return view.show(); }).catch((e) => toast(e.message, { kind: 'error' }));
+  // the work surface is out of reach (not just out of sight) while the chat covers it
+  for (const sel of ['#pane-rich', '#pane-editor', '#pane-preview', '#pane-surface', '#outline', '#history', '#pane-divider']) { const el = $(sel); if (el) el.inert = mode === 'chat' && layout === 'full'; }
+  const entered = mode === 'chat' && (chatShown.mode !== 'chat' || chatShown.ws !== S.workspace); chatShown = { mode, ws: S.workspace };
+  if (mode === 'chat') chatMod().then(({ view }) => { view.paintLayoutBtn(); if (entered) return view.show(); }).catch((e) => toast(e.message, { kind: 'error' })); // the composer takes focus on entering, not on every layout change
   layoutPanes();
 }
+let modeWrite = Promise.resolve();
 async function setAppMode(mode) {
   if (mode === 'chat' && !S.workspace) { toast(tr('chat.open-folder-first')); return; }
   if (!S.workspace) return;
-  await saveSetting({ chatModes: { ...(S.settings.chatModes || {}), [S.workspace]: mode } });
+  const ws = S.workspace; modeWrite = modeWrite.then(() => saveSetting({ chatModes: { ...(S.settings.chatModes || {}), [ws]: mode } })).catch(() => {}); // one at a time, each built on the last saved map
+  await modeWrite;
   applyAppMode();
 }
 async function setChatLayout(layout) { await saveSetting({ chatLayout: layout }); applyAppMode(); }
@@ -2518,6 +2524,8 @@ function bindChrome() {
   $('#st-words').addEventListener('click', () => { if (isRich() && curType() === 'md') rich.run('counts', $('#st-words')); });
   $('#ai-status').onclick = openAiSheet;
   $('#mode-switch').onclick = (e) => { const b = e.target.closest('[data-set-mode]'); if (b) setAppMode(b.dataset.setMode).catch((er) => toast(er.message, { kind: 'error' })); };
+  $('#mode-switch').onkeydown = (e) => { if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return; e.preventDefault(); const next = appMode() === 'chat' ? 'work' : 'chat'; setAppMode(next).catch((er) => toast(er.message, { kind: 'error' })); $(`#mode-switch [data-set-mode="${next}"]`).focus(); };
+  $('#chat').addEventListener('folio:allow-write', async () => { S.mcp = await folio.mcpStatus().catch(() => S.mcp); renderAiStatus(); });
   $('#chat').addEventListener('folio:tree-dirty', () => refreshTree().catch(() => {}));
   $('#view-switch').onclick = (e) => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); };
   $('#view-switch').onkeydown = (e) => {

@@ -21,7 +21,7 @@ const server = http.createServer((req, res) => {
   let body = ''; req.on('data', (c) => (body += c)); req.on('end', () => {
     const b = body ? JSON.parse(body) : {}; seen.push({ url: req.url, headers: req.headers, body: b });
     const send = (events) => { res.writeHead(200, { 'content-type': 'text/event-stream' }); for (const e of events) res.write(`data: ${JSON.stringify(e)}\n\n`); res.end(); };
-    if (req.url === '/bad') { res.writeHead(401, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ error: { message: 'invalid x-api-key' } })); }
+    if (req.url.startsWith('/bad')) { res.writeHead(401, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ error: { message: `invalid key ${req.headers['x-api-key'] || req.headers.authorization}` } })); } // echoes the key back
     if (req.url.startsWith('/v1/messages')) return send([
       { type: 'message_start', message: { usage: { input_tokens: 7 } } },
       { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
@@ -60,7 +60,7 @@ const history = [{ role: 'user', text: 'q' }, { role: 'assistant', text: 'a', to
 {
   const p = createProvider({ provider: 'google', key: 'g-key', model: 'gem', baseUrl: base });
   const r = await p.stream({ system: 'sys', messages: history, tools });
-  assert.equal(r.text, 'Yo'); assert.deepEqual(r.toolCalls, [{ id: 'call_0', name: 'read_note', args: { path: 'a.md' } }]); assert.equal(r.stop, 'tools');
+  assert.equal(r.text, 'Yo'); assert.deepEqual(r.toolCalls.map((c) => [c.name, c.args]), [['read_note', { path: 'a.md' }]]); assert.match(r.toolCalls[0].id, /^g.+_0$/, 'ids are unique per answer'); assert.equal(r.stop, 'tools');
   const s = seen.at(-1); assert.equal(s.headers['x-goog-api-key'], 'g-key'); assert.ok(!s.url.includes('g-key'), 'the key is a header, never in the address');
   const decl = s.body.tools[0].functionDeclarations[0].parameters; assert.equal(decl.$schema, undefined); assert.equal(decl.additionalProperties, undefined); assert.equal(decl.properties.n.exclusiveMinimum, undefined);
   assert.equal(s.body.contents[2].parts[0].functionResponse.name, 'read_note');
@@ -72,7 +72,7 @@ const history = [{ role: 'user', text: 'q' }, { role: 'assistant', text: 'a', to
   const q = createProvider({ provider: 'openai', key: 'sk-SECRET2', model: 'm', baseUrl: base + '/bad/x' });
   assert.ok(e instanceof ProviderError); const e2 = await q.stream({ system: '', messages: [], tools: [] }).catch((x) => x);
   for (const x of [e, e2]) assert.ok(!/SECRET/.test(x.message), 'an error never contains the key');
-  assert.match(e2.message, /key was refused|HTTP 404/);
+  assert.match(e.message, /key was refused/); assert.match(e2.message, /key was refused/); assert.match(e.message, /\[key\]/, 'an echoed key is replaced');
   assert.throws(() => createProvider({ provider: 'anthropic', key: '', model: 'm' }), /API key/);
   assert.throws(() => createProvider({ provider: 'anthropic', key: 'k', model: '' }), /model/);
   assert.equal(createProvider({ provider: 'openai', key: '', model: 'llama', baseUrl: 'http://localhost:11434/v1' }) != null, true, 'a local model needs no key');
@@ -96,7 +96,8 @@ server.close();
   assert.equal((await classify({ name: 'read_note', write: false }, {}, ctx({ allowWrite: false }))).decision, 'auto');
   assert.equal((await classify(T('edit_note'), { path: 'a.md' }, ctx({ allowWrite: false }))).decision, 'deny');
   assert.equal((await classify(T('create_note'), {}, ctx())).decision, 'auto');
-  assert.equal((await classify(T('write_note'), { path: 'new.md' }, ctx())).decision, 'auto');
+  { const v = await classify(T('write_note'), { path: 'new.md' }, ctx()); assert.equal(v.decision, 'auto'); assert.equal(v.create, true, 'a new note is created exclusively'); }
+  assert.equal((await classify(T('move_note'), { from: 'dir' }, ctx({ isDir: async () => true }))).decision, 'ask', 'moving a folder asks');
   assert.equal((await classify(T('write_note'), { path: 'old.md' }, ctx())).decision, 'ask');
   assert.equal((await classify(T('write_note'), { path: 'old.md' }, ctx({ allowOverwrites: true }))).decision, 'auto');
   assert.equal((await classify(T('replace_section'), { path: 'old.md' }, ctx())).decision, 'ask');
@@ -114,7 +115,8 @@ server.close();
   const raw = await fs.readFile(file, 'utf8'); assert.ok(!raw.includes('abcdef1234') || raw.includes('"last4"'), 'only the last four characters are readable'); assert.ok(!raw.includes('sk-ant'), 'the key is not in the file as text');
   assert.equal(await ks.get('anthropic'), 'sk-ant-abcdef1234'); assert.deepEqual(await ks.status(), { anthropic: { has: true, last4: '1234' } });
   if (process.platform !== 'win32') assert.equal((await fs.stat(file)).mode & 0o777, 0o600);
-  await ks.remove('anthropic'); assert.equal(await ks.get('anthropic'), null);
+  await fs.writeFile(file, '{ not json'); await assert.rejects(ks.set('openai', 'sk-xyz1234'), /damaged/); assert.equal(await fs.readFile(file, 'utf8'), '{ not json', 'a damaged file is not overwritten'); assert.deepEqual(await ks.status(), {});
+  await fs.rm(file); await ks.set('anthropic', 'sk-ant-abcdef1234'); await ks.remove('anthropic'); assert.equal(await ks.get('anthropic'), null);
   await assert.rejects(createKeyStore({ file: () => file, safeStorage: fake(false) }).set('openai', 'k'), /secure place/);
   await assert.rejects(createKeyStore({ file: () => file, safeStorage: fake(true, 'basic_text') }).set('openai', 'k'), /secure place/);
   await assert.rejects(ks.set('openai', 'two words'), /does not look/);
@@ -138,6 +140,8 @@ server.close();
     assert.deepEqual(await fs.readdir(other), [], 'nothing written into the new folder'); assert.ok((await fs.readdir(path.join(root, '.folio', 'chat'))).includes(c2.id + '.json'));
     await st2.remove(c2.id); // removes from the current folder only: harmless
   }
+  { const b = await st.load(c.id); b.grants = { overwrites: true }; await st.save(b); assert.deepEqual((await st.load(c.id)).grants, {}, 'a stored grant is not trusted'); }
+  { const r2 = path.join(tmp, 'ws2'); await fs.mkdir(r2); await fs.symlink(tmp, path.join(r2, '.folio')); const st3 = createChatStore(() => r2); const c3 = st3.create(); c3.messages.push({ role: 'user', text: 'x' }); await assert.rejects(st3.save(c3), /link/); }
   await st.remove(c.id); assert.equal(await st.load(c.id), null);
   console.log('  ✓ conversations round-trip through .folio/chat, bad ids refused');
 }
@@ -148,6 +152,7 @@ server.close();
   const msgs = [{ role: 'user', text: 'hi' }, big(1), big(2), big(3)];
   const fit = fitContext(msgs, 1500);
   assert.match(fit[1].results[0].text, /removed/); assert.equal(fit[3].results[0].text.length, 1000, 'the newest result stays'); assert.equal(msgs[1].results[0].text.length, 1000, 'the stored conversation is not changed');
+  { const big = { role: 'assistant', text: '', toolCalls: [{ id: 'w', name: 'write_note', args: { path: 'a.md', content: 'y'.repeat(3000) } }] }; const f2 = fitContext([{ role: 'user', text: 'hi' }, big, { role: 'tool', results: [{ id: 'w', name: 'write_note', text: 'ok', isError: false }] }, { role: 'user', text: 'next' }], 1000); assert.ok(JSON.stringify(f2[1]).length < 1000, 'old note bodies are trimmed'); assert.equal(f2[1].toolCalls[0].args.path, 'a.md'); assert.equal(big.toolCalls[0].args.content.length, 3000); }
   const c = { messages: [{ role: 'assistant', text: '', toolCalls: [{ id: 'a', name: 'x' }] }] }; repair(c); assert.equal(c.messages.at(-1).role, 'tool');
   console.log('  ✓ old tool results are dropped from the context only, an unanswered tool call is closed');
 }

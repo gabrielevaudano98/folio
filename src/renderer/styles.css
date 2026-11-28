@@ -2067,6 +2067,7 @@ img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; out
 
 /* ---------- chat mode (docs/explanation/chat-mode.md) ---------- */
 .app { --chat-dock-w: clamp(280px, 38vw, 380px); }
+@media (max-width: 1000px) { .app { --chat-dock-w: clamp(260px, 32vw, 380px); } }
 .chat { display: none; }
 .app[data-app-mode="chat"] .chat:not([hidden]) { display: flex; flex-direction: column; position: absolute; z-index: calc(var(--z-raised) + 1); min-height: 0; min-width: 0; background: var(--color-paper); }
 .app[data-app-mode="chat"][data-chat-layout="full"] .chat { inset: 0; }

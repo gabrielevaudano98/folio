@@ -28,7 +28,7 @@ export function checkEndpoint(url) {
 async function* sse(res, signal) {
   const dec = new TextDecoder(); let buf = '';
   for await (const chunk of res.body) {
-    if (signal?.aborted) return;
+    if (signal?.aborted) throw Object.assign(new Error('The request was stopped.'), { name: 'AbortError' });
     buf += dec.decode(chunk, { stream: true });
     let i;
     while ((i = buf.search(/\r?\n\r?\n/)) >= 0) {
@@ -39,13 +39,14 @@ async function* sse(res, signal) {
   }
 }
 
-async function post(fetchImpl, url, headers, body, signal) {
+async function post(fetchImpl, url, headers, body, signal, secret) {
   let res;
   try { res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal }); }
   catch (e) { if (signal?.aborted) throw e; throw new ProviderError(`Could not reach the provider: ${e.cause?.code || e.message}`); }
   if (!res.ok) {
     let detail = ''; try { const j = await res.json(); detail = j?.error?.message || j?.message || ''; } catch { /* not json */ }
     const hint = res.status === 401 || res.status === 403 ? 'The key was refused. Check it in Settings → AI.' : res.status === 429 ? 'The provider says you are over a limit. Try again in a moment.' : res.status === 404 ? 'The provider does not know that model. Check the model name in Settings → AI.' : '';
+    if (secret) detail = String(detail).split(secret).join('[key]'); // a server must not be able to hand the key back through an error
     throw new ProviderError([hint, String(detail).slice(0, 300) || `HTTP ${res.status}`].filter(Boolean).join(' '), res.status);
   }
   return res;
@@ -63,11 +64,13 @@ function geminiSchema(s) {
   if (out.type === 'object' && !out.properties) out.properties = {};
   return out;
 }
+/** an assistant turn with neither text nor tool calls would be rejected by the providers */
+const keepable = (m) => m.role !== 'assistant' || !!m.text || !!m.toolCalls?.length;
 const parseArgs = (s) => { if (!s) return {}; try { return JSON.parse(s); } catch { return { _unparsed: s }; } };
 
 function anthropic({ key, fetchImpl, baseUrl, model, maxTokens = 8192 }) {
   const host = baseUrl || PROVIDERS.anthropic.host;
-  const toWire = (messages) => messages.map((m) => {
+  const toWire = (messages) => messages.filter(keepable).map((m) => {
     if (m.role === 'user') return { role: 'user', content: m.text };
     if (m.role === 'assistant') return { role: 'assistant', content: [...(m.text ? [{ type: 'text', text: m.text }] : []), ...(m.toolCalls || []).map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args || {} }))] };
     return { role: 'user', content: m.results.map((r) => ({ type: 'tool_result', tool_use_id: r.id, content: r.text, ...(r.isError ? { is_error: true } : {}) })) };
@@ -75,7 +78,7 @@ function anthropic({ key, fetchImpl, baseUrl, model, maxTokens = 8192 }) {
   return {
     async stream({ system, messages, tools, signal, onText }) {
       const body = { model, max_tokens: maxTokens, stream: true, system, messages: toWire(messages), ...(tools?.length ? { tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: schemaOf(t) })) } : {}) };
-      const res = await post(fetchImpl, `${host}/v1/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, body, signal);
+      const res = await post(fetchImpl, `${host}/v1/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, body, signal, key);
       let text = ''; const blocks = new Map(); let stop = 'end', usage = {};
       for await (const ev of sse(res, signal)) {
         if (ev.type === 'message_start') usage.input = ev.message?.usage?.input_tokens;
@@ -95,7 +98,7 @@ function openai({ key, fetchImpl, baseUrl, model }) {
   const host = baseUrl ? checkEndpoint(baseUrl) : PROVIDERS.openai.host;
   const toWire = (system, messages) => {
     const out = [{ role: 'system', content: system }];
-    for (const m of messages) {
+    for (const m of messages.filter(keepable)) {
       if (m.role === 'user') out.push({ role: 'user', content: m.text });
       else if (m.role === 'assistant') out.push({ role: 'assistant', content: m.text || null, ...(m.toolCalls?.length ? { tool_calls: m.toolCalls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args || {}) } })) } : {}) });
       else for (const r of m.results) out.push({ role: 'tool', tool_call_id: r.id, content: r.text });
@@ -105,7 +108,7 @@ function openai({ key, fetchImpl, baseUrl, model }) {
   return {
     async stream({ system, messages, tools, signal, onText }) {
       const body = { model, stream: true, stream_options: { include_usage: true }, messages: toWire(system, messages), ...(tools?.length ? { tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: schemaOf(t) } })) } : {}) };
-      const res = await post(fetchImpl, `${host}/chat/completions`, key ? { authorization: `Bearer ${key}` } : {}, body, signal);
+      const res = await post(fetchImpl, `${host}/chat/completions`, key ? { authorization: `Bearer ${key}` } : {}, body, signal, key);
       let text = ''; const calls = new Map(); let stop = 'end', usage = {};
       for await (const ev of sse(res, signal)) {
         if (ev.error) throw new ProviderError(ev.error.message || 'The provider stopped the answer.');
@@ -127,7 +130,7 @@ function openai({ key, fetchImpl, baseUrl, model }) {
 
 function google({ key, fetchImpl, baseUrl, model }) {
   const host = baseUrl || PROVIDERS.google.host;
-  const toWire = (messages) => messages.map((m) => {
+  const toWire = (messages) => messages.filter(keepable).map((m) => {
     if (m.role === 'user') return { role: 'user', parts: [{ text: m.text }] };
     if (m.role === 'assistant') return { role: 'model', parts: [...(m.text ? [{ text: m.text }] : []), ...(m.toolCalls || []).map((c) => ({ functionCall: { name: c.name, args: c.args || {} } }))] };
     return { role: 'user', parts: m.results.map((r) => ({ functionResponse: { name: r.name, response: r.isError ? { error: r.text } : { result: r.text } } })) };
@@ -135,7 +138,7 @@ function google({ key, fetchImpl, baseUrl, model }) {
   return {
     async stream({ system, messages, tools, signal, onText }) {
       const body = { systemInstruction: { parts: [{ text: system }] }, contents: toWire(messages), ...(tools?.length ? { tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(schemaOf(t)) })) }] } : {}) };
-      const res = await post(fetchImpl, `${host}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, { 'x-goog-api-key': key }, body, signal);
+      const res = await post(fetchImpl, `${host}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, { 'x-goog-api-key': key }, body, signal, key);
       let text = ''; const toolCalls = []; let stop = 'end', usage = {};
       for await (const ev of sse(res, signal)) {
         if (ev.error) throw new ProviderError(ev.error.message || 'The provider stopped the answer.');
@@ -143,7 +146,7 @@ function google({ key, fetchImpl, baseUrl, model }) {
         const c = ev.candidates?.[0]; if (!c) continue;
         for (const p of c.content?.parts || []) {
           if (p.text) { text += p.text; onText?.(p.text); }
-          if (p.functionCall) toolCalls.push({ id: `call_${toolCalls.length}`, name: p.functionCall.name, args: p.functionCall.args || {} });
+          if (p.functionCall) toolCalls.push({ id: `g${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}_${toolCalls.length}`, name: p.functionCall.name, args: p.functionCall.args || {} });
         }
         if (c.finishReason === 'MAX_TOKENS') stop = 'length';
       }
