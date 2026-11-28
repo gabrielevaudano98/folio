@@ -13,6 +13,8 @@ AI assistants edit through MCP. Everything the user creates is a `.md` file.
 - Formats are specified in `docs/FORMATS.md`. That file is also served to AI assistants by the `get_format_guide` tool.
 - `src/main/features/` and `src/main/meeting/` optional features: pinned downloads (`catalog.js`) and the meeting recorder.
 - Full documentation: `docs/README.md` (architecture in arc42, decisions in `docs/adr/`, generated references in `docs/reference/`).
+- **Before starting work read `docs/STATUS.md`**: open PRs, unmerged branches (`feat/sheets-univer`, the Notion PR stack), known bugs, what needs a person.
+- Every file in `src/` has its own row in `docs/reference/source-map.md` (`test/docs-map.test.mjs` enforces it); how the editors work: `docs/explanation/editors.md`.
 
 ## Invariants (reviewers: flag violations)
 1. **Lossless round-trip.** Opening a file must not rewrite it. Editing one thing must not reformat unrelated text.
@@ -31,5 +33,5 @@ AI assistants edit through MCP. Everything the user creates is a `.md` file.
 
 ## Commands
 - `npm ci` · `npm run build` · `npm test` (formats, MCP end to end, UI smoke test under xvfb on Linux) · `npm start`
-- After changing MCP tools, IPC or the component catalog: `node scripts/docs-reference.mjs`. Performance baseline: `node scripts/perf.mjs`.
-- Packaging: `npm run dist:win`, `npm run dist:mac` (CI does both on tags).
+- After changing MCP tools, IPC or the component catalog: `node scripts/docs-reference.mjs`. After adding a file in `src/`: a line in the source map. Performance baseline: `node scripts/perf.mjs`.
+- Packaging: `npm run dist:win`, `npm run dist:mac` (CI packages both on every push to `main`; a release is published when a merge changes the version in `package.json`, see `docs/how-to/release.md`).

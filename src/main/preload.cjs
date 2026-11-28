@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld('folio', {
   onAiActivity: on('ai:activity'),
   onMenu: on('menu:command'),
   onTheme: on('theme:changed'),
+  update: { state: () => call('update:state'), check: () => call('update:check'), download: () => call('update:download'), install: () => call('update:install'), openRelease: () => call('update:open-release'), setAuto: (on) => call('update:set-auto', on), onState: on('update:state') },
   onSwitched: on('workspace:switched'),
   onBeforeClose: (fn) => { const off = on('app:before-close')(fn); ipcRenderer.send('app:close-ready'); return off; },
   features: {
@@ -113,5 +114,6 @@ contextBridge.exposeInMainWorld('folio', {
     onState: on('meeting:state'),
     onSegment: on('meeting:segment'),
     onStopRequest: on('meeting:stop-request'),
+    onAutoStart: on('meeting:auto-start'),
   },
 });
