@@ -32,7 +32,7 @@ It is open source (AGPL-3.0 with an attribution term), local-first, and has no a
    rewrites it, and editing one part changes only that part. This is the hardest engineering constraint in Folio and
    it is enforced by tests; the few known exceptions are tracked as bugs in [STATUS.md](STATUS.md#known-bugs-on-main).
 
-## What you can do today (version 1.5.1, pre-alpha)
+## What you can do today (version 1.6.0, pre-alpha)
 
 | Document | File | Highlights |
 |---|---|---|
@@ -60,7 +60,7 @@ the person already uses (OneDrive, iCloud, Dropbox, git).
 ## Where the project stands
 
 - **Shipped**: the four editors, the MCP integration, the meeting recorder, version history, two languages; releases
-  1.1.0 to 1.5.1 between 19 and 27 November 2026, all marked pre-alpha.
+  1.1.0 to 1.6.0 between 19 and 28 November 2026, all marked pre-alpha.
 - **Built, not merged**: a Notion-parity pass on pages (three stacked pull requests) and Folio Sheets on Univer (a
   long-lived branch). Both are large and need review and merge decisions.
 - **Before a public release**: code signing on macOS and Windows (no certificates yet), the known data-loss bugs on `main` fixed, the
