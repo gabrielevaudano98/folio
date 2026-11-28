@@ -2181,7 +2181,9 @@ async function importDocument() {
 }
 async function pastePlain() {
   if (!isRich() || curType() !== 'md') return document.execCommand?.('paste');
-  const c = await folio.readClipboard(); rich.insertPlain(c.text || '');
+  const at = S.active; const c = await folio.readClipboard();
+  if (S.active !== at) return; // the tab changed while the clipboard was read: do not paste into another page
+  rich.insertPlain(c.text || '');
 }
 const dataUrlImage = (url) => new Promise((res) => { const i = new Image(); i.onload = () => res({ width: i.naturalWidth, height: i.naturalHeight }); i.onerror = () => res({ width: 0, height: 0 }); i.src = url; });
 function bytesOf(url) { const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(url); if (!m) return null; const raw = m[2] ? atob(m[3]) : decodeURIComponent(m[3]); const b = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) b[i] = raw.charCodeAt(i); return { data: b, mime: m[1] }; }
