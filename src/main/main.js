@@ -54,7 +54,7 @@ const defaults = {
   workspace: null, recent: [], lastFile: null, mode: 'edit', theme: 'system', fontSize: 16,
   lineWidth: 72, spellcheck: true, smartTypography: true, mcpEnabled: true, mcpPort: 47321, allowWrite: true, remoteImages: false,
   token: crypto.randomBytes(24).toString('hex'), showOutline: true, sidebar: true,
-  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {}, remindersSeen: {}, favorites: {}, autoUpdate: false,
+  language: 'en', dateStyle: 'relative', lockedPages: {}, reminderStates: {}, remindersSeen: {}, favorites: {}, pageFont: '', pageSmallText: false, pageFullWidth: false, autoUpdate: false,
   templateGallery: 'https://raw.githubusercontent.com/gabrielevaudano98/folio/main/community/templates/index.json',
 };
 let settings = { ...defaults };
@@ -754,7 +754,7 @@ function buildMenu() {
       { label: tl('menu', 'New Note'), accelerator: 'CmdOrCtrl+N', click: cmd('new-note') },
       { label: tl('menu', 'Open Folder…'), accelerator: 'CmdOrCtrl+O', click: cmd('open-folder') },
       // the window binds Mod+P itself; on Windows and Linux the menu only shows it (no second, system-wide binding). On macOS
-      // the menu keeps its key equivalent and the window drops a duplicate arrival (quickOpen in app.js)
+      // the menu keeps its key equivalent and the window drops a duplicate arrival (openQuickSearch in app.js)
       { label: tl('menu', 'Quick Open…'), accelerator: 'CmdOrCtrl+P', registerAccelerator: isMac, click: cmd('quick-open') },
       { type: 'separator' },
       { label: tl('menu', 'Save'), accelerator: 'CmdOrCtrl+S', click: cmd('save') },

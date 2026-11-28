@@ -31,7 +31,7 @@ import { htmlToMarkdown } from './page-paste.js';
 import { pageSetup, pdfOptions, pageCss } from './page-docx.js';
 import { parseProps } from './page-props.js';
 import { readAppearance, setAppearance } from './page-appearance.js';
-import { openAppearance, mountToc, paintCover } from './page-appearance-ui.js';
+import { openAppearance, openCoverPicker, mountToc, paintCover } from './page-appearance-ui.js';
 import { clean as cleanCm } from './page-critic.js';
 import { createSearchWindow } from './search-window.js';
 import { createRecents } from './recents.js';
@@ -160,6 +160,7 @@ async function boot() {
     keyLabel,
     onCopyCode: (text) => { folio.copy(text); toast(tr('app.copied')); },
     onTurnIntoPage: (md, apply) => turnIntoPage(md, apply),
+    appearanceDefaults: () => pageDefaults(),
     onUnlock: () => setPageLock(S.active, false),
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
@@ -716,24 +717,44 @@ async function renderPreview() {
   hydrateRefs(el, refEnv());
   hydrateBreadcrumbs(el, t.path);
 }
+/* the app-wide appearance (Settings): what a page with no font, small-text or full-width line of its own looks like */
+function pageDefaults() { const s = S.settings || {}; return { font: s.pageFont || '', small: s.pageSmallText === true, full: s.pageFullWidth === true }; }
 /* per-page appearance in the Read view: font, small text and full width as attributes of the page, its cover, the floating contents */
 let previewToc = null;
 function applyPreviewAppearance(el, text) {
-  const a = readAppearance(text);
+  const a = readAppearance(text, pageDefaults());
   for (const [k, v] of [['font', a.font], ['smallText', a.small], ['fullWidth', a.full]]) { if (v) el.dataset[k] = v === true ? 'true' : v; else delete el.dataset[k]; }
-  for (const c of el.querySelectorAll('.page-cover-read')) paintCover(c, a.cover, a.coverY, resolveImg);
+  for (const c of el.querySelectorAll('.page-cover-read')) {
+    paintCover(c, a.cover, a.coverY, resolveImg);
+    // Read and Split: Change and Remove on the cover (Write has its own, with Reposition). Not on a locked page or a page shown read-only
+    if (!a.cover || isLocked(S.active) || curType() !== 'md' || !['preview', 'split'].includes(app.dataset.modeView)) continue;
+    c.removeAttribute('aria-hidden');
+    c.insertAdjacentHTML('beforeend', `<div class="page-cover-actions"><button type="button" class="page-cover-btn" data-cover-read="change">${esc(tr('cover.change'))}</button><button type="button" class="page-cover-btn" data-cover-read="remove">${esc(tr('cover.remove'))}</button></div>`);
+  }
   previewToc ||= mountToc($('#pane-preview'), { root: () => $('#preview') });
   previewToc.refresh(a.toc);
 }
 /** change one appearance option of the open page, in whichever view shows it */
 function setPageAppearance(key, value) {
   const t = activeTab(); if (!t || curType() !== 'md' || isLocked(S.active)) return;
-  if (isRich()) { rich.editFm((fm) => setAppearance(fm, key, value)); return; }
-  const text = setAppearance(t.text, key, value); if (text === t.text) return;
+  if (isRich()) { rich.editFm((fm) => setAppearance(fm, key, value, pageDefaults())); return; }
+  const text = setAppearance(t.text, key, value, pageDefaults()); if (text === t.text) return;
   t.text = text; editor.applyRemote(text); autosave(); setSaveState('edited'); renderTabsDirty(); renderPreview(); renderStatus();
 }
 function openPageAppearance(anchor) {
-  openAppearance(anchor, { get: () => (isRich() ? rich.getFm() : activeTab()?.text || ''), apply: setPageAppearance, locked: () => isLocked(S.active) });
+  openAppearance(anchor, { get: () => (isRich() ? rich.getFm() : activeTab()?.text || ''), apply: setPageAppearance, locked: () => isLocked(S.active), defaults: pageDefaults });
+}
+/* the Read view's HTML without its controls (the cover's buttons), for export */
+function previewExportHtml() { const c = $('#preview').cloneNode(true); c.querySelectorAll('.page-cover-actions').forEach((x) => x.remove()); return c.innerHTML; }
+/* the cover's Change and Remove in the Read and Split views (applyPreviewAppearance draws them) */
+function previewCoverAction(btn) {
+  const t = activeTab(); if (!t || isLocked(S.active)) return;
+  if (btn.dataset.coverRead === 'remove') { setPageAppearance('cover', ''); return; }
+  openCoverPicker(btn, {
+    onGradient: (n) => setPageAppearance('cover', `gradient-${n}`),
+    onUpload: async () => { try { const rel = await folio.pickImage(t.path); if (rel && activeTab() === t) setPageAppearance('cover', rel); } catch (e) { toast(e.message, { kind: 'error' }); } },
+    onRemove: () => setPageAppearance('cover', ''),
+  });
 }
 /* open an attached file (relative to the page) with the system's app, or a web address in the browser */
 function openMedia(src) {
@@ -1955,6 +1976,12 @@ function openSettings() {
           <select class="select" id="set-size" data-setting="fontSize">${[14, 15, 16, 17, 18, 20, 22].map((n) => `<option value="${n}">${n} pt</option>`).join('')}</select></div>
         <div class="row"><div class="row-main"><label class="row-title" for="set-width">${tr('app.line-length')}</label><span class="row-sub">${tr('app.characters-per-line')}</span></div>
           <select class="select" id="set-width" data-setting="lineWidth">${[60, 66, 72, 80, 96, 120].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></div>
+        <div class="row"><div class="row-main"><label class="row-title" for="set-page-font">${esc(tr('settings.page-font'))}</label><span class="row-sub">${esc(tr('settings.page-defaults-hint'))}</span></div>
+          <select class="select" id="set-page-font" data-setting="pageFont"><option value="">${esc(tr('appearance.font-sans'))}</option><option value="serif">${esc(tr('appearance.font-serif'))}</option><option value="mono">${esc(tr('appearance.font-mono'))}</option></select></div>
+        <div class="row"><div class="row-main"><span class="row-title" id="set-page-small-l">${esc(tr('settings.page-small-text'))}</span><span class="row-sub">${esc(tr('settings.page-small-text-hint'))}</span></div>
+          <label class="switch"><input type="checkbox" role="switch" id="set-page-small" data-setting="pageSmallText" aria-labelledby="set-page-small-l"></label></div>
+        <div class="row"><div class="row-main"><span class="row-title" id="set-page-full-l">${esc(tr('settings.page-full-width'))}</span><span class="row-sub">${esc(tr('settings.page-full-width-hint'))}</span></div>
+          <label class="switch"><input type="checkbox" role="switch" id="set-page-full" data-setting="pageFullWidth" aria-labelledby="set-page-full-l"></label></div>
         <div class="row"><div class="row-main"><label class="row-title" for="set-date">${esc(tr('date.setting'))}</label><span class="row-sub">${esc(tr('date.setting-hint'))}</span></div>
           <select class="select" id="set-date" data-setting="dateStyle">${DATE_STYLES.map((k) => `<option value="${k}">${esc({ relative: tr('date.style-relative'), full: tr('date.style-full'), short: tr('date.style-short'), dmy: tr('date.style-dmy'), mdy: tr('date.style-mdy'), iso: tr('date.style-iso') }[k])} · ${esc(formatDay(todayKey(), { style: k, lang: locale() }))}</option>`).join('')}</select></div>
       </div></section>
@@ -1974,7 +2001,7 @@ function openSettings() {
           <input class="input" id="set-port" type="text" inputmode="numeric" name="port" autocomplete="off" value="${s.mcpPort}" style="width:7rem" aria-describedby="port-help"></div>
       </div></section>
     </div>`;
-  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth; $('#set-date', d).value = s.dateStyle || 'relative';
+  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth; $('#set-page-font', d).value = s.pageFont || ''; $('#set-page-small', d).checked = s.pageSmallText === true; $('#set-page-full', d).checked = s.pageFullWidth === true; $('#set-date', d).value = s.dateStyle || 'relative';
   if (!d.open) d.showModal();
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
   paintUpdates();
@@ -2446,7 +2473,7 @@ async function exportAs(kind, o = null) {
   const prose = stylesCss.slice(stylesCss.indexOf('/* ---------- preview prose')).split('/* ---------- palette')[0];
   const css = tokensCss + '\nbody{margin:0;font-family:var(--font-sans);color:var(--color-ink);background:var(--color-paper);-webkit-print-color-adjust:exact}' + prose + '\n.copy-code{display:none}.prose{padding:48px 24px}@media print{.prose{padding:0}}';
   const page = o && curType() === 'md' ? pageCss(o) : '';
-  const html = exportDocument(stem(t.path), o ? render(exportText(t, o)) : (!isRich() && $('#preview').innerHTML) || render(t.text), css + page);
+  const html = exportDocument(stem(t.path), o ? render(exportText(t, o)) : (!isRich() && previewExportHtml()) || render(t.text), css + page);
   try { const out = kind === 'pdf' ? await folio.exportPdf(t.path, html, o && curType() === 'md' ? { print: pdfOptions(o, stem(t.path)) } : undefined) : await folio.exportHtml(t.path, html); if (out) toast(tr('app.exported-to-out', { out: base(out) })); }
   catch (e) { toast(tr('app.export-failed-message', { message: e.message }), { kind: 'error' }); }
 }
@@ -2836,6 +2863,7 @@ function bindChrome() {
 
   // preview interactions
   $('#preview').addEventListener('click', async (e) => {
+    const coverBtn = e.target.closest('[data-cover-read]'); if (coverBtn) { e.preventDefault(); previewCoverAction(coverBtn); return; }
     const tg = e.target.closest('.md-tag'); if (tg) { showTag(tg.textContent.replace(/^#/, '')); return; }
     const tb = e.target.closest('.template-button button');
     if (tb) {
@@ -2904,6 +2932,7 @@ function bindChrome() {
     if (k === 'language' && !(await saveAllOrAsk())) { el.value = locale(); return; } // kept the old language: nothing saved, the menu shows it again
     await saveSetting({ [k]: v });
     if (k === 'fontSize' || k === 'lineWidth') applyLayoutSettings();
+    if (k === 'pageFont' || k === 'pageSmallText' || k === 'pageFullWidth') { rich.refreshAppearance?.(); renderPreview(); }
     if (k === 'spellcheck') editor.setSpellcheck(v);
     if (k === 'remoteImages') allowRemote(null);
     if (k === 'dateStyle') { datePrefs.style = v; rich.refreshDecorations?.(); renderPreview(); }

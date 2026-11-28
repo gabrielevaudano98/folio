@@ -1027,4 +1027,30 @@ assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\
   ok('page appearance: font, small-text, full-width, toc, cover and cover-y each change only their own line (LF and CRLF), defaults leave no trace, web covers are refused');
 }
 
+/* ---------- #86: app-wide appearance defaults (Settings); a page writes only what differs from them ---------- */
+{
+  const D = { font: 'serif', small: true, full: true };
+  for (const eol of ['\n', '\r\n']) {
+    const base = ['---', 'title: T', 'owner: Ada', '---', '# T', '', 'Body.', ''].join(eol);
+    // with the defaults on, turning an option off for one page writes an explicit line; back to the default removes it
+    for (const [key, off, line] of [['small-text', false, 'small-text: false'], ['full-width', false, 'full-width: false'], ['font', '', 'font: sans']]) {
+      const one = setAppearance(base, key, off, D);
+      assert.equal(one, base.replace(`owner: Ada${eol}`, `owner: Ada${eol}${line}${eol}`), `${key} differing from the default is one line`);
+      assert.equal(setAppearance(one, key, key === 'font' ? 'serif' : true, D), base, `${key} back to the default restores the file byte for byte`);
+      assert.deepEqual([...ownedKeys(one)], [key], `${key}: ${String(off)} belongs to the appearance, not the properties`);
+    }
+    // the same values as the defaults leave no trace; with no defaults the old behaviour stands
+    assert.equal(setAppearance(base, 'font', 'serif', D), base); assert.equal(setAppearance(base, 'small-text', true, D), base);
+    assert.equal(setAppearance(base, 'font', 'serif'), base.replace(`owner: Ada${eol}`, `owner: Ada${eol}font: serif${eol}`));
+    assert.equal(setAppearance(base, 'small-text', false), base); assert.equal(setAppearance(base, 'font', 'sans'), base);
+  }
+  const r = (fm, d) => { const a = readAppearance(`---\n${fm}\n---\nx\n`, d); return [a.font, a.small, a.full]; };
+  assert.deepEqual(r('title: x', D), ['serif', true, true], 'a page that says nothing follows Settings');
+  assert.deepEqual(r('font: sans\nsmall-text: false\nfull-width: false', D), ['', false, false], 'its own lines win over Settings');
+  assert.deepEqual(r('font: mono\nsmall-text: true', {}), ['mono', true, false]);
+  assert.deepEqual(r('font: comic\nsmall-text: maybe', D), ['serif', true, true], 'values it does not understand are ordinary properties');
+  assert.deepEqual([...ownedKeys('---\nfont: comic\nsmall-text: maybe\n---\n')], []);
+  ok('app-wide appearance defaults: a page follows Settings for font, small text and full width, and writes `font: sans` or `small-text: false` only when it differs; back to the default restores the file byte for byte');
+}
+
 console.log(`\n${n} format checks passed`);
