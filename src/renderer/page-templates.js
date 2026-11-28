@@ -92,7 +92,7 @@ const META_BLOCK = /^template:[ \t]*\r?\n((?:[ \t][^\n]*(?:\n|$))*)/m;
 export function templateMeta(text) {
   const m = FM.exec(String(text)); if (!m) return {};
   const b = META_BLOCK.exec(m[0]); if (!b) return {};
-  const out = {}; for (const l of b[1].split('\n')) { const kv = /^[ \t]+([a-z]+):[ \t]*(.*?)[ \t]*$/i.exec(l); if (kv) out[kv[1].toLowerCase()] = kv[2].replace(/^["']|["']$/g, ''); }
+  const out = {}; for (const l of b[1].split(/\r?\n/)) { const kv = /^[ \t]+([a-z]+):[ \t]*(.*?)[ \t]*$/i.exec(l); if (kv) out[kv[1].toLowerCase()] = kv[2].replace(/^["']|["']$/g, ''); }
   return out;
 }
 /** the template without its own `template:` map (and without front matter, if nothing else was in it) */
