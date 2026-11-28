@@ -763,7 +763,7 @@ function slashRenderer(opts, key = SLASH, label = 'Insert or turn into') {
     onStart(p) {
       props = p; view = p.editor.view; items = p.items; sel = 0;
       el = document.createElement('div'); el.className = `slash-menu${insertMenu ? ' is-insert' : ''}`;
-      el.innerHTML = '<div class="slash-list" role="listbox" id="slash-list" aria-label="${label}"></div><div class="slash-foot" aria-hidden="true">' + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
+      el.innerHTML = `<div class="slash-list" role="listbox" id="slash-list" aria-label="${String(label).replace(/[&"<]/g, (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;' }[c]))}"></div><div class="slash-foot" aria-hidden="true">` + tr('rich.to-move-enter-to-choose-esc-to-close') + '</div>';
       list = el.firstChild; document.body.append(el);
       view.dom.setAttribute('aria-controls', 'slash-list'); // aria-expanded is not allowed on a textbox: the list is announced through aria-activedescendant
       list.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('.slash-item'); if (it) choose(+it.dataset.i); });
