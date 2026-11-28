@@ -435,7 +435,7 @@ async function loadWorkspace(dir, { restore = false } = {}) {
 async function refreshTree() {
   try {
     S.tree = await folio.tree();
-    S.files = flatten(S.tree);
+    S.files = flatten(S.tree); quickSoon?.();
     renderTree(); tagsStale(); remindersSoon();
   } catch (e) {
     $('#tree').innerHTML = `<div class="side-empty">${esc(tr('app.could-not-read-folder', { message: e.message }))}<br><button class="btn" type="button" data-act="choose">${tr('app.choose-another-folder')}</button></div>`;
@@ -492,7 +492,7 @@ function activate(p, { line } = {}) {
     prev.cm = editor.snapshot(); // keeps this tab's undo history for when it is shown again
     prev.rich = docType(prev.path) === 'md' && isRich() ? rich.snapshot() : null;
   }
-  navRecord(p); searchWin.noteOpened(p);
+  navRecord(p); searchWin.noteOpened(p); quickSoon();
   S.active = p;
   const t = activeTab();
   hideEmpty();
@@ -872,6 +872,31 @@ async function renderReminders() {
     + (done ? `<button type="button" class="rem-more" data-act="toggle-done">${showDoneReminders ? tr('app.reminders-hide-done') : tr('app.reminders-show-done', { n: done })}</button>` : '');
 }
 const remindersSoon = debounce(() => renderReminders(), 150);
+/* Favorites and Recent in the sidebar (N4). Favorites are app state in settings.json (per folder), never written into a page;
+   Recent comes from the pages opened in this window (the search window's list). */
+const favMap = () => S.settings.favorites || {};
+const favList = () => (favMap()[S.workspace] || []).filter((p) => S.files.includes(p));
+const isFav = (p) => favList().includes(p);
+function saveFavs(list) {
+  const next = { ...favMap() }; if (list.length) next[S.workspace] = list; else delete next[S.workspace];
+  return saveSetting({ favorites: next }).then(() => renderQuick());
+}
+function toggleFav(p) {
+  if (!p) return; const on = isFav(p);
+  saveFavs(on ? favList().filter((x) => x !== p) : [...favList(), p]);
+  toast(tr(on ? 'app.fav-removed' : 'app.fav-added', { name: stem(p) }));
+}
+const quickOpen = (k) => S.settings[k] !== false;
+function renderQuick() {
+  const favs = favList(); const recents = searchWin.recent(8).filter((p) => S.files.includes(p) && !favs.includes(p)).slice(0, 5);
+  const row = (p, fav) => `<div class="quick-item" role="listitem"><button type="button" class="quick-open${p === S.active ? ' is-active' : ''}" data-open="${esc(p)}" title="${esc(p)}"${p === S.active ? ' aria-current="true"' : ''}><span class="quick-title">${esc(stem(p))}</span></button>${fav ? `<button type="button" class="icon-btn quick-act" data-unfav="${esc(p)}" aria-label="${esc(tr('app.fav-remove'))}" data-tip="${esc(tr('app.fav-remove'))}">${icons.close}</button>` : ''}</div>`;
+  for (const [sec, key, list, fav] of [['favorites', 'showFavorites', favs, true], ['recents', 'showRecents', recents, false]]) {
+    const el = $('#section-' + sec); if (!el) continue; el.hidden = !list.length;
+    const open = quickOpen(key); $(`#${sec}-head`).setAttribute('aria-expanded', String(open)); const box = $(`#${sec}-list`); box.hidden = !open;
+    box.innerHTML = list.map((p) => row(p, fav)).join('');
+  }
+}
+const quickSoon = debounce(() => renderQuick(), 100);
 function onReminderFired(r) {
   const what = r.title || stem(r.rel);
   toast(tr('app.reminder-toast', { what, when: reminderWhen(r) }), { action: [tr('app.open'), () => openFile(r.rel, { line: r.line })] });
@@ -1515,6 +1540,8 @@ function toggleAllToggles(open) {
 }
 function retargetTabs(from, to) {
   searchWin.noteMoved(from, to);
+  const fl = (favMap()[S.workspace] || []);
+  if (fl.some((k) => k === from || k.startsWith(from + '/'))) saveFavs(fl.map((k) => (k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k)));
   const lp = lockMap();
   if (Object.keys(lp).some((k) => k === from || k.startsWith(from + '/'))) {
     const next = {}; for (const [k, v] of Object.entries(lp)) next[k === from || k.startsWith(from + '/') ? to + k.slice(from.length) : k] = v;
@@ -2079,6 +2106,7 @@ const COMMANDS = [
   { id: 'duplicate', title: 'Duplicate note', run: () => S.active && duplicatePath(S.active, false) },
   { id: 'move-to', title: 'Move note to…', run: () => S.active && moveToPicker(S.active, false) },
   { id: 'copy-page-link', title: 'Copy link to note', run: () => copyPageLink(S.active) },
+  { id: 'toggle-favorite', title: 'Add to or remove from Favorites', run: () => toggleFav(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
@@ -2539,6 +2567,13 @@ function bindChrome() {
   document.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); navGo(e.button === 3 ? -1 : 1); } });
   $('#btn-outline').onclick = toggleOutline;
   $('#tags-head').addEventListener('click', () => { saveSetting({ showTags: !tagsOpen() }); renderTags(); });
+  for (const [sec, key] of [['favorites', 'showFavorites'], ['recents', 'showRecents']]) {
+    $(`#${sec}-head`).addEventListener('click', () => { saveSetting({ [key]: !quickOpen(key) }); renderQuick(); });
+    $(`#${sec}-list`).addEventListener('click', (e) => {
+      const u = e.target.closest('[data-unfav]'); if (u) return toggleFav(u.dataset.unfav);
+      const o = e.target.closest('[data-open]'); if (o) openFile(o.dataset.open);
+    });
+  }
   $('#reminders-head').addEventListener('click', () => { saveSetting({ showReminders: !remindersOpen() }); renderReminders(); });
   $('#reminders-list').addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
@@ -2565,7 +2600,8 @@ function bindChrome() {
   };
   $('#btn-more').onclick = (e) => showMenu(e.currentTarget, [
     ...(S.active ? [{ label: tr('app.duplicate'), run: () => duplicatePath(S.active, false) }, { label: tr('app.move-to'), run: () => moveToPicker(S.active, false) },
-      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) }] : []),
+      { label: tr('app.copy-link'), run: () => copyPageLink(S.active) },
+      { label: tr(isFav(S.active) ? 'app.fav-remove' : 'app.fav-add'), run: () => toggleFav(S.active) }] : []),
     ...(curType() === 'md' && S.active ? [{ label: tr(isLocked(S.active) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(S.active, !isLocked(S.active)) }, { label: tr('appearance.menu'), run: () => openPageAppearance($('#btn-more')) }, { label: tr('app.expand-or-collapse-all-toggles'), key: 'Mod+Alt+Shift+T', run: () => toggleAllToggles() }, '-'] : []),
     { label: tr('app.version-history'), key: 'Mod+Alt+Shift+H', run: () => openHistory() },
     { label: tr('app.export'), key: 'Mod+Shift+E', run: openExport },
@@ -2597,7 +2633,8 @@ function bindChrome() {
       { label: tr('app.open'), run: () => openFile(p) }, '-',
       { label: tr('app.duplicate'), run: () => duplicatePath(p, false) },
       { label: tr('app.move-to'), run: () => moveToPicker(p, false) },
-      { label: tr('app.copy-link'), run: () => copyPageLink(p) }, '-',
+      { label: tr('app.copy-link'), run: () => copyPageLink(p) },
+      { label: tr(isFav(p) ? 'app.fav-remove' : 'app.fav-add'), run: () => toggleFav(p) }, '-',
       { label: tr('app.rename'), run: () => renamePath(p, false) },
       ...(docType(p) === 'md' ? [{ label: tr(isLocked(p) ? 'app.unlock-page' : 'app.lock-page'), run: () => setPageLock(p, !isLocked(p)) }] : []),
       { label: tr(S.platform === 'darwin' ? 'app.reveal-finder' : 'app.show-in-folder'), run: () => folio.reveal(p) },
