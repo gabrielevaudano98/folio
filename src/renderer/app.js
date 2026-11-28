@@ -157,6 +157,7 @@ async function boot() {
   rich = createRich($('#pane-rich'), {
     keyLabel,
     onCopyCode: (text) => { folio.copy(text); toast(tr('app.copied')); },
+    onTurnIntoPage: (md, apply) => turnIntoPage(md, apply),
     onUnlock: () => setPageLock(S.active, false),
     reviewDock: $('#dock-review'),
     onReviewCount: (n) => { const b = $('#dock-badge'); b.textContent = String(n); b.hidden = !n; },
@@ -1575,6 +1576,23 @@ async function duplicatePath(p, isDir) {
       redo: async () => { await untrashRaw(rec); if (r.assets.length) await folio.assetsRestore(r.assets); await refreshTree(); if (!isDir) await openFile(r.to); } });
     toast(tr('app.duplicated-what', { what: isDir ? base(r.to) : stem(r.to) }), { action: [tr('app.undo'), () => fileUndo('undo')] });
     updateHistoryButtons();
+  } catch (e) { toast(e.message, { kind: 'error' }); }
+}
+/** Turn into page: the blocks become a new page next to this one (named after the first heading or line), a [[link]] replaces them */
+async function turnIntoPage(md, apply) {
+  if (!S.active || !S.workspace) return;
+  const lines = md.split('\n'); const first = lines.find((l) => l.trim()) || '';
+  const head = /^#{1,6}\s+(.+)$/.exec(first.trim());
+  let title = (head ? head[1] : first).replace(/^[>*_`~\-\s#]+/, '').replace(/\[\[|\]\]|[*_`~]|!?\[([^\]]*)\]\([^)]*\)/g, (m, t) => t || '').replace(/[\\/:*?"<>|#^\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).trim();
+  if (!title) title = tr('app.untitled-page');
+  const dir = dirOf(S.active); const taken = (n) => S.files.some((f) => f.toLowerCase() === ((dir ? dir + '/' : '') + n + '.md').toLowerCase());
+  let name = title, i = 2; while (taken(name)) name = `${title} ${i++}`;
+  const file = (dir ? dir + '/' : '') + name + '.md';
+  try {
+    const p = await folio.create(file, head ? md.replace(/\s*$/, '\n') : `# ${name}\n\n${md.replace(/\s*$/, '\n')}`);
+    if (!apply(name)) { await trashRaw(p).catch(() => {}); await refreshTree(); return toast(tr('app.turn-into-page-failed'), { kind: 'error' }); }
+    await refreshTree();
+    toast(tr('app.turned-into-page', { name }), { action: [tr('app.open'), () => openFile(p)] });
   } catch (e) { toast(e.message, { kind: 'error' }); }
 }
 function allDirs(nodes = S.tree || [], out = []) { for (const n of nodes) if (n.type === 'dir') { out.push(n.path); allDirs(n.children, out); } return out; }
