@@ -81,9 +81,9 @@ locally on each branch before merging. The stack adds 12 files to `src/` (for ex
 `main/reminders.js`, `search-window.js`): each needs a line in the [source map](reference/source-map.md), or
 `test/docs-map.test.mjs` fails.
 
-Not started from the same plan: wave 2 batch 2 (turn blocks into pages, drop any file on a page, image options, page
-info, favourites and recents, clickable breadcrumb) in [#85](https://github.com/gabrielevaudano98/folio/issues/85), and
-wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
+Wave 2 batch 2 is on `notion-gap-wave2b` ([#85](https://github.com/gabrielevaudano98/folio/issues/85)): Turn into page
+(block menu), files dropped on a page copied into `.asset/`, Page info (menu and command, Details panel with backlinks),
+Favorites and Recent in the sidebar. Still open from #85: image options and the clickable breadcrumb. Wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
 
 ### Sheets: Folio Sheets on Univer (`feat/sheets-univer`, no pull request)
 
