@@ -107,6 +107,28 @@ function pinEdges(node) {
 }
 const unpin = (t) => t.replace(/\uE000/g, ' ').replace(/\uE001/g, '\t');
 
+/**
+ * A fenced code block whose text changed, written back in the author's own fence: the opening line (``` or ~~~, its
+ * length and the whole info string) and the closing line stay byte for byte; only the lines between change. Returns null
+ * when that is not possible (indented or unclosed fence, another language). New text that would close the fence early
+ * gets a longer fence of the same kind.
+ */
+export function refence(src, lang, text) {
+  const lines = String(src).split('\n');
+  const open = lines[0].match(/^(`{3,}|~{3,})(.*)$/);
+  if (!open || lines.length < 2) return null;
+  const ch = open[1][0], close = lines.at(-1);
+  if (!new RegExp(`^${ch === '`' ? '`' : '~'}{${open[1].length},}[ \\t]*$`).test(close)) return null;
+  const info = open[2].trim(); if (info !== (lang || '') && (info.split(/\s+/)[0] || '') !== (lang || '')) return null;
+  const closes = new RegExp(`^ {0,3}${ch === '`' ? '`' : '~'}{${open[1].length},}[ \\t]*$`);
+  let head = lines[0], tail = close;
+  if (String(text).split('\n').some((l) => closes.test(l))) { // lengthen the fence past the longest run inside, nothing else
+    const run = Math.max(...(String(text).match(ch === '`' ? /`+/g : /~+/g) || ['']).map((r) => r.length)) + 1;
+    head = ch.repeat(run) + open[2]; tail = ch.repeat(run);
+  }
+  return text === '' ? `${head}\n${tail}` : `${head}\n${text}\n${tail}`;
+}
+
 export function createPageCodec(md) {
   const serialize = (nodes, style) => {
     const content = nodes.map((n) => (n.toJSON ? n.toJSON() : n)).filter((n) => !(n.type === 'paragraph' && !n.content?.length));
@@ -177,9 +199,11 @@ export function createPageCodec(md) {
     // output items: original node index, or a new node
     const items = [];
     let oi = 0;
+    let gone = []; // original nodes just removed: an added node in their place may be the same node, edited
     for (const part of diffArrays(model.orig, cur, { comparator: (a, b) => a === b || a.eq(b) })) {
-      if (part.removed) { oi += part.count; continue; }
-      if (part.added) { for (const n of part.value) items.push({ node: n }); continue; }
+      if (part.removed) { gone = Array.from({ length: part.count }, (_, t) => oi + t); oi += part.count; continue; }
+      if (part.added) { part.value.forEach((n, t) => items.push({ node: n, was: gone[t] })); gone = []; continue; }
+      gone = [];
       for (const n of part.value) items.push({ i: oi++, node: n });
     }
     // group into pieces: whole original blocks are written verbatim, everything else is serialized in runs
@@ -194,6 +218,12 @@ export function createPageCodec(md) {
         let whole = it.i === first;
         for (let c = 1; whole && c < blk.count; c++) whole = items[j + c]?.i === first + c;
         if (whole) { flush(); pieces.push({ text: blk.src, k }); j += blk.count - 1; continue; }
+      }
+      // a code block whose text was edited keeps its fence and info string (``` or ~~~), and the spacing around it
+      if (it.was != null && it.was < model.owner.length && it.node.type.name === 'codeBlock' && model.orig[it.was].type.name === 'codeBlock') {
+        const k = model.owner[it.was], blk = model.blocks[k];
+        const text = blk.count === 1 && !blk.raw ? refence(blk.src, it.node.attrs.language, it.node.textContent) : null;
+        if (text != null) { flush(); pieces.push({ text, k }); continue; }
       }
       run.push(it.node);
     }
