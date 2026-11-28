@@ -406,7 +406,7 @@ export const PageImage = Image.extend({
   renderMarkdown: (node) => {
     const a = node.attrs || {};
     const alt = (a.alt || '') + (a.size ? `|${a.size}` : '');
-    return `![${alt}](${a.src || ''}${a.title ? ` "${String(a.title).replace(/"/g, '\\"')}"` : ''})`;
+    return `![${alt}](${a.src || ''}${a.title ? ` "${String(a.title).replace(/\\(?=[!-\/:-@[-`{-~]|$)|"/g, '\\$&')}"` : ''})`;
   },
 });
 

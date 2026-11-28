@@ -4,6 +4,7 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 import { createNotes, NotesError } from '../src/main/notes.js';
 import { mayUse } from '../src/main/permissions.js';
 import { isPrivateAddress, assertPublicHost } from '../src/main/netguard.js';
+import { mayOpenWithSystem } from '../src/main/open-guard.js';
 
 let pass = 0; const ok = (n) => { pass++; console.log('  ✓', n); };
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-sec-'));
@@ -63,6 +64,11 @@ for (const a of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '172.15.0.1', '2606:4700:47
 await assert.rejects(assertPublicHost('localhost'), /private/); await assert.rejects(assertPublicHost('printer.local'), /private/); await assert.rejects(assertPublicHost('10.0.0.1'), /private/); ok('names and literals for the local network are refused');
 await assert.rejects(assertPublicHost('looks-public.example', async () => [{ address: '203.0.113.9' }, { address: '127.0.0.1' }]), /private/); ok('a public-looking name that resolves to a private address is refused');
 await assert.doesNotReject(assertPublicHost('cdn.example', async () => [{ address: '203.0.113.9' }])); ok('a name that resolves to public addresses is allowed');
+
+console.log('\nopening attached files');
+for (const f of ['report.pdf', 'a/b/photo.PNG', 'notes.docx', 'clip.mp4', 'v1.2.bin.pdf']) assert.equal(mayOpenWithSystem(f), true, f); ok('documents and media may be opened');
+for (const f of ['setup.exe', 'run.BAT', 'x.cmd', 'a.ps1', 'link.lnk', 'Tool.app', 'go.command', 'x.sh', 'a.AppImage', 'a.desktop', 'x.jar', 'pic.png.exe', 'setup.exe .', 'setup.exe...', 'noext', '.hidden', 'x.url', 'x.hta', 'x.msi', 'a.xll', 'a.docm', 'a.xlsm', 'a.doc', 'a.xls', 'a.ppt', 'a.zip', 'a.svg.exe']) assert.equal(mayOpenWithSystem(f), false, f);
+ok('anything not on the document and media list (programs, scripts, shortcuts, installers, macro files, unknown types, no extension) is refused (also with a trailing dot or space)');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} security checks passed`);
