@@ -10,7 +10,7 @@ import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, add
 import { getSchema } from '@tiptap/core';
 import { MarkdownManager } from '@tiptap/markdown';
 import { pageExtensions } from '../src/renderer/page-schema.js';
-import { portableMarkdown, summaryNodes } from '../src/renderer/page-syntax.js';
+import { portableMarkdown, summaryNodes, summaryHtml } from '../src/renderer/page-syntax.js';
 import { headings } from '../src/renderer/markdown.js';
 import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
@@ -1107,6 +1107,19 @@ assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\
   ok('page appearance: font, small-text, full-width, toc, cover and cover-y each change only their own line (LF and CRLF), defaults leave no trace, web covers are refused');
 }
 
+/* ---------- #86: a comment's or suggestion's words in a toggle title are escaped HTML, decoded when read ---------- */
+{
+  const nodes = [{ type: 'text', text: 'Plan ' }, { type: 'criticComment', attrs: { body: 'Ann: </summary> <b>x</b> & &amp; ok' } }, { type: 'criticSub', attrs: { old: '<i>a', new: 'b &lt; c' } }];
+  const html = summaryHtml(nodes);
+  assert.equal(html, 'Plan {>>Ann: &lt;/summary> &lt;b>x&lt;/b> & &amp;amp; ok<<}{~~&lt;i>a~>b &amp;lt; c~~}');
+  assert.deepEqual(summaryNodes(html), nodes, 'read back to the same words');
+  const page = `<details>\n<summary>${html}</summary>\n\nBody\n\n</details>\n`;
+  const out = markdownIt.render(page);
+  assert.equal(out.match(/<\/summary>/g).length, 1, 'a `</summary>` in a comment does not close the title'); assert.doesNotMatch(out, /<b>x<\/b>|<i>a/);
+  assert.match(markdownIt.render('<DETAILS>\n<SUMMARY>Plan [x]{color=red}</SUMMARY>\n\nBody\n\n</DETAILS>\n'), /data-color="red"/, 'upper-case tags are drawn too');
+  ok('a comment or suggestion in a toggle title is escaped inside <summary> (`<`, entity-looking `&`) and decoded when read: `</summary>` or a tag in it stays text');
+}
+
 /* ---------- #86: app-wide appearance defaults (Settings); a page writes only what differs from them ---------- */
 {
   const D = { font: 'serif', small: true, full: true };
@@ -1130,6 +1143,13 @@ assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\
   assert.deepEqual(r('font: mono\nsmall-text: true', {}), ['mono', true, false]);
   assert.deepEqual(r('font: comic\nsmall-text: maybe', D), ['serif', true, true], 'values it does not understand are ordinary properties');
   assert.deepEqual([...ownedKeys('---\nfont: comic\nsmall-text: maybe\n---\n')], []);
+  // a value the appearance does not own, or a read-only map, is never removed by choosing the default
+  for (const [fm, key, v] of [['font: comic', 'font', ''], ['small-text: maybe', 'small-text', false], ['full-width:\n  a: 1', 'full-width', false], ['font:\n  a: 1', 'font', 'serif'], ['toc: later', 'toc', false]]) {
+    const pg = `---\n${fm}\n---\nx\n`; assert.equal(setAppearance(pg, key, v), pg, `${fm} kept`);
+  }
+  assert.equal(setAppearance('---\nfull-width:\n  a: 1\n---\nx\n', 'full-width', true), '---\nfull-width:\n  a: 1\n---\nx\n', 'a read-only map is not overwritten');
+  assert.deepEqual(r('small-text: "false"\nfull-width: \'true\'', D), ['serif', false, true], 'quoted booleans read as booleans');
+  { const { exportDocument } = await import('../src/renderer/markdown.js'); assert.match(exportDocument('T', '<p>x</p>', '', ' data-font="serif" data-small-text'), /<article class="prose" data-font="serif" data-small-text><p>x<\/p><\/article>/, 'the export carries the appearance'); }
   ok('app-wide appearance defaults: a page follows Settings for font, small text and full width, and writes `font: sans` or `small-text: false` only when it differs; back to the default restores the file byte for byte');
 }
 

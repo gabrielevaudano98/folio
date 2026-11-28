@@ -31,7 +31,7 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
   let since = clock.now(); // reminders due after this moment fire; earlier ones are overdue
   const fired = new Set(); // id@time, so an unchanged reminder fires once
   let timer = null, gen = 0, touched = null; // touched: pages the watcher reported while a scan is reading the workspace
-  let missedDone = false; // the missed reminders of this folder were looked for (once per opening)
+  let missedDone = false; // the missed reminders of this folder were looked for in a complete scan (once per opening)
   const markSeen = () => { try { setSeen(clock.now()); } catch (e) { console.error('[folio] reminders seen', e.message); } };
 
   const all = () => [...byFile.entries()].flatMap(([rel, list]) => list.map((r) => ({ ...r, rel, id: reminderId(rel, r.key) })));
@@ -74,13 +74,13 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
 
   /** the whole workspace, again (on open). Older states of reminders that no longer exist are dropped. */
   async function scanAll() {
-    const g = ++gen; const next = new Map(); const mine = (touched = new Set()); let complete = true;
+    const g = ++gen; const next = new Map(); const mine = (touched = new Set()); let complete = true, readAll = true; // complete: every note listed and read; readAll: no listing or read failed
     let files = []; try { // a capped listing is not the whole workspace
       const { paths, capped } = notes.notePaths ? await notes.notePaths() : { paths: await notes.allFiles(), capped: false };
       if (capped) complete = false; files = paths.filter(isNote);
-    } catch { files = []; complete = false; }
+    } catch { files = []; complete = false; readAll = false; }
     for (let i = 0; i < files.length; i++) {
-      const text = await notes.read(files[i]).catch(() => { complete = false; return null; });
+      const text = await notes.read(files[i]).catch(() => { complete = false; readAll = false; return null; });
       if (g !== gen) return; // a newer scan (another workspace) took over
       if (text && text.includes('remind')) { const found = scanReminders(text); if (found.length) next.set(files[i], found); }
       if (i % 50 === 49) await new Promise((r) => setImmediate(r));
@@ -88,15 +88,18 @@ export function createReminders({ notes, isNote = (r) => /\.(md|markdown|mdx|txt
     for (const rel of mine) { if (byFile.has(rel)) next.set(rel, byFile.get(rel)); else next.delete(rel); } // pages the watcher updated while we read
     if (g !== gen) return;
     touched = null; byFile = next; since = Math.max(since, 0);
-    if (!missedDone) { // once per opening: what came due while this folder was not open
-      missedDone = true;
+    if (!missedDone) { // what came due while this folder was not open: announced from what was read; the seen moment
+      // moves only after a scan in which no listing or read failed, so those notes are looked at again by a later scan or
+      // start. Notes past the listing cap are never read, listed or fired at all, so the cap does not hold it back (it would
+      // announce the same reminders again at every start)
+      if (readAll) missedDone = true;
       const from = seen();
       if (Number.isFinite(from)) {
         const missed = all().filter((r) => r.at > from && r.at <= since && !stateOf(r.id) && !fired.has(`${r.id}@${r.at}`)).sort((a, b) => a.at - b.at || a.rel.localeCompare(b.rel));
         for (const r of missed) fired.add(`${r.id}@${r.at}`);
         if (missed.length) { try { onMissed(missed.map((r) => ({ ...r, state: 'overdue' }))); } catch (e) { console.error('[folio] missed reminders', e.message); } }
       }
-      markSeen();
+      if (readAll) markSeen();
     }
     if (complete) { // only a scan that read everything may conclude that a reminder is gone
       const ids = new Set(all().map((r) => r.id)); const st = states() || {};

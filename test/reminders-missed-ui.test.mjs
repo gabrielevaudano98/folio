@@ -21,8 +21,9 @@ const steps = [
   { notifications: true, wait: 100 },
   { js: "[...document.querySelectorAll('#reminders-list .rem-item')].map((e) => [e.querySelector('.rem-title').textContent, e.className.replace('rem-item ', '')])", log: true, wait: 100 },
   // 2. clicking the notification opens the note at the reminder's line
-  { notifyClick: 0, wait: 1500 },
-  { js: "[document.querySelector('[data-tab][aria-selected=true], .tab.is-active')?.dataset.tab || '', document.hasFocus()]", log: true, wait: 100 },
+  { js: "document.querySelector('[data-file=\"pages/b.md\"]').click(); true", wait: 900 }, // another page first, so the click has to change it
+  { notifyClick: 0, blur: true, wait: 1500 },
+  { js: "(() => { const v = window.__folioEditor.view; const l = v.state.doc.lineAt(v.state.selection.main.head); return [document.querySelector('[data-tab][aria-selected=true], .tab.is-active')?.dataset.tab || '', document.hasFocus(), l.number + ': ' + l.text]; })()", log: true, wait: 100 },
   // 3. a front matter date: the bell in the Properties panel writes `due-remind:` under the date
   { js: "document.querySelector('[data-file=\"pages/b.md\"]').click(); true", wait: 1000 },
   { js: "document.querySelector('#view-switch [data-view=\"edit\"]').click(); true", wait: 1200 },
@@ -36,6 +37,7 @@ const steps = [
   { js: "folio.read('pages/b.md')", log: true, wait: 100 },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
+process.on('exit', () => fs.rmSync(w.tmp, { recursive: true, force: true })); // also when the run or an assertion fails
 const { js, log } = await runApp(w, steps, { FOLIO_NO_OS_NOTIFY: '1' }, 120000);
 console.log('\nmissed reminders and front matter reminders, ui');
 assert.equal(js.length, 10, log.slice(-2000));
@@ -45,12 +47,12 @@ assert.equal(toasts.length, 1, JSON.stringify(toasts)); assert.match(toasts[0], 
 assert.deepEqual(notes, [{ title: 'A reminder came due while Folio was closed', body: 'Pay rent' }]);
 assert.deepEqual(list, [['Pay rent', 'is-overdue']]);
 console.log('  ✓ a reminder that came due while Folio was closed is announced at start (toast and OS notification) and listed overdue');
-assert.equal(afterClick[0], 'pages/a.md');
-console.log('  ✓ clicking the notification brings Folio forward on that note');
+assert.equal(afterClick[0], 'pages/a.md', JSON.stringify(afterClick)); assert.equal(afterClick[1], true, 'Folio has focus (it was minimized)');
+assert.match(afterClick[2], /^5: - \[ \] Pay rent/, 'the caret is on the reminder’s line');
+console.log('  ✓ clicking the notification brings Folio forward (from minimized) on that note, at the reminder’s line');
 assert.deepEqual(options, ['', '0', '5m', '10m', '30m', '1h', '1d', '2d']);
 assert.equal(written, B.replace(`due: ${key(nextWeek)}\n`, `due: ${key(nextWeek)}\ndue-remind: 1d\n`), 'one line, right under the date');
 assert.deepEqual(rows, [['due', 'owner'], '1d'], 'the reminder line is the date’s bell, not a property of its own');
 assert(listAfter.some(([t, p]) => t === 'Trip · due' && p === 'pages/b.md'), JSON.stringify(listAfter));
 assert.equal(removed, B);
 console.log('  ✓ a front matter date gets a reminder from its bell: one `due-remind:` line under it, listed with the others; None removes it');
-fs.rmSync(w.tmp, { recursive: true, force: true });

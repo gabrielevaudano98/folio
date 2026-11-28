@@ -7,7 +7,10 @@ import { workspace, runApp } from './harness.mjs';
 import { createHistory } from '../src/main/history.js';
 
 const w = workspace('search-filters-ui', 47634);
+process.on('exit', () => fs.rmSync(w.tmp, { recursive: true, force: true })); // also when the run or an assertion fails
 for (const f of fs.readdirSync(w.ws)) fs.rmSync(path.join(w.ws, f), { recursive: true, force: true });
+// a run that would cross midnight waits for it, so "edited today" means the same day for the files and for the app
+{ const d = new Date(); const left = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - d.getTime(); if (left < 180e3) await new Promise((r) => setTimeout(r, left + 1000)); }
 const day = 864e5, now = Date.now();
 const files = { 'Alpha.md': '# Alpha\n\nzeta\n', 'Bravo.md': '# Bravo\n\nzeta\n', 'Charlie.md': '# Charlie\n\nzeta\n' };
 for (const [p, t] of Object.entries(files)) fs.writeFileSync(path.join(w.ws, p), t);
@@ -68,4 +71,3 @@ assert.deepEqual(byClaude, ['Charlie']); assert.deepEqual(searchClaude, ['Charli
 console.log('  ✓ Created by: you, the assistant that created a page, or not known (a file Folio found already there); applies to results too');
 assert.deepEqual(Object.keys(files).map((p) => fs.readFileSync(path.join(w.ws, p), 'utf8')), before);
 console.log('  ✓ no file changed on disk');
-fs.rmSync(w.tmp, { recursive: true, force: true });

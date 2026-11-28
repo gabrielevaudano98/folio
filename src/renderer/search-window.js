@@ -12,6 +12,7 @@ const mark = (s, marks, tag = 'mark') => { let out = '', last = 0; for (const [a
 const groupLabel = (k) => ({ today: tr('search.group-today'), yesterday: tr('search.group-yesterday'), week: tr('search.group-week') }[k] || tr('search.group-older'));
 const PREFS_KEY = 'folio.search.prefs';
 const SORTS = ['best', 'edited', 'created'];
+const NOTE_RE = /\.(md|markdown|mdx|txt)$/i; // what notes.find lists
 const DATE_LABEL = { 'edited-today': 'search.date-edited-today', 'edited-week': 'search.date-edited-week', 'edited-month': 'search.date-edited-month', 'created-today': 'search.date-created-today', 'created-week': 'search.date-created-week', 'created-month': 'search.date-created-month' };
 const readJson = (k, d) => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') }; } catch { return d; } };
 
@@ -64,7 +65,7 @@ export function createSearchWindow(deps) {
     root.querySelector('#search-list').addEventListener('mousemove', (e) => { const li = e.target.closest('[data-i]'); if (li && Number(li.dataset.i) !== st.sel) select(Number(li.dataset.i)); });
     root.addEventListener('pointerdown', (e) => { if (e.target === root) close(); });
     root.querySelector('#search-title-only').addEventListener('click', (e) => { st.titleOnly = !st.titleOnly; e.currentTarget.setAttribute('aria-pressed', String(st.titleOnly)); st.sel = 0; update(); input.focus(); });
-    root.querySelector('#search-folder').addEventListener('change', (e) => { st.folder = e.target.value; st.sel = 0; update(); });
+    root.querySelector('#search-folder').addEventListener('change', (e) => { st.folder = e.target.value; st.sel = 0; drawCreators(); update(); });
     root.querySelector('#search-sort').addEventListener('change', (e) => { prefs.sort = st.sort = e.target.value; savePrefs(); st.sel = 0; update(); });
     root.querySelector('#search-date').addEventListener('change', (e) => { st.date = e.target.value; st.sel = 0; update(); });
     root.querySelector('#search-creator').addEventListener('change', (e) => { st.creator = e.target.value === '*' ? null : e.target.value; st.sel = 0; update(); });
@@ -100,7 +101,13 @@ export function createSearchWindow(deps) {
     // the last edit and icon of every page (also warms main's text cache for the first query)
     if (deps.workspace()) {
       const mine = st;
-      deps.find('', {}).then((rows) => { if (st !== mine || !isOpen()) return; for (const r of rows) st.meta.set(r.path, r); update(); }, () => {});
+      const take = (rows) => { if (st !== mine || !isOpen()) return false; for (const r of rows) st.meta.set(r.path, r); st.metaReady = true; update(); return true; };
+      deps.find('', {}).then((rows) => {
+        if (!take(rows)) return;
+        // the listing stops at 5000 notes: the dates of the rest are asked for by name, so Date filters and sorts see them too
+        const rest = deps.files().filter((p) => NOTE_RE.test(p) && !st.meta.has(p));
+        if (rest.length) deps.find('', { paths: rest }).then(take, () => {});
+      }, () => {});
       // who created each page (version history), for the Created by chip
       Promise.resolve(deps.creators?.()).then((c) => { if (st !== mine || !isOpen() || !c) return; st.creators = c; drawCreators(); if (st.creator != null) update(); }, () => {});
     }
@@ -118,7 +125,7 @@ export function createSearchWindow(deps) {
   function drawCreators() {
     const sel = root.querySelector('#search-creator');
     const label = (v) => (v === 'you' ? tr('search.creator-you') : v || tr('search.creator-unknown'));
-    const choices = creatorChoices(st.creators, deps.files());
+    const choices = creatorChoices(st.creators, deps.files().filter((p) => !st.folder || p.startsWith(st.folder + '/'))); // this folder's creators
     if (st.creator != null && !choices.some((c) => c.value === st.creator)) choices.push({ value: st.creator, count: 0 });
     sel.innerHTML = `<option value="*">${esc(tr('search.creator-any'))}</option>` + choices.map((c) => `<option value="${esc(c.value)}">${esc(tr('search.created-by-name', { name: label(c.value) }))}</option>`).join('');
     sel.value = st.creator == null ? '*' : st.creator;
@@ -142,13 +149,15 @@ export function createSearchWindow(deps) {
       try { rows = await deps.find(q.raw, { folder: st.folder }); } catch { rows = []; }
       if (mine !== seq || !isOpen()) return;
       st.content = new Map(rows.map((r) => [r.path, r]));
-      for (const r of rows) if (!st.meta.has(r.path)) st.meta.set(r.path, { path: r.path, modified: r.modified, icon: r.icon });
+      for (const r of rows) st.meta.set(r.path, { ...st.meta.get(r.path), path: r.path, modified: r.modified, created: r.created, icon: r.icon });
       st.contentQ = `${st.folder}\u0000${q.raw}`;
     }
     st.q = q;
     const ranked = rankResults(fileRows(), q, st.titleOnly ? null : st.content, { sort: st.sort, titleOnly: st.titleOnly }).slice(0, 80);
     st.items = ranked.map((r) => ({ kind: 'page', ...r }));
-    if (deps.workspace() && !ranked.some((r) => r.title.toLowerCase() === q.text.toLowerCase()) && !ranked.some((r) => r.titleStrong))
+    // a page that exists but is hidden by a Date or Created by filter is not offered as a new one
+    const low = q.text.toLowerCase(); const exists = filtered() && deps.files().some((p) => (!st.folder || p.startsWith(st.folder + '/')) && deps.stem(p).toLowerCase() === low);
+    if (deps.workspace() && !exists && !ranked.some((r) => r.title.toLowerCase() === low) && !ranked.some((r) => r.titleStrong))
       st.items.push({ kind: 'create', title: q.text });
     draw();
   }
@@ -156,6 +165,7 @@ export function createSearchWindow(deps) {
     const opened = deps.recents.times();
     const items = fileRows().map((f) => ({ path: f.path, title: f.title, modified: f.modified, created: f.created, time: Math.max(opened[f.path] || 0, f.modified || 0) }));
     const flat = (list) => list.slice(0, 40).map((x) => ({ kind: 'page', ...x, titleMarks: [] }));
+    if ((st.sort === 'edited' || st.sort === 'created') && !st.metaReady) return flat(items.slice().sort((a, b) => a.title.localeCompare(b.title))); // dates still loading: names, not an empty list
     if (st.sort === 'edited') return flat(items.filter((x) => x.modified).sort((a, b) => b.modified - a.modified));
     if (st.sort === 'created') return flat(items.filter((x) => x.created).sort((a, b) => b.created - a.created || a.title.localeCompare(b.title)));
     const groups = recencyGroups(items, Date.now(), { limit: 40 });

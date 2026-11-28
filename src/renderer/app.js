@@ -969,7 +969,7 @@ function toggleFav(p) {
 }
 const quickOpen = (k) => S.settings[k] !== false;
 function renderQuick() {
-  const favs = favList(); const recent = recents.list(8).filter((p) => S.files.includes(p) && !favs.includes(p)).slice(0, 5);
+  const favs = favList(); const recent = recents.list(100).filter((p) => S.files.includes(p) && !favs.includes(p)).slice(0, 5); // filtered first, so gone or starred pages leave room
   const row = (p, fav) => `<div class="quick-item" role="listitem"><button type="button" class="quick-open${p === S.active ? ' is-active' : ''}" data-open="${esc(p)}" title="${esc(p)}"${p === S.active ? ' aria-current="true"' : ''}><span class="quick-title">${esc(stem(p))}</span></button>${fav ? `<button type="button" class="icon-btn quick-act" data-unfav="${esc(p)}" aria-label="${esc(tr('app.fav-remove'))}" data-tip="${esc(tr('app.fav-remove'))}">${icons.close}</button>` : ''}</div>`;
   for (const [sec, key, list, fav] of [['favorites', 'showFavorites', favs, true], ['recents', 'showRecents', recent, false]]) {
     const el = $('#section-' + sec); if (!el) continue; el.hidden = !list.length;
@@ -1699,12 +1699,14 @@ async function trashRaw(p) {
   const lp = lockMap(); const locks = Object.keys(lp).filter((k) => k === p || k.startsWith(p + '/'));
   if (locks.length) { const next = { ...lp }; for (const k of locks) delete next[k]; saveLocks(next); }
   for (const q of open) await closeTab(q);
+  const recent = recents.forget(p); // a trashed page leaves Recent (search and sidebar); Undo puts it back where it was
   await refreshTree();
-  return { token, open, active, locks };
+  return { token, open, active, locks, recent };
 }
 async function untrashRaw(rec) {
   await folio.untrash(rec.token);
   if (rec.locks?.length) { const next = { ...lockMap() }; for (const k of rec.locks) next[k] = true; saveLocks(next); }
+  if (rec.recent) recents.restore(rec.recent);
   await refreshTree();
   for (const q of rec.open) await openFile(q, { background: true });
   if (rec.active) await openFile(rec.active);
@@ -2364,10 +2366,10 @@ function openSearch(o) { if ($('#palette') && !$('#palette').hidden) closePalett
 /* Mod+P reaches the window twice on some systems: the page's keydown and the menu's accelerator (macOS sends the key
    equivalent to the menu as well; on Windows and Linux the accelerator is not registered, see main.js). The second
    arrival within half a second is the same press: dropped, so it cannot select what was typed meanwhile. */
-const quickOpenAt = { key: 0, menu: 0 };
+const quickOpenAt = { key: null, menu: null }; // null: that source has not fired (performance.now() starts near 0)
 function openQuickSearch(from) {
   const now = performance.now(), other = from === 'key' ? 'menu' : 'key';
-  if (now - quickOpenAt[other] < 500) { quickOpenAt[other] = 0; return; }
+  if (quickOpenAt[other] != null && now - quickOpenAt[other] < 500) { quickOpenAt[other] = null; return; }
   quickOpenAt[from] = now; openSearch();
 }
 let pal = { mode: 'commands', items: [], sel: 0, opener: null };
@@ -2512,7 +2514,10 @@ async function exportAs(kind, o = null) {
   const prose = stylesCss.slice(stylesCss.indexOf('/* ---------- preview prose')).split('/* ---------- palette')[0];
   const css = tokensCss + '\nbody{margin:0;font-family:var(--font-sans);color:var(--color-ink);background:var(--color-paper);-webkit-print-color-adjust:exact}' + prose + '\n.copy-code{display:none}.prose{padding:48px 24px}@media print{.prose{padding:0}}';
   const page = o && curType() === 'md' ? pageCss(o) : '';
-  const html = exportDocument(stem(t.path), o ? render(exportText(t, o)) : (!isRich() && previewExportHtml()) || render(t.text), css + page);
+  // the page's appearance (its own lines over the Settings defaults) styles the exported article as it does the Read view
+  const ap = curType() === 'md' ? readAppearance(t.text, pageDefaults()) : {}; const apAttrs = `${ap.font ? ` data-font="${ap.font}"` : ''}${ap.small ? ' data-small-text' : ''}${ap.full ? ' data-full-width' : ''}`;
+  const apCss = '.prose[data-font=serif]{--font-sans:var(--font-serif);--font-display:var(--font-serif)}.prose[data-font=mono]{--font-sans:var(--font-mono);--font-display:var(--font-mono)}.prose[data-small-text]{font-size:calc(var(--editor-size,var(--text-body))*0.875)}.prose[data-full-width]{max-width:none}';
+  const html = exportDocument(stem(t.path), o ? render(exportText(t, o)) : (!isRich() && previewExportHtml()) || render(t.text), css + apCss + page, apAttrs);
   try { const out = kind === 'pdf' ? await folio.exportPdf(t.path, html, o && curType() === 'md' ? { print: pdfOptions(o, stem(t.path)) } : undefined) : await folio.exportHtml(t.path, html); if (out) toast(tr('app.exported-to-out', { out: base(out) })); }
   catch (e) { toast(tr('app.export-failed-message', { message: e.message }), { kind: 'error' }); }
 }
@@ -3034,7 +3039,7 @@ function dragResize(handle, onMove) {
 
 function bindIpc() {
   folio.onTreeChanged(() => { refreshTree(); backlinksSoon(); });
-  if (folio.reminders) { folio.reminders.onChanged(remindersSoon); folio.reminders.onFired(onReminderFired); folio.reminders.onOpen((r) => openFile(r.rel, { line: r.line })); folio.reminders.onMissed?.(showMissed); showMissed(); setInterval(remindersSoon, 60000); /* overdue as time passes */ }
+  if (folio.reminders) { folio.reminders.onChanged(remindersSoon); folio.reminders.onFired(onReminderFired); const openReminder = (r) => { if (r?.rel) openFile(r.rel, { line: r.line }).catch((e) => toast(e.message, { kind: 'error' })); }; folio.reminders.onOpen(openReminder); folio.reminders.takeOpen?.().then(openReminder, () => {}); folio.reminders.onMissed?.(showMissed); showMissed(); setInterval(remindersSoon, 60000); /* overdue as time passes */ }
   folio.onFileChanged(({ path: p, content }) => {
     tagsStale();
     if (p !== S.active) backlinksSoon();

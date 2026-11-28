@@ -105,6 +105,7 @@ const liveWin = () => !!win && !win.isDestroyed() && !win.webContents.isDestroye
 /* the OS notification. FOLIO_NO_OS_NOTIFY (tests, or anyone who wants none) replaces it with a silent stand-in that the dev
    test runner can click ({ notifyClick: n }), so the click path is exercised on any system */
 const shotNotes = [];
+let pendingReminderOpen = null, remindersListening = false; // a notification's note waiting for a page that listens
 let pendingMissed = []; // missed reminders not yet shown by the window
 function osNotify(opts, onClick) {
   try {
@@ -116,8 +117,9 @@ function osNotify(opts, onClick) {
 /* a click on a reminder's notification brings Folio forward on that note (a closed window first opens again) */
 function openFromNotification(r, fromWorkspace) {
   if (settings.workspace !== fromWorkspace) return; // another workspace is open now: r.rel would point at a different note
-  const go = () => { if (win.isMinimized()) win.restore(); win.show(); win.focus(); app.focus?.({ steal: true }); win.webContents.send('reminders:open', r); };
-  if (!liveWin()) { createWindow(); win.webContents.once('did-finish-load', go); return; }
+  // the note is opened by the page once it listens: sent now if it does, else kept until it asks (reminders:take-open)
+  const go = () => { if (win.isMinimized()) win.restore(); win.show(); win.focus(); app.focus?.({ steal: true }); if (remindersListening) win.webContents.send('reminders:open', r); else pendingReminderOpen = r; };
+  if (!liveWin()) { pendingReminderOpen = r; createWindow(); win.once('ready-to-show', go); return; }
   go();
 }
 const reminders = createReminders({
@@ -195,7 +197,7 @@ function createWindow() {
     dialog.showMessageBox(win, { type: 'error', message: 'Folio’s window keeps closing unexpectedly.', detail: `Reason: ${d.reason}. Your notes are saved on disk, apart from anything typed in the last moment before the crash. Restart Folio, and if it happens again, report it with this reason.`, buttons: ['Quit'] }).then(() => app.quit());
   });
   win.webContents.on('will-redirect', lock);
-  win.webContents.on('did-start-loading', () => { closeReady = false; }); // a reload: the new page says when it listens again
+  win.webContents.on('did-start-loading', () => { closeReady = false; remindersListening = false; }); // a reload: the new page says when it listens again
   win.on('close', (e) => {
     if (win.__forceClose || !closeReady || win.webContents.isCrashed()) return; // nobody to ask yet (or any more): just close
     e.preventDefault();
@@ -227,11 +229,11 @@ async function setWorkspace(dir) {
   await clearTrashed();
   if (settings.workspace !== dir) reminders.leave(); // the folder being left saw its reminders up to now
   settings.workspace = dir;
+  pendingMissed = []; pendingReminderOpen = null; reminders.reset(); // before any await: a scan of the old folder must not finish against this one
   if (dir) settings.recent = [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8);
   saveSettings();
   await watcher?.close();
   watcher = null;
-  pendingMissed = []; reminders.reset();
   if (!dir) return;
   reminders.scanAll().catch((e) => console.error('[folio] reminders', e.message));
   assets.purgeTrash().catch(() => {}); // removed files older than 30 days leave the asset trash
@@ -389,6 +391,7 @@ h('fs:search', (q, opts) => notes.search(q, opts));
 h('fs:find', (q, opts) => notes.find(q, opts));
 h('reminders:list', () => reminders.list());
 h('reminders:take-missed', () => { const l = pendingMissed; pendingMissed = []; return l; });
+h('reminders:take-open', () => { remindersListening = true; const r = pendingReminderOpen; pendingReminderOpen = null; return r; }); // the page listens from now on
 h('reminders:set', (id, state) => { if (typeof id !== 'string' || ![null, 'done', 'dismissed'].includes(state ?? null)) throw new Error('Not a reminder state.'); reminders.setState(id, state ?? null); return true; });
 /* version history */
 h('history:list', (rel) => history.list(rel));

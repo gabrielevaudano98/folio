@@ -253,7 +253,7 @@ const drawSummary = (nodes) => nodes.map((n) => {
 }).join('');
 md.core.ruler.push('folio_summary', (state) => {
   for (const t of state.tokens) {
-    if (t.type !== 'html_block' || !t.content.includes('<summary>')) continue;
+    if (t.type !== 'html_block' || !/<summary>/i.test(t.content)) continue;
     t.content = t.content.replace(/<summary>(\s*)(?:<h([1-6])>([\s\S]*?)<\/h\2>|([\s\S]*?))(\s*)<\/summary>/gi, (all, pre, h, inH, plain, post) => {
       const nodes = summaryNodes((inH ?? plain).trim());
       if (!summaryNeedsDrawing(nodes)) return all;
@@ -353,6 +353,6 @@ export async function hydrateCharts(root, readNote) {
     catch (e) { el.innerHTML = `<p class="chart-error">Chart: ${escape(e.message)}</p>`; }
   }
 }
-export function exportDocument(title, bodyHtml, css) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)}</title><style>${css}</style></head><body><article class="prose">${bodyHtml}</article></body></html>`;
+export function exportDocument(title, bodyHtml, css, articleAttrs = '') {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)}</title><style>${css}</style></head><body><article class="prose"${articleAttrs}>${bodyHtml}</article></body></html>`;
 }

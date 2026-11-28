@@ -162,9 +162,11 @@ export function scanReminders(text) {
   // a date property with a `<name>-remind:` line; its key names the property, its date and the offset, so a new date is a new reminder
   const fm = propReminders(text);
   if (fm.length) {
-    const head = /^#{1,6}[ \t]+(.+?)[ \t#]*$/m.exec(String(text).replace(/^---\r?\n[\s\S]*?\r?\n---(?=\r?\n|$)/, '')); const page = head ? lineTitle(head[1], '') : '';
+    // the page's first heading, found outside the front matter and code (a `#` comment in a fence is not a title), read as written
+    const at0 = /^#{1,6}[ \t]+\S/m.exec(visible(text)); const hl = at0 ? String(text).slice(at0.index).split(/\r?\n/, 1)[0] : '';
+    const head = /^#{1,6}[ \t]+(.+?)[ \t#]*$/.exec(hl); const page = head ? lineTitle(head[1], '') : '';
     for (const p of fm) {
-      const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(p.value); if (!m || !isDay(m[1])) continue;
+      const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2})(?::\d{2})?)?$/.exec(p.value.trim()); if (!m || !isDay(m[1])) continue; // the whole value: `2026-12-01T09:00garbage` reminds of nothing
       const w = { day: m[1], time: m[2] && TIME.test(m[2]) ? m[2] : null, endDay: null, endTime: null, remind: p.remind === '0' ? '0' : p.remind };
       const at = remindAt(w); if (!at) continue;
       const src = `${p.key}: ${m[0]}`;

@@ -147,24 +147,28 @@ export function renameProp(text, key, next) {
 export const REMIND_SUFFIX = '-remind';
 const REMIND_VALUE = /^(0|\d{1,3}[mhdw])$/;
 export const isRemindValue = (v) => REMIND_VALUE.test(String(v ?? '').trim());
+/* a reminder line Folio may own, change or remove: writable, one line, a scalar that reads as a reminder. Anything else
+   named `<key>-remind` (a list, a nested map, another word) is an ordinary property and is never touched */
+const isRemindLine = (r) => !!r && !r.readOnly && r.to - r.from === 1 && (typeof r.value === 'string' || typeof r.value === 'number') && isRemindValue(r.value);
 const isDateProp = (p) => !!p && !p.readOnly && (p.type === 'date' || p.type === 'datetime') && typeof p.value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.value);
 /** the date properties that carry a reminder: [{ key, value, remind, line (1-based, of the date) }] */
 export function propReminders(text) {
   const p = parseProps(text); const byKey = new Map(p.props.map((x) => [x.key, x]));
-  return p.props.filter(isDateProp).map((d) => { const r = byKey.get(d.key + REMIND_SUFFIX); const v = r && !r.readOnly ? String(r.value ?? '').trim() : ''; return isRemindValue(v) ? { key: d.key, value: d.value, remind: v, line: d.from + 2 } : null; }).filter(Boolean);
+  return p.props.filter(isDateProp).map((d) => { const r = byKey.get(d.key + REMIND_SUFFIX); return isRemindLine(r) ? { key: d.key, value: d.value, remind: String(r.value).trim(), line: d.from + 2 } : null; }).filter(Boolean);
 }
 /** the `<key>-remind` lines that belong to a date property (shown as its bell, not as properties of their own) */
 export function remindKeys(text) {
-  const p = parseProps(text); const keys = new Set(p.props.map((x) => x.key));
-  return new Set(p.props.filter((x) => x.key.endsWith(REMIND_SUFFIX) && keys.has(x.key.slice(0, -REMIND_SUFFIX.length)) && isDateProp(p.props.find((d) => d.key === x.key.slice(0, -REMIND_SUFFIX.length)))).map((x) => x.key));
+  const p = parseProps(text); const byKey = new Map(p.props.map((x) => [x.key, x]));
+  return new Set(p.props.filter((x) => x.key.endsWith(REMIND_SUFFIX) && isRemindLine(x) && isDateProp(byKey.get(x.key.slice(0, -REMIND_SUFFIX.length)))).map((x) => x.key));
 }
 /** set (or with '' / null, remove) the reminder of a date property; a new line goes right after the date's own lines */
 export function setPropRemind(text, key, remind) {
   const p = parseProps(text); const d = p.props.find((x) => x.key === key); if (!isDateProp(d)) return text;
   const rk = key + REMIND_SUFFIX; const cur = p.props.find((x) => x.key === rk);
   const v = remind == null ? '' : String(remind).trim();
+  if (cur && !isRemindLine(cur)) return text; // a list, a map or another word under that name is the person's: left as it is
   if (!v) return cur ? removeProp(text, rk) : text;
-  if (!isRemindValue(v) || cur?.readOnly) return text;
+  if (!isRemindValue(v)) return text;
   const ls = p.lines.slice(); // (`0` and `30m` need no quotes in YAML)
   if (cur) ls.splice(cur.from, cur.to - cur.from, `${rk}: ${v}`); else ls.splice(d.to, 0, `${rk}: ${v}`);
   return rebuild(text, ls);

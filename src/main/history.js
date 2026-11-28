@@ -55,6 +55,8 @@ export function createHistory(getRoot, { now = () => Date.now(), policy = POLICY
     const entry = { id, t, size: Buffer.byteLength(text), words: wordCount(text), delta: wordCount(text) - (last ? wordCount(prevText) : 0), by, reason };
     if (!force && last && !last.name && last.by === by && last.reason === 'edit' && reason === 'edit' && t - last.t < policy.minGap) ix.versions[ix.versions.length - 1] = { ...entry, t: last.t, delta: wordCount(text) - (ix.versions.length > 1 ? (ix.versions[ix.versions.length - 2].words || 0) : 0), updated: t };
     else ix.versions.push(entry);
+    // how the document came to be, kept apart from the versions, which thinning drops with time (Created by in search)
+    if (!ix.origin && ix.versions[0]) { const f = ix.versions[0]; ix.origin = { by: f.by, reason: f.reason, t: f.t }; }
     ix.versions = keepers(ix.versions, t, policy); ix.path = rel;
     await writeIndex(ix); return entry;
   }
@@ -74,6 +76,7 @@ export function createHistory(getRoot, { now = () => Date.now(), policy = POLICY
     const ix = await readIndex(from); if (!ix.versions.length) return false;
     const target = await readIndex(to);
     ix.path = to; ix.versions = [...target.versions, ...ix.versions].sort((a, b) => a.t - b.t);
+    const o = [ix.origin, target.origin].filter(Boolean).sort((a, b) => a.t - b.t)[0]; if (o) ix.origin = o; // the older beginning
     await writeIndex(ix); await fs.rm(indexPath(from), { force: true }); return true;
   }
   async function clear(rel) { await fs.rm(indexPath(rel), { force: true }); return true; }
@@ -103,9 +106,9 @@ export function createHistory(getRoot, { now = () => Date.now(), policy = POLICY
     const names = (await fs.readdir(dir).catch(() => [])).filter((n) => n.endsWith('.json'));
     const out = {};
     for (let i = 0; i < names.length; i += 64) {
-      const ixs = await Promise.all(names.slice(i, i + 64).map((n) => fs.readFile(path.join(dir, n), 'utf8').then((t) => JSON.parse(t), () => null)));
+      const ixs = await Promise.all(names.slice(i, i + 64).map((n) => fs.readFile(path.join(dir, n), 'utf8').then((t) => { try { return JSON.parse(t); } catch { return null; } }, () => null)));
       for (const ix of ixs) {
-        const first = ix?.versions?.[0]; if (typeof ix?.path !== 'string' || !first) continue;
+        const first = ix?.origin || ix?.versions?.[0]; if (typeof ix?.path !== 'string' || !first) continue; // one corrupt index is skipped
         if (['created', 'ai', 'edit'].includes(first.reason)) out[ix.path] = { by: typeof first.by === 'string' && first.by ? first.by : 'you', t: first.t };
       }
     }

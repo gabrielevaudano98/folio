@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { workspace, runApp } from './harness.mjs';
 
 const w = workspace('appearance-defaults-ui', 47636);
+process.on('exit', () => fs.rmSync(w.tmp, { recursive: true, force: true })); // also when the run or an assertion fails
 fs.mkdirSync(path.join(w.ws, 'pages'), { recursive: true });
 const A = '---\nicon: 🚀\ncover: gradient-2\n---\n# Trip\n\nBody.\n';
 const B = '---\nfont: sans\n---\n# Own font\n\nBody.\n';
@@ -75,4 +76,3 @@ assert(!/font:/.test(js[13]), 'choosing the default font removes the page’s ow
 const st = JSON.parse(fs.readFileSync(path.join(w.ud, 'settings.json'), 'utf8'));
 assert.deepEqual([st.pageFont, st.pageSmallText, st.pageFullWidth], ['serif', true, true], 'kept in settings.json');
 console.log('  ✓ Settings has page defaults (font, small text, full width): pages follow them, a page’s own line wins, choosing the default removes it');
-fs.rmSync(w.tmp, { recursive: true, force: true });

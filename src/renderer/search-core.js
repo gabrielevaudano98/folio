@@ -144,7 +144,7 @@ export function inDateRange(row, filter, now = Date.now()) {
   const [field, span] = filter.split('-'); const t = field === 'created' ? row.created : row.modified;
   if (!t) return false;
   const d = new Date(now); const since = span === 'today' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : now - (span === 'week' ? 7 : 30) * DAY;
-  return t >= since;
+  return t >= since && t <= now; // a date in the future (a clock that was wrong, a copied file) is not "today"
 }
 /** who created a page, from its version history: 'you', an AI client's name, or '' when Folio did not see it being created */
 export const creatorOf = (creators, path) => (creators && Object.hasOwn(creators, path) ? creators[path]?.by || '' : '');

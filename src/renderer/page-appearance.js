@@ -33,8 +33,8 @@ export function readAppearance(text, defaults) {
   for (const p of parseProps(text).props) {
     if (p.readOnly) continue;
     if (p.key === 'font' && FONT_VALUES.includes(String(p.value))) out.font = p.value === 'sans' ? '' : String(p.value);
-    else if (p.key === 'small-text' && typeof p.value === 'boolean') out.small = p.value;
-    else if (p.key === 'full-width' && typeof p.value === 'boolean') out.full = p.value;
+    else if (p.key === 'small-text' && bool(p.value) !== null) out.small = bool(p.value); // `"false"` reads like false, as owns() hides it
+    else if (p.key === 'full-width' && bool(p.value) !== null) out.full = bool(p.value);
     else if (p.key === 'toc' && p.value === true) out.toc = true;
     else if (p.key === 'cover') out.cover = coverOf(p.value);
     else if (p.key === 'cover-y' && typeof p.value === 'number' && Number.isFinite(p.value)) out.coverY = clampY(p.value);
@@ -64,15 +64,21 @@ export function ownedKeys(text) {
 export function setAppearance(text, key, value, defaults) {
   if (key === 'cover') return setCover(text, value);
   const d = appearanceDefaults(defaults);
+  // a line under this name that the appearance does not own (a nested map, `font: comic`) is the person's: back to the
+  // default leaves it alone, and a read-only one is never overwritten
+  const cur = parseProps(text).props.find((p) => p.key === key);
+  const removable = !cur || (!cur.readOnly && owns(key, cur.value));
+  const drop = () => (removable ? removeProp(text, key) : text);
+  if (cur?.readOnly) return text;
   if (key === 'font') {
     const f = FONTS.includes(value) ? value : ''; // anything else is sans
-    return f === d.font ? removeProp(text, key) : setProp(text, key, f || 'sans', 'text');
+    return f === d.font ? drop() : setProp(text, key, f || 'sans', 'text');
   }
   if (key === 'small-text' || key === 'full-width') {
-    const on = value === true; return on === d[key === 'small-text' ? 'small' : 'full'] ? removeProp(text, key) : setProp(text, key, on, 'checkbox');
+    const on = value === true; return on === d[key === 'small-text' ? 'small' : 'full'] ? drop() : setProp(text, key, on, 'checkbox');
   }
   const off = value === false || value == null || value === '' || (key === 'cover-y' && clampY(value) === COVER_Y_DEFAULT);
-  if (off) return removeProp(text, key);
+  if (off) return key === 'toc' ? drop() : removeProp(text, key);
   if (key === 'toc') return setProp(text, key, true, 'checkbox');
   if (key === 'cover-y') return setProp(text, key, clampY(value), 'number');
   return text;

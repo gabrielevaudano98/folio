@@ -247,7 +247,10 @@ const kept = (n) => (n.marks || []).filter((m) => SUMMARY_RANK.has(m.type) && (m
 // a link inside a colour span writes its brackets as entities, so the span's closing bracket is the first one after it
 const openTag = (m, inColor) => { const d = SUMMARY_MARKS[SUMMARY_RANK.get(m.type)]; if (m.type !== 'link') return d.length === 3 ? d[1] : `<${d[1]}>`; const h = String(m.attrs?.href || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); return `<a href="${inColor ? h.replace(/\[/g, '&#91;').replace(/\]/g, '&#93;') : h}">`; };
 const closeTag = (m) => { const d = SUMMARY_MARKS[SUMMARY_RANK.get(m.type)]; return m.type === 'folioColor' ? `]{${colorAttrs(m.attrs)}}` : d.length === 3 ? d[2] : `</${d[1]}>`; };
-const atomText = (n) => (n.type === 'criticComment' ? `{>>${n.attrs?.body ?? ''}<<}` : `{~~${n.attrs?.old ?? ''}~>${n.attrs?.new ?? ''}~~}`);
+/* a comment's or suggestion's words inside the raw <summary> HTML: `<` and an entity-looking `&` escaped, so `</summary>`
+   or a tag in a comment stays text for every HTML reader; parseSummary decodes them */
+const escAtom = (s) => String(s ?? '').replace(/&(?=#?\w+;)/g, '&amp;').replace(/</g, '&lt;');
+const atomText = (n) => (n.type === 'criticComment' ? `{>>${escAtom(n.attrs?.body)}<<}` : `{~~${escAtom(n.attrs?.old)}~>${escAtom(n.attrs?.new)}~~}`);
 /* a title's nodes (JSON), read without the lossless check; null when its marks do not nest */
 function parseSummary(src) {
   const out = []; const stack = []; let buf = '', i = 0;
@@ -255,8 +258,8 @@ function parseSummary(src) {
   const flush = () => { if (buf) out.push({ type: 'text', text: unescSummary(buf), ...marks() }); buf = ''; };
   while (i < src.length) {
     const rest = src.slice(i); let m;
-    if ((m = /^\{>>([^\n]*?)<<\}/.exec(rest))) { flush(); out.push({ type: 'criticComment', attrs: { body: m[1] }, ...marks() }); i += m[0].length; continue; }
-    if ((m = /^\{~~([^\n]*?)~>([^\n]*?)~~\}/.exec(rest))) { flush(); out.push({ type: 'criticSub', attrs: { old: m[1], new: m[2] }, ...marks() }); i += m[0].length; continue; }
+    if ((m = /^\{>>([^\n]*?)<<\}/.exec(rest))) { flush(); out.push({ type: 'criticComment', attrs: { body: unescSummary(m[1]) }, ...marks() }); i += m[0].length; continue; }
+    if ((m = /^\{~~([^\n]*?)~>([^\n]*?)~~\}/.exec(rest))) { flush(); out.push({ type: 'criticSub', attrs: { old: unescSummary(m[1]), new: unescSummary(m[2]) }, ...marks() }); i += m[0].length; continue; }
     const crit = CRITIC_OPEN.get(rest.slice(0, 3));
     if (crit) { flush(); stack.push({ type: crit[0], close: crit[1] }); i += 3; continue; }
     const top = stack.at(-1);

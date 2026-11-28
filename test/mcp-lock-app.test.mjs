@@ -10,6 +10,7 @@ import { workspace, runApp } from './harness.mjs';
 
 const PORT = 47631;
 const w = workspace('mcp-lock-app', PORT);
+process.on('exit', () => fs.rmSync(w.tmp, { recursive: true, force: true })); // also when the run or an assertion fails
 fs.mkdirSync(path.join(w.ws, 'pages'), { recursive: true });
 const A = '# A\n\nAlpha line\n', B = '# B\n\nBeta line\n', BOARD = '```board\npages: rect "Pages" @40,40\nb: rect "B" @240,40\n```\n';
 fs.writeFileSync(path.join(w.ws, 'pages', 'a.md'), A); fs.writeFileSync(path.join(w.ws, 'pages', 'b.md'), B);
@@ -96,4 +97,3 @@ assert.deepEqual(locked, ['pages/a.md', 'pages/b.md']);
 assert.deepEqual(errors, [], 'no renderer errors');
 ok('the lock lives in the app settings, per workspace folder');
 console.log(`\n${pass} checks passed`);
-fs.rmSync(w.tmp, { recursive: true, force: true });

@@ -32,6 +32,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `reminders.takeMissed` | request | `reminders:take-missed` | `src/main/main.js` |
 | `reminders.onMissed` | event | `reminders:missed` | — |
 | `reminders.onOpen` | event | `reminders:open` | — |
+| `reminders.takeOpen` | request | `reminders:take-open` | `src/main/main.js` |
 | `backlinks` | request | `fs:backlinks` | `src/main/main.js` |
 | `userName` | request | `app:user-name` | `src/main/main.js` |
 | `unlinked` | request | `fs:unlinked` | `src/main/main.js` |

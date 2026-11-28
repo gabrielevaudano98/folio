@@ -90,6 +90,9 @@ assert.deepEqual(hits.map((r) => r.path).sort(), ['n0.md', 'n1000.md', 'n500.md'
 assert.equal(hits.find((r) => r.path === 'proj/Plan.md').snippets[0].text, 'The beta ships in March.');
 assert.deepEqual((await notes.find('beta', { folder: 'proj' })).map((r) => r.path), ['proj/Plan.md']);
 assert.deepEqual((await notes.find('"ships in march"')).map((r) => r.path), ['proj/Plan.md']);
+// #86: by name, for the notes a capped walk did not reach; nothing outside the folder or that is not a note
+assert.deepEqual((await notes.find('', { paths: ['proj/Plan.md', '../x.md', 'Diary.md', 'nope.md'] })).map((r) => r.path).sort(), ['Diary.md', 'proj/Plan.md']);
+assert.deepEqual((await notes.find('beta', { paths: ['proj/Plan.md'] })).map((r) => r.path), ['proj/Plan.md']);
 assert.ok(warm < cold, `the second search must be served from memory: ${warm} ms vs the first ${cold} ms`);
 fs.writeFileSync(path.join(ws, 'Diary.md'), 'Nothing about the beta\n', { flag: 'w' });
 fs.utimesSync(path.join(ws, 'Diary.md'), new Date(), new Date(Date.now() + 5000));
@@ -107,6 +110,7 @@ ok(`main: 1,502 notes searched by content (first pass ${cold} ms, then ${warm} m
   assert.deepEqual(pick(''), ['today', 'week', 'month', 'old']);
   assert.deepEqual(pick('edited-today'), ['today']); assert.deepEqual(pick('edited-week'), ['today', 'week']); assert.deepEqual(pick('edited-month'), ['today', 'week', 'month']);
   assert.deepEqual(pick('created-today'), [], 'created a minute before midnight is not today'); assert.deepEqual(pick('created-week'), ['today', 'week']); assert.deepEqual(pick('created-month'), ['today', 'week'], 'no known creation time: left out');
+  assert.equal(inDateRange({ modified: local + 864e5 }, 'edited-today', local), false, 'a date in the future is not today'); assert.equal(inDateRange({ created: local + 60e3 }, 'created-month', local), false);
   const creators = { 'a.md': { by: 'you' }, 'b.md': { by: 'Claude Desktop' }, 'd.md': { by: 'Cursor' }, 'e.md': { by: 'you' } };
   assert.equal(creatorOf(creators, 'b.md'), 'Claude Desktop'); assert.equal(creatorOf(creators, 'c.md'), ''); assert.equal(creatorOf(creators, 'constructor'), '');
   assert.deepEqual(creatorChoices(creators, ['c.md', 'b.md', 'a.md', 'd.md', 'e.md', 'f.md']), [{ value: 'you', count: 2 }, { value: 'Claude Desktop', count: 1 }, { value: 'Cursor', count: 1 }, { value: '', count: 2 }]);
@@ -126,6 +130,19 @@ ok(`main: 1,502 notes searched by content (first pass ${cold} ms, then ${warm} m
   st.setItem(RECENT_KEY, '{ broken'); assert.deepEqual(r.list(5), []); r.opened('a.md'); assert.deepEqual(r.list(5), ['a.md'], 'corrupt storage reads as empty and is replaced');
   const throwing = createRecents({ workspace: () => '/w', storage: { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } } });
   throwing.opened('a.md'); assert.deepEqual(throwing.list(), []);
+  // a trashed folder leaves, and Undo puts its pages back where they were
+  const t2 = createRecents({ workspace: () => '/t', storage: mem(), now: () => clock++ });
+  for (const p of ['a.md', 'dir/b.md', 'dir/c.md', 'e.md']) t2.opened(p);
+  const gone = t2.forget('dir'); assert.deepEqual(Object.keys(gone).sort(), ['dir/b.md', 'dir/c.md']); assert.deepEqual(t2.list(5), ['e.md', 'a.md']);
+  t2.restore(gone); assert.deepEqual(t2.list(5), ['e.md', 'dir/c.md', 'dir/b.md', 'a.md']);
+  // malformed maps read as nothing, broken entries are dropped
+  const st3 = mem(); st3.setItem(RECENT_KEY, JSON.stringify({ '/a': ['x.md'], '/b': { 'ok.md': 5, 'bad.md': 'soon', 'nan.md': null } }));
+  assert.deepEqual(createRecents({ workspace: () => '/a', storage: st3 }).list(5), []);
+  assert.deepEqual([createRecents({ workspace: () => '/b', storage: st3 }).list(5), createRecents({ workspace: () => '/b', storage: st3 }).times()], [['ok.md'], { 'ok.md': 5 }]);
+  // a denied localStorage getter does not stop the window
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('denied'); } });
+  try { const d = createRecents({ workspace: () => '/d' }); d.opened('a.md'); assert.deepEqual(d.list(), []); } finally { if (desc) Object.defineProperty(globalThis, 'localStorage', desc); else delete globalThis.localStorage; }
   ok('recents: one store per folder, newest first, capped, follows renames and deletes, read by the search window and the sidebar alike; broken storage is harmless');
 
   // main: a note's creation time, and who created it from version history
@@ -142,6 +159,11 @@ ok(`main: 1,502 notes searched by content (first pass ${cold} ms, then ${warm} m
   assert.deepEqual(Object.fromEntries(Object.entries(cr).map(([k, v]) => [k, v.by])), { 'New.md': 'you', 'ByAi.md': 'Claude Desktop' }, 'a file Folio found already there has no known creator');
   assert.equal(await h.creators(), cr, 'cached while the history does not change');
   await h.rename('ByAi.md', 'Moved.md'); assert.equal((await h.creators())['Moved.md']?.by, 'Claude Desktop', 'the creator follows a rename');
+  // the creator outlives the versions thinning drops (here: at most 2 kept), and one corrupt index is skipped, not fatal
+  const h2 = createHistory(() => dir, { policy: { everything: 30 * 864e5, hourly: 183 * 864e5, minGap: 0, maxVersions: 2 } });
+  await h2.snapshot('Long.md', 'v0', { by: 'Cursor', reason: 'ai', force: true }); for (let i = 1; i <= 4; i++) await h2.snapshot('Long.md', `v${i}`, { reason: 'edit', force: true });
+  assert.equal((await h2.list('Long.md')).length, 2); fs.writeFileSync(path.join(dir, '.folio', 'history', 'files', 'broken.json'), '{ not json');
+  const cr2 = await h2.creators(); assert.equal(cr2['Long.md']?.by, 'Cursor', 'still the assistant that created it'); assert.equal(cr2['New.md']?.by, 'you');
   fs.rmSync(dir, { recursive: true, force: true });
   ok('main: a note’s creation time (birth time, or its modification time when that is older); its creator from version history, cached, following renames');
 }

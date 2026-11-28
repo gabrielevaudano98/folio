@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { workspace, runApp } from './harness.mjs';
 
 const w = workspace('toggle-title-ui', 47633);
+process.on('exit', () => fs.rmSync(w.tmp, { recursive: true, force: true })); // also when the run or an assertion fails
 const sf = path.join(w.ud, 'settings.json'); fs.writeFileSync(sf, JSON.stringify({ ...JSON.parse(fs.readFileSync(sf, 'utf8')), authorName: 'Tester' }));
 fs.mkdirSync(path.join(w.ws, 'pages'), { recursive: true });
 const TITLE = 'Plan [urgent]{color=red} {==check==}{>>Ann, 2026-11-20 10:00: why?<<}';
@@ -49,4 +50,3 @@ console.log('  ✓ the colour menu colours title text; the rest of the file is u
 assert.match(resolved, /<summary>\[Plan\]\{color=blue\} \[urgent\]\{color=red\} \{==check==\}\{>>Ann, 2026-11-20 10:00: why\?<<\}\{>>Tester, [^<]*: \[resolved\]<<\}<\/summary>\n\nBody line\n\n<\/details>\n\nAfter\.\n$/);
 console.log('  ✓ resolving the title comment writes its reply into the title');
 assert.deepEqual(read, ['Plan', 'urgent', true]); console.log('  ✓ the Read view draws the saved title with its colours and comment');
-fs.rmSync(w.tmp, { recursive: true, force: true });
