@@ -1,5 +1,6 @@
 // Folio — renderer.
 import { diffLines } from 'diff';
+import { splitHunks, settleHunk } from './ai-hunks.js';
 import { createEditor } from './editor.js';
 import { EditorView } from '@codemirror/view';
 import { undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -1587,26 +1588,51 @@ async function undoAi(p = S.active) {
 }
 function openDiff(p = S.active) {
   const rec = S.aiEdits.get(p); if (!rec) return;
-  const parts = diffLines(rec.before ?? '', activeTab()?.text ?? rec.after);
+  const cur = activeTab()?.text ?? rec.after;
+  const { items, count } = splitHunks(rec.before ?? '', cur);
+  const row = (cls, n, sign, l) => `<div class="diff-line ${cls}"><span class="n">${n}</span><span class="s">${sign}</span><span class="t">${esc(l) || ' '}</span></div>`;
+  const lines = (t) => t.replace(/\n$/, '').split('\n');
   let a = 1, b = 1; const rows = [];
-  parts.forEach((part, idx) => {
-    const lines = part.value.replace(/\n$/, '').split('\n');
-    if (!part.added && !part.removed) {
-      const keep = lines.length > 7 && idx !== 0 && idx !== parts.length - 1 ? [...lines.slice(0, 3).map((l, i) => [l, a + i, b + i]), null, ...lines.slice(-3).map((l, i) => [l, a + lines.length - 3 + i, b + lines.length - 3 + i])]
-        : lines.length > 4 && (idx === 0 || idx === parts.length - 1) ? (idx === 0 ? [null, ...lines.slice(-3).map((l, i) => [l, a + lines.length - 3 + i, b + lines.length - 3 + i])] : [...lines.slice(0, 3).map((l, i) => [l, a + i, b + i]), null])
-        : lines.map((l, i) => [l, a + i, b + i]);
-      for (const k of keep) rows.push(k ? `<div class="diff-line"><span class="n">${k[2]}</span><span class="s"></span><span class="t">${esc(k[0]) || ' '}</span></div>` : '<div class="diff-gap">' + tr('app.unchanged-lines-hidden') + '</div>');
-      a += lines.length; b += lines.length;
-    } else if (part.removed) { lines.forEach((l, i) => rows.push(`<div class="diff-line del"><span class="n">${a + i}</span><span class="s">−</span><span class="t">${esc(l) || ' '}</span></div>`)); a += lines.length; }
-    else { lines.forEach((l, i) => rows.push(`<div class="diff-line add"><span class="n">${b + i}</span><span class="s">+</span><span class="t">${esc(l) || ' '}</span></div>`)); b += lines.length; }
+  items.forEach((it, idx) => {
+    if (it.type === 'same') {
+      const ls = lines(it.text), last = idx === items.length - 1;
+      const keep = ls.length > 7 && idx !== 0 && !last ? [...ls.slice(0, 3).map((l, i) => [l, b + i]), null, ...ls.slice(-3).map((l, i) => [l, b + ls.length - 3 + i])]
+        : ls.length > 4 && (idx === 0 || last) ? (idx === 0 ? [null, ...ls.slice(-3).map((l, i) => [l, b + ls.length - 3 + i])] : [...ls.slice(0, 3).map((l, i) => [l, b + i]), null])
+        : ls.map((l, i) => [l, b + i]);
+      for (const k of keep) rows.push(k ? row('', k[1], '', k[0]) : '<div class="diff-gap">' + tr('app.unchanged-lines-hidden') + '</div>');
+      a += ls.length; b += ls.length; return;
+    }
+    const del = it.old ? lines(it.old) : [], add = it.new ? lines(it.new) : [];
+    rows.push(`<div class="diff-hunk" data-hunk="${it.id}">`
+      + del.map((l, i) => row('del', a + i, '−', l)).join('') + add.map((l, i) => row('add', b + i, '+', l)).join('')
+      + `<div class="diff-hunk-actions"><button class="btn" type="button" data-hunk-act="reject" data-hunk-id="${it.id}">${tr('app.hunk-reject')}</button><button class="btn" type="button" data-hunk-act="accept" data-hunk-id="${it.id}">${tr('app.hunk-accept')}</button></div></div>`);
+    a += del.length; b += add.length;
   });
+  const stats = lineChanges(rec.before, cur);
   const d = $('#sheet-diff');
+  d.dataset.path = p;
   d.innerHTML = `
-    <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))}</p></div>
+    <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))} · ${esc(tr('app.hunks-pending', { n: count }))}</p></div>
       <button class="icon-btn" type="button" data-close-sheet aria-label="${tr('app.close')}">${icons.close}</button></div>
-    <div class="sheet-body"><div class="diff-summary"><span>+ ${rec.stats.added} added</span><span>− ${rec.stats.removed} removed</span></div><div class="diff">${rows.join('')}</div></div>
+    <div class="sheet-body"><div class="diff-summary"><span>+ ${stats.added} added</span><span>− ${stats.removed} removed</span></div><div class="diff">${rows.join('')}</div></div>
     <div class="sheet-foot"><button class="btn" type="button" data-diff="undo">${tr('app.undo-all-changes')}</button><button class="btn btn-primary" type="button" data-diff="keep">${tr('app.keep-changes')}</button></div>`;
-  d.showModal(); d.querySelector('[data-diff="keep"]').focus();
+  if (!d.open) d.showModal();
+  (d.querySelector('[data-hunk-act="accept"]') || d.querySelector('[data-diff="keep"]')).focus();
+}
+/** Accept or reject one change of the AI edit on `p`; rejecting writes the old lines back. */
+async function settleAiHunk(p, id, action) {
+  const rec = S.aiEdits.get(p); if (!rec) return;
+  const t = tabOf(p); const cur = t?.text ?? rec.after;
+  const next = settleHunk(rec.before ?? '', cur, id, action);
+  if (next.after !== cur) {
+    try { await folio.write(p, next.after); } catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); return; }
+    if (t) { t.saved = next.after; if (p === S.active) setActiveText(next.after); else t.text = next.after; }
+    renderPreview(); renderOutline();
+  }
+  rec.before = next.before; rec.after = next.after; rec.stats = lineChanges(rec.before, next.after);
+  if (!rec.stats.added && !rec.stats.removed) { $('#sheet-diff').close(); dismissAi(p); return; }
+  if (p === S.active) { highlightAi(p, { fresh: false }); showAiBanner(p); }
+  openDiff(p);
 }
 
 /* ============ AI panel ============ */
@@ -2528,6 +2554,7 @@ function bindChrome() {
   document.addEventListener('click', async (e) => {
     const close = e.target.closest('[data-close-sheet]'); if (close) close.closest('dialog').close();
     const url = e.target.closest('[data-open-url]'); if (url) folio.openExternal(url.dataset.openUrl);
+    const hk = e.target.closest('[data-hunk-act]'); if (hk) { settleAiHunk($('#sheet-diff').dataset.path, Number(hk.dataset.hunkId), hk.dataset.hunkAct); return; }
     const diff = e.target.closest('[data-diff]'); if (diff) { $('#sheet-diff').close(); if (diff.dataset.diff === 'undo') undoAi(); else dismissAi(); }
     const inst = e.target.closest('[data-install]');
     if (inst) { inst.disabled = true; inst.textContent = tr('app.connecting'); try { const r = await folio.install(inst.dataset.install); toast(tr('app.connected-restart', { restart: r.restart })); } catch (er) { toast(er.message, { kind: 'error' }); } openAiSheet(); }

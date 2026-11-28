@@ -110,6 +110,7 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 
 | File | Kind | Responsibility |
 |---|---|---|
+| `ai-hunks.js` | core | Per-change review of an AI edit: split a diff into hunks, accept or reject one. |
 | `slides-core.js` | core | slides-md engine (Marp superset): split, directives, layouts, render a slide to HTML. |
 | `slides-objects.js` | core | Placed objects (`::: box #id x= y= …`): parse, serialise, geometry. |
 | `slides-motion.js` | core | Transitions and animations as slides-md lines. |
