@@ -18,7 +18,7 @@ put('Target.md', target);
 put('Rename.md', '# Note\n\nhello\n');
 for (const n of [2, 3, 4, 5, 6, 7, 8, 9]) put(`Deck${n}.slides.md`, orig.pitch);
 for (const n of [2, 3]) put(`Sheet${n}.sheet.md`, orig.sheet);
-for (const n of [2, 3, 4, 5, 6, 7]) put(`Board${n}.board.md`, orig.board);
+for (const n of [2, 3, 4, 5, 6, 7, 8]) put(`Board${n}.board.md`, orig.board);
 
 // what each file must hold afterwards, from the pure cores (the surfaces write through the same functions)
 const withNotes = (t, notes) => { const fm = parseFrontmatter(t); const list = splitSlides(fm.body); list[0] = setNotes(list[0], notes); return joinDeck(fm.raw, list); };
@@ -32,6 +32,7 @@ const insertSlide = ['<!-- layout: title -->\n# Folio', '## Inserted\n\n---\n\n<
 
 const before = { roadmap: w.read('Roadmap.md') };
 const note = w.read('Onboarding.md');
+const mod = process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'; // CodeMirror's Mod+End
 const click = (f) => `document.querySelector('[data-file="${f}"]').click()`;
 const type = (s) => `document.querySelector('.ProseMirror').editor.commands.insertContentAt(1, '${s}')`;
 const shown = (sel) => `document.querySelector('#pane-surface > .surface:not([hidden]) ${sel}')`;
@@ -89,7 +90,7 @@ const r = await runApp(w, [{ size: [1300, 900], wait: 1200 },
   { js: `${click('Deck8.slides.md')};1`, wait: 2000 },
   { js: 'window.__folioSurface.gotoSlide(0);1', wait: 300 },
   { js: "document.querySelector('#view-switch [data-view=\"split\"]').click();1", wait: 1200 },
-  { js: "{const c=document.querySelector('#editor .cm-content');c.focus();c.dispatchEvent(new KeyboardEvent('keydown',{key:'End',ctrlKey:true,bubbles:true,cancelable:true}));document.execCommand('insertText',false,'ZZ')};1", wait: 0 },
+  { js: `{const c=document.querySelector('#editor .cm-content');c.focus();c.dispatchEvent(new KeyboardEvent('keydown',{key:'End',${mod}:true,bubbles:true,cancelable:true}));document.execCommand('insertText',false,'ZZ')};1`, wait: 0 },
   { js: `{const n=${shown('.sl-notes')};n.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));n.focus();n.value='Split notes';n.dispatchEvent(new Event('input',{bubbles:true}));n.blur()};1`, wait: 1200 },
   { js: "document.querySelector('#view-switch [data-view=\"visual\"]').click();1", wait: 800 },
   // notes typed, then another slide chosen from the code pane (split view scrolling) before their pause
@@ -109,6 +110,11 @@ const r = await runApp(w, [{ size: [1300, 900], wait: 1200 },
   { js: `${click('Board6.board.md')};1`, wait: 2000 },
   { js: `${shown('.b-edge[data-e="2"]')}.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0}));1`, wait: 400 },
   { js: `{const l=${shown('[data-e-label]')};l.focus();l.value='SQL v2';l.dispatchEvent(new Event('input',{bubbles:true}))};1`, tool: aiEdit('Board6.board.md', 'user -> web "browses"\n', ''), wait: 1500 },
+  // board: a line selected, and an AI edit deletes an earlier line: the same line stays selected (not the one now at its index)
+  { js: `${click('Board8.board.md')};1`, wait: 2000 },
+  { js: `${shown('.b-edge[data-e="2"]')}.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0}));1`, wait: 400 },
+  { js: '1', tool: aiEdit('Board8.board.md', 'user -> web "browses"\n', ''), wait: 1500 },
+  log(`({ selectedLine: ${shown('.b-edge.selected')}?.dataset.e ?? null, panel: ${shown('[data-e-label]')}?.value ?? null })`),
   // board: the format panel is redrawn after the label's pause; the field keeps focus, so later keys still count
   { js: `${click('Board7.board.md')};1`, wait: 2000 },
   { js: "window.__folioSurface.gotoNode('api');1", wait: 400 },
@@ -156,6 +162,8 @@ assert.equal(w.read('Deck9.slides.md'), withNotes(orig.pitch, 'First notes')); o
 assert.equal(w.read('Board4.board.md'), orig.board); ok('Undo right after typing a label takes the label back, and it does not come back');
 assert.equal(w.read('Board5.board.md'), withLabel(orig.board, 'Kept label').replace('"Customer"', '"Client"')); ok('a label being typed on the canvas and an AI edit made meanwhile are both kept');
 assert.equal(w.read('Board6.board.md'), orig.board.replace('user -> web "browses"\n', '').replace('api -> db "SQL"', 'api -> db "SQL v2"')); ok('a line label still waiting stays on its own line when an earlier line is deleted');
+assert.deepEqual(r.js.find((x) => x && typeof x === 'object' && 'selectedLine' in x), { selectedLine: '1', panel: 'SQL' });
+assert.equal(w.read('Board8.board.md'), orig.board.replace('user -> web "browses"\n', '')); ok('a selected line stays selected when an AI edit deletes an earlier line');
 assert.deepEqual(r.js.find((x) => x && typeof x === 'object' && 'focused' in x), { focused: true, value: 'Ab' });
 assert.equal(w.read('Board7.board.md'), withLabel(orig.board, 'Abc')); ok('the label field keeps focus when the panel is redrawn, so keys typed after the pause still count');
 assert.ok(!fs.existsSync(path.join(w.ws, 'Rename.md'))); assert.equal(w.read('Renamed.md'), '# Typed Note\n\nhello\n');

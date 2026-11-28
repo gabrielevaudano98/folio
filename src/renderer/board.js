@@ -665,7 +665,12 @@ A o-- B   aggregation</pre>`;
       const outside = !moved && had;
       if (outside) { undo.push(text); if (undo.length > 200) undo.shift(); redo.length = 0; } // an outside change is its own undo step
       const first = !parts;
-      load(t); render();
+      const kept = outside ? [...sel].map(stableRef).filter(Boolean) : null; // the selection, by identity
+      load(t);
+      // lines are selected by index: after an outside edit that added, removed or reordered lines, the selection is put
+      // back on the same lines (by their ends), so the panel and a label typed next go to the line still highlighted
+      if (kept) sel = new Set(kept.map((r) => { if (!r.startsWith('e:')) return node(r) ? r : null; const e = edgeByKey(r.slice(2)); return e ? 'e:' + model.edges.indexOf(e) : null; }).filter(Boolean));
+      render();
       // the same board changed from outside (the code pane, an AI edit, the file on disk) while a label typed here still
       // waits: the outside change is taken, then the label is put on its node or line (found by id, or a line's ends), so
       // neither is lost; on the very same label the typing wins, as it is what the person sees and is still writing

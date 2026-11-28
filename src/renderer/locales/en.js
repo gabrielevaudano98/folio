@@ -1433,7 +1433,7 @@ export default {
   'slides.text': 'Text',
   'slides.text-box': 'Text box',
   'slides.text-colour': 'Text colour',
-  'slides.typed-text-copied': 'The slide you were typing on was changed elsewhere, so your text was copied to the clipboard instead.',
+  'slides.typed-text-copied': 'The slide or box you were typing in was changed or removed elsewhere, so your text was copied to the clipboard.',
   'slides.narration-not-added-other-document': 'The narration was not added: another document was opened before the recording was saved. The clips are in the deck’s attachments.',
   'slides.narration-slides-gone': 'Narration for {n} slides was not added: those slides were removed while recording.',
   'slides.that-edit-could-not-be-saved-safely-so': 'That edit could not be saved safely, so nothing was changed.',
