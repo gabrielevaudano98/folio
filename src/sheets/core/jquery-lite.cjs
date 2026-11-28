@@ -34,7 +34,7 @@ Object.assign($, {
   isFunction: (f) => typeof f === 'function',
   isArray: Array.isArray,
   inArray: (v, a, i) => (a == null ? -1 : Array.prototype.indexOf.call(a, v, i)),
-  isEmptyObject: (o) => o == null || Object.keys(o).length === 0,
+  isEmptyObject: (o) => { for (let p = o == null ? null : Object(o); p; p = Object.getPrototypeOf(p)) if (Object.keys(p).length) return false; return true; }, // own or inherited enumerable keys, as jQuery
   isPlainObject: isPlain,
 });
 module.exports = $; // CommonJS, so pivottable's require("jquery") and `import $ from 'jquery'` get the same object
