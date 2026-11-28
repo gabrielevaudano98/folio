@@ -901,6 +901,10 @@ assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\
   const T = await import('../src/renderer/slides-templates.js');
   const deck = T.newDeckFrom({ text: '---\nmarp: true\n---\n\n<!-- layout: title -->\n\n# Old title\n\nBody\n', path: 'a.md', name: 'a' }, 'New $& $1 title');
   assert.ok(deck.includes('# New $& $1 title') && !deck.includes('Old title'), deck); ok('a new deck from a template takes the title literally ($ patterns are not expanded)');
+  const inC = T.newDeckFrom({ text: '---\nmarp: true\n---\n\n<!--\n# not a title\n-->\n\n# Real\n', path: 'a.md', name: 'a' }, 'T');
+  assert.ok(inC.includes('# not a title') && inC.includes('\n# T\n') && !inC.includes('# Real'), inC); ok('a # line inside a comment is not taken for the title');
+  const crlf = T.newDeckFrom({ text: '---\r\nmarp: true\r\n---\r\n\r\n# Old\r\n\r\nBody\r\n', path: 'a.md', name: 'a' }, 'T');
+  assert.ok(crlf.includes('# T\r\n'), JSON.stringify(crlf)); ok('retitling keeps a CRLF line ending');
 }
 {
   const hostile = '| a |\n|' + ' '.repeat(50000) + '-'.repeat(50000) + 'x';
