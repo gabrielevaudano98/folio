@@ -24,15 +24,16 @@ function place(pop, anchor, onClose) {
 
 /**
  * the Appearance popover: font, small text, full width, table of contents.
- * get() returns the page text (or its front matter); apply(key, value) writes one option; locked() disables the controls.
+ * get() returns the page text (or its front matter); apply(key, value) writes one option; locked() disables the controls;
+ * defaults() gives the app-wide font, small text and full width (Settings) the page follows where it says nothing.
  */
-export function openAppearance(anchor, { get, apply, locked = () => false }) {
+export function openAppearance(anchor, { get, apply, locked = () => false, defaults = () => ({}) }) {
   closeCurrent();
   const pop = document.createElement('div'); pop.className = 'ap-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', tr('appearance.title'));
-  const fonts = [['', 'appearance.font-default'], ['serif', 'appearance.font-serif'], ['mono', 'appearance.font-mono']];
+  const fonts = [['', 'appearance.font-sans'], ['serif', 'appearance.font-serif'], ['mono', 'appearance.font-mono']]; // the one shown is checked: the page's own, or the Settings default
   const rows = [['small-text', 'small', 'appearance.small-text'], ['full-width', 'full', 'appearance.full-width'], ['toc', 'toc', 'appearance.toc']];
   const draw = () => {
-    const a = readAppearance(get()); const off = locked();
+    const a = readAppearance(get(), defaults()); const off = locked();
     pop.innerHTML = `<div class="ap-head">${esc(tr('appearance.font'))}</div>
       <div class="ap-fonts" role="radiogroup" aria-label="${esc(tr('appearance.font'))}">${fonts.map(([v, k]) => `<button type="button" role="radio" class="ap-font" data-font="${v}" aria-checked="${a.font === v}"${off ? ' disabled' : ''}><span class="ap-ag ap-ag-${v || 'sans'}" aria-hidden="true">Ag</span><span>${esc(tr(k))}</span></button>`).join('')}</div>
       <div class="ap-sep" role="separator"></div>

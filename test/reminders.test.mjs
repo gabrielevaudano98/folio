@@ -112,3 +112,99 @@ ok('Dismiss hides a reminder; renames carry Done and Dismiss; states of deleted 
   e.reset(); assert.equal(c.pending(), 0);
 }
 ok('a far reminder is re-armed at least hourly and fires on time; a new workspace stops the timer');
+
+/* ---------- #86: missed while closed, announced at the next start ---------- */
+{
+  const page = { 'a.md': 'Old [[2026-11-20]]{09:00 remind}\nMissed one [[2026-11-30]]{09:00 remind}\nMissed two [[2026-12-01]]{07:00 remind}\nDone [[2026-11-30]]{10:00 remind}\nLater [[2026-12-01]]{09:00 remind}\n' };
+  const c = fakeClock(start); let seenAt = new Date(2026, 10, 25).getTime(); const missed = [], got = []; let st = { [reminderId('a.md', '[[2026-11-30]]{10:00 remind}#0')]: 'done' };
+  const mk = () => createReminders({ notes: { allFiles: async () => Object.keys(page), read: async (r) => page[r] }, clock: c, states: () => st, setStates: (m) => { st = m; }, seen: () => seenAt, setSeen: (t) => { seenAt = t; }, onMissed: (l) => missed.push(l.map((r) => r.title)), onFire: (r) => got.push(r.title) });
+  const e = mk(); await e.scanAll();
+  assert.deepEqual(missed, [['Missed one', 'Missed two']], 'one announcement, soonest first; before the last run and done ones are left out');
+  assert.equal(seenAt, start); assert.deepEqual(e.list().filter((r) => r.state === 'overdue').map((r) => r.title), ['Old', 'Missed one', 'Missed two'], 'missed ones stay listed as overdue');
+  await e.scanAll(); assert.equal(missed.length, 1, 'a later scan of the same opening does not announce them again');
+  c.advance(60 * 60000); assert.deepEqual(got, ['Later']); assert.equal(seenAt, start + 60 * 60000, 'a reminder that fires moves the seen moment');
+  e.leave(); assert.equal(seenAt, c.now());
+  // Folio closed for a day, then opened: only what came due in between is announced
+  page['a.md'] += 'Next day [[2026-12-02]]{08:00 remind}\n'; c.advance(24 * 3600000); e.stop();
+  const e2 = mk(); await e2.scanAll(); assert.deepEqual(missed.at(-1), ['Next day']); assert.deepEqual(got, ['Later']);
+  // a folder never seen before announces nothing from the past
+  seenAt = null; const e3 = mk(); await e3.scanAll(); assert.equal(missed.length, 2); assert.equal(seenAt, c.now());
+  // a reset (another folder) looks again, for that folder
+  e3.reset(); seenAt = c.now() - 2 * 3600000; await e3.scanAll(); assert.deepEqual(missed.at(-1), ['Next day']);
+  // a note that could not be read holds the seen moment back (and leave() too): a later scan still announces its reminder
+  {
+    const c2 = fakeClock(start); let seen2 = new Date(2026, 10, 25).getTime(); const got2 = []; let fail = true;
+    const pages = { 'a.md': 'One [[2026-11-30]]{09:00 remind}\n', 'b.md': 'Two [[2026-11-30]]{10:00 remind}\n' };
+    const r = createReminders({ notes: { notePaths: async () => ({ paths: Object.keys(pages), capped: false }), read: async (p) => { if (p === 'b.md' && fail) throw new Error('busy'); return pages[p]; } }, clock: c2, seen: () => seen2, setSeen: (t) => { seen2 = t; }, onMissed: (l) => got2.push(l.map((x) => x.title)) });
+    const before = seen2; await r.scanAll(); assert.deepEqual(got2, [['One']]); assert.equal(seen2, before, 'not moved after a failed read');
+    r.leave(); assert.equal(seen2, before, 'leaving after an incomplete scan does not move it either');
+    fail = false; await r.scanAll(); assert.deepEqual(got2, [['One'], ['Two']], 'the next scan announces what it could not read, once'); assert.equal(seen2, start);
+    // the listing cap does not hold it back: notes past it are never read, listed or fired
+    const c3 = fakeClock(start); let seen3 = before;
+    await createReminders({ notes: { notePaths: async () => ({ paths: ['a.md'], capped: true }), read: async (p) => pages[p] }, clock: c3, seen: () => seen3, setSeen: (t) => { seen3 = t; } }).scanAll();
+    assert.equal(seen3, start);
+  }
+}
+ok('reminders due while Folio was closed are announced once at the next start (done ones and older ones left out), stay overdue, and move the seen moment');
+
+/* ---------- #86: a reminder on a front matter date ---------- */
+{
+  const { propReminders, setPropRemind, removeProp, renameProp, remindKeys } = await import('../src/renderer/page-props.js');
+  const pg = '---\ntitle: Trip\ndue: 2026-12-01 09:30\ndue-remind: 30m\nstart: 2026-12-03\nstart-remind: 0\nend: 2026-12-05\nnote-remind: 1d\nbad: 2026-12-06\nbad-remind: soon\n---\n# Trip plan\n\nBody [[2026-12-02]]{remind}\n';
+  assert.deepEqual(propReminders(pg).map((r) => [r.key, r.value, r.remind, r.line]), [['due', '2026-12-01 09:30', '30m', 3], ['start', '2026-12-03', '0', 5]]);
+  const rs = scanReminders(pg);
+  const at = (t) => { const d = new Date(t); return `${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  assert.deepEqual(rs.map((r) => [r.key, r.title, r.line, at(r.at)]), [['[[2026-12-02]]{remind}#0', 'Body', 14, '12-2 9:00'], ['fm:due: 2026-12-01 09:30 remind 30m', 'Trip plan · due', 3, '12-1 9:00'], ['fm:start: 2026-12-03 remind 0', 'Trip plan · start', 5, '12-3 9:00']]);
+  assert.deepEqual([...remindKeys(pg)].sort(), ['due-remind', 'start-remind'], 'only a -remind line that reads as a reminder is the date’s; `bad-remind: soon` stays an ordinary property');
+  // a list or a nested map under that name is the person's: never rewritten, removed or renamed with the date
+  for (const tail of ['due-remind:\n  - keep\n  - this', 'due-remind:\n  a: 1\n  b: 2', 'due-remind: soon']) {
+    const pl = `---\ndue: 2026-12-01\n${tail}\n---\n# T\n`;
+    assert.deepEqual([...remindKeys(pl)], [], tail); assert.deepEqual(propReminders(pl), [], tail);
+    assert.equal(setPropRemind(pl, 'due', '1d'), pl, `${tail}: not replaced`); assert.equal(setPropRemind(pl, 'due', ''), pl, `${tail}: not removed`);
+    assert.equal(removeProp(pl, 'due'), `---\n${tail}\n---\n# T\n`, `${tail}: removing the date leaves it`);
+    assert(renameProp(pl, 'due', 'end').includes(`\n${tail}\n`), `${tail}: renaming the date leaves it`);
+  }
+  // set, change, remove: one line each, nothing else moves
+  const p0 = '---\ntitle: Trip\nend: 2026-12-05 # last day\ntags: [a]\n---\n# Trip\n';
+  const p1 = setPropRemind(p0, 'end', '1d'); assert.equal(p1, '---\ntitle: Trip\nend: 2026-12-05 # last day\nend-remind: 1d\ntags: [a]\n---\n# Trip\n');
+  assert.equal(setPropRemind(p1, 'end', '0'), p1.replace('end-remind: 1d', 'end-remind: 0'));
+  assert.equal(setPropRemind(p1, 'end', ''), p0); assert.equal(setPropRemind(p0, 'title', '1d'), p0, 'only a date takes a reminder'); assert.equal(setPropRemind(p0, 'end', 'soon'), p0);
+  assert.equal(removeProp(p1, 'end'), '---\ntitle: Trip\ntags: [a]\n---\n# Trip\n', 'removing the date removes its reminder');
+  assert.equal(renameProp(p1, 'end', 'finish'), p1.replace('end:', 'finish:').replace('end-remind:', 'finish-remind:'), 'renaming the date renames its reminder');
+  const crlf = p0.replace(/\n/g, '\r\n'); assert.equal(setPropRemind(crlf, 'end', '2h'), p1.replace('1d', '2h').replace(/\n/g, '\r\n'));
+  // the title is the first real heading (not a `#` in a code fence); a value with anything after the date or time reminds of nothing
+  const fenced = '---\ndue: 2026-12-01\ndue-remind: 0\n---\n```sh\n# Fake\n```\n# Real `code` title\n';
+  assert.deepEqual(scanReminders(fenced).map((r) => r.title), ['Real code title · due']);
+  for (const bad of ['2026-12-01T09:00garbage', '2026-12-01x', '2026-12-01 09:00 or later']) assert.deepEqual(scanReminders(`---\ndue: ${bad}\ndue-remind: 0\n---\n# T\n`), [], bad);
+  assert.equal(scanReminders('---\ndue: 2026-12-01T09:00\ndue-remind: 0\n---\n# T\n').length, 1, 'an ISO date and time still reminds');
+  // the engine fires it like a mention
+  const c = fakeClock(new Date(2026, 11, 1, 8, 0).getTime()); const got = [];
+  const e = createReminders({ notes: { allFiles: async () => ['t.md'], read: async () => pg }, clock: c, onFire: (r) => got.push(r.title) });
+  await e.scanAll(); c.advance(90 * 60000); assert.deepEqual(got, ['Trip plan · due']);
+}
+ok('a front matter date reminds with a `<name>-remind:` line (0 = at its time, 9:00 for a date); setting, changing or removing it writes only that line; the engine fires it');
+
+/* ---------- #86: the whole-folder scan stops at the listing cap: a capped scan keeps the states it could not check ---------- */
+{
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const { createNotes } = await import('../src/main/notes.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-cap-')); fs.mkdirSync(path.join(dir, 'p')); fs.writeFileSync(path.join(dir, 'p', 'a.md'), 'x'); fs.writeFileSync(path.join(dir, 'b.txt'), 'y'); fs.writeFileSync(path.join(dir, 'c.png'), '');
+  const np = await createNotes(() => dir).notePaths();
+  assert.deepEqual([np.paths.sort(), np.capped], [['b.txt', 'p/a.md'], false], 'names only, no stat, not capped');
+  fs.rmSync(dir, { recursive: true, force: true });
+  // a real folder past the cap: 5000 names, capped (the walk can overshoot inside one folder; the list does not)
+  const big = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-cap-big-'));
+  for (let d = 0; d < 3; d++) { fs.mkdirSync(path.join(big, `d${d}`)); for (let i = 0; i < 1700; i++) fs.writeFileSync(path.join(big, `d${d}`, `n${i}.md`), ''); }
+  const bp = await createNotes(() => big).notePaths(); fs.rmSync(big, { recursive: true, force: true });
+  assert.deepEqual([bp.paths.length, bp.capped, new Set(bp.paths).size], [5000, true, 5000], '5100 notes: 5000 listed, capped');
+  // folders deeper than the walk goes are not listed either: that listing is not the whole folder
+  const deep = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-deep-')); const far = path.join(deep, ...Array.from({ length: 15 }, (_, i) => `l${i}`));
+  fs.mkdirSync(far, { recursive: true }); fs.writeFileSync(path.join(far, 'x.md'), ''); fs.writeFileSync(path.join(deep, 'top.md'), '');
+  const dp = await createNotes(() => deep).notePaths(); fs.rmSync(deep, { recursive: true, force: true });
+  assert.deepEqual([dp.paths, dp.capped], [['top.md'], true], 'a note past the depth limit makes the listing capped');
+  const c = fakeClock(new Date(2026, 11, 1, 8, 0).getTime()); let st = { 'gone.md::x': 'done', 'a.md::y': 'dismissed' };
+  const mk = (capped) => createReminders({ notes: { notePaths: async () => ({ paths: ['a.md'], capped }), read: async () => 'nothing here' }, clock: c, states: () => st, setStates: (m) => { st = m; } });
+  await mk(true).scanAll(); assert.deepEqual(Object.keys(st), ['gone.md::x', 'a.md::y'], 'a capped listing is not the whole folder: nothing is dropped');
+  await mk(false).scanAll(); assert.deepEqual(st, {}, 'a complete one drops the states of reminders that are gone');
+}
+ok('the reminders scan lists names only and, when the folder listing hits its cap, keeps the Done / Dismiss states it could not check');

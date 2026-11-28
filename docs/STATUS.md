@@ -76,7 +76,14 @@ The plan lives in the Folio project notes (`NOTION-GAP-PLAN.md`, `NOTION-EXECUTI
 Copy/Wrap, expand/collapse all) and [#79](https://github.com/gabrielevaudano98/folio/pull/79) (search window on `Mod+P`,
 dates with time, end date and reminders, per-page appearance) reached `main` on 28 Nov 2026. Quick wins on top: `+name`
 to link or create a page, Reopen closed tab (`Mod+Shift+T`), a light/dark command, weekday names that always look forward.
-The "not done" list of #79 is tracked in [#86](https://github.com/gabrielevaudano98/folio/issues/86).
+The "not done" list of #79 is tracked in [#86](https://github.com/gabrielevaudano98/folio/issues/86); every item is done on
+`fix/86-notion-followups` (not merged yet): the page lock is enforced for MCP writes (only the arguments that name a file
+are checked), toggle titles keep colour, comments and suggestions, Word export marks resolved threads as resolved, search
+has Created sort and Date / Created by filters and shares one recents store with the sidebar's Recent, `Mod+P` opens once,
+reminders missed while Folio was closed are announced at the next start, front matter dates take a `<name>-remind:`
+line, a notification click brings Folio forward on the note, the cover has Change / Remove in Read and Split, the icon
+sits on the cover's edge, and Settings has page defaults (font, small text, full width). The reminder scan stayed on
+the main thread: measured on 19,000 notes its longest stall is 34–51 ms (p99 9 ms) after it stopped stat-ing files.
 
 Wave 2 batch 2 ([#117](https://github.com/gabrielevaudano98/folio/pull/117), merged 28 Nov): Turn into page
 (block menu), files dropped on a page copied into `.asset/`, Page info (menu and command, Details panel with backlinks),

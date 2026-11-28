@@ -10,7 +10,7 @@ import { scanObjects, extractObjects, setObjectAttrs, setMany, removeObject, add
 import { getSchema } from '@tiptap/core';
 import { MarkdownManager } from '@tiptap/markdown';
 import { pageExtensions } from '../src/renderer/page-schema.js';
-import { portableMarkdown, summaryNodes } from '../src/renderer/page-syntax.js';
+import { portableMarkdown, summaryNodes, summaryHtml } from '../src/renderer/page-syntax.js';
 import { headings } from '../src/renderer/markdown.js';
 import { INSERTS, CATEGORIES, filterInserts } from '../src/renderer/inserts.js';
 import { Window } from 'happy-dom';
@@ -261,6 +261,62 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     const { markdownIt: mdi } = await import('../src/renderer/markdown.js'); assert.match(mdi.render(t), /<summary>Plain <strong>bold <em>both<\/em><\/strong> <a href="https:\/\/x.org\/\?a=1&amp;b=2">link<\/a>/);
     assert.deepEqual(summaryNodes('<a>bare</a> <strong>c</strong>'), [{ type: 'text', text: '<a>bare</a> <strong>c</strong>' }]); // a bare <a> (no href) next to a real mark stays literal text, never throws
     ok('toggle titles keep bold, italic, links and code as inline HTML in <summary>; literal titles stay byte-identical; the Read view shows them'); }
+  { // #86: colour, comments and suggestions in a toggle title, in the page's own syntax inside <summary>
+    const T = (title) => `<details>\n<summary>${title}</summary>\n\nBody text\n\n</details>\n`;
+    const shape = (sum) => sum.content.content.map((x) => [x.isText ? x.text : x.type.name, x.marks.map((mk) => mk.type.name + (mk.type.name === 'folioColor' ? ':' + (mk.attrs.color || '') + '/' + (mk.attrs.bg || '') : '')).join('+')]);
+    const src = T('Plan [urgent]{color=red} {==check <strong>this</strong>==}{>>Ann, 2026-11-20 10:00: why?<<} {++new++} {--old--} {~~a~>b~~} <a href="https://x.org">link</a>');
+    const o = open(src); const sum = o.kids[0].child(0);
+    assert.deepEqual(shape(sum), [['Plan ', ''], ['urgent', 'folioColor:red/'], [' ', ''], ['check ', 'criticHl'], ['this', 'bold+criticHl'], ['criticComment', ''], [' ', ''], ['new', 'criticIns'], [' ', ''], ['old', 'criticDel'], [' ', ''], ['criticSub', ''], [' ', ''], ['link', 'link']]);
+    assert.equal(sum.child(5).attrs.body, 'Ann, 2026-11-20 10:00: why?'); assert.equal(codec.save(o.m, o.doc), src, 'opening and saving changes nothing');
+    { // a colour span sits outside a link (outermost first): written that way, the link's colour is read too
+      const l = open(T('[<a href="https://x.org">l</a>]{bg=yellow} end')); assert.deepEqual(shape(l.kids[0].child(0)), [['l', 'link+folioColor:/yellow'], [' end', '']]); assert.equal(codec.save(l.m, l.doc), T('[<a href="https://x.org">l</a>]{bg=yellow} end')); }
+    const { bold, folioColor, criticHl, criticIns } = schema.marks; const { criticComment } = schema.nodes;
+    const mk = (title, h = 0) => schema.nodes.details.create({ heading: h }, [schema.nodes.detailsSummary.create(null, title), schema.nodes.detailsContent.create(null, [para('Body text')])]);
+    const red = folioColor.create({ color: 'red' });
+    const cases = [
+      // what the colour menu and the comment command make in a title
+      [[schema.text('Due '), schema.text('Friday', [red]), schema.text(' ok', [red, bold.create()])], 'Due [Friday<strong> ok</strong>]{color=red}'],
+      [[schema.text('Read ', []), schema.text('this', [criticHl.create()]), criticComment.create({ body: 'Bo, 2026-11-21 09:00: source?' })], 'Read {==this==}{>>Bo, 2026-11-21 09:00: source?<<}'],
+      // literal text that would read as colour or CriticMarkup is escaped, with or without other formatting
+      [[schema.text('{==x==} and [a]{color=red}')], '&#123;==x==&#125; and [a]&#123;color=red}'],
+      [[schema.text('B', [bold.create()]), schema.text(' {++y++} 1<2 &amp;')], '<strong>B</strong> &#123;++y++&#125; 1&lt;2 &amp;amp;'],
+      [[schema.text('a [b] c', [red])], '[a &#91;b&#93; c]{color=red}'],
+      [[schema.text('x{', [criticIns.create()]), schema.text('}')], '{++x&#123;++}}'],
+    ];
+    for (const [title, want] of cases) {
+      const saved = codec.save(open(T('x')).m, withKids([mk(title)])); assert.equal(saved, T(want), want);
+      const back = open(saved); const again = back.kids[0].child(0);
+      assert.deepEqual(again.toJSON(), schema.nodes.detailsSummary.create(null, title).toJSON(), `${want} reads back as the same title`);
+      assert.equal(codec.save(back.m, back.doc), saved);
+    }
+    { const sp = codec.save(open(T('x')).m, withKids([mk([schema.text('Title ')])])); assert.equal(sp, T('Title')); assert.equal(open(sp).kids[0].type.name, 'details', 'a title typed with a trailing space stays an editable toggle'); }
+    const hd = codec.save(open(T('x')).m, withKids([mk([schema.text('Big', [red])], 3)])); assert.equal(hd, '<details>\n<summary><h3>[Big]{color=red}</h3></summary>\n\nBody text\n\n</details>\n');
+    // titles from before stay byte for byte: brackets and braces that are not this syntax, F1 titles with a [ in them
+    for (const raw of ['<strong>Notes</strong> [draft]', 'Plain [a]{.class}', '{==open', '<strong>x</strong> {==a', '[x]{color=teal} y', '[<strong>x]{color=red}</strong>', '{>>c<<} <b>x</b>']) { const r = open(T(raw)); assert.equal(codec.save(r.m, r.doc), T(raw), raw); assert.equal(r.kids[0].type.name, 'details', `${raw}: still an editable toggle`); }
+    assert.deepEqual(shape(open(T('<strong>Notes</strong> [draft]')).kids[0].child(0)), [['Notes', 'bold'], [' [draft]', '']]);
+    // random titles: whatever the editor holds is written and read back as the same title, and saved again unchanged
+    let seed = 7; const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+    const pool = [[], [bold.create()], [red], [criticHl.create()], [criticIns.create(), schema.marks.italic.create()], [schema.marks.link.create({ href: 'https://e.x/[1]?a&b' }), red], [schema.marks.code.create()]];
+    const chars = 'ab []{}<>&;=+-~#/\\x';
+    for (let k = 0; k < 400; k++) {
+      const title = []; const n = 1 + rnd(4);
+      for (let j = 0; j < n; j++) {
+        if (rnd(6) === 0) { title.push(criticComment.create({ body: 'Ann: ok' }, null, pool[rnd(3)])); continue; }
+        let t = ''; for (let c = 1 + rnd(5); c > 0; c--) t += chars[rnd(chars.length)];
+        title.push(schema.text(t, pool[rnd(pool.length)]));
+      }
+      title.unshift(schema.text('S')); title.push(schema.text('E')); // (space at either end of a title is trimmed: checked below)
+      const want = schema.nodes.detailsSummary.create(null, title);
+      const saved = codec.save(open(T('x')).m, withKids([mk(title)])); const back = open(saved); assert.equal(back.kids[0].type.name, 'details', saved);
+      assert.deepEqual(back.kids[0].child(0).toJSON(), want.toJSON(), saved); assert.equal(codec.save(back.m, back.doc), saved);
+    }
+    // the Read view draws colour and comments in a title the way the Write view does
+    const renderPage = (x) => markdownIt.render(x); // (render() then sanitises: it keeps data-color, data-author… and mark, ins, del)
+    const h = renderPage(src); const head = h.slice(h.indexOf('<summary>'), h.indexOf('</summary>'));
+    assert.match(head, /<span data-color="red">urgent<\/span>/); assert.match(head, /<mark class="critic-hl">check <\/mark><mark class="critic-hl"><strong>this<\/strong><\/mark><span class="critic-comment"[^>]*data-author="Ann"/);
+    assert.match(head, /<ins class="critic-ins">new<\/ins>/); assert.match(head, /<span class="critic-sub"><del class="critic-del">a<\/del><ins class="critic-ins">b<\/ins><\/span>/);
+    assert(renderPage(T('<strong>Notes</strong> [draft]')).includes('<summary><strong>Notes</strong> [draft]</summary>'), 'a title without colour or comments is left as written');
+    ok('toggle titles keep colour, comments and suggestions (page syntax inside <summary>); literal look-alikes are escaped; 400 random titles round-trip; the Read view draws them'); }
   { const { parseCallout, calloutMarker } = await import('../src/renderer/callouts.js');
     assert.deepEqual(['faq', 'tldr', 'error', 'cite', 'weird'].map((k) => parseCallout(`[!${k}] x`).type), ['question', 'abstract', 'danger', 'quote', 'note']);
     const c = parseCallout('[!callout|💡 yellow]- Read me'); assert.deepEqual([c.emoji, c.color, c.fold, c.title, c.label], ['💡', 'yellow', '-', 'Read me', 'Callout']);
@@ -575,6 +631,17 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.equal(setProp('# Hi\n', 'tags', ['a'], 'tags'), '---\ntags:\n  - a\n---\n\n# Hi\n'); assert.equal(removeProp('---\nx: 1\n---\n# Hi\n', 'x'), '# Hi\n');
   assert.equal(setProp('', 'done', false, 'checkbox'), '---\ndone: false\n---\n'); assert.equal(newKey(t), 'property'); assert.equal(newKey(setProp(t, 'property', '')), 'property 2');
   ok('the first property creates the front matter; removing the last removes it');
+  { // #86: a reminder on a date property is one `<name>-remind:` line; the page opens byte for byte and edits touch only that line
+    const { setPropRemind, propReminders } = await import('../src/renderer/page-props.js');
+    const src = '---\ndue: 2026-12-01 09:30\ndue-remind: 30m\nowner: "[[Ada]]"\n---\n# Plan\n\nBody.\n';
+    const pg = (() => { const win = new Window(); win.document.write('<!DOCTYPE html><html><body></body></html>'); Object.assign(globalThis, { window: win, document: win.document, DOMParser: win.DOMParser }); const ext = pageExtensions(); const codec = createPageCodec(new MarkdownManager({ extensions: ext, markedOptions: { gfm: true } })); const m = codec.load(src); const doc = getSchema(ext).nodeFromJSON(m.json); codec.bind(m, doc); const out = codec.save(m, doc); for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k]; return out; })();
+    assert.equal(pg, src, 'opening and saving changes nothing');
+    assert.deepEqual(propReminders(src).map((r) => [r.key, r.remind]), [['due', '30m']]);
+    assert.deepEqual(only(src, setPropRemind(src, 'due', '1d')), ['due-remind: 1d']); assert.equal(setPropRemind(src, 'due', null), src.replace('due-remind: 30m\n', ''));
+    assert.equal(setPropRemind(setPropRemind(src, 'due', null), 'due', '30m'), src, 'removed and set again: the same bytes');
+    assert.deepEqual(only(src, setProp(src, 'due', '2026-12-02 09:30', 'datetime')), ['due: 2026-12-02 09:30'], 'changing the date keeps its reminder line');
+    ok('a date property’s reminder (`due-remind: 30m`) round-trips byte for byte; setting, changing, removing it writes only its line');
+  }
   { // F3: a CRLF file keeps CRLF; only the edited property's line changes
     const c = t.replace(/\n/g, '\r\n');
     assert.equal(setProp(c, 'done', true), c.replace('done: false', 'done: true'));
@@ -782,6 +849,18 @@ assert.match(chartSvg(s, spec), /<svg class="chart"/); ok('chart renders to SVG'
   const pdfo = pdfOptions({ size: 'A5', landscape: true, margins: 'narrow', header: true }, 'T&C'); assert(Math.abs(pdfo.pageSize.width - 148 / 25.4) < 1e-9 && pdfo.landscape && pdfo.margins.left === 0.5 && pdfo.headerTemplate.includes('T&amp;C') && pdfo.footerTemplate.includes('pageNumber'));
   assert.equal(pageCss({ size: 'Letter', landscape: true, margins: 'wide' }), '@page{size:Letter landscape;margin:1in 2in 1in 2in}');
   ok('Word export: headings, lists, table with alignment, code, footnote, contents field, page break, header and footer, page size; suggestions become tracked changes and comments with replies; clean drops them; PDF page setup');
+  { // #86: a resolved thread ([resolved] as its last reply) is a resolved Word comment, and the marker is not a reply
+    const docxOf = async (md) => { const z = await JSZip.loadAsync(await toDocx(new DOMParser().parseFromString('<!DOCTYPE html><body>' + markdownIt.render(md), 'text/html').body, { title: 'R', author: 'Tester' })); const f = (n) => z.file(n)?.async('string'); return { cm: await f('word/comments.xml'), ext: await f('word/commentsExtended.xml') }; };
+    const done = (ext) => [...ext.matchAll(/<w15:commentEx [^>]*?\/>/g)].map((x) => [/w15:paraIdParent=/.test(x[0]), (/w15:done="(\d)"/.exec(x[0]) || [])[1] || '']);
+    const r1 = await docxOf('A {==claim==}{>>Ada, 2026-11-20 14:05: Source?<<}{>>Bob, 2026-11-20 15:00: Added<<}{>>Ada, 2026-11-21 09:00: [resolved]<<} and {==open==}{>>Bob, 2026-11-20 16:00: Later<<}{>>Ada, 2026-11-20 17:00: Ok<<}.\n');
+    assert(!r1.cm.includes('[resolved]'), 'the marker is not exported as a reply'); assert.equal((r1.cm.match(/<w:comment /g) || []).length, 4);
+    assert.deepEqual(done(r1.ext), [[false, '1'], [true, '1'], [false, ''], [true, '']], r1.ext);
+    const r2 = await docxOf('Just {==this==}{>>Ada, 2026-11-20 14:05: Fix<<}{>>Bob, 2026-11-21 10:00: [resolved]<<}.\n');
+    assert(!r2.cm.includes('[resolved]') && r2.cm.includes('Fix')); assert.deepEqual(done(r2.ext), [[false, '1']], 'a resolved comment with no replies is resolved too');
+    const r3 = await docxOf('Re {==this==}{>>Ada, 2026-11-20 14:05: Fix<<}{>>Bob, 2026-11-21 10:00: [resolved]<<}{>>Ada, 2026-11-22 10:00: Not yet<<}.\n');
+    assert(!r3.cm.includes('[resolved]') && r3.cm.includes('Not yet')); assert.deepEqual(done(r3.ext), [[false, ''], [true, '']], 'a reply after [resolved] reopens the thread');
+    ok('Word export: a resolved thread is a resolved Word comment (with or without replies), its [resolved] marker is not a reply; a reopened thread is open');
+  }
   for (const k of ['window', 'document', 'DOMParser']) delete globalThis[k];
 }
 
@@ -1026,6 +1105,52 @@ assert.equal(gfmTable([['a\\|b', 'c\\']], []).split('\n')[0], '| a\\\\\\|b | c\\
   assert.equal(readAppearance('---\nfont: comic\nsmall-text: false\n---\n').font, '', 'values it does not know are ignored');
   assert.deepEqual([...ownedKeys('---\nfont: serif\ncover: https://x.y/z.png\ncover-y: 5\nowner: Ada\ntoc: true\n---\n')].sort(), ['font', 'toc'], 'only understood keys are hidden from the properties');
   ok('page appearance: font, small-text, full-width, toc, cover and cover-y each change only their own line (LF and CRLF), defaults leave no trace, web covers are refused');
+}
+
+/* ---------- #86: a comment's or suggestion's words in a toggle title are escaped HTML, decoded when read ---------- */
+{
+  const nodes = [{ type: 'text', text: 'Plan ' }, { type: 'criticComment', attrs: { body: 'Ann: </summary> <b>x</b> & &amp; ok' } }, { type: 'criticSub', attrs: { old: '<i>a', new: 'b &lt; c' } }];
+  const html = summaryHtml(nodes);
+  assert.equal(html, 'Plan {>>Ann: &lt;/summary> &lt;b>x&lt;/b> & &amp;amp; ok<<}{~~&lt;i>a~>b &amp;lt; c~~}');
+  assert.deepEqual(summaryNodes(html), nodes, 'read back to the same words');
+  const page = `<details>\n<summary>${html}</summary>\n\nBody\n\n</details>\n`;
+  const out = markdownIt.render(page);
+  assert.equal(out.match(/<\/summary>/g).length, 1, 'a `</summary>` in a comment does not close the title'); assert.doesNotMatch(out, /<b>x<\/b>|<i>a/);
+  assert.match(markdownIt.render('<DETAILS>\n<SUMMARY>Plan [x]{color=red}</SUMMARY>\n\nBody\n\n</DETAILS>\n'), /data-color="red"/, 'upper-case tags are drawn too');
+  ok('a comment or suggestion in a toggle title is escaped inside <summary> (`<`, entity-looking `&`) and decoded when read: `</summary>` or a tag in it stays text');
+}
+
+/* ---------- #86: app-wide appearance defaults (Settings); a page writes only what differs from them ---------- */
+{
+  const D = { font: 'serif', small: true, full: true };
+  for (const eol of ['\n', '\r\n']) {
+    const base = ['---', 'title: T', 'owner: Ada', '---', '# T', '', 'Body.', ''].join(eol);
+    // with the defaults on, turning an option off for one page writes an explicit line; back to the default removes it
+    for (const [key, off, line] of [['small-text', false, 'small-text: false'], ['full-width', false, 'full-width: false'], ['font', '', 'font: sans']]) {
+      const one = setAppearance(base, key, off, D);
+      assert.equal(one, base.replace(`owner: Ada${eol}`, `owner: Ada${eol}${line}${eol}`), `${key} differing from the default is one line`);
+      assert.equal(setAppearance(one, key, key === 'font' ? 'serif' : true, D), base, `${key} back to the default restores the file byte for byte`);
+      assert.deepEqual([...ownedKeys(one)], [key], `${key}: ${String(off)} belongs to the appearance, not the properties`);
+    }
+    // the same values as the defaults leave no trace; with no defaults the old behaviour stands
+    assert.equal(setAppearance(base, 'font', 'serif', D), base); assert.equal(setAppearance(base, 'small-text', true, D), base);
+    assert.equal(setAppearance(base, 'font', 'serif'), base.replace(`owner: Ada${eol}`, `owner: Ada${eol}font: serif${eol}`));
+    assert.equal(setAppearance(base, 'small-text', false), base); assert.equal(setAppearance(base, 'font', 'sans'), base);
+  }
+  const r = (fm, d) => { const a = readAppearance(`---\n${fm}\n---\nx\n`, d); return [a.font, a.small, a.full]; };
+  assert.deepEqual(r('title: x', D), ['serif', true, true], 'a page that says nothing follows Settings');
+  assert.deepEqual(r('font: sans\nsmall-text: false\nfull-width: false', D), ['', false, false], 'its own lines win over Settings');
+  assert.deepEqual(r('font: mono\nsmall-text: true', {}), ['mono', true, false]);
+  assert.deepEqual(r('font: comic\nsmall-text: maybe', D), ['serif', true, true], 'values it does not understand are ordinary properties');
+  assert.deepEqual([...ownedKeys('---\nfont: comic\nsmall-text: maybe\n---\n')], []);
+  // a value the appearance does not own, or a read-only map, is never removed by choosing the default
+  for (const [fm, key, v] of [['font: comic', 'font', ''], ['small-text: maybe', 'small-text', false], ['full-width:\n  a: 1', 'full-width', false], ['font:\n  a: 1', 'font', 'serif'], ['toc: later', 'toc', false]]) {
+    const pg = `---\n${fm}\n---\nx\n`; assert.equal(setAppearance(pg, key, v), pg, `${fm} kept`);
+  }
+  assert.equal(setAppearance('---\nfull-width:\n  a: 1\n---\nx\n', 'full-width', true), '---\nfull-width:\n  a: 1\n---\nx\n', 'a read-only map is not overwritten');
+  assert.deepEqual(r('small-text: "false"\nfull-width: \'true\'', D), ['serif', false, true], 'quoted booleans read as booleans');
+  { const { exportDocument } = await import('../src/renderer/markdown.js'); assert.match(exportDocument('T', '<p>x</p>', '', ' data-font="serif" data-small-text'), /<article class="prose" data-font="serif" data-small-text><p>x<\/p><\/article>/, 'the export carries the appearance'); }
+  ok('app-wide appearance defaults: a page follows Settings for font, small text and full width, and writes `font: sans` or `small-text: false` only when it differs; back to the default restores the file byte for byte');
 }
 
 console.log(`\n${n} format checks passed`);

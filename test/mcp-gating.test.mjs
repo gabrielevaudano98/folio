@@ -8,7 +8,7 @@ import { buildServer, TOOLS, SERVER_INFO } from '../src/main/mcp-tools.js';
 import { SLIDE_TOOLS } from '../src/main/mcp-slides.js';
 import os from 'node:os';
 import path from 'node:path';
-import { lockedTarget, assertUnlocked, isLockedPage, readLockedPages } from '../src/main/locks.js';
+import { lockedTarget, assertUnlocked, isLockedPage, readLockedPages, lockPathArgs } from '../src/main/locks.js';
 
 let n = 0; const ok = (m) => { n++; console.log('  ✓', m); };
 console.log('\nmcp gating');
@@ -49,7 +49,14 @@ assert.equal(lockedTarget(locks, '/ws/a', 'Pages/X.md', { fold: false }), null);
 assert.equal(isLockedPage(locks, '/ws/a', 'PAGES/x.md', { fold: true }), true); assert.equal(isLockedPage(locks, '/ws/a', 'pages', { fold: true }), false);
 const fakeNotes = { resolve: (p) => '/ws/a/' + p, relOf: (abs) => abs.slice('/ws/a/'.length) };
 assert.throws(() => assertUnlocked({ write: true }, { path: 'pages/x.md' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }), /locked in Folio/);
-assert.throws(() => assertUnlocked({ write: true }, { from: 'pages' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }), /locked/);
+const T = (n) => TOOLS.find((t) => t.name === n); const gate = (n, args) => () => assertUnlocked(T(n), args, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' });
+assert.throws(gate('move_note', { from: 'pages', to: 'elsewhere' }), /locked/, 'moving a folder that holds a locked page is refused');
+assert.throws(gate('move_note', { from: 'free.md', to: 'pages/x.md' }), /locked/, 'a move cannot land on a locked page');
+assert.throws(gate('add_shape', { path: 'pages/x.md', id: 'n1' }), /locked/);
+assert.doesNotThrow(gate('connect', { path: 'free.board.md', from: 'pages', to: 'pages/x.md' }), 'a board shape id that matches a locked folder is not a path');
+assert.doesNotThrow(gate('rewrite_links', { path: 'deck.slides.md', from: 'pages/x.md', to: 'other.md' }), 'a link target in a deck is not the file written');
+// every write tool names the file it changes in an argument the gate checks (a new tool cannot slip past the lock)
+for (const t of TOOLS.filter((x) => x.write && x.name !== 'finish_ai_request')) for (const k of lockPathArgs(t)) assert(k in t.input, `${t.name}: the lock gate checks "${k}", which the tool does not take`);
 assert.doesNotThrow(() => assertUnlocked({ write: false }, { path: 'pages/x.md' }, { notes: fakeNotes, lockedPages: locks, workspace: '/ws/a' }));
 ok('locked pages are kept per workspace folder and refuse MCP writes to the page or its folder');
 {

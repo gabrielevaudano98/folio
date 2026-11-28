@@ -82,8 +82,9 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `locales/it.js` | data | Italian catalogue; missing keys fall back to English. |
 | `icons.js` | data | Folio's own line icons (16 px grid, `currentColor`). No icon font, no emoji. |
 | `fuzzy.js` | core | Fuzzy matching for the palette and the `/`, `@`, `[[` menus. |
-| `search-core.js` | core | The search window's pure core: query words and quoted phrases, content snippets, ranking, recent-pages groups. Shared with the main process. |
-| `search-window.js` | surface | The search window on Ctrl+P: recent pages, title and content results with snippets, filters, read-only preview. |
+| `search-core.js` | core | The search window's pure core: query words and quoted phrases, content snippets, ranking and sorts, recent-pages groups, the Date and Created by filters. Shared with the main process. |
+| `search-window.js` | surface | The search window on Ctrl+P: recent pages, title and content results with snippets, filters (folder, Date, Created by), sorts (Best match, Last edited, Created), read-only preview. |
+| `recents.js` | core | Recently opened pages per folder (window storage): one store for the search window and the sidebar's Recent list. |
 | `refs-syntax.js` | core | Reference syntax between documents: `[[Doc#part]]`, `{{Doc#part}}`, `![[Doc#part]]`; rename rewriting; unlinked mentions. |
 | `refs.js` | core | Resolves a reference to a value or an embed and fills placeholders in rendered HTML; also imported by `main/mcp-tools.js` for `resolve_ref`. |
 | `chart.js` | core | One chart spec (```` ```chart ````) drawn as SVG in pages, slides and sheets. |

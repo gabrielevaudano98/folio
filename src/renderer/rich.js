@@ -888,7 +888,7 @@ function btn(id, label, icon, key) {
   return `<button type="button" class="rb" data-cmd="${id}" aria-label="${label}" data-tip="${label}${key ? ` (${key})` : ''}">${icon}</button>`;
 }
 
-export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null, onCopyCode = null, onUnlock = null, onTurnIntoPage = null }) {
+export function createRich(host, { onStatus, onPropType, onChange, resolveImage, onPickImage, onLink, onWikiLink, resolveValue, readNote, isDark = () => false, keyLabel = (k) => k, smartTypography = () => true, pickRef = null, onCopyBlockLink = null, breadcrumb = () => '', createDoc = null, openMedia = null, pickMedia = null, askUrl = null, mentions = null, linkKind = null, preview = null, onCommand = null, isOn = () => false, onStats = null, onTag = null, onTemplate = null, author = () => '', saveImage = null, onError = null, reviewDock = null, onReviewCount = null, onRemoteBlocked = null, onDate = null, dateStyle = () => 'relative', onBlockDeleted = null, onCopyCode = null, onUnlock = null, onTurnIntoPage = null, appearanceDefaults = () => ({}) }) {
   host.innerHTML = `
     ${buildRibbon({ icons, keyLabel, styleOptions: STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('') })}
     <div class="rich-lock" hidden><span class="rich-lock-badge">${icons.lock}<span>${tr('rich.locked')}</span></span><button type="button" class="btn btn-quiet rich-unlock">${tr('rich.unlock')}</button></div>
@@ -1236,7 +1236,7 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
   function setFm(fm) { if (editor.storage.pageLock?.on) return; if (!model) model = codec.load(''); const old = model.fm; if (!old && /\r\n/.test(model.text.split('\n', 1)[0] + '\n')) fm = fm.replace(/\r?\n/g, '\r\n'); model.fm = fm; model.text = fm + model.text.slice(old.length); emit(); applyAppearance(); }
   const toc = mountToc(host.querySelector('.rich-scroll'), { root: () => editor.view.dom });
   function applyAppearance() {
-    const a = readAppearance(model?.fm || '');
+    const a = readAppearance(model?.fm || '', appearanceDefaults());
     for (const [k, v] of [['font', a.font], ['small-text', a.small], ['full-width', a.full]]) { if (v) page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = v === true ? 'true' : v; else delete page.dataset[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())]; }
     toc.refresh(a.toc);
   }
@@ -1374,6 +1374,8 @@ export function createRich(host, { onStatus, onPropType, onChange, resolveImage,
     },
     /** how many toggles are open and closed: the toggle-all command opens them all unless they all are */
     toggleCount() { let open = 0, closed = 0; editor.state.doc.descendants((node) => { if (node.type.name === 'details') (node.attrs.open ? open++ : closed++); }); return { open, closed }; },
+    /** the app-wide appearance defaults (Settings) changed */
+    refreshAppearance() { applyAppearance(); },
     refreshDecorations() { editor.view.dispatch(editor.state.tr.setMeta('folioRedecorate', true).setMeta('addToHistory', false)); },
     /** load text into the editor; `keepHistory` is for an outside update of the same document (an AI edit, a change on disk) */
     setMarkdown(md, { keepHistory = false } = {}) {

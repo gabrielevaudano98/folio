@@ -29,7 +29,10 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `reminders.set` | request | `reminders:set` | `src/main/main.js` |
 | `reminders.onChanged` | event | `reminders:changed` | — |
 | `reminders.onFired` | event | `reminders:fired` | — |
+| `reminders.takeMissed` | request | `reminders:take-missed` | `src/main/main.js` |
+| `reminders.onMissed` | event | `reminders:missed` | — |
 | `reminders.onOpen` | event | `reminders:open` | — |
+| `reminders.takeOpen` | request | `reminders:take-open` | `src/main/main.js` |
 | `backlinks` | request | `fs:backlinks` | `src/main/main.js` |
 | `userName` | request | `app:user-name` | `src/main/main.js` |
 | `unlinked` | request | `fs:unlinked` | `src/main/main.js` |
@@ -63,6 +66,7 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `historyGitGet` | request | `history:git-get` | `src/main/main.js` |
 | `historyDeleted` | request | `history:deleted` | `src/main/main.js` |
 | `historyClear` | request | `history:clear` | `src/main/main.js` |
+| `historyCreators` | request | `history:creators` | `src/main/main.js` |
 | `readClipboard` | request | `clipboard:read` | `src/main/main.js` |
 | `importDocument` | request | `import:document` | `src/main/main.js` |
 | `exportHtml` | request | `export:html` | `src/main/main.js` |

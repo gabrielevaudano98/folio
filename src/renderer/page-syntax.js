@@ -210,46 +210,107 @@ function closeOf(src, open, close, from) {
 }
 /* formatting in a toggle title: <summary> is HTML, so marks are written as inline HTML tags, which GitHub and the Read
    view show formatted. Only these exact tags are read, nested in this order; anything else in a title stays literal
-   text, and a title is only read as formatted when writing it back gives exactly the same characters (lossless). */
-const SUMMARY_MARKS = [['link', 'a'], ['bold', 'strong'], ['italic', 'em'], ['strike', 's'], ['underline', 'u'], ['highlight', 'mark'], ['superscript', 'sup'], ['subscript', 'sub'], ['code', 'code']];
+   text, and a title is only read as formatted when writing it back gives exactly the same characters (lossless).
+   Colour and comments use the page's own text syntax, as in a paragraph: `[text]{color=red}` and CriticMarkup
+   (`{==quote==}{>>comment<<}`, `{++…++}`, `{--…--}`, `{~~old~>new~~}`); other Markdown tools show those as text there
+   too. Outermost first: suggestions and highlights, colour, then the HTML marks. */
+const SUMMARY_MARKS = [['criticIns', '{++', '++}'], ['criticDel', '{--', '--}'], ['criticHl', '{==', '==}'], ['folioColor', '[', ']'],
+  ['link', 'a'], ['bold', 'strong'], ['italic', 'em'], ['strike', 's'], ['underline', 'u'], ['highlight', 'mark'], ['superscript', 'sup'], ['subscript', 'sub'], ['code', 'code']];
 const SUMMARY_RANK = new Map(SUMMARY_MARKS.map(([m], i) => [m, i]));
-const SUMMARY_TAG = new Map(SUMMARY_MARKS.map(([m, t]) => [t, m]));
-const escSummary = (s) => s.replace(/&(?=#?\w+;)/g, '&amp;').replace(/</g, '&lt;'); // every <: a tag, a comment (<!--) or <? stays text in the Read view
-const unescSummary = (s) => s.replace(/&lt;/g, '<').replace(/&amp;/g, '&');
-const markKey = (m) => (m.type === 'link' ? `link ${m.attrs?.href || ''}` : m.type);
-/** text nodes (JSON) of a toggle title as the HTML inside <summary> */
-export function summaryHtml(nodes) {
-  const texts = (nodes || []).filter((n) => n.text);
-  if (!texts.some((n) => (n.marks || []).some((m) => SUMMARY_RANK.has(m.type)))) return texts.map((n) => n.text).join('');
-  let out = ''; const stack = [];
-  for (const n of texts) {
-    const want = (n.marks || []).filter((m) => SUMMARY_RANK.has(m.type)).sort((a, b) => SUMMARY_RANK.get(a.type) - SUMMARY_RANK.get(b.type));
-    let k = 0; while (k < stack.length && k < want.length && markKey(stack[k]) === markKey(want[k])) k++;
-    while (stack.length > k) out += `</${SUMMARY_MARKS[SUMMARY_RANK.get(stack.pop().type)][1]}>`;
-    for (const m of want.slice(k)) { const tag = SUMMARY_MARKS[SUMMARY_RANK.get(m.type)][1]; out += m.type === 'link' ? `<a href="${String(m.attrs?.href || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">` : `<${tag}>`; stack.push(m); }
-    out += escSummary(n.text);
+const SUMMARY_TAG = new Map(SUMMARY_MARKS.filter((x) => x.length === 2).map(([m, t]) => [t, m]));
+const CRITIC_OPEN = new Map(SUMMARY_MARKS.filter((x) => x[1].startsWith('{')).map(([m, o, c]) => [o, [m, c]]));
+const SUMMARY_ATOMS = new Set(['criticComment', 'criticSub']);
+const CRITIC_STARTS = ['==', '>>', '++', '--', '~~'];
+const COLOR_CLOSE = new RegExp(`^\\]\\{((?:\\s*(?:color|bg)=(?:${COLORS.join('|')}))+)\\s*\\}`);
+const colorAttrs = (a) => [a?.color && `color=${a.color}`, a?.bg && `bg=${a.bg}`].filter(Boolean).join(' ');
+const ENT = { '&lt;': '<', '&#91;': '[', '&#93;': ']', '&#123;': '{', '&#125;': '}' };
+const unescSummary = (s) => s.replace(/&lt;|&#91;|&#93;|&#123;|&#125;/g, (e) => ENT[e]).replace(/&amp;/g, '&');
+/* text as it may stand in a formatted title: `<` and an entity-looking `&` always (a tag, a comment or <? stays text in the
+   Read view); a brace only where it would start or end colour or CriticMarkup; a bracket only inside a colour span, whose
+   text cannot hold one. `before` is what was written just before, so a run split across marks is judged as one. */
+function escSummary(t, before, inColor) {
+  let out = '';
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i]; const prev = (before.slice(-2) + out).slice(-2);
+    if (c === '<') out += '&lt;';
+    else if (c === '&' && /^&#?\w+;/.test(t.slice(i))) out += '&amp;';
+    // (a `{` near the end of a run is judged with what may follow: `{=` and then the closing `==}` would open a highlight)
+    else if (c === '{' && (CRITIC_STARTS.some((o) => t.startsWith(o, i + 1) || (t.length - i - 1 < 2 && o.startsWith(t.slice(i + 1)))) || prev.endsWith(']'))) out += '&#123;';
+    else if (c === '}' && /(?:==|\+\+|--|~~)$/.test(prev)) out += '&#125;';
+    else if (inColor && (c === '[' || c === ']')) out += c === '[' ? '&#91;' : '&#93;';
+    else out += c;
   }
-  while (stack.length) out += `</${SUMMARY_MARKS[SUMMARY_RANK.get(stack.pop().type)][1]}>`;
   return out;
 }
-/** the HTML inside <summary> as text nodes (JSON) with marks; literal text when it is not exactly what summaryHtml writes */
+const markKey = (m) => (m.type === 'link' ? `link ${m.attrs?.href || ''}` : m.type === 'folioColor' ? `color ${colorAttrs(m.attrs)}` : m.type);
+const kept = (n) => (n.marks || []).filter((m) => SUMMARY_RANK.has(m.type) && (m.type !== 'folioColor' || colorAttrs(m.attrs))).sort((a, b) => SUMMARY_RANK.get(a.type) - SUMMARY_RANK.get(b.type));
+// a link inside a colour span writes its brackets as entities, so the span's closing bracket is the first one after it
+const openTag = (m, inColor) => { const d = SUMMARY_MARKS[SUMMARY_RANK.get(m.type)]; if (m.type !== 'link') return d.length === 3 ? d[1] : `<${d[1]}>`; const h = String(m.attrs?.href || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); return `<a href="${inColor ? h.replace(/\[/g, '&#91;').replace(/\]/g, '&#93;') : h}">`; };
+const closeTag = (m) => { const d = SUMMARY_MARKS[SUMMARY_RANK.get(m.type)]; return m.type === 'folioColor' ? `]{${colorAttrs(m.attrs)}}` : d.length === 3 ? d[2] : `</${d[1]}>`; };
+/* a comment's or suggestion's words inside the raw <summary> HTML: `<` and an entity-looking `&` escaped, so `</summary>`
+   or a tag in a comment stays text for every HTML reader; parseSummary decodes them */
+const escAtom = (s) => String(s ?? '').replace(/&(?=#?\w+;)/g, '&amp;').replace(/</g, '&lt;');
+const atomText = (n) => (n.type === 'criticComment' ? `{>>${escAtom(n.attrs?.body)}<<}` : `{~~${escAtom(n.attrs?.old)}~>${escAtom(n.attrs?.new)}~~}`);
+/* a title's nodes (JSON), read without the lossless check; null when its marks do not nest */
+function parseSummary(src) {
+  const out = []; const stack = []; let buf = '', i = 0;
+  const marks = () => (stack.length ? { marks: stack.map((x) => ({ type: x.type, ...(x.attrs ? { attrs: { ...x.attrs } } : {}) })) } : {});
+  const flush = () => { if (buf) out.push({ type: 'text', text: unescSummary(buf), ...marks() }); buf = ''; };
+  while (i < src.length) {
+    const rest = src.slice(i); let m;
+    if ((m = /^\{>>([^\n]*?)<<\}/.exec(rest))) { flush(); out.push({ type: 'criticComment', attrs: { body: unescSummary(m[1]) }, ...marks() }); i += m[0].length; continue; }
+    if ((m = /^\{~~([^\n]*?)~>([^\n]*?)~~\}/.exec(rest))) { flush(); out.push({ type: 'criticSub', attrs: { old: unescSummary(m[1]), new: unescSummary(m[2]) }, ...marks() }); i += m[0].length; continue; }
+    const crit = CRITIC_OPEN.get(rest.slice(0, 3));
+    if (crit) { flush(); stack.push({ type: crit[0], close: crit[1] }); i += 3; continue; }
+    const top = stack.at(-1);
+    if (top?.close && rest.startsWith(top.close)) { flush(); stack.pop(); i += 3; continue; }
+    if (rest[0] === '[') { // a colour span: the next bracket must be its `]{color=…}`
+      const j = rest.slice(1).search(/[[\]]/) + 1; const cm = j > 0 && rest[j] === ']' ? COLOR_CLOSE.exec(rest.slice(j)) : null;
+      if (cm) { flush(); stack.push({ type: 'folioColor', attrs: parseColorAttrs(cm[1]), end: i + j, endLen: cm[0].length }); i++; continue; }
+    }
+    if (rest[0] === ']') { const c = stack.find((x) => x.end === i); if (c) { if (top !== c) return null; flush(); stack.pop(); i += c.endLen; continue; } }
+    if ((m = /^<a href="([^"]*)">|^<\/?(a|strong|em|s|u|mark|sup|sub|code)>/.exec(rest))) {
+      if (m[1] == null && m[2] === 'a' && m[0][1] !== '/') return null; // a bare <a> has no href: not something summaryHtml writes
+      const type = m[1] != null ? 'link' : SUMMARY_TAG.get(m[2]); flush();
+      if (m[0][1] === '/') { if (top?.type !== type) return null; stack.pop(); }
+      else stack.push(type === 'link' ? { type, attrs: { href: unescSummary(m[1].replace(/&quot;/g, '"')) } } : { type });
+      i += m[0].length; continue;
+    }
+    buf += rest[0]; i++;
+  }
+  flush();
+  return stack.length ? null : out;
+}
+/** nodes (JSON) of a toggle title as the HTML inside <summary> */
+export function summaryHtml(nodes) {
+  const items = (nodes || []).filter((n) => n.text || SUMMARY_ATOMS.has(n.type));
+  if (!items.some((n) => SUMMARY_ATOMS.has(n.type) || kept(n).length)) {
+    // a title with no formatting is written as typed, unless summaryNodes would read that back as formatting (or with
+    // entities decoded): only then is it escaped. Hand-written HTML Folio would write differently stays literal and as typed.
+    // (No endless recursion: p is either formatted, or plain text shorter than raw.)
+    const raw = items.map((n) => n.text).join(''); const p = parseSummary(raw);
+    if (!raw || !p || (p.length === 1 && !p[0].marks && p[0].text === raw) || summaryHtml(p) !== raw) return raw;
+  }
+  let out = ''; const stack = [];
+  for (const n of items) {
+    const want = kept(n);
+    let k = 0; while (k < stack.length && k < want.length && markKey(stack[k]) === markKey(want[k])) k++;
+    while (stack.length > k) out += closeTag(stack.pop());
+    for (const m of want.slice(k)) { out += openTag(m, stack.some((x) => x.type === 'folioColor')); stack.push(m); }
+    out += SUMMARY_ATOMS.has(n.type) ? atomText(n) : escSummary(n.text, out, stack.some((m) => m.type === 'folioColor'));
+  }
+  while (stack.length) out += closeTag(stack.pop());
+  return out;
+}
+/** the HTML inside <summary> as nodes (JSON) with marks; literal text when it is not exactly what summaryHtml writes */
 export function summaryNodes(src) {
   if (!src) return [];
-  const literal = [{ type: 'text', text: src }];
-  if (!/<(?:a href="[^"]*"|strong|em|s|u|mark|sup|sub|code)>/.test(src)) return literal;
-  const out = []; const stack = []; const re = /<a href="([^"]*)">|<\/?(a|strong|em|s|u|mark|sup|sub|code)>/g; let at = 0, m;
-  const push = (t) => { if (t) out.push({ type: 'text', text: unescSummary(t), ...(stack.length ? { marks: stack.map((x) => ({ ...x })) } : {}) }); };
-  while ((m = re.exec(src))) {
-    push(src.slice(at, m.index)); at = m.index + m[0].length;
-    if (m[1] == null && m[2] === 'a' && m[0][1] !== '/') return literal; // a bare <a> has no href: not something summaryHtml writes
-    const tag = m[1] != null ? 'a' : m[2]; const type = SUMMARY_TAG.get(tag);
-    if (m[0][1] === '/') { if (stack.at(-1)?.type !== type) return literal; stack.pop(); }
-    else stack.push(type === 'link' ? { type, attrs: { href: m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&') } } : { type });
-  }
-  push(src.slice(at));
-  if (stack.length || !out.length || summaryHtml(out) !== src) return literal;
+  const out = parseSummary(src);
+  if (!out?.length || summaryHtml(out) !== src) return [{ type: 'text', text: src }];
   return out;
 }
+/** does a toggle title use colour or comments (the Read view then draws it from summaryNodes, as the Write view does) */
+export const summaryNeedsDrawing = (nodes) => nodes.some((n) => SUMMARY_ATOMS.has(n.type) || (n.marks || []).some((m) => m.type === 'folioColor' || m.type.startsWith('critic')));
 export const Details = BaseDetails.extend({
   addAttributes() { return { ...this.parent?.(), heading: { default: 0, parseHTML: (el) => +el.getAttribute('data-heading') || 0, renderHTML: (a) => (a.heading ? { 'data-heading': a.heading } : {}) } }; },
   parseMarkdown: (token, h) => h.createNode('details', { open: token.open, heading: token.heading }, [
@@ -259,7 +320,7 @@ export const Details = BaseDetails.extend({
   renderMarkdown: (node, h) => {
     const [summary, content] = node.content || [];
     const level = node.attrs?.heading || 0;
-    const title = summaryHtml(summary?.content);
+    const title = summaryHtml(summary?.content).trim(); // space at either end of a title is not kept (the reader trims it too)
     const body = content ? h.renderChildren(content.content || [], '\n\n') : '';
     return `<details${node.attrs?.open ? ' open' : ''}>\n<summary>${level ? `<h${level}>${title}</h${level}>` : title}</summary>\n\n${body.trim()}\n\n</details>`;
   },
@@ -280,7 +341,8 @@ export const Details = BaseDetails.extend({
     },
   },
 });
-export const DetailsSummary = BaseSummary.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
+// a title holds text and, for comments and suggestions on it, their inline atoms
+export const DetailsSummary = BaseSummary.extend({ content: '(text | criticComment | criticSub)*', parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 export const DetailsContent = BaseContent.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 
 /* :::: columns / ::: column (markdown-it-container, as in slides; the outer fence has four colons so it can hold the inner ones) */

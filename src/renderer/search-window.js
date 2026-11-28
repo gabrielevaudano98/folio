@@ -1,40 +1,34 @@
 // Folio — the search window on Ctrl+P (Notion's search, help/search). Empty: the pages you opened or edited lately,
 // grouped Today, Yesterday, Past week, Older. Typing: pages by title and by content, each with its icon, folder and a
-// highlighted snippet; chips for Title only, In folder… and the sort (Best match, Last edited); a read-only preview of
+// highlighted snippet; chips for Title only, In folder…, Date (edited or created today, this week, this month), Created by
+// (you or an AI assistant, from version history) and the sort (Best match, Last edited, Created); a read-only preview of
 // the selected page on the right. Title only is the old "Go to note" switcher (fuzzy names, open tabs first, Create note).
 // Arrows move, Enter opens, Mod+Enter opens in a tab behind the current one, Esc closes; ">" hands over to the commands.
 import { t as tr } from './i18n.js';
-import { parseQuery, rankResults, recencyGroups, termMarks } from './search-core.js';
+import { parseQuery, rankResults, recencyGroups, termMarks, inDateRange, creatorOf, creatorChoices, DATE_FILTERS } from './search-core.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mark = (s, marks, tag = 'mark') => { let out = '', last = 0; for (const [a, b] of marks) { if (a < last) continue; out += esc(s.slice(last, a)) + `<${tag}>` + esc(s.slice(a, b)) + `</${tag}>`; last = b; } return out + esc(s.slice(last)); };
 const groupLabel = (k) => ({ today: tr('search.group-today'), yesterday: tr('search.group-yesterday'), week: tr('search.group-week') }[k] || tr('search.group-older'));
-const RECENT_KEY = 'folio.search.recent', PREFS_KEY = 'folio.search.prefs';
+const PREFS_KEY = 'folio.search.prefs';
+const SORTS = ['best', 'edited', 'created'];
+const NOTE_RE = /\.(md|markdown|mdx|txt)$/i; // what notes.find lists
+const DATE_LABEL = { 'edited-today': 'search.date-edited-today', 'edited-week': 'search.date-edited-week', 'edited-month': 'search.date-edited-month', 'created-today': 'search.date-created-today', 'created-week': 'search.date-created-week', 'created-month': 'search.date-created-month' };
 const readJson = (k, d) => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') }; } catch { return d; } };
 
 /**
  * deps: { workspace(), files(), isOpen(p), stem(p), dirOf(p), dirs(), typeIcon(p), textOf(p), render(md),
- *         absUrl(rel), find(q, opts), open(p, { line, background }), commands(q), create(q), isMac }
+ *         absUrl(rel), find(q, opts), creators() → { path: { by } }, recents (recents.js, shared with the sidebar),
+ *         open(p, { line, background }), commands(q), create(q), isMac }
  */
 export function createSearchWindow(deps) {
   let root = null, st = null, seq = 0, previewSeq = 0, timer = 0;
   const prefs = readJson(PREFS_KEY, { preview: true, sort: 'best' });
   const savePrefs = () => { try { localStorage.setItem(PREFS_KEY, JSON.stringify({ preview: prefs.preview, sort: prefs.sort })); } catch {} };
 
-  /* ---- recently opened pages, per folder (window storage: never written into a note) ---- */
-  const recentAll = () => readJson(RECENT_KEY, {});
-  function noteOpened(p) {
-    const ws = deps.workspace(); if (!ws || !p) return;
-    const all = recentAll(); const mine = all[ws] || {};
-    mine[p] = Date.now();
-    all[ws] = Object.fromEntries(Object.entries(mine).sort((a, b) => b[1] - a[1]).slice(0, 100));
-    try { localStorage.setItem(RECENT_KEY, JSON.stringify(all)); } catch {}
-  }
-  function noteMoved(from, to) {
-    const ws = deps.workspace(); const all = recentAll(); const mine = all[ws]; if (!mine) return;
-    for (const k of Object.keys(mine)) if (k === from || k.startsWith(from + '/')) { if (to) mine[to + k.slice(from.length)] = mine[k]; delete mine[k]; }
-    try { localStorage.setItem(RECENT_KEY, JSON.stringify(all)); } catch {}
-  }
+  /* ---- recently opened pages, per folder: the store the sidebar's Recent list reads too (recents.js) ---- */
+  const noteOpened = (p) => deps.recents.opened(p);
+  const noteMoved = (from, to) => deps.recents.moved(from, to);
 
   function build() {
     root = document.createElement('div');
@@ -47,7 +41,10 @@ export function createSearchWindow(deps) {
         <button type="button" class="search-chip" id="search-title-only" aria-pressed="false">${esc(tr('search.title-only'))}</button>
         <label class="search-chip search-chip-select"><span class="visually-hidden">${esc(tr('search.in-folder'))}</span><select id="search-folder"></select></label>
         <label class="search-chip search-chip-select"><span class="visually-hidden">${esc(tr('search.sort'))}</span><select id="search-sort">
-          <option value="best">${esc(tr('search.sort-best'))}</option><option value="edited">${esc(tr('search.sort-edited'))}</option></select></label>
+          <option value="best">${esc(tr('search.sort-best'))}</option><option value="edited">${esc(tr('search.sort-edited'))}</option><option value="created">${esc(tr('search.sort-created'))}</option></select></label>
+        <label class="search-chip search-chip-select"><span class="visually-hidden">${esc(tr('search.date'))}</span><select id="search-date">
+          <option value="">${esc(tr('search.date-any'))}</option>${DATE_FILTERS.map((d) => `<option value="${d}">${esc(tr(DATE_LABEL[d]))}</option>`).join('')}</select></label>
+        <label class="search-chip search-chip-select"><span class="visually-hidden">${esc(tr('search.created-by'))}</span><select id="search-creator"></select></label>
         <span class="search-chips-gap"></span>
         <button type="button" class="search-chip" id="search-preview-toggle" aria-pressed="true" aria-controls="search-preview">${esc(tr('search.preview'))}</button>
       </div>
@@ -68,8 +65,10 @@ export function createSearchWindow(deps) {
     root.querySelector('#search-list').addEventListener('mousemove', (e) => { const li = e.target.closest('[data-i]'); if (li && Number(li.dataset.i) !== st.sel) select(Number(li.dataset.i)); });
     root.addEventListener('pointerdown', (e) => { if (e.target === root) close(); });
     root.querySelector('#search-title-only').addEventListener('click', (e) => { st.titleOnly = !st.titleOnly; e.currentTarget.setAttribute('aria-pressed', String(st.titleOnly)); st.sel = 0; update(); input.focus(); });
-    root.querySelector('#search-folder').addEventListener('change', (e) => { st.folder = e.target.value; st.sel = 0; update(); });
+    root.querySelector('#search-folder').addEventListener('change', (e) => { st.folder = e.target.value; st.sel = 0; drawCreators(); update(); });
     root.querySelector('#search-sort').addEventListener('change', (e) => { prefs.sort = st.sort = e.target.value; savePrefs(); st.sel = 0; update(); });
+    root.querySelector('#search-date').addEventListener('change', (e) => { st.date = e.target.value; st.sel = 0; update(); });
+    root.querySelector('#search-creator').addEventListener('change', (e) => { st.creator = e.target.value === '*' ? null : e.target.value; st.sel = 0; update(); });
     root.querySelector('#search-preview-toggle').addEventListener('click', (e) => { prefs.preview = !prefs.preview; savePrefs(); e.currentTarget.setAttribute('aria-pressed', String(prefs.preview)); layout(); drawPreview(); input.focus(); });
     root.querySelectorAll('select').forEach((s) => s.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } }));
   }
@@ -85,11 +84,13 @@ export function createSearchWindow(deps) {
   async function open({ titleOnly = false, query = '' } = {}) {
     if (!root) build();
     if (isOpen()) { const i = root.querySelector('#search-input'); i.focus(); i.select(); return; }
-    st = { items: [], sel: 0, titleOnly, folder: '', sort: prefs.sort === 'edited' ? 'edited' : 'best', meta: new Map(), opener: document.activeElement, content: new Map(), contentQ: null };
+    st = { items: [], sel: 0, titleOnly, folder: '', date: '', creator: null, creators: {}, sort: SORTS.includes(prefs.sort) ? prefs.sort : 'best', meta: new Map(), opener: document.activeElement, content: new Map(), contentQ: null };
     const input = root.querySelector('#search-input');
     input.value = query;
     root.querySelector('#search-title-only').setAttribute('aria-pressed', String(titleOnly));
     root.querySelector('#search-sort').value = st.sort;
+    root.querySelector('#search-date').value = '';
+    drawCreators();
     root.querySelector('#search-preview-toggle').setAttribute('aria-pressed', String(prefs.preview));
     const dirs = deps.dirs();
     root.querySelector('#search-folder').innerHTML = `<option value="">${esc(tr('search.all-folders'))}</option>` + dirs.map((d) => `<option value="${esc(d)}">${esc(tr('search.in-name', { name: d }))}</option>`).join('');
@@ -100,7 +101,15 @@ export function createSearchWindow(deps) {
     // the last edit and icon of every page (also warms main's text cache for the first query)
     if (deps.workspace()) {
       const mine = st;
-      deps.find('', {}).then((rows) => { if (st !== mine || !isOpen()) return; for (const r of rows) st.meta.set(r.path, r); update(); }, () => {});
+      const take = (rows) => { if (st !== mine || !isOpen()) return false; for (const r of rows) st.meta.set(r.path, r); st.metaReady = true; update(); return true; };
+      deps.find('', {}).then((rows) => {
+        if (!take(rows)) return;
+        // the listing stops at 5000 notes: the dates of the rest are asked for by name, so Date filters and sorts see them too
+        const rest = deps.files().filter((p) => NOTE_RE.test(p) && !st.meta.has(p));
+        if (rest.length) deps.find('', { paths: rest }).then(take, () => {});
+      }, () => {});
+      // who created each page (version history), for the Created by chip
+      Promise.resolve(deps.creators?.()).then((c) => { if (st !== mine || !isOpen() || !c) return; st.creators = c; drawCreators(); if (st.creator != null) update(); }, () => {});
     }
   }
   function close(restore = true) {
@@ -112,12 +121,24 @@ export function createSearchWindow(deps) {
   const isOpen = () => !!root && !root.hidden;
   const layout = () => root.querySelector('.search-win').classList.toggle('has-preview', prefs.preview);
   function schedule() { clearTimeout(timer); timer = setTimeout(() => { timer = 0; update(); }, 90); }
+  /* the Created by chip: Anyone, then the creators found in this folder ("You", each assistant, "Not known") */
+  function drawCreators() {
+    const sel = root.querySelector('#search-creator');
+    const label = (v) => (v === 'you' ? tr('search.creator-you') : v || tr('search.creator-unknown'));
+    const choices = creatorChoices(st.creators, deps.files().filter((p) => !st.folder || p.startsWith(st.folder + '/'))); // this folder's creators
+    if (st.creator != null && !choices.some((c) => c.value === st.creator)) choices.push({ value: st.creator, count: 0 });
+    sel.innerHTML = `<option value="*">${esc(tr('search.creator-any'))}</option>` + choices.map((c) => `<option value="${esc(c.value)}">${esc(tr('search.created-by-name', { name: label(c.value) }))}</option>`).join('');
+    sel.value = st.creator == null ? '*' : st.creator;
+  }
 
   /* ---- rows ---- */
   function fileRows() {
     const inFolder = (p) => !st.folder || p.startsWith(st.folder + '/');
-    return deps.files().filter(inFolder).map((p) => ({ path: p, title: deps.stem(p), modified: st.meta.get(p)?.modified || 0, open: deps.isOpen(p) }));
+    const now = Date.now();
+    return deps.files().filter(inFolder).map((p) => ({ path: p, title: deps.stem(p), modified: st.meta.get(p)?.modified || 0, created: st.meta.get(p)?.created || 0, open: deps.isOpen(p) }))
+      .filter((f) => inDateRange(f, st.date, now) && (st.creator == null || creatorOf(st.creators, f.path) === st.creator));
   }
+  const filtered = () => !!st.date || st.creator != null;
   async function update() {
     const raw = root.querySelector('#search-input').value;
     const q = parseQuery(raw);
@@ -128,20 +149,25 @@ export function createSearchWindow(deps) {
       try { rows = await deps.find(q.raw, { folder: st.folder }); } catch { rows = []; }
       if (mine !== seq || !isOpen()) return;
       st.content = new Map(rows.map((r) => [r.path, r]));
-      for (const r of rows) if (!st.meta.has(r.path)) st.meta.set(r.path, { path: r.path, modified: r.modified, icon: r.icon });
+      for (const r of rows) st.meta.set(r.path, { ...st.meta.get(r.path), path: r.path, modified: r.modified, created: r.created, icon: r.icon });
       st.contentQ = `${st.folder}\u0000${q.raw}`;
     }
     st.q = q;
     const ranked = rankResults(fileRows(), q, st.titleOnly ? null : st.content, { sort: st.sort, titleOnly: st.titleOnly }).slice(0, 80);
     st.items = ranked.map((r) => ({ kind: 'page', ...r }));
-    if (deps.workspace() && !ranked.some((r) => r.title.toLowerCase() === q.text.toLowerCase()) && !ranked.some((r) => r.titleStrong))
+    // a page that exists but is hidden by a Date or Created by filter is not offered as a new one
+    const low = q.text.toLowerCase(); const exists = filtered() && deps.files().some((p) => (!st.folder || p.startsWith(st.folder + '/')) && deps.stem(p).toLowerCase() === low);
+    if (deps.workspace() && !exists && !ranked.some((r) => r.title.toLowerCase() === low) && !ranked.some((r) => r.titleStrong))
       st.items.push({ kind: 'create', title: q.text });
     draw();
   }
   function recentItems() {
-    const opened = recentAll()[deps.workspace()] || {};
-    const items = fileRows().map((f) => ({ path: f.path, title: f.title, modified: f.modified, time: Math.max(opened[f.path] || 0, f.modified || 0) }));
-    if (st.sort === 'edited') { return items.filter((x) => x.modified).sort((a, b) => b.modified - a.modified).slice(0, 40).map((x) => ({ kind: 'page', ...x, titleMarks: [] })); }
+    const opened = deps.recents.times();
+    const items = fileRows().map((f) => ({ path: f.path, title: f.title, modified: f.modified, created: f.created, time: Math.max(opened[f.path] || 0, f.modified || 0) }));
+    const flat = (list) => list.slice(0, 40).map((x) => ({ kind: 'page', ...x, titleMarks: [] }));
+    if ((st.sort === 'edited' || st.sort === 'created') && !st.metaReady) return flat(items.slice().sort((a, b) => a.title.localeCompare(b.title))); // dates still loading: names, not an empty list
+    if (st.sort === 'edited') return flat(items.filter((x) => x.modified).sort((a, b) => b.modified - a.modified));
+    if (st.sort === 'created') return flat(items.filter((x) => x.created).sort((a, b) => b.created - a.created || a.title.localeCompare(b.title)));
     const groups = recencyGroups(items, Date.now(), { limit: 40 });
     const out = [];
     for (const g of groups) g.items.forEach((x, k) => out.push({ kind: 'page', ...x, titleMarks: [], group: k === 0 ? g.key : null }));
@@ -167,7 +193,7 @@ export function createSearchWindow(deps) {
     const list = root.querySelector('#search-list');
     const empty = !st.q?.terms.length;
     let html = '';
-    if (!st.items.length) html = `<li class="palette-empty" role="presentation">${esc(tr(deps.workspace() ? (empty ? 'search.no-pages' : 'app.no-matches') : 'app.open-a-folder-first'))}</li>`;
+    if (!st.items.length) html = `<li class="palette-empty" role="presentation">${esc(tr(deps.workspace() ? (empty && !filtered() ? 'search.no-pages' : 'app.no-matches') : 'app.open-a-folder-first'))}</li>`;
     else if (empty && st.items.some((x) => x.group)) {
       let open = false;
       st.items.forEach((it, i) => {
@@ -176,7 +202,7 @@ export function createSearchWindow(deps) {
       });
       if (open) html += '</ul></li>';
     } else {
-      if (empty) html += `<li class="search-group" role="presentation">${esc(tr('search.last-edited'))}</li>`;
+      if (empty) html += `<li class="search-group" role="presentation">${esc(tr(st.sort === 'created' ? 'search.newest' : 'search.last-edited'))}</li>`;
       else html += `<li class="search-group" role="presentation" aria-live="polite">${esc(tr('search.n-results', { n: st.items.filter((x) => x.kind === 'page').length }))}</li>`;
       html += st.items.map(rowHtml).join('');
     }
@@ -244,7 +270,7 @@ export function createSearchWindow(deps) {
     return deps.open(it.path, { line: it.content?.line, background });
   }
 
-  /** the paths opened most recently in this folder, newest first (what the sidebar Recents lists) */
-  const recent = (n = 5) => Object.entries(recentAll()[deps.workspace()] || {}).sort((a, b) => b[1] - a[1]).slice(0, n).map(([p]) => p);
+  /** the paths opened most recently in this folder, newest first (what the sidebar's Recent list shows) */
+  const recent = (n = 5) => deps.recents.list(n);
   return { open, close, isOpen, noteOpened, noteMoved, recent };
 }

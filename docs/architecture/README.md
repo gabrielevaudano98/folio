@@ -130,7 +130,7 @@ sequenceDiagram
   participant N as notes.js
   participant W as Window
   AI->>M: POST /mcp (token) edit_note
-  M->>M: allowWrite? workspace open?
+  M->>M: allowWrite? workspace open? page locked (locks.js)?
   M->>N: runTool → resolve path, apply exact edits, write atomically
   M->>W: ai:edit (before, after, client)
   W->>W: highlights the change, offers Undo

@@ -67,7 +67,8 @@ export function createNotes(getRoot) {
   const linkOk = (abs) => { try { contain(abs); return true; } catch { return false; } };
 
   async function walk(dir, out, depth = 0) {
-    if (out.length >= MAX_FILES || depth > 12) return;
+    if (depth > 12) { out.deep = true; return; } // deeper folders are not listed: whoever needs the whole folder is told (notePaths' capped)
+    if (out.length >= MAX_FILES) return;
     let entries;
     try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
@@ -108,6 +109,12 @@ export function createNotes(getRoot) {
       return { path: relOf(f), bytes: s?.size ?? 0, modified: s ? new Date(s.mtimeMs).toISOString() : null };
     }));
     return stats.sort((a, b) => (b.modified || '').localeCompare(a.modified || ''));
+  }
+
+  /** every note's path, unsorted and without stat (a whole-folder scan only needs the names); capped: the listing stopped at MAX_FILES */
+  async function notePaths() {
+    const files = []; await walk(root(), files);
+    return { paths: files.slice(0, MAX_FILES).map(relOf), capped: files.length >= MAX_FILES || !!files.deep }; // walk() can pass the cap inside one folder
   }
 
   async function read(rel, { fromLine, toLine } = {}) {
@@ -208,27 +215,30 @@ export function createNotes(getRoot) {
     const c = textCache.map.get(abs);
     if (c && c.m === st.mtimeMs && c.s === st.size) return c;
     if (c) { textCache.bytes -= c.text.length * 4; textCache.map.delete(abs); }
-    if (st.size > CACHE_FILE_MAX * 4) return { m: st.mtimeMs, s: st.size, text: '', low: '', icon: '' }; // a huge file is listed, not searched
+    const created = Math.min(st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs, st.mtimeMs); // a copy that kept its old mtime was created no later than that
+    if (st.size > CACHE_FILE_MAX * 4) return { m: st.mtimeMs, s: st.size, c: created, text: '', low: '', icon: '' }; // a huge file is listed, not searched
     const text = await fs.readFile(abs, 'utf8').catch(() => '');
-    const e = { m: st.mtimeMs, s: st.size, text, low: text.toLowerCase(), icon: iconOf(text) };
+    const e = { m: st.mtimeMs, s: st.size, c: created, text, low: text.toLowerCase(), icon: iconOf(text) };
     const prev = textCache.map.get(abs); if (prev) { textCache.bytes -= prev.text.length * 4; textCache.map.delete(abs); } // a concurrent find may have stored it meanwhile
     if (st.size <= CACHE_FILE_MAX && textCache.bytes + text.length * 4 <= CACHE_MAX) { textCache.map.set(abs, e); textCache.bytes += text.length * 4; }
     return e;
   }
-  async function find(query = '', { folder = '', limit = 400 } = {}) {
+  /* paths: only these notes (inside the folder, at most MAX_FILES), for the ones a capped walk did not reach */
+  async function find(query = '', { folder = '', limit = 400, paths = null } = {}) {
     const base = root();
     if (textCache.root !== base) { textCache.root = base; textCache.map.clear(); textCache.bytes = 0; }
     const q = parseQuery(query);
     const files = [];
-    await walk(folder ? resolve(folder) : base, files);
-    if (!folder) { const seen = new Set(files); for (const [k, v] of textCache.map) if (!seen.has(k)) { textCache.bytes -= v.text.length * 4; textCache.map.delete(k); } }
+    if (Array.isArray(paths)) { for (const p of paths.slice(0, MAX_FILES)) { try { files.push(resolve(p, { mustBeNote: true })); } catch { /* outside the folder or not a note */ } } }
+    else await walk(folder ? resolve(folder) : base, files);
+    if (!folder && !paths) { const seen = new Set(files); for (const [k, v] of textCache.map) if (!seen.has(k)) { textCache.bytes -= v.text.length * 4; textCache.map.delete(k); } }
     const out = [];
     for (let i = 0; i < files.length; i += 48) {
       const batch = files.slice(i, i + 48);
       const notes = await Promise.all(batch.map(loadNote));
       batch.forEach((abs, k) => {
         const n = notes[k]; if (!n) return;
-        const row = { path: relOf(abs), modified: Math.round(n.m), icon: n.icon };
+        const row = { path: relOf(abs), modified: Math.round(n.m), created: Math.round(n.c || n.m), icon: n.icon };
         if (!q.terms.length) { out.push(row); return; }
         const hit = matchContent(n.text, q.terms, { low: n.low });
         if (hit) out.push({ ...row, ...hit });
@@ -311,5 +321,5 @@ export function createNotes(getRoot) {
     return out;
   }
 
-  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, find, outline, move, rewriteAfterMove, backlinks, unlinkedMentions, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path) };
+  return { root, resolve, contain, relOf, tree, list, read, write, edit, append, search, find, outline, move, rewriteAfterMove, backlinks, unlinkedMentions, brokenLinks, allFiles: async () => (await list({ limit: 20000 })).map((f) => f.path), notePaths };
 }

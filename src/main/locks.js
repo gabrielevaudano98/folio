@@ -29,12 +29,18 @@ export function readLockedPages(settingsFile) {
   } catch (e) { if (e?.code === 'ENOENT') return {}; throw e; }
 }
 /**
+ * The arguments of a write tool that name a file it changes. Only these are checked: a board's `from` is a shape id and
+ * the slide link tool's `from` is a link target, so reading every `from` as a path would refuse a harmless edit whose
+ * shape happens to share a locked page's (or folder's) name. `to` of a move is checked so a move cannot land on a locked page.
+ */
+export const lockPathArgs = (tool) => tool?.lockPaths || (tool?.name === 'move_note' ? ['from', 'to'] : ['path']);
+/**
  * The MCP gate: a write tool may not touch a locked page or a folder holding one. Throws with a message for the assistant.
  * `notes` turns the tool's path into the workspace-relative form the locks use.
  */
 export function assertUnlocked(tool, args, { notes, lockedPages, workspace, fold }) {
   if (!tool?.write) return;
-  for (const p of [args?.path, args?.from]) {
+  for (const p of lockPathArgs(tool).map((k) => args?.[k])) {
     let rel = null; try { rel = typeof p === 'string' && p.trim() ? notes.relOf(notes.resolve(p)) : null; } catch { /* the tool reports a bad path itself */ }
     const hit = lockedTarget(lockedPages, workspace, rel, { fold });
     if (hit) throw new Error(`${hit} is locked in Folio. The user can unlock it from the page menu (Unlock page).`);

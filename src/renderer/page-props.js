@@ -126,7 +126,9 @@ export function setProp(text, key, value, type) {
 }
 export function removeProp(text, key) {
   const p = parseProps(text); const cur = p.props.find((x) => x.key === key); if (!cur) return text;
-  const ls = p.lines.slice(); ls.splice(cur.from, cur.to - cur.from);
+  const own = remindKeys(text).has(key + '-remind') ? p.props.find((x) => x.key === key + '-remind') : null; // a date's reminder goes with it
+  const ls = p.lines.slice();
+  for (const x of [cur, own].filter(Boolean).sort((a, b) => b.from - a.from)) ls.splice(x.from, x.to - x.from);
   return rebuild(text, ls);
 }
 export function renameProp(text, key, next) {
@@ -134,6 +136,41 @@ export function renameProp(text, key, next) {
   const p = parseProps(text); if (p.props.some((x) => x.key === next)) return text;
   const cur = p.props.find((x) => x.key === key); if (!cur) return text;
   const ls = p.lines.slice(); ls[cur.from] = ls[cur.from].replace(/^[^:]+:/, `${next}:`);
+  const own = remindKeys(text).has(key + '-remind') && !p.props.some((x) => x.key === next + '-remind') ? p.props.find((x) => x.key === key + '-remind') : null; // its reminder follows
+  if (own) ls[own.from] = ls[own.from].replace(/^[^:]+:/, `${next}-remind:`);
+  return rebuild(text, ls);
+}
+/* ---------- a reminder on a date property (#86) ----------
+   `due: 2026-12-01` (or `due: 2026-12-01 09:00`) reminds when the next line, or any line of the front matter, says
+   `due-remind: 30m`: `0` at its time (9:00 for a date without one), or a number with m, h, d or w before it. The date
+   keeps its plain value, so other tools still read a date. Set, changed or removed, only that one line is written. */
+export const REMIND_SUFFIX = '-remind';
+const REMIND_VALUE = /^(0|\d{1,3}[mhdw])$/;
+export const isRemindValue = (v) => REMIND_VALUE.test(String(v ?? '').trim());
+/* a reminder line Folio may own, change or remove: writable, one line, a scalar that reads as a reminder. Anything else
+   named `<key>-remind` (a list, a nested map, another word) is an ordinary property and is never touched */
+const isRemindLine = (r) => !!r && !r.readOnly && r.to - r.from === 1 && (typeof r.value === 'string' || typeof r.value === 'number') && isRemindValue(r.value);
+const isDateProp = (p) => !!p && !p.readOnly && (p.type === 'date' || p.type === 'datetime') && typeof p.value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.value);
+/** the date properties that carry a reminder: [{ key, value, remind, line (1-based, of the date) }] */
+export function propReminders(text) {
+  const p = parseProps(text); const byKey = new Map(p.props.map((x) => [x.key, x]));
+  return p.props.filter(isDateProp).map((d) => { const r = byKey.get(d.key + REMIND_SUFFIX); return isRemindLine(r) ? { key: d.key, value: d.value, remind: String(r.value).trim(), line: d.from + 2 } : null; }).filter(Boolean);
+}
+/** the `<key>-remind` lines that belong to a date property (shown as its bell, not as properties of their own) */
+export function remindKeys(text) {
+  const p = parseProps(text); const byKey = new Map(p.props.map((x) => [x.key, x]));
+  return new Set(p.props.filter((x) => x.key.endsWith(REMIND_SUFFIX) && isRemindLine(x) && isDateProp(byKey.get(x.key.slice(0, -REMIND_SUFFIX.length)))).map((x) => x.key));
+}
+/** set (or with '' / null, remove) the reminder of a date property; a new line goes right after the date's own lines */
+export function setPropRemind(text, key, remind) {
+  const p = parseProps(text); const d = p.props.find((x) => x.key === key); if (!isDateProp(d)) return text;
+  const rk = key + REMIND_SUFFIX; const cur = p.props.find((x) => x.key === rk);
+  const v = remind == null ? '' : String(remind).trim();
+  if (cur && !isRemindLine(cur)) return text; // a list, a map or another word under that name is the person's: left as it is
+  if (!v) return cur ? removeProp(text, rk) : text;
+  if (!isRemindValue(v)) return text;
+  const ls = p.lines.slice(); // (`0` and `30m` need no quotes in YAML)
+  if (cur) ls.splice(cur.from, cur.to - cur.from, `${rk}: ${v}`); else ls.splice(d.to, 0, `${rk}: ${v}`);
   return rebuild(text, ls);
 }
 /** a free name for a new property: "property", "property 2"… */
