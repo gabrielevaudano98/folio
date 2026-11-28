@@ -16,7 +16,7 @@ import DOMPurify from 'dompurify';
 import { icons } from './icons.js';
 import { owns, coverOf } from './page-appearance.js';
 import { parseCallout, CALLOUT_TYPES } from './callouts.js';
-import { mediaKind, webProvider } from './page-syntax.js';
+import { mediaKind, webProvider, summaryNodes, summaryNeedsDrawing } from './page-syntax.js';
 import container from 'markdown-it-container';
 
 const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -240,8 +240,27 @@ md.inline.ruler.before('emphasis', 'critic', (state, silent) => {
   state.pos += m[0].length;
   return true;
 });
-md.renderer.rules.critic_sub = (tk, i) => `<span class="critic-sub"><del class="critic-del">${escape(tk[i].meta[0])}</del><ins class="critic-ins">${escape(tk[i].meta[1])}</ins></span>`;
-md.renderer.rules.critic_comment = (tk, i) => { const c = tk[i].meta; return `<span class="critic-comment" tabindex="0" role="note" aria-label="Comment${c.author ? ' by ' + escape(c.author) : ''}: ${escape(c.text)}" data-tip="${escape((c.author ? c.author + ': ' : '') + c.text)}" data-author="${escape(c.author)}" data-date="${escape(c.date)}" data-text="${escape(c.text)}"></span>`; };
+const criticSubHtml = (o, n) => `<span class="critic-sub"><del class="critic-del">${escape(o)}</del><ins class="critic-ins">${escape(n)}</ins></span>`;
+const criticCommentHtml = (c) => `<span class="critic-comment" tabindex="0" role="note" aria-label="Comment${c.author ? ' by ' + escape(c.author) : ''}: ${escape(c.text)}" data-tip="${escape((c.author ? c.author + ': ' : '') + c.text)}" data-author="${escape(c.author)}" data-date="${escape(c.date)}" data-text="${escape(c.text)}"></span>`;
+md.renderer.rules.critic_sub = (tk, i) => criticSubHtml(tk[i].meta[0], tk[i].meta[1]);
+md.renderer.rules.critic_comment = (tk, i) => criticCommentHtml(tk[i].meta);
+// a toggle title (raw HTML in <summary>) with colour or comments is drawn from the same reading as the Write view's
+const SUMMARY_DRAW = { criticIns: ['<ins class="critic-ins">', '</ins>'], criticDel: ['<del class="critic-del">', '</del>'], criticHl: ['<mark class="critic-hl">', '</mark>'], bold: ['<strong>', '</strong>'], italic: ['<em>', '</em>'], strike: ['<s>', '</s>'], underline: ['<u>', '</u>'], highlight: ['<mark>', '</mark>'], superscript: ['<sup>', '</sup>'], subscript: ['<sub>', '</sub>'], code: ['<code>', '</code>'] };
+const drawMark = (m) => (m.type === 'link' ? [`<a href="${escape(m.attrs?.href || '')}">`, '</a>'] : m.type === 'folioColor' ? [`<span${m.attrs?.color ? ` data-color="${escape(m.attrs.color)}"` : ''}${m.attrs?.bg ? ` data-bg="${escape(m.attrs.bg)}"` : ''}>`, '</span>'] : SUMMARY_DRAW[m.type] || ['', '']);
+const drawSummary = (nodes) => nodes.map((n) => {
+  const body = n.type === 'criticComment' ? criticCommentHtml(parseComment(n.attrs.body)) : n.type === 'criticSub' ? criticSubHtml(n.attrs.old, n.attrs.new) : escape(n.text);
+  const ms = (n.marks || []).map(drawMark); return ms.map((x) => x[0]).join('') + body + ms.reverse().map((x) => x[1]).join('');
+}).join('');
+md.core.ruler.push('folio_summary', (state) => {
+  for (const t of state.tokens) {
+    if (t.type !== 'html_block' || !t.content.includes('<summary>')) continue;
+    t.content = t.content.replace(/<summary>(\s*)(?:<h([1-6])>([\s\S]*?)<\/h\2>|([\s\S]*?))(\s*)<\/summary>/gi, (all, pre, h, inH, plain, post) => {
+      const nodes = summaryNodes((inH ?? plain).trim());
+      if (!summaryNeedsDrawing(nodes)) return all;
+      const drawn = drawSummary(nodes); return `<summary>${pre}${h ? `<h${h}>${drawn}</h${h}>` : drawn}${post}</summary>`;
+    });
+  }
+});
 md.renderer.rules.folio_tag = (tk, i) => `<span class="md-tag">${escape(tk[i].content)}</span>`;
 md.renderer.rules.folio_field = (tk, i) => {
   const [key, val] = tk[i].meta;

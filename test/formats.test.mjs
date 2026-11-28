@@ -261,6 +261,62 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
     const { markdownIt: mdi } = await import('../src/renderer/markdown.js'); assert.match(mdi.render(t), /<summary>Plain <strong>bold <em>both<\/em><\/strong> <a href="https:\/\/x.org\/\?a=1&amp;b=2">link<\/a>/);
     assert.deepEqual(summaryNodes('<a>bare</a> <strong>c</strong>'), [{ type: 'text', text: '<a>bare</a> <strong>c</strong>' }]); // a bare <a> (no href) next to a real mark stays literal text, never throws
     ok('toggle titles keep bold, italic, links and code as inline HTML in <summary>; literal titles stay byte-identical; the Read view shows them'); }
+  { // #86: colour, comments and suggestions in a toggle title, in the page's own syntax inside <summary>
+    const T = (title) => `<details>\n<summary>${title}</summary>\n\nBody text\n\n</details>\n`;
+    const shape = (sum) => sum.content.content.map((x) => [x.isText ? x.text : x.type.name, x.marks.map((mk) => mk.type.name + (mk.type.name === 'folioColor' ? ':' + (mk.attrs.color || '') + '/' + (mk.attrs.bg || '') : '')).join('+')]);
+    const src = T('Plan [urgent]{color=red} {==check <strong>this</strong>==}{>>Ann, 2026-11-20 10:00: why?<<} {++new++} {--old--} {~~a~>b~~} <a href="https://x.org">link</a>');
+    const o = open(src); const sum = o.kids[0].child(0);
+    assert.deepEqual(shape(sum), [['Plan ', ''], ['urgent', 'folioColor:red/'], [' ', ''], ['check ', 'criticHl'], ['this', 'bold+criticHl'], ['criticComment', ''], [' ', ''], ['new', 'criticIns'], [' ', ''], ['old', 'criticDel'], [' ', ''], ['criticSub', ''], [' ', ''], ['link', 'link']]);
+    assert.equal(sum.child(5).attrs.body, 'Ann, 2026-11-20 10:00: why?'); assert.equal(codec.save(o.m, o.doc), src, 'opening and saving changes nothing');
+    { // a colour span sits outside a link (outermost first): written that way, the link's colour is read too
+      const l = open(T('[<a href="https://x.org">l</a>]{bg=yellow} end')); assert.deepEqual(shape(l.kids[0].child(0)), [['l', 'link+folioColor:/yellow'], [' end', '']]); assert.equal(codec.save(l.m, l.doc), T('[<a href="https://x.org">l</a>]{bg=yellow} end')); }
+    const { bold, folioColor, criticHl, criticIns } = schema.marks; const { criticComment } = schema.nodes;
+    const mk = (title, h = 0) => schema.nodes.details.create({ heading: h }, [schema.nodes.detailsSummary.create(null, title), schema.nodes.detailsContent.create(null, [para('Body text')])]);
+    const red = folioColor.create({ color: 'red' });
+    const cases = [
+      // what the colour menu and the comment command make in a title
+      [[schema.text('Due '), schema.text('Friday', [red]), schema.text(' ok', [red, bold.create()])], 'Due [Friday<strong> ok</strong>]{color=red}'],
+      [[schema.text('Read ', []), schema.text('this', [criticHl.create()]), criticComment.create({ body: 'Bo, 2026-11-21 09:00: source?' })], 'Read {==this==}{>>Bo, 2026-11-21 09:00: source?<<}'],
+      // literal text that would read as colour or CriticMarkup is escaped, with or without other formatting
+      [[schema.text('{==x==} and [a]{color=red}')], '&#123;==x==&#125; and [a]&#123;color=red}'],
+      [[schema.text('B', [bold.create()]), schema.text(' {++y++} 1<2 &amp;')], '<strong>B</strong> &#123;++y++&#125; 1&lt;2 &amp;amp;'],
+      [[schema.text('a [b] c', [red])], '[a &#91;b&#93; c]{color=red}'],
+      [[schema.text('x{', [criticIns.create()]), schema.text('}')], '{++x&#123;++}}'],
+    ];
+    for (const [title, want] of cases) {
+      const saved = codec.save(open(T('x')).m, withKids([mk(title)])); assert.equal(saved, T(want), want);
+      const back = open(saved); const again = back.kids[0].child(0);
+      assert.deepEqual(again.toJSON(), schema.nodes.detailsSummary.create(null, title).toJSON(), `${want} reads back as the same title`);
+      assert.equal(codec.save(back.m, back.doc), saved);
+    }
+    { const sp = codec.save(open(T('x')).m, withKids([mk([schema.text('Title ')])])); assert.equal(sp, T('Title')); assert.equal(open(sp).kids[0].type.name, 'details', 'a title typed with a trailing space stays an editable toggle'); }
+    const hd = codec.save(open(T('x')).m, withKids([mk([schema.text('Big', [red])], 3)])); assert.equal(hd, '<details>\n<summary><h3>[Big]{color=red}</h3></summary>\n\nBody text\n\n</details>\n');
+    // titles from before stay byte for byte: brackets and braces that are not this syntax, F1 titles with a [ in them
+    for (const raw of ['<strong>Notes</strong> [draft]', 'Plain [a]{.class}', '{==open', '<strong>x</strong> {==a', '[x]{color=teal} y', '[<strong>x]{color=red}</strong>', '{>>c<<} <b>x</b>']) { const r = open(T(raw)); assert.equal(codec.save(r.m, r.doc), T(raw), raw); assert.equal(r.kids[0].type.name, 'details', `${raw}: still an editable toggle`); }
+    assert.deepEqual(shape(open(T('<strong>Notes</strong> [draft]')).kids[0].child(0)), [['Notes', 'bold'], [' [draft]', '']]);
+    // random titles: whatever the editor holds is written and read back as the same title, and saved again unchanged
+    let seed = 7; const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+    const pool = [[], [bold.create()], [red], [criticHl.create()], [criticIns.create(), schema.marks.italic.create()], [schema.marks.link.create({ href: 'https://e.x/[1]?a&b' }), red], [schema.marks.code.create()]];
+    const chars = 'ab []{}<>&;=+-~#/\\x';
+    for (let k = 0; k < 400; k++) {
+      const title = []; const n = 1 + rnd(4);
+      for (let j = 0; j < n; j++) {
+        if (rnd(6) === 0) { title.push(criticComment.create({ body: 'Ann: ok' }, null, pool[rnd(3)])); continue; }
+        let t = ''; for (let c = 1 + rnd(5); c > 0; c--) t += chars[rnd(chars.length)];
+        title.push(schema.text(t, pool[rnd(pool.length)]));
+      }
+      title.unshift(schema.text('S')); title.push(schema.text('E')); // (space at either end of a title is trimmed: checked below)
+      const want = schema.nodes.detailsSummary.create(null, title);
+      const saved = codec.save(open(T('x')).m, withKids([mk(title)])); const back = open(saved); assert.equal(back.kids[0].type.name, 'details', saved);
+      assert.deepEqual(back.kids[0].child(0).toJSON(), want.toJSON(), saved); assert.equal(codec.save(back.m, back.doc), saved);
+    }
+    // the Read view draws colour and comments in a title the way the Write view does
+    const renderPage = (x) => markdownIt.render(x); // (render() then sanitises: it keeps data-color, data-author… and mark, ins, del)
+    const h = renderPage(src); const head = h.slice(h.indexOf('<summary>'), h.indexOf('</summary>'));
+    assert.match(head, /<span data-color="red">urgent<\/span>/); assert.match(head, /<mark class="critic-hl">check <\/mark><mark class="critic-hl"><strong>this<\/strong><\/mark><span class="critic-comment"[^>]*data-author="Ann"/);
+    assert.match(head, /<ins class="critic-ins">new<\/ins>/); assert.match(head, /<span class="critic-sub"><del class="critic-del">a<\/del><ins class="critic-ins">b<\/ins><\/span>/);
+    assert(renderPage(T('<strong>Notes</strong> [draft]')).includes('<summary><strong>Notes</strong> [draft]</summary>'), 'a title without colour or comments is left as written');
+    ok('toggle titles keep colour, comments and suggestions (page syntax inside <summary>); literal look-alikes are escaped; 400 random titles round-trip; the Read view draws them'); }
   { const { parseCallout, calloutMarker } = await import('../src/renderer/callouts.js');
     assert.deepEqual(['faq', 'tldr', 'error', 'cite', 'weird'].map((k) => parseCallout(`[!${k}] x`).type), ['question', 'abstract', 'danger', 'quote', 'note']);
     const c = parseCallout('[!callout|💡 yellow]- Read me'); assert.deepEqual([c.emoji, c.color, c.fold, c.title, c.label], ['💡', 'yellow', '-', 'Read me', 'Callout']);
