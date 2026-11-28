@@ -154,7 +154,7 @@ const SHORT = { text: tr('blk.text'), h1: tl('blk', 'Heading 1'), h2: tl('blk', 
  */
 export const BlockHandles = Extension.create({
   name: 'blockHandles',
-  addOptions() { return { onCopyLink: null, onDelete: null, keyLabel: (k) => k, icons: {} }; },
+  addOptions() { return { onTurnIntoPage: null, onCopyLink: null, onDelete: null, keyLabel: (k) => k, icons: {} }; },
   addKeyboardShortcuts() {
     const e = () => this.editor;
     return {
@@ -314,6 +314,7 @@ export const BlockHandles = Extension.create({
         });
 
         // the block menu
+        const topLevel = () => { const b = menuFor || target; return !!b && view.state.doc.resolve(b.pos).parent.type.name === 'doc'; }; // Turn into page: blocks directly on the page; inside a list, table or callout a [[link]] paragraph would not fit
         const items = () => {
           const key = (k) => (k ? `<kbd>${opts.keyLabel(k)}</kbd>` : '');
           const turns = TURN_IDS.map((id) => INSERTS.find((i) => i.id === id)).map((i) => `<button type="button" role="menuitem" class="block-mi block-turn" data-turn="${i.id}" aria-label="${i.label}"><span class="block-mi-ic" aria-hidden="true">${i.badge ? `<b>${i.badge}</b>` : opts.icons[i.icon] || ''}</span>${SHORT[i.id]}<span class="block-mi-check" aria-hidden="true">${opts.icons.check || ''}</span></button>`).join('');
@@ -323,6 +324,7 @@ export const BlockHandles = Extension.create({
             <button type="button" role="menuitem" class="block-mi" data-act="up"><span>${tr('blk.move-up')}</span>${key('Mod+Shift+Up')}</button>
             <button type="button" role="menuitem" class="block-mi" data-act="down"><span>${tr('blk.move-down')}</span>${key('Mod+Shift+Down')}</button>
             <button type="button" role="menuitem" class="block-mi" data-act="link"><span>${tr('blk.copy-link-to-block')}</span>${key('Mod+Alt+L')}</button>
+            ${topLevel() ? `<button type="button" role="menuitem" class="block-mi" data-act="page"><span>${tr('blk.turn-into-page')}</span></button>` : ''}
             <div class="block-sep" role="separator"></div>
             <button type="button" role="menuitem" class="block-mi is-danger" data-act="delete"><span>${tr('blk.delete')}</span>${key('Delete')}</button>
             <div class="block-foot">${counts()}</div>`;
@@ -358,6 +360,7 @@ export const BlockHandles = Extension.create({
           else if (btn.dataset.act === 'up') blockCmd.move(editor, -1, b);
           else if (btn.dataset.act === 'down') blockCmd.move(editor, 1, b);
           else if (btn.dataset.act === 'delete') blockCmd.remove(editor, b);
+          else if (btn.dataset.act === 'page') { const R = blockRange(view.state); opts.onTurnIntoPage?.(R ? { from: R.from, to: R.to } : { from: b.pos, to: b.pos + b.node.nodeSize }); view.focus(); }
           else if (btn.dataset.act === 'link') { const id = blockCmd.ensureId(editor, b); if (id) opts.onCopyLink?.(id); view.focus(); }
         });
         menu.addEventListener('keydown', (ev) => {
