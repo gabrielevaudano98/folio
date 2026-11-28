@@ -809,9 +809,11 @@ const Mentions = Extension.create({
       command: async ({ editor, range, props: entry }) => {
         if (entry.disabled) return;
         if (entry.create) {
+          const typed = editor.state.doc.textBetween(range.from, range.to, ' ', ' ');
           editor.chain().focus().deleteRange(range).run();
-          const made = await opts.ctx()?.createDoc?.({ type: 'md', name: entry.create });
-          if (made) editor.chain().focus().insertContent({ type: 'text', text: `[[${made.ref}]]` }).run();
+          const made = await opts.ctx()?.createDoc?.({ type: 'md', name: entry.create }).catch?.(() => null);
+          // a page that could not be made gives back what was typed ([[name, +name) instead of losing it
+          editor.chain().focus().insertContent({ type: 'text', text: made ? `[[${made.ref}]]` : typed }).run();
           return;
         }
         // a trailing space after a tag is for typing on; at the end of a block it would only leave a stray space in the file
