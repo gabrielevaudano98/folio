@@ -420,6 +420,8 @@ async function loadWorkspace(dir, { restore = false } = {}) {
   folio.propTypes().then(setTypeOverrides).catch(() => setTypeOverrides({}));
   actions.clear(); nav.list = []; nav.i = -1; // file actions and history belong to one folder
   $('#workspace-name').textContent = dir.split(/[\\/]/).filter(Boolean).pop();
+  chatP?.then(({ view }) => view.reset());
+  applyAppMode();
   $('#tree').innerHTML = Array.from({ length: 7 }, (_, i) => `<div class="skeleton-row" style="--w:${[62, 48, 70, 40, 56, 66, 44][i]}%;--d:${i % 3 === 2 ? 1 : 0}"></div>`).join('');
   await refreshTree();
   if (restore && S.settings.openTabs?.length) {
@@ -1247,7 +1249,7 @@ function renderStatus() {
 function showEmpty(html) { const e = $('#empty-state'); e.innerHTML = `<div class="empty-inner">${html}</div>`; e.hidden = false; }
 function hideEmpty() { $('#empty-state').hidden = true; }
 function showWelcome() {
-  S.workspace = null; S.tabs = []; S.active = null;
+  S.workspace = null; S.tabs = []; S.active = null; applyAppMode();
   $('#workspace-name').textContent = tr('ui.no-folder');
   $('#tree').innerHTML = '<div class="side-empty">' + tr('app.open-a-folder-to-see-its-notes-here') + '</div>';
   renderTabs(); renderStatus(); hideAiBanner();
@@ -1757,7 +1759,7 @@ function activityHtml() {
 }
 
 /* ============ settings sheet ============ */
-function openSettings() {
+function openSettings(which) {
   const s = S.settings;
   const d = $('#sheet-settings');
   d.innerHTML = `
@@ -1780,6 +1782,7 @@ function openSettings() {
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.check-spelling')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="spellcheck" ${s.spellcheck ? 'checked' : ''} aria-label="${tr('app.check-spelling')}"></label></div>
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.smart-quotes-and-dashes')}</span><span class="row-sub">${tr('app.typing-becomes-in-the-write-view')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="smartTypography" ${s.smartTypography !== false ? 'checked' : ''} aria-label="${tr('app.smart-quotes-and-dashes')}"></label></div>
       </div></section>
+      <section class="group" id="set-chat" aria-busy="true"></section>
       <section class="group" id="set-features" aria-busy="true"><h3>${tr('app.optional-features')}</h3></section>
       <section class="group"><h3>${tr('app.about')}</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">Folio ${esc(S.version || '')}</span><span class="row-sub">${tr('app.based-on-folio-by-gabriele-vaudano-fre')}</span></div>
@@ -1795,6 +1798,7 @@ function openSettings() {
   if (!d.open) d.showModal();
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
   paintUpdates();
+  chatMod().then(({ m }) => m.renderSettings($('#set-chat', d), { folio, toast })).then(() => { $('#set-chat', d).removeAttribute('aria-busy'); if (which === 'chat') $('#set-chat', d).scrollIntoView({ block: 'start' }); }).catch((e) => toast(e.message, { kind: 'error' }));
   meeting().then((m) => m.renderSettings($('#set-features', d))).catch((e) => toast(e.message, { kind: 'error' }));
 }
 
@@ -1829,6 +1833,33 @@ async function initUpdates() {
     S.settings.autoUpdate = await folio.update.setAuto(e.target.checked);
   });
 }
+
+/* ============ chat mode (docs/explanation/chat-mode.md): Work | Chat, loaded on demand ============ */
+let chatP = null;
+function chatMod() {
+  return (chatP ||= import('./chat.js').then((m) => ({ m, view: m.createChat({
+    folio, host: $('#chat'), toast, openSettings: (which) => openSettings(typeof which === 'string' ? which : undefined),
+    openNote: (p) => { setChatLayout('dock'); openFile(p).catch((e) => toast(e.message, { kind: 'error' })); },
+    setLayout: setChatLayout, getLayout: () => chatLayout(),
+  }) })));
+}
+const chatLayout = () => (S.settings.chatLayout === 'dock' ? 'dock' : 'full');
+const appMode = () => (S.workspace && S.settings.chatModes?.[S.workspace] === 'chat' ? 'chat' : 'work');
+function applyAppMode() {
+  const mode = appMode(), layout = chatLayout();
+  app.dataset.appMode = mode; app.dataset.chatLayout = layout;
+  $('#chat').hidden = mode !== 'chat'; $('#chat').dataset.folder = S.workspace ? S.workspace.split(/[\\/]/).filter(Boolean).pop() : '';
+  $$('#mode-switch button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.setMode === mode)));
+  if (mode === 'chat') chatMod().then(({ view }) => { view.paintLayoutBtn(); return view.show(); }).catch((e) => toast(e.message, { kind: 'error' }));
+  layoutPanes();
+}
+async function setAppMode(mode) {
+  if (mode === 'chat' && !S.workspace) { toast(tr('chat.open-folder-first')); return; }
+  if (!S.workspace) return;
+  await saveSetting({ chatModes: { ...(S.settings.chatModes || {}), [S.workspace]: mode } });
+  applyAppMode();
+}
+async function setChatLayout(layout) { await saveSetting({ chatLayout: layout }); applyAppMode(); }
 
 /* ============ meeting recorder (optional feature, loaded on demand) ============ */
 let meetingP = null;
@@ -1993,6 +2024,8 @@ const COMMANDS = [
   { id: 'focus', title: 'Focus mode', key: 'Mod+.', run: toggleFocus },
   { id: 'link-health', title: 'Check links in all pages…', run: () => openLinkHealth() },
   { id: 'help', title: 'Help: shortcuts and syntax', key: 'F1', run: () => openHelp() },
+  { id: 'chat-mode', title: 'Chat mode', run: () => setAppMode('chat') },
+  { id: 'work-mode', title: 'Work mode', run: () => setAppMode('work') },
   { id: 'ai', title: 'Connect AI assistants…', key: 'Mod+Shift+A', run: openAiSheet },
   { id: 'assets-clean', title: 'Files: clean up unused files…', run: () => openAssets() },
   { id: 'assets-ask', title: 'Files: ask before removing a file from the folder', run: () => { saveSetting({ assetRemoval: 'ask' }); toast('Folio will ask when a file is removed from a page.'); } },
@@ -2484,6 +2517,8 @@ function bindChrome() {
   $('#st-zoom').addEventListener('click', (e) => { const b = e.target.closest('[data-zoom]'); if (b && isRich()) rich.zoom(+b.dataset.zoom); });
   $('#st-words').addEventListener('click', () => { if (isRich() && curType() === 'md') rich.run('counts', $('#st-words')); });
   $('#ai-status').onclick = openAiSheet;
+  $('#mode-switch').onclick = (e) => { const b = e.target.closest('[data-set-mode]'); if (b) setAppMode(b.dataset.setMode).catch((er) => toast(er.message, { kind: 'error' })); };
+  $('#chat').addEventListener('folio:tree-dirty', () => refreshTree().catch(() => {}));
   $('#view-switch').onclick = (e) => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); };
   $('#view-switch').onkeydown = (e) => {
     if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;

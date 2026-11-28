@@ -70,6 +70,10 @@
           <button class="icon-btn" type="button" id="btn-undo" aria-label="Undo" data-tip="Undo (⌘Z)" data-i18n-attr="aria-label:ui.undo;data-tip:ui.undo-cmd" disabled></button>
           <button class="icon-btn" type="button" id="btn-redo" aria-label="Redo" data-tip="Redo (⌘⇧Z)" data-i18n-attr="aria-label:ui.redo;data-tip:ui.redo-cmd" disabled></button>
         </div>
+        <div class="segmented no-drag" role="radiogroup" aria-label="Mode" id="mode-switch" data-i18n-attr="aria-label:chat.mode">
+          <button type="button" role="radio" data-set-mode="work" aria-checked="true" data-i18n="chat.mode-work">Work</button>
+          <button type="button" role="radio" data-set-mode="chat" aria-checked="false" data-i18n="chat.mode-chat">Chat</button>
+        </div>
         <div class="segmented no-drag" role="radiogroup" aria-label="View" id="view-switch" data-i18n-attr="aria-label:ui.view">
           <button type="button" role="radio" data-view="edit" aria-checked="false" aria-label="Write" data-tip="Write (⌘1)" data-i18n-attr="aria-label:ui.write;data-tip:ui.write-cmd1"></button>
           <button type="button" role="radio" data-view="split" aria-checked="true" aria-label="Split" data-tip="Split (⌘2)" data-i18n-attr="aria-label:ui.split;data-tip:ui.split-cmd2"></button>
@@ -114,6 +118,7 @@
           <div class="dock-panel dock-info" id="dock-info" role="tabpanel" aria-labelledby="dock-tab-info" hidden></div>
         </aside>
 
+        <section class="chat" id="chat" hidden aria-label="Chat" data-i18n-attr="aria-label:chat.title"></section>
         <div class="empty" id="empty-state" hidden></div>
       </div>
 

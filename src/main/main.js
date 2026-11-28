@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer, Notification } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -23,6 +23,7 @@ import { mayUse } from './permissions.js';
 import { assertPublicHost } from './netguard.js';
 import { createFeatures } from './meeting/service.js';
 import { createUpdater } from './updater.js';
+import { createChat } from './chat/service.js';
 import electronUpdater from 'electron-updater';
 import { writeAtomic, writeAtomicSync, writeNew } from './atomic.js';
 // tests: a fake microphone and camera, granted without a prompt
@@ -92,6 +93,7 @@ const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset 
 /* history must never get in the way of saving */
 const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); return false; } return null; }; // false: it could not be stored (null: nothing new to store)
 let win = null;
+let chat = null; // chat mode (src/main/chat), created once the MCP backend exists
 
 /* ---------------- window ---------------- */
 function themeColors() {
@@ -174,6 +176,7 @@ if (isWin) systemPreferences.on?.('accent-color-changed', () => win?.webContents
 let watcher = null;
 const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own echo
 async function setWorkspace(dir) {
+  chat?.reset();
   await clearTrashed();
   settings.workspace = dir;
   if (dir) settings.recent = [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8);
@@ -305,7 +308,7 @@ const trashed = new Map();
 let undoDir = null;
 const undoRoot = () => path.join(app.getPath('userData'), 'undo');
 async function clearTrashed() { trashed.clear(); undoDir = null; await fs.rm(undoRoot(), { recursive: true, force: true }).catch(() => {}); }
-h('fs:trash', async (rel) => {
+async function trashPath(rel) {
   guardAsset(rel);
   const abs = notes.resolve(rel, { notRoot: true });
   if (!undoDir) { await fs.mkdir(undoRoot(), { recursive: true, mode: 0o700 }); undoDir = await fs.mkdtemp(path.join(undoRoot(), 's-')); } // mkdtemp makes it owner-only
@@ -316,7 +319,8 @@ h('fs:trash', async (rel) => {
   trashed.set(token, { rel, keep, root: notes.root() });
   while (trashed.size > 25) { const [old, e] = trashed.entries().next().value; trashed.delete(old); fs.rm(e.keep, { recursive: true, force: true }).catch(() => {}); }
   return { token };
-});
+}
+h('fs:trash', (rel) => trashPath(rel));
 h('fs:untrash', async (token) => {
   const e = trashed.get(token);
   if (!e || e.root !== notes.root()) throw new Error('That item can no longer be restored from here. Look in the system Trash.');
@@ -561,6 +565,14 @@ const appBackend = {
     });
   },
 };
+
+// chat mode: an AI chat bound to the open folder; runs the same tools as an outside MCP client, behind approvals
+chat = createChat({
+  h, getWin: () => win, settings, saveSettings, notes, backend: appBackend, TOOLS, safeStorage, guardAsset,
+  keyFile: () => path.join(app.getPath('userData'), 'ai-keys.json'),
+  mkdir: async (rel) => { guardAsset(rel); await fs.mkdir(notes.resolve(rel, { notRoot: true }), { recursive: true }); },
+  trash: trashPath, askOpenNote: () => askRenderer('open-note', null, 800),
+});
 
 function tokenOk(header) {
   const a = Buffer.from(String(header || '')), b = Buffer.from(`Bearer ${settings.token}`);

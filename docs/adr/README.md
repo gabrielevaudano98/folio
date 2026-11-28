@@ -15,3 +15,4 @@ Decisions in the [MADR](https://adr.github.io/madr/) format, one per file, numbe
 | 0009 | [Load the slides, board and sheet editors on first use](0009-lazy-visual-editors.md) | Accepted |
 | 0010 | [Ship only the esbuild bundle in the installer](0010-ship-the-bundle-only.md) | Accepted |
 | 0011 | [Detect calls from Windows' microphone consent store](0011-detect-calls-from-the-microphone-consent-store.md) | Accepted |
+| 0013 | [Chat mode runs in the main process on the person's own API key](0013-chat-mode-byok.md) | Accepted |

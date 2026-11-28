@@ -24,7 +24,7 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
-| AI / MCP | 41 tools, HTTP and stdio, one-click connect | Sheet tools on the Univer branch | Per-change review of AI edits, ask-AI from inside Folio |
+| AI / MCP | 41 tools, HTTP and stdio, one-click connect | **Chat mode** (BYOK, [#102](https://github.com/gabrielevaudano98/folio/issues/102), branch `claude/project-thread-v7hqgg`); sheet tools on the Univer branch | Per-change review of AI edits, ask-AI from inside Folio |
 | Meeting recorder (optional, Windows) | Shipped (1.5.x): one-click, call detection | — | Real-call measurements on Windows ([#88](https://github.com/gabrielevaudano98/folio/issues/88)) |
 | Release | Tests and CodeQL on pull requests to `main`; Windows and macOS packages on every push to `main`; a release when `package.json` changes | 5 Dependabot PRs | Code signing and notarisation (no certificates available) |
 
@@ -63,6 +63,12 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
 ## In flight
 
 Work that exists in code but is not on `main`. Nothing here ships until it is merged.
+
+### Chat mode (AI chat bound to a folder, BYOK)
+
+Epic [#102](https://github.com/gabrielevaudano98/folio/issues/102), design in [chat mode](explanation/chat-mode.md) and
+[ADR 0013](adr/0013-chat-mode-byok.md). Phase 1 (MVP, [#103](https://github.com/gabrielevaudano98/folio/issues/103)) is on branch
+`claude/project-thread-v7hqgg`; phases 2 to 4 are #104 to #106. Subscriptions need a person to read each provider's terms (#105).
 
 ### Pages: the Notion gap (stacked pull requests)
 

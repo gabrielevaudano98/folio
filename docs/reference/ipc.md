@@ -72,6 +72,10 @@ The window has no Node.js. Everything it can ask of the main process is this lis
 | `answer` | message | `ai:answer` | `src/main/main.js` |
 | `closeOk` | message | `app:close-ok` | `src/main/main.js` |
 | `closeCancel` | message | `app:close-cancel` | `src/main/main.js` |
+| `chat.state` | request | `chat:state` | **missing** |
+| `chat.newChat` | request | `chat:new` | **missing** |
+| `chat.send` | request | `chat:send` | **missing** |
+| `chat.onEvent` | event | `chat:event` | — |
 | `onTreeChanged` | event | `fs:tree-changed` | — |
 | `onFileChanged` | event | `fs:file-changed` | — |
 | `onAiEdit` | event | `ai:edit` | — |
