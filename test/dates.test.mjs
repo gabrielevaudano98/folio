@@ -2,7 +2,7 @@
 // "@tod" already offers today, and a day link is never a broken link.
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { formatDay, parseDay, dayTense, monthGrid, isoDay } from '../src/renderer/page-dates.js';
+import { formatDay, parseDay, dayTense, monthGrid, isoDay, weekStartDay } from '../src/renderer/page-dates.js';
 import { createNotes } from '../src/main/notes.js';
 
 const ok = (m) => console.log('  ✓ ' + m);
@@ -31,6 +31,10 @@ assert.deepEqual(['2026-11-22', '2026-11-21', '2026-12-01'].map((d) => dayTense(
 const grid = monthGrid(2026, 10, 'it'); assert.equal(grid.length, 6); assert.equal(isoDay(grid[0][0]), '2026-10-26'); assert.equal(grid[0][0].getDay(), 1);
 assert.equal(monthGrid(2026, 10, 'en')[0][0].getDay(), 0);
 ok('the calendar starts on Monday in Italian and Sunday in English');
+assert.equal(monthGrid(2026, 10, 'en', 'monday')[0][0].getDay(), 1); assert.equal(monthGrid(2026, 10, 'it', 'sunday')[0][0].getDay(), 0);
+const sat = monthGrid(2026, 10, 'en', 'saturday'); assert.equal(sat[0][0].getDay(), 6); assert.ok(sat[0][0] <= new Date(2026, 10, 1) && sat[0][6] >= new Date(2026, 10, 1));
+assert.equal(weekStartDay('en', 'auto'), 0); assert.equal(weekStartDay('it', 'auto'), 1); assert.equal(weekStartDay('it', 'bogus'), 1);
+ok('Settings → Week starts on overrides the language (Monday, Sunday, Saturday)');
 
 /* the @ menu: the first letters of a date word already offer that day */
 globalThis.window = globalThis.window || {}; // i18n is imported by page-mentions for labels

@@ -14,7 +14,7 @@ import { hydrateRefs, resolveRef } from './refs.js';
 import { parseRef, resolveTarget, docKind, findMentions, linkMention, linkAllMentions } from './refs-syntax.js';
 import { openDatePicker } from './page-date-ui.js';
 import { whenLabel } from './page-when.js';
-import { DATE_STYLES, formatDay, datePrefs } from './page-dates.js';
+import { DATE_STYLES, WEEK_STARTS, formatDay, datePrefs } from './page-dates.js';
 import { extractTags, blockIds, linkKind, longDay, DAY, JOURNAL, statusOptions } from './page-mentions.js';
 import { moveSection, shiftSection } from './page-outline.js';
 import { docInfo, infoRows } from './page-info.js';
@@ -135,7 +135,7 @@ async function boot() {
   const init = await folio.init();
   { const before = locale(); setLocale(init.settings.language); if (locale() !== before) { location.reload(); return; } } // menus and tables are built at load: start again in the new language
   localizeCommands();
-  S.platform = init.platform; S.settings = init.settings; datePrefs.style = init.settings.dateStyle || 'relative'; datePrefs.lang = locale(); S.mcp = init.mcp; S.version = init.version;
+  S.platform = init.platform; S.settings = init.settings; datePrefs.style = init.settings.dateStyle || 'relative'; datePrefs.weekStart = init.settings.weekStart || 'auto'; datePrefs.lang = locale(); S.mcp = init.mcp; S.version = init.version;
   folio.userName().then((n) => { S.userName = n || ''; }).catch(() => {});
   document.documentElement.dataset.platform = init.platform;
   if (init.platform === 'darwin') document.documentElement.classList.add('vibrant');
@@ -1943,6 +1943,8 @@ function openSettings() {
           <select class="select" id="set-width" data-setting="lineWidth">${[60, 66, 72, 80, 96, 120].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></div>
         <div class="row"><div class="row-main"><label class="row-title" for="set-date">${esc(tr('date.setting'))}</label><span class="row-sub">${esc(tr('date.setting-hint'))}</span></div>
           <select class="select" id="set-date" data-setting="dateStyle">${DATE_STYLES.map((k) => `<option value="${k}">${esc({ relative: tr('date.style-relative'), full: tr('date.style-full'), short: tr('date.style-short'), dmy: tr('date.style-dmy'), mdy: tr('date.style-mdy'), iso: tr('date.style-iso') }[k])} · ${esc(formatDay(todayKey(), { style: k, lang: locale() }))}</option>`).join('')}</select></div>
+        <div class="row"><div class="row-main"><label class="row-title" for="set-week">${esc(tr('date.week-start'))}</label><span class="row-sub">${esc(tr('date.week-start-hint'))}</span></div>
+          <select class="select" id="set-week" data-setting="weekStart">${WEEK_STARTS.map((k) => `<option value="${k}">${esc({ auto: tr('date.week-auto'), monday: tr('date.week-monday'), sunday: tr('date.week-sunday'), saturday: tr('date.week-saturday') }[k])}</option>`).join('')}</select></div>
       </div></section>
       <section class="group"><h3>${tr('app.writing')}</h3><div class="rows">
         <div class="row"><div class="row-main"><span class="row-title">${tr('app.load-remote-images-always')}</span><span class="row-sub">${tr('app.load-remote-images-always-help')}</span></div><label class="switch"><input type="checkbox" role="switch" data-setting="remoteImages" ${s.remoteImages ? 'checked' : ''} aria-label="${tr('app.load-remote-images-always')}"></label></div>
@@ -1960,7 +1962,7 @@ function openSettings() {
           <input class="input" id="set-port" type="text" inputmode="numeric" name="port" autocomplete="off" value="${s.mcpPort}" style="width:7rem" aria-describedby="port-help"></div>
       </div></section>
     </div>`;
-  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth; $('#set-date', d).value = s.dateStyle || 'relative';
+  $('#set-theme', d).value = s.theme; $('#set-lang', d).value = s.language || 'en'; $('#set-size', d).value = s.fontSize; $('#set-width', d).value = s.lineWidth; $('#set-date', d).value = s.dateStyle || 'relative'; $('#set-week', d).value = s.weekStart || 'auto';
   if (!d.open) d.showModal();
   $(`#${document.activeElement?.id && d.contains(document.activeElement) ? document.activeElement.id : 'set-theme'}`, d)?.focus();
   paintUpdates();
@@ -2884,6 +2886,7 @@ function bindChrome() {
     if (k === 'spellcheck') editor.setSpellcheck(v);
     if (k === 'remoteImages') allowRemote(null);
     if (k === 'dateStyle') { datePrefs.style = v; rich.refreshDecorations?.(); renderPreview(); }
+    if (k === 'weekStart') datePrefs.weekStart = v; // the next calendar that opens starts on the chosen day
     if (k === 'language') { setLocale(v); location.reload(); }
     if (k === 'mcpEnabled' || k === 'allowWrite') { S.mcp = await folio.mcpStatus(); renderAiStatus(); }
   });

@@ -19,7 +19,8 @@ export const dayDiff = (d, now = new Date()) => Math.round((startOf(d) - startOf
 
 export const DATE_STYLES = ['relative', 'full', 'short', 'dmy', 'mdy', 'iso'];
 /** the user's date format (Settings → Date format), shared by the Write view, the Read view and exports */
-export const datePrefs = { style: 'relative', lang: 'en' };
+export const datePrefs = { style: 'relative', lang: 'en', weekStart: 'auto' };
+export const WEEK_STARTS = ['auto', 'monday', 'sunday', 'saturday'];
 
 const WORDS = {
   en: { today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', last: (w) => `Last ${w}` },
@@ -72,9 +73,14 @@ export function dayTense(s, now = new Date()) {
 /** Date → "YYYY-MM-DD" */
 export const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/** the weeks of a month for a calendar: rows of 7 Dates, starting Monday (it) or Sunday (en) */
-export function monthGrid(year, month, lang = 'en') {
-  const first = new Date(year, month, 1, 12); const startDow = lang2(lang) === 'it' ? 1 : 0;
+/** the first day of the week as a JS weekday (0 Sunday): Settings → Week starts on; 'auto' follows the language (Monday in Italian, Sunday in English) */
+export function weekStartDay(lang = 'en', start = datePrefs.weekStart) {
+  const fixed = { sunday: 0, monday: 1, saturday: 6 }[start];
+  return fixed ?? (lang2(lang) === 'it' ? 1 : 0);
+}
+/** the weeks of a month for a calendar: rows of 7 Dates, starting on weekStartDay() */
+export function monthGrid(year, month, lang = 'en', weekStart = datePrefs.weekStart) {
+  const first = new Date(year, month, 1, 12); const startDow = weekStartDay(lang, weekStart);
   const back = (first.getDay() - startDow + 7) % 7;
   const start = new Date(year, month, 1 - back, 12);
   const weeks = [];

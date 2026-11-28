@@ -1934,4 +1934,10 @@ export default {
   "app.reminder-toast": "Reminder: {what} ({when})",
   "app.reminder-dismissed": "Reminder dismissed. The page keeps it.",
   "rem.notify-title": "Folio reminder",
+  "date.week-start": "Week starts on",
+  "date.week-start-hint": "The first column of the calendar in the date picker.",
+  "date.week-auto": "Language default",
+  "date.week-monday": "Monday",
+  "date.week-sunday": "Sunday",
+  "date.week-saturday": "Saturday",
 };

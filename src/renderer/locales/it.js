@@ -1930,4 +1930,10 @@ export default {
   "app.reminder-toast": "Promemoria: {what} ({when})",
   "app.reminder-dismissed": "Promemoria ignorato. La pagina lo conserva.",
   "rem.notify-title": "Promemoria di Folio",
+  "date.week-start": "La settimana inizia di",
+  "date.week-start-hint": "La prima colonna del calendario nel selettore di date.",
+  "date.week-auto": "Come la lingua",
+  "date.week-monday": "Lunedì",
+  "date.week-sunday": "Domenica",
+  "date.week-saturday": "Sabato",
 };
