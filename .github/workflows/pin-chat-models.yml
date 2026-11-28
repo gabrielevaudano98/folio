@@ -1,0 +1,24 @@
+# Pins the chat models' revision, size and SHA-256 from Hugging Face and commits the result to the branch it runs on.
+# Run it by hand: Actions > Pin chat models > Run workflow. Review the commit before merging: a model is trusted once its hash is committed.
+name: Pin chat models
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/pin-chat-models.mjs
+      - run: node test/chat-local.test.mjs
+      - name: Commit pins
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main/chat/local/catalog.js
+          git diff --cached --quiet && { echo "nothing to pin"; exit 0; }
+          git commit -m "Pin chat models (revision, size, SHA-256 from Hugging Face)"
+          git push
