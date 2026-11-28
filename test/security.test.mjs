@@ -66,9 +66,9 @@ await assert.rejects(assertPublicHost('looks-public.example', async () => [{ add
 await assert.doesNotReject(assertPublicHost('cdn.example', async () => [{ address: '203.0.113.9' }])); ok('a name that resolves to public addresses is allowed');
 
 console.log('\nopening attached files');
-for (const f of ['report.pdf', 'a/b/photo.PNG', 'notes.docx', 'clip.mp4', 'data.tar.gz', 'v1.2.bin.pdf']) assert.equal(mayOpenWithSystem(f), true, f); ok('documents and media may be opened');
-for (const f of ['setup.exe', 'run.BAT', 'x.cmd', 'a.ps1', 'link.lnk', 'Tool.app', 'go.command', 'x.sh', 'a.AppImage', 'a.desktop', 'x.jar', 'pic.png.exe', 'setup.exe .', 'setup.exe...', 'noext', '.hidden', 'x.url', 'x.hta', 'x.msi']) assert.equal(mayOpenWithSystem(f), false, f);
-ok('programs, scripts, shortcuts, installers and files without an extension are refused (also with a trailing dot or space)');
+for (const f of ['report.pdf', 'a/b/photo.PNG', 'notes.docx', 'clip.mp4', 'v1.2.bin.pdf']) assert.equal(mayOpenWithSystem(f), true, f); ok('documents and media may be opened');
+for (const f of ['setup.exe', 'run.BAT', 'x.cmd', 'a.ps1', 'link.lnk', 'Tool.app', 'go.command', 'x.sh', 'a.AppImage', 'a.desktop', 'x.jar', 'pic.png.exe', 'setup.exe .', 'setup.exe...', 'noext', '.hidden', 'x.url', 'x.hta', 'x.msi', 'a.xll', 'a.docm', 'a.xlsm', 'a.zip', 'a.svg.exe']) assert.equal(mayOpenWithSystem(f), false, f);
+ok('anything not on the document and media list (programs, scripts, shortcuts, installers, macro files, unknown types, no extension) is refused (also with a trailing dot or space)');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} security checks passed`);
