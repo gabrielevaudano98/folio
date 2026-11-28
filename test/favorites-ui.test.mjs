@@ -18,12 +18,17 @@ const steps = [
   { js: "document.querySelector('[data-file=\"b.md\"]').click()", wait: 700 },
   { js: "(() => [document.querySelector('#section-favorites').hidden, " + rec + "])()", log: true },
   { js: "document.querySelector('[data-file=\"a.md\"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 120 })); true", wait: 300 },
-  { js: "(() => { const b = [...document.querySelectorAll('#menu .menu-item')].find((e) => /Favorites/.test(e.textContent)); const t = b.textContent; b.click(); return t; })()", log: true, wait: 800 },
+  { js: "(() => { const b = [...document.querySelectorAll('#menu .menu-item')].find((e) => /avorites/.test(e.textContent)); const t = b.textContent; b.click(); return t; })()", log: true, wait: 800 },
   { js: "(() => [" + fav + ", " + rec + "])()", log: true },
   { js: "document.querySelector('[data-file=\"a.md\"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 120 })); true", wait: 300 },
-  { js: "[...document.querySelectorAll('#menu .menu-item')].find((e) => /Favorites/.test(e.textContent)).textContent", log: true },
+  { js: "[...document.querySelectorAll('#menu .menu-item')].find((e) => /avorites/.test(e.textContent)).textContent", log: true },
   { js: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.querySelector('#favorites-list [data-unfav]').click(); true", wait: 800 },
   { js: "document.querySelector('#section-favorites').hidden", log: true },
+  // star it again, rename it: the star follows the new name
+  { js: "document.querySelector('[data-file=\"a.md\"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 120 })); [...document.querySelectorAll('#menu .menu-item')].find((e) => /avorites/.test(e.textContent)).click(); true", wait: 600 },
+  { js: "document.querySelector('[data-file=\"a.md\"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 120 })); [...document.querySelectorAll('#menu .menu-item')].find((e) => /^Rename/.test(e.textContent)).click(); true", wait: 500 },
+  { js: "(() => { const i = document.querySelector('#prompt-input'); i.value = 'alpha'; i.form.requestSubmit(); return true; })()", wait: 1500 },
+  { js: fav, log: true },
   { js: 'window.__folioErrors || []', log: true, wait: 100 },
 ];
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true })); // after the last assertion, however it ends
@@ -35,17 +40,19 @@ child.on('close', () => {
   clearTimeout(timer);
   const logs = out.split('\n').filter((l) => l.startsWith('js ')).map((l) => JSON.parse(l.slice(3)));
   console.log('\nfavorites ui'); if (process.env.DEBUG) console.log(JSON.stringify(logs, null, 1));
-  assert.equal(logs.length, 6, out.slice(-2000));
-  const [before, label, after, label2, hidden] = logs; assert.deepEqual(logs.at(-1), []);
+  assert.equal(logs.length, 7, out.slice(-2000));
+  const [before, label, after, label2, hidden, renamed] = logs; assert.deepEqual(logs.at(-1), []);
   assert.deepEqual(before, [true, ['b.md', 'a.md']]);
   console.log('  ✓ with no favourites the section is hidden; Recent lists the pages opened, newest first');
-  assert.match(label, /Add to Favorites/); assert.deepEqual(after, [['a.md'], ['b.md']]);
+  assert.match(label, /Add to favorites/); assert.deepEqual(after, [['a.md'], ['b.md']]);
   console.log('  ✓ the context menu adds a page to Favorites, and Recent no longer repeats it');
-  assert.match(label2, /Remove from Favorites/);
+  assert.match(label2, /Remove from favorites/);
   console.log('  ✓ the menu then offers to remove it');
   assert.equal(hidden, true);
-  assert.equal(fs.readFileSync(path.join(ws, 'a.md'), 'utf8'), a);
+  assert.equal(fs.readFileSync(path.join(ws, 'alpha.md'), 'utf8'), a);
   const st = JSON.parse(fs.readFileSync(path.join(ud, 'settings.json'), 'utf8'));
-  assert.ok(!st.favorites?.[ws], 'removed again');
-  console.log('  ✓ removing hides the section; the page file is untouched and the choice was kept in settings.json');
+  assert.deepEqual(renamed, ['alpha.md'], 'the star follows a rename');
+  assert.deepEqual(st.favorites?.[ws], ['alpha.md'], 'settings.json holds the favourite under its new name');
+  assert.ok(fs.existsSync(path.join(ws, 'alpha.md')) && !fs.existsSync(path.join(ws, 'a.md')));
+  console.log('  ✓ removing hides the section; a favourite follows a rename and is kept in settings.json, never in the page');
 });

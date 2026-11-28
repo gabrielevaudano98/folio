@@ -221,7 +221,7 @@ async function boot() {
     e.preventDefault(); e.stopPropagation();
     const t = activeTab(); if (!t || !isRich()) return;
     if (isLocked(t.path)) return toast(tr('app.this-page-is-locked'));
-    const at = rich.editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+    const at = rich.editor.view.posAtCoords({ left: e.clientX, top: e.clientY }); const docAtDrop = rich.editor.state.doc;
     const lines = [], failed = [];
     for (const f of files) {
       try {
@@ -232,8 +232,9 @@ async function boot() {
     }
     if (failed.length) toast(tr('app.could-not-save-the-image-message', { message: failed[0] }), { kind: 'error' });
     if (!lines.length || S.active !== t.path || !isRich()) return;
-    if (at) { // a new empty line under the block where they were let go, so the files never split a sentence
-      const ed = rich.editor, $p = ed.state.doc.resolve(at.pos); const after = $p.depth ? $p.after(1) : at.pos;
+    { // a new empty line under the block where they were let go (or at the page's end if the page changed meanwhile), so the files never split a sentence
+      const ed = rich.editor; let after = ed.state.doc.content.size;
+      if (at && ed.state.doc === docAtDrop) { const $p = ed.state.doc.resolve(at.pos); after = $p.depth ? $p.after($p.depth) : at.pos; }
       ed.view.dispatch(ed.state.tr.insert(after, ed.state.schema.nodes.paragraph.create())); ed.commands.setTextSelection(after + 1);
     }
     rich.insertMarkdown(lines.join('\n\n'));
@@ -2156,7 +2157,7 @@ const COMMANDS = [
   { id: 'move-to', title: 'Move note to…', run: () => S.active && moveToPicker(S.active, false) },
   { id: 'copy-page-link', title: 'Copy link to note', run: () => copyPageLink(S.active) },
   { id: 'page-info', title: 'Page info', run: () => { if (S.active) setDock('info', { focus: true }); } },
-  { id: 'toggle-favorite', title: 'Add to or remove from Favorites', run: () => toggleFav(S.active) },
+  { id: 'toggle-favorite', title: 'Add to or remove from favorites', run: () => toggleFav(S.active) },
   { id: 'settings', title: 'Settings…', key: 'Mod+,', run: openSettings },
   { id: 'meeting', title: 'Record a meeting… / Stop recording', run: () => meeting().then((m) => m.toggle()) },
   { id: 'bold', title: 'Format: bold', key: 'Mod+B', run: () => fmt('bold') },
