@@ -133,7 +133,7 @@ function createWindow() {
   // the window never leaves the app page: any other address (a file: page would inherit the preload bridge) opens in the browser or not at all
   const here = (u) => String(u).split(/[?#]/)[0];
   const lock = (e, url) => { if (here(url) === here(win.webContents.getURL())) return; e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); };
-  win.webContents.on('will-navigate', lock); win.webContents.on('will-redirect', lock);
+  win.webContents.on('will-navigate', lock);
   // the page crashed (out of memory, a GPU or renderer fault): open it again rather than leave a blank window.
   // Notes are autosaved shortly after typing stops, so the last second or so of typing can be lost; tabs come back from
   // settings. A recording in progress is stopped and saved first, since its audio came from this page.
