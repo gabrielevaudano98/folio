@@ -227,7 +227,9 @@ export async function emojiEntries(q) {
 
 /** one entry point for the editor: kind is 'link' ([[), 'at' (@), 'tag' (#) or 'emoji' (:) */
 export function mentionEntries(kind, q, ctx) {
-  if (kind === 'link' || kind === 'plus') return linkEntries(q, ctx); // +name is Notion's way to link a page or make one
+  if (kind === 'link') return linkEntries(q, ctx);
+  // +name is Notion's way to link a page. Prose like "+ideas" then Enter must not make a file, so it offers Create only beside pages that match
+  if (kind === 'plus') return linkEntries(q, ctx).then((rows) => (rows.some((r) => !r.create) ? rows : []));
   if (kind === 'at') return atEntries(q, ctx);
   if (kind === 'tag') return tagEntries(q, ctx);
   return emojiEntries(q);

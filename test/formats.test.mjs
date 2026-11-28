@@ -476,8 +476,8 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   assert.deepEqual((await ins('link', 'road'))[0], '[[Roadmap]]'); assert((await ins('link', 'road')).includes('create:road')); assert(!(await ins('link', 'Roadmap')).some((x) => String(x).startsWith('create:')));
   assert((await ins('link', 'ada')).includes('[[Ada Lovelace]]')); assert(!(await ins('link', '')).includes('[[Plan]]'));
   ok('[[ lists documents and people by fuzzy name, offers to create a page, and leaves out the page you are on');
-  assert.deepEqual(await ins('plus', 'road'), await ins('link', 'road')); assert((await ins('plus', 'New idea')).includes('create:New idea'));
-  ok('+name (Notion) offers the same pages and Create as [[ and writes a plain [[link]]');
+  assert.deepEqual(await ins('plus', 'road'), await ins('link', 'road')); assert.deepEqual(await ins('plus', 'ideas'), []);
+  ok('+name (Notion) offers the same pages and Create as [[; with no page matching it offers nothing, so +ideas then Enter stays text');
   assert.deepEqual(await ins('link', 'Roadmap#'), ['[[Roadmap#Goals]]', '[[Roadmap#Risks]]']); assert.deepEqual(await ins('link', '#ri'), ['[[#Risks]]']);
   assert.deepEqual(await ins('link', 'Plan#^'), ['[[Plan#^abc123]]']); assert.equal((await mentionEntries('link', 'Roadmap#^', ctx))[0].disabled, true);
   ok('[[Note# lists headings and [[Note#^ lists blocks that already have an id; a block-less page says how to make one');
