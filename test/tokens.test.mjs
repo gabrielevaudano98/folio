@@ -9,3 +9,7 @@ for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
 }
 assert.deepEqual(bad, [], 'interface rules use --content-* colours:\n' + bad.join('\n'));
 console.log('\ntokens\n  ✓ --content-* colours appear only in rules that style page content');
+
+// The ribbon must never fade while typing (the / menu or a field in the page used to hide it).
+assert.ok(!/\.is-typing[^{},]*\.ribbon(?![\w-])/.test(css), 'the ribbon must stay visible while typing');
+console.log('  ✓ the ribbon is not hidden while typing');

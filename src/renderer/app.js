@@ -241,7 +241,7 @@ async function boot() {
     rich.insertMarkdown(lines.join('\n\n'));
   }, true);
   $('.rich-scroll').addEventListener('scroll', () => { if (isRich()) markOutlineCurrent(); }, { passive: true });
-  /* quiet chrome while writing (Notion, iA Writer): typing fades the ribbon and the side panels; the pointer brings them back */
+  /* quiet chrome while writing (Notion, iA Writer): typing fades the side panels (never the ribbon); the pointer brings them back */
   let lastXY = null;
   $('#pane-rich').addEventListener('keydown', (e) => { if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace') && e.target.closest?.('.rich-prose')) app.classList.add('is-typing'); });
   document.addEventListener('mousemove', (e) => { if (!app.classList.contains('is-typing')) return; const d = lastXY ? Math.abs(e.clientX - lastXY[0]) + Math.abs(e.clientY - lastXY[1]) : 0; lastXY = [e.clientX, e.clientY]; if (d > 6) { app.classList.remove('is-typing'); lastXY = null; } }, { passive: true });

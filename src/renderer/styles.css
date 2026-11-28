@@ -2138,12 +2138,11 @@ img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; out
 .diff-hunk { position: relative; border-block: 1px solid var(--color-rule); }
 .diff-hunk-actions { display: flex; justify-content: flex-end; gap: var(--space-xs); padding: var(--space-2xs) var(--space-sm); background: var(--color-paper-3); }
 
-/* quiet chrome while writing: the ribbon and the side panels step back; any pointer movement brings them back */
-.app .ribbon, .app #sidebar, .app #outline, .app .titlebar { transition: opacity var(--dur-long) var(--ease-out); }
-.app.is-typing .ribbon { opacity: 0; }
+/* quiet chrome while writing: the side panels step back; any pointer movement brings them back. The ribbon always stays visible (typing in the / menu or a field must not hide it). */
+.app #sidebar, .app #outline, .app .titlebar { transition: opacity var(--dur-long) var(--ease-out); }
 .app.is-typing #sidebar, .app.is-typing #outline { opacity: 0.35; }
-.app.is-typing .ribbon:focus-within, .app.is-typing #sidebar:focus-within, .app.is-typing #outline:focus-within { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .app .ribbon, .app #sidebar, .app #outline { transition: none; } }
+.app.is-typing #sidebar:focus-within, .app.is-typing #outline:focus-within { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .app #sidebar, .app #outline { transition: none; } }
 
 /* the page icon in the Read view and exports (front matter icon:) */
 .prose .page-icon-read { margin: 0 0 var(--space-xs); font-size: 3.4rem; line-height: 1.1; }
