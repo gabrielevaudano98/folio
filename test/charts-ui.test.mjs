@@ -14,8 +14,15 @@ fs.writeFileSync(path.join(ws, 'a.md'), PAGE);
 const SHEET = fs.readFileSync(new URL('./fixture/Budget.sheet.md', import.meta.url), 'utf8');
 fs.writeFileSync(path.join(ws, 'Budget.sheet.md'), SHEET);
 
-const read = (f) => `folio.read(${JSON.stringify(f)})`;
-const fire = (sel, prop, value, ev = 'change') => `(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.${prop} = ${JSON.stringify(value)}; el.dispatchEvent(new Event(${JSON.stringify(ev)}, { bubbles: true })); return true; })()`;
+// A JavaScript string literal safe to splice into page code: JSON plus escapes for characters JSON leaves raw.
+const lit = (v) => JSON.stringify(String(v)).replace(/[<>/\u2028\u2029]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+const PROPS = new Set(['value', 'checked']);
+const read = (f) => `folio.read(${lit(f)})`;
+const fire = (sel, prop, value, ev = 'change') => {
+  if (!PROPS.has(prop)) throw new Error(`unexpected property ${prop}`);
+  const v = typeof value === 'boolean' ? String(value) : lit(value);
+  return `(() => { const el = document.querySelector(${lit(sel)}); el[${lit(prop)}] = ${v}; el.dispatchEvent(new Event(${lit(ev)}, { bubbles: true })); return true; })()`;
+};
 const steps = [
   { size: [1500, 950], wait: 1200 },
   { js: "document.querySelector('[data-file=\"a.md\"]').click()", wait: 900 },
