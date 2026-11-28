@@ -1,5 +1,5 @@
 // Folio — main process.
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, dialog, shell, nativeTheme, systemPreferences, Menu, clipboard, net, screen, session, utilityProcess, MessageChannelMain, desktopCapturer, Notification } from 'electron';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -26,6 +26,7 @@ import { assertPublicHost } from './netguard.js';
 import { mayOpenWithSystem } from './open-guard.js';
 import { createFeatures } from './meeting/service.js';
 import { createUpdater } from './updater.js';
+import { createChat } from './chat/service.js';
 import { createRequests } from './ai-requests.js';
 import electronUpdater from 'electron-updater';
 import { writeAtomic, writeAtomicSync, writeNew } from './atomic.js';
@@ -97,6 +98,7 @@ const guardAsset = (rel) => { if (isAssetPath(rel)) throw new Error('The .asset 
 /* history must never get in the way of saving */
 const keep = async (rel, text, o) => { try { if (settings.workspace && !/(^|\/)\.folio\//.test(rel)) return await history.snapshot(rel, text, o); } catch (e) { console.error('history', e.message); return false; } return null; }; // false: it could not be stored (null: nothing new to store)
 let win = null;
+let chat = null; // chat mode (src/main/chat), created once the MCP backend exists
 const liveWin = () => !!win && !win.isDestroyed() && !win.webContents.isDestroyed();
 /* reminders (D1, X13): fired while Folio is open, and the ones missed while it was closed announced at the next start;
    Done / Dismissed and the moment up to which reminders were announced are kept here per workspace, never in the page */
@@ -220,6 +222,7 @@ if (isWin) systemPreferences.on?.('accent-color-changed', () => win?.webContents
 let watcher = null;
 const ownWrites = new Map(); // abs -> content we just wrote; suppresses our own echo
 async function setWorkspace(dir) {
+  if (dir !== settings.workspace) chat?.reset(); // opening the same folder again must not cut a running answer
   requests.clear(); // a request belongs to the folder it was written in
   await clearTrashed();
   if (settings.workspace !== dir) reminders.leave(); // the folder being left saw its reminders up to now
@@ -360,7 +363,7 @@ const trashed = new Map();
 let undoDir = null;
 const undoRoot = () => path.join(app.getPath('userData'), 'undo');
 async function clearTrashed() { trashed.clear(); undoDir = null; await fs.rm(undoRoot(), { recursive: true, force: true }).catch(() => {}); }
-h('fs:trash', async (rel) => {
+async function trashPath(rel) {
   guardAsset(rel);
   const abs = notes.resolve(rel, { notRoot: true });
   if (!undoDir) { await fs.mkdir(undoRoot(), { recursive: true, mode: 0o700 }); undoDir = await fs.mkdtemp(path.join(undoRoot(), 's-')); } // mkdtemp makes it owner-only
@@ -371,7 +374,8 @@ h('fs:trash', async (rel) => {
   trashed.set(token, { rel, keep, root: notes.root() });
   while (trashed.size > 25) { const [old, e] = trashed.entries().next().value; trashed.delete(old); fs.rm(e.keep, { recursive: true, force: true }).catch(() => {}); }
   return { token };
-});
+}
+h('fs:trash', (rel) => trashPath(rel));
 h('fs:untrash', async (token) => {
   const e = trashed.get(token);
   if (!e || e.root !== notes.root()) throw new Error('That item can no longer be restored from here. Look in the system Trash.');
@@ -631,6 +635,19 @@ const appBackend = {
     });
   },
 };
+
+// chat mode: an AI chat bound to the open folder; runs the same tools as an outside MCP client, behind approvals
+chat = createChat({
+  h, getWin: () => win, settings, saveSettings, notes, backend: appBackend, TOOLS, safeStorage, guardAsset,
+  keyFile: () => path.join(app.getPath('userData'), 'ai-keys.json'),
+  mkdir: async (rel) => { guardAsset(rel); await fs.mkdir(notes.resolve(rel, { notRoot: true }), { recursive: true }); },
+  trash: async (rel) => { // the chat deletes notes and folders, never other kinds of file
+    const st = await fs.stat(notes.resolve(rel, { notRoot: true })).catch(() => null);
+    if (!st) throw new Error('That path does not exist.');
+    if (!st.isDirectory() && !NOTE_EXT.includes(path.extname(rel).toLowerCase())) throw new Error('Only notes and folders can be deleted from the chat.');
+    return trashPath(rel);
+  }, askOpenNote: () => askRenderer('open-note', null, 800),
+});
 
 function tokenOk(header) {
   const a = Buffer.from(String(header || '')), b = Buffer.from(`Bearer ${settings.token}`);

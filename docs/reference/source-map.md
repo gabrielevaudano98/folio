@@ -40,6 +40,14 @@ Node.js inside Electron. Owns the window, the disk, the network and the MCP serv
 | `features/catalog.js` | core (data) | Optional features and the pinned components they download (address, SHA-256, size, licence). See [components](components.md). |
 | `features/installer.js` | main | Resumable, hash-checked, atomic download and install of catalog components. |
 | `features/unpack.js` | core | Reads `.tgz`/`.zip` in memory and decides which entries are safe to write. |
+| `chat/providers.js` | core | Chat providers: Anthropic, OpenAI (and compatible) and Google over streaming `fetch`, one neutral message format. |
+| `chat/policy.js` | core | What the chat may do alone, what needs approval, what is denied. |
+| `chat/agent.js` | core | The chat's tool loop: step cap, context trimming, approvals, stop. |
+| `chat/chat-tools.js` | core | The two chat-only tools, `create_folder` and `delete_path`. |
+| `chat/prompt.js` | core | The chat's system prompt (folder tree, standing instructions, rules). |
+| `chat/keystore.js` | main | API keys encrypted with Electron `safeStorage`; refuses plain text. |
+| `chat/store.js` | main | Conversations as files in `<folder>/.folio/chat/`. |
+| `chat/service.js` | main | Chat mode in the main process: settings, keys, runs, IPC. See [chat mode](../explanation/chat-mode.md). |
 | `meeting/service.js` | main | Optional-features service: installs, the meeting session, the memory guard; IPC for Settings. |
 | `meeting/asr-worker.js` | utilityProcess | Voice detection (Silero) and transcription (Whisper via sherpa-onnx) for one recording; bundled as `dist/meeting-asr.cjs`. |
 | `meeting/transcript.js` | core | Segments in, Markdown transcript out; de-duplication of echoed lines. |
@@ -83,6 +91,7 @@ are separate chunks loaded on first use ([ADR 0009](../adr/0009-lazy-visual-edit
 | `callouts.js` | core | Callout types (GitHub and Obsidian), aliases, Notion-style icon and colour. |
 | `tokens.css` | design tokens | Every colour, font, radius, shadow and motion value. See [design system](../explanation/design-system.md). |
 | `styles.css` | styles | The shell's and the page editor's styles, built only on tokens. |
+| `chat.js` | surface | Chat mode in the window: conversation, approval cards, composer and the Settings → AI group. Loaded on demand. |
 | `meeting.js` | surface | Meeting recorder in the window: Settings section, audio capture, recording bar. Loaded on demand. |
 | `meeting-worklet.js` | audio thread | AudioWorklet: mono 16 kHz, 100 ms Int16 blocks to the worker. Copied as is into `dist/`. |
 | `template-gallery.js` | surface | Template gallery: browse, search, preview, favourites, community templates. |

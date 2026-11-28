@@ -36,7 +36,8 @@ copilot (area 28), streaming export of very large workbooks.
 - Slides: incremental lists [#9](https://github.com/gabrielevaudano98/folio/issues/9), rulers and guides [#92](https://github.com/gabrielevaudano98/folio/issues/92), per-word styling and WordArt [#93](https://github.com/gabrielevaudano98/folio/issues/93), screen recording,
   screenshots and 3D [#94](https://github.com/gabrielevaudano98/folio/issues/94), video/GIF/image export [#97](https://github.com/gabrielevaudano98/folio/issues/97).
 - Boards: connector waypoints [#11](https://github.com/gabrielevaudano98/folio/issues/11), sequence diagrams [#12](https://github.com/gabrielevaudano98/folio/issues/12), images and pen [#13](https://github.com/gabrielevaudano98/folio/issues/13).
-- Charts: more types and axis titles [#17](https://github.com/gabrielevaudano98/folio/issues/17).
+- Charts: more types and axis titles [#17](https://github.com/gabrielevaudano98/folio/issues/17) — done: donut, combo with a secondary axis, axis titles,
+  value labels, the same as native PowerPoint charts.
 
 ## Next: v1.3 AI-native
 
@@ -53,7 +54,8 @@ branch clean-up [#91](https://github.com/gabrielevaudano98/folio/issues/91).
 
 Releases are on [GitHub Releases](https://github.com/gabrielevaudano98/folio/releases); all are pre-alpha and unsigned.
 
-- **1.5.1** (27 Nov 2026): the speech model uses more threads on bigger processors, at most 5.
+- **1.6.0** (28 Nov 2026): **Notion-parity pass on pages** (reminders, search window, page appearance, locks, page dates and icon, duplicate and move, `+name` links, reopen closed tab, light/dark command, favourites and recent, turn blocks into a page, drop files on a page, page info); **AI**: review each change with Accept/Reject, 9 board and sheet MCP tools, "Ask AI about this note"; **Linux AppImage**; opt-in automatic update checks from GitHub Releases ([#2](https://github.com/gabrielevaudano98/folio/issues/2)); security pass (CodeQL findings, safer Open on attached files, template fetch redirects, Dependabot).
+- **1.5.1** (27 Nov): the speech model uses more threads on bigger processors, at most 5.
 - **1.5.0** (27 Nov): one-click meeting recording from the sidebar; on Windows, an offer to record when another app starts
   a call (reads the microphone consent store, off by default); image fixes.
 - **1.4.0–1.4.2** (21–22 Nov): web images in notes load only when asked; meeting recorder fixes (empty audio, no-sound warning).

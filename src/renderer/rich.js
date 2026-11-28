@@ -30,6 +30,7 @@ import CodeBlock from '@tiptap/extension-code-block';
 import { Plugin, PluginKey, NodeSelection, TextSelection, EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { renderMermaid, hydrateCharts, render } from './markdown.js';
+import { parseChartSpec, setSpecKey, CHART_TYPES } from './chart.js';
 import hljs from 'highlight.js/lib/common';
 import { pageExtensions, FolioRaw } from './page-schema.js';
 import { InlineMath, BlockMath, FootnoteRef, FootnoteInline, FootnoteDef, COLORS, Align, PageImage, mediaKind, webProvider } from './page-syntax.js';
@@ -123,17 +124,30 @@ const FolioCodeBlock = CodeBlock.extend({
         const select = `<select class="rich-code-lang" aria-label="${tr('rich.code-language')}">${(known ? LANGS : [[lang, lang], ...LANGS]).map(([v, l]) => `<option value="${v}"${v === lang ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
         const tools = `<span class="rich-code-tools"><button type="button" class="rich-code-tool" data-tool="copy" aria-label="${tr('rich.copy-code')}">${tr('rich.copy-code')}</button><button type="button" class="rich-code-tool" data-tool="wrap" aria-pressed="${wrapped}" aria-label="${tr('rich.wrap-code')}">${tr('rich.wrap-code')}</button></span>`;
         dom.classList.toggle('is-wrapped', wrapped);
-        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span><button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select + tools;
+        // a chart's bar also changes its type and value labels; each rewrites one line of the block (setSpecKey)
+        let chartTools = '';
+        if (lang === 'chart') {
+          const spec = parseChartSpec(n.textContent);
+          chartTools = `<span class="rich-code-tools"><select class="rich-chart-type" aria-label="${tr('rich.chart-type')}">${CHART_TYPES.map(([v, l]) => `<option value="${v}"${spec.type === v ? ' selected' : ''}>${tl('chart', l)}</option>`).join('')}</select><button type="button" class="rich-code-tool" data-tool="labels" aria-pressed="${!!spec.labels}">${tr('rich.value-labels')}</button></span>`;
+        }
+        bar.innerHTML = visual ? `<span>${lang === 'chart' ? 'Chart' : lang === 'template-button' ? 'Template button' : 'Diagram'}</span>${chartTools}<button type="button" class="btn btn-quiet">${editing ? 'Done' : 'Edit source'}</button>` : select + tools;
         if (visual) draw(n.textContent); else preview.innerHTML = '';
       };
+      const setChartKey = (key, value) => {
+        if (typeof getPos !== 'function') return;
+        const text = setSpecKey(node.textContent, key, value); if (text === node.textContent) return;
+        const pos = getPos(); editor.view.dispatch(editor.state.tr.replaceWith(pos + 1, pos + node.nodeSize - 1, editor.schema.text(text)));
+      };
       bar.addEventListener('change', (e) => {
+        if (e.target.closest('.rich-chart-type')) { setChartKey('type', e.target.value); return; }
         const sel = e.target.closest('select'); if (!sel || typeof getPos !== 'function') return;
         editor.view.dispatch(editor.state.tr.setNodeMarkup(getPos(), undefined, { ...node.attrs, language: sel.value || null }));
         editor.commands.focus();
       });
       bar.addEventListener('click', (e) => { // Copy puts the code on the clipboard; Wrap only changes how it is drawn (never saved)
         const tool = e.target.closest('.rich-code-tool'); if (!tool) return;
-        if (tool.dataset.tool === 'copy') opts.onCopy?.(node.textContent); else { wrapped = !wrapped; dom.classList.toggle('is-wrapped', wrapped); tool.setAttribute('aria-pressed', String(wrapped)); }
+        if (tool.dataset.tool === 'labels') setChartKey('labels', tool.getAttribute('aria-pressed') !== 'true');
+        else if (tool.dataset.tool === 'copy') opts.onCopy?.(node.textContent); else { wrapped = !wrapped; dom.classList.toggle('is-wrapped', wrapped); tool.setAttribute('aria-pressed', String(wrapped)); }
       });
       bar.addEventListener('mousedown', (e) => {
         const tool = e.target.closest('.rich-code-tool');

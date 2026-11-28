@@ -1,6 +1,6 @@
 # Project status
 
-**As of 28 November 2026 · `main` at 1.5.1 (pre-alpha) plus the new app icon (#80) · maintainer: Gabriele Vaudano.**
+**As of 28 November 2026 · `main` at 1.6.0 (pre-alpha) · maintainer: Gabriele Vaudano.**
 
 This is the page to read first when you pick Folio up: what ships, what is half-built and where, what is broken, what
 comes next, and what only a person can do. It is written by hand; update it in the same pull request that changes the
@@ -19,12 +19,12 @@ picture (merging a branch, closing a milestone, finding a bug). The live list of
 
 | Area | On `main` | In flight | Main gaps |
 |---|---|---|---|
-| App shell (files, tabs, search, undo, history, i18n) | Shipped, with the search window and page actions (Notion stack, 28 Nov) | — | Favourites and recents ([#85](https://github.com/gabrielevaudano98/folio/issues/85)); Linux build is in CI (first AppImage unchecked on a real desktop) |
-| Pages (`.md`) | Pages Studio D0–D16, `.asset/` attachments and Notion gap waves 1–2 shipped (the F1–F6 data and UI fixes of [#81](https://github.com/gabrielevaudano98/folio/issues/81) included) | — | Wave 2 batch 2 ([#85](https://github.com/gabrielevaudano98/folio/issues/85)), #86, #87 |
+| App shell (files, tabs, search, undo, history, i18n) | Shipped, with the search window and page actions (Notion stack, 28 Nov) | — | Linux build is in CI (first AppImage unchecked on a real desktop) |
+| Pages (`.md`) | Pages Studio D0–D16, `.asset/` attachments and Notion gap waves 1–2 shipped (the F1–F6 data and UI fixes of [#81](https://github.com/gabrielevaudano98/folio/issues/81) included) | — | Image options and breadcrumb ([#85](https://github.com/gabrielevaudano98/folio/issues/85)), #86, #87 |
 | Slides (`.slides.md`) | Slides Studio P0–P15 shipped (1.2.0) | — | Leftovers: video/GIF export, live captions, WordArt, rulers |
 | Boards (`.board.md`) | Canvas, shape libraries, UML, auto-layout | — | Waypoints, sequence messages, images and pen |
 | Sheets (`.sheet.md`) | Light grid (hot-formula-parser) | **Folio Sheets on Univer** on `feat/sheets-univer`, no PR yet | Merge plan ([#84](https://github.com/gabrielevaudano98/folio/issues/84)) |
-| AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect, per-change review, Ask AI ([#20](https://github.com/gabrielevaudano98/folio/issues/20)) | Sheet tools on the Univer branch | `set_cells` to reconcile with Univer |
+| AI / MCP | 52 tools (board and sheet tools included), HTTP and stdio, one-click connect, per-change review, Ask AI ([#20](https://github.com/gabrielevaudano98/folio/issues/20)) | **Chat mode** (BYOK, [#102](https://github.com/gabrielevaudano98/folio/issues/102), PR #114); sheet tools on the Univer branch | `set_cells` to reconcile with Univer |
 | Meeting recorder (optional, Windows) | Shipped (1.5.x): one-click, call detection | — | Real-call measurements on Windows ([#88](https://github.com/gabrielevaudano98/folio/issues/88)) |
 | Release | Tests and CodeQL on pull requests to `main`; Windows and macOS packages on every push to `main`; a release when `package.json` changes | 5 Dependabot PRs | Code signing and notarisation (no certificates available) |
 
@@ -52,6 +52,10 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
   auto-layout (dagre); PNG and SVG export.
 - **Sheets (light)**: grid over Markdown tables, ~390 functions (hot-formula-parser), formats, fill, copy and paste with
   Excel, several sheets, Kanban view, charts, `.xlsx` and CSV export.
+- **Charts** (one spec for pages, slides and sheets, [format](FORMATS.md#charts)): column, bar, line, area, pie, donut,
+  combo (bars and lines, optional secondary axis) and scatter; axis titles and value labels; type and labels from the
+  page chart bar, every option in the sheet chart panel; native PowerPoint charts on export
+  ([#17](https://github.com/gabrielevaudano98/folio/issues/17)). Sheet `.xlsx` export carries the data, not the charts.
 - **AI**: MCP server on `127.0.0.1:47321` with token and Host/Origin checks, stdio bridge inside the app binary, one-click
   setup for Claude Desktop, Cursor, VS Code, Windsurf, LM Studio and a command for Claude Code; 52 tools
   ([reference](reference/mcp-tools.md)); every AI write is highlighted with Undo and kept in version history.
@@ -81,9 +85,9 @@ line, a notification click brings Folio forward on the note, the cover has Chang
 sits on the cover's edge, and Settings has page defaults (font, small text, full width). The reminder scan stayed on
 the main thread: measured on 19,000 notes its longest stall is 34–51 ms (p99 9 ms) after it stopped stat-ing files.
 
-Wave 2 batch 2 is on `notion-gap-wave2b` ([#85](https://github.com/gabrielevaudano98/folio/issues/85)): Turn into page
+Wave 2 batch 2 ([#117](https://github.com/gabrielevaudano98/folio/pull/117), merged 28 Nov): Turn into page
 (block menu), files dropped on a page copied into `.asset/`, Page info (menu and command, Details panel with backlinks),
-Favorites and Recent in the sidebar. Still open from #85: image options and the clickable breadcrumb. Wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
+Favorites and Recent in the sidebar. Still open from [#85](https://github.com/gabrielevaudano98/folio/issues/85): image options and the clickable breadcrumb. Wave 3 (bulk sidebar actions, importers, backlinks mode, RTL, peek…) in [#87](https://github.com/gabrielevaudano98/folio/issues/87).
 
 ### Sheets: Folio Sheets on Univer (`feat/sheets-univer`, no pull request)
 
@@ -149,7 +153,6 @@ Each is an open issue with its milestone. The ones that matter most for a first 
   screen recording, screenshots and 3D ([#94](https://github.com/gabrielevaudano98/folio/issues/94)), background removal
   ([#95](https://github.com/gabrielevaudano98/folio/issues/95)), live captions ([#96](https://github.com/gabrielevaudano98/folio/issues/96)),
   video/GIF/image export ([#97](https://github.com/gabrielevaudano98/folio/issues/97)).
-- More chart types and axis titles ([#17](https://github.com/gabrielevaudano98/folio/issues/17)).
 - Meeting recorder on macOS (system sound capture) ([#89](https://github.com/gabrielevaudano98/folio/issues/89)).
 
 Sheet issues [#7](https://github.com/gabrielevaudano98/folio/issues/7), [#14](https://github.com/gabrielevaudano98/folio/issues/14),
