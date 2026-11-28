@@ -157,7 +157,7 @@ export function mountSheet(host, ctx) {
     if (type === 'combo') {
       // which series are lines: one check box per series (several allowed); nothing chosen means the last one
       const series = toSeries(rangeValues(c.range), c.by === 'rows' ? 'rows' : 'columns').series, on = comboLines(series, c);
-      html += `<fieldset class="sh-chart-lines"><legend>${tr('sheet.line-series')}</legend>${series.map((x, i) => `<label class="sf-check"><input type="checkbox" data-ch="line" data-name="${esc(x.name)}"${on[i] ? ' checked' : ''}${x.name.includes(',') ? ` disabled title="${esc(tr('sheet.line-series-comma'))}"` : ''}> ${esc(x.name)}</label>`).join('')}</fieldset>
+      html += `<fieldset class="sh-chart-lines"><legend>${tr('sheet.line-series')}</legend>${series.map((x, i) => [x, i]).filter(([x, i]) => series.findIndex((y) => y.name.toLowerCase() === x.name.toLowerCase()) === i).map(([x, i]) => `<label class="sf-check"><input type="checkbox" data-ch="line" data-name="${esc(x.name)}"${on[i] ? ' checked' : ''}${x.name.includes(',') ? ` disabled title="${esc(tr('sheet.line-series-comma'))}"` : ''}> ${esc(x.name)}</label>`).join('')}</fieldset>
         <div class="sh-chart-axes"><label class="sf-check"><input type="checkbox" data-ch="secondary"${c.secondary ? ' checked' : ''}> ${tr('sheet.secondary-axis')}</label></div>`;
       if (c.secondary) html += `<div class="sh-chart-axes">${field('y2title', tr('sheet.secondary-axis-title'))}</div>`;
     }
