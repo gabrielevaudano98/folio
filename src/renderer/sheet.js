@@ -1,7 +1,7 @@
 // Folio — sheet surface: an Excel-style grid over sheet-md.
 import { t as tr, tl } from './i18n.js';
 import { parseWorkbook, serializeWorkbook, evaluator, display, colName, colIndex, addr, parseAddr, shiftFormula, FORMATS, formulaRefs } from './sheet-core.js';
-import { chartHtml, CHART_TYPES, specToText, toSeries } from './chart.js';
+import { chartHtml, CHART_TYPES, specToText, toSeries, comboLines } from './chart.js';
 import { perDoc } from './history.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -155,10 +155,10 @@ export function mountSheet(host, ctx) {
     const field = (k, label) => `<input class="input" data-ch="${k}" value="${esc(c[k] || '')}" placeholder="${label}" aria-label="${label}">`;
     let html = `<div class="sh-chart-axes">${field('xtitle', tr('sheet.horizontal-axis-title'))}${field('ytitle', tr('sheet.vertical-axis-title'))}</div>`;
     if (type === 'combo') {
-      const names = toSeries(rangeValues(c.range), c.by === 'rows' ? 'rows' : 'columns').series.map((x) => x.name);
-      const pick = names.find((nm) => nm.toLowerCase() === String(c.lines || '').toLowerCase());
-      html += `<div class="sh-chart-axes"><select class="select" data-ch="lines" aria-label="${tr('sheet.line-series')}"><option value=""${pick ? '' : ' selected'}>${tr('sheet.line-series-last')}</option>${names.map((nm) => `<option value="${esc(nm)}"${nm === pick ? ' selected' : ''}>${esc(tr('sheet.line-series-name', { name: nm }))}</option>`).join('')}</select>
-        <label class="sf-check"><input type="checkbox" data-ch="secondary"${c.secondary ? ' checked' : ''}> ${tr('sheet.secondary-axis')}</label></div>`;
+      // which series are lines: one check box per series (several allowed); nothing chosen means the last one
+      const series = toSeries(rangeValues(c.range), c.by === 'rows' ? 'rows' : 'columns').series, on = comboLines(series, c);
+      html += `<fieldset class="sh-chart-lines"><legend>${tr('sheet.line-series')}</legend>${series.map((x, i) => `<label class="sf-check"><input type="checkbox" data-ch="line" data-name="${esc(x.name)}"${on[i] ? ' checked' : ''}> ${esc(x.name)}</label>`).join('')}</fieldset>
+        <div class="sh-chart-axes"><label class="sf-check"><input type="checkbox" data-ch="secondary"${c.secondary ? ' checked' : ''}> ${tr('sheet.secondary-axis')}</label></div>`;
       if (c.secondary) html += `<div class="sh-chart-axes">${field('y2title', tr('sheet.secondary-axis-title'))}</div>`;
     }
     return html;
@@ -517,7 +517,11 @@ export function mountSheet(host, ctx) {
     if (k === 'stacked') { if (e.target.checked) c.stacked = true; else delete c.stacked; }
     if (k === 'rows') { if (e.target.checked) c.by = 'rows'; else delete c.by; }
     if (k === 'labels' || k === 'secondary') { if (e.target.checked) c[k] = true; else delete c[k]; }
-    if (['xtitle', 'ytitle', 'y2title', 'lines'].includes(k)) { const v = e.target.value.trim(); if (v) c[k] = v; else delete c[k]; }
+    if (k === 'line') { // names are joined with commas, so a series whose name has a comma cannot be picked by name
+      const picked = [...box.querySelectorAll('[data-ch=line]')].filter((x) => x.checked).map((x) => x.dataset.name).filter((nm) => !nm.includes(','));
+      if (picked.length) c.lines = picked.join(', '); else delete c.lines;
+    }
+    if (['xtitle', 'ytitle', 'y2title'].includes(k)) { const v = e.target.value.trim(); if (v) c[k] = v; else delete c[k]; }
     commit();
   });
   chartsPanel.addEventListener('click', async (e) => {

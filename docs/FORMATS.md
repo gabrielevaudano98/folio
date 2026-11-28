@@ -338,8 +338,8 @@ Order *-- Line "1..*"
 
 ## Charts
 
-A chart is a fenced block named `chart`, the same in pages, slides (inside a box or as slide content) and sheets (a
-sheet keeps its charts as objects with the same keys in its `<!-- sheet: {"charts":[…]} -->` comment). Each line is
+A chart is a fenced block named `chart`, the same in pages and slides (inside a box or as slide content). A sheet keeps
+its own charts in its `<!-- sheet: {...} -->` comment instead (see sheet-md). Each line is
 `key: value`; keys are case-insensitive, unknown keys are ignored and kept.
 
 ````markdown
@@ -360,12 +360,12 @@ y2title: Margin (%)
 
 - `type`: `column` (default), `bar` (horizontal), `line`, `area`, `pie`, `donut`, `combo` (bars and lines in one chart), `scatter` (first series is x, second is y).
 - Data: `source` (a sheet, written as in references), optional `sheet` and `range`; or `data:` followed by a Markdown table (always the last key). The first row names the series, the first column holds the categories; `by: rows` reads series from rows instead.
-- `stacked: true` stacks bars (in a combo, the bar series).
-- `combo`: `lines:` names the series drawn as lines, comma-separated (default: the last series; a name that matches no series falls back to that default). `secondary: true` puts the line series on a second value axis on the right.
-- `labels: true` writes each value on its bar or point; on a pie or donut the slice labels show values instead of percentages; on a scatter each point shows its category.
+- `stacked: true` stacks bars (in a combo, the bar series): positive values pile up from zero, negative ones down from zero.
+- `combo`: `lines:` names the series drawn as lines, comma-separated (default: the last series; names that match no series fall back to that default; a series whose name contains a comma cannot be named). `secondary: true` puts the line series on a second value axis on the right.
+- `labels: true` writes each value on its bar or point; on a pie or donut the slice labels show values instead of percentages; on a scatter each point shows its category. A label is drawn only where it fits: beside a bar or point when there is room for it, inside a stacked segment only when the segment is large enough, and on a pie or donut only for slices above 4% of the total (as the percentages). In PowerPoint the labels are PowerPoint's own, placed by PowerPoint.
 - Axis titles: `xtitle` (horizontal axis), `ytitle` (vertical axis), `y2title` (secondary axis of a combo). On a `bar` chart the horizontal axis holds the values, so `xtitle` names the values and `ytitle` the categories. Pies and donuts have no axes.
 - Lossless: a block is drawn, never rewritten. The page chart bar (type, value labels) rewrites only the line of the key it changes, and adds a new key just before `data:`. Copy from a sheet writes the keys in the order above.
-- Export to PowerPoint makes native charts: a donut is a doughnut chart, a combo is one chart with a bar group and a line group (the line group on a secondary axis when asked), and axis titles and value labels become PowerPoint's own. Importing a `.pptx` turns a doughnut chart into `type: donut`.
+- Export to PowerPoint makes native charts: a donut is a doughnut chart, a combo is one chart with a bar group and a line group (the line group on a secondary axis when asked), and axis titles and value labels become PowerPoint's own. Blank cells stay gaps, and a pie or donut exports its first series, as Folio draws it. Importing a `.pptx` turns a doughnut chart into `type: donut`, and a scatter chart keeps its x values (first series column).
 - Round-trip and drawing: `test/formats.test.mjs` (charts), `test/charts-ui.test.mjs`, `test/charts-pptx.test.mjs`.
 
 ## sheet-md
@@ -384,7 +384,7 @@ Each `## Heading` followed by a Markdown table is one sheet. Row 1 (the header r
 ```
 
 - A cell that starts with `=` is a formula, Excel syntax: `SUM`, `AVERAGE`, `IF`, `IFS`, `IFERROR`, `COUNTIF`, `SUMIF`, `VLOOKUP`, `HLOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `ROUND`, `TEXTJOIN`, dates, finance and about 380 more. `$` locks a reference. Write a pipe inside a cell as `\|`.
-- The optional `<!-- sheet: {...} -->` comment right after a table holds formatting: `cols` and `cells` with `format` (`number`, `integer`, `currency`, `usd`, `percent`, `date`, `text`), `bold`, `italic`, `align`, `width`; `view: "kanban"` and `kanbanBy` (column index) for the Kanban view; `charts`, a list of charts with the keys of [Charts](#charts) plus `range`.
+- The optional `<!-- sheet: {...} -->` comment right after a table holds formatting: `cols` and `cells` with `format` (`number`, `integer`, `currency`, `usd`, `percent`, `date`, `text`), `bold`, `italic`, `align`, `width`; `view: "kanban"` and `kanbanBy` (column index) for the Kanban view; `charts`, a list of the sheet's own charts. Each is an object with `range` (required, cells of this same sheet, e.g. `"A1:G5"`) and the display keys of [Charts](#charts): `type`, `title`, `by`, `stacked`, `lines`, `secondary`, `labels`, `xtitle`, `ytitle`, `y2title` (booleans as JSON `true`; a key that is off is left out). A sheet chart has no `source`, `sheet` or `data`: it always reads its own range. *Copy for slides or pages* turns it into a ` ```chart ` block with `source` and `sheet` filled in.
 - Values are not stored, only formulas. Through MCP, `get_sheet_values` returns the computed values.
 
 ### Templates

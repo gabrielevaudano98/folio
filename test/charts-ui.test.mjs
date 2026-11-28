@@ -9,7 +9,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-charts-ui-'));
 const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud');
 fs.mkdirSync(ws, { recursive: true }); fs.mkdirSync(ud);
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47671 }));
-const PAGE = '# Sales\n\nBefore the chart.\n\n```chart\ntype:  column\ntitle: Sales\ndata:\n| Month | Sales |\n| --- | --- |\n| Jan | 10 |\n| Feb | 14 |\n```\n\nAfter the chart.\n';
+const PAGE = '# Sales\n\nBefore the chart.\n\n~~~~ chart\ntype:  column\ntitle: Sales\ndata:\n| Month | Sales |\n| --- | --- |\n| Jan | 10 |\n| Feb | 14 |\n~~~~~\n\n\nAfter the chart.\n'; // an unusual fence and spacing: only the edited spec line may change
 fs.writeFileSync(path.join(ws, 'a.md'), PAGE);
 const SHEET = fs.readFileSync(new URL('./fixture/Budget.sheet.md', import.meta.url), 'utf8');
 fs.writeFileSync(path.join(ws, 'Budget.sheet.md'), SHEET);
@@ -37,13 +37,15 @@ const steps = [
   // sheet: combo with a secondary axis and titles, value labels
   { js: "document.querySelector('[data-file=\"Budget.sheet.md\"]').click()", wait: 1500 },
   { js: fire('.sh-chart [data-ch=type]', 'value', 'combo'), wait: 700 },
-  { js: "[...document.querySelectorAll('.sh-chart [data-ch=lines] option')].map((o) => o.value).join(',')", log: true, wait: 100 },
+  { js: "[...document.querySelectorAll('.sh-chart [data-ch=line]')].map((o) => o.dataset.name + (o.checked ? '*' : '')).join(',')", log: true, wait: 100 },
+  { js: fire('.sh-chart [data-ch=line][data-name=Q3]', 'checked', true), wait: 700 },
+  { js: "[...document.querySelectorAll('.sh-chart [data-ch=line]')].map((o) => o.dataset.name + (o.checked ? '*' : '')).join(',')", log: true, wait: 100 },
   { js: fire('.sh-chart [data-ch=secondary]', 'checked', true), wait: 700 },
   { js: fire('.sh-chart [data-ch=y2title]', 'value', 'Share'), wait: 700 },
   { js: fire('.sh-chart [data-ch=xtitle]', 'value', 'Item'), wait: 700 },
   { js: fire('.sh-chart [data-ch=labels]', 'checked', true), wait: 1600 },
   { js: read('Budget.sheet.md'), log: true, wait: 100 },
-  { js: "(() => { const s = document.querySelector('.sh-chart-svg svg'); return [s.querySelectorAll('.ch-line').length > 0, s.querySelectorAll('.ch-tick2').length > 0, s.querySelectorAll('.ch-axis').length, s.querySelectorAll('.ch-val').length > 0]; })()", log: true, wait: 100 },
+  { js: "(() => { const s = document.querySelector('.sh-chart-svg svg'); return [s.querySelectorAll(':scope > .ch-line').length === 2, s.querySelectorAll('.ch-tick2').length > 0, s.querySelectorAll('.ch-axis').length, s.querySelectorAll('.ch-val').length > 0]; })()", log: true, wait: 100 },
   { js: fire('.sh-chart [data-ch=type]', 'value', 'donut'), wait: 700 },
   { js: "[document.querySelectorAll('.sh-chart [data-ch=xtitle]').length, document.querySelectorAll('.sh-chart-svg .ch-total').length]", log: true, wait: 100 },
   { js: 'window.__folioErrors||[]', log: true, wait: 100 },
@@ -64,15 +66,16 @@ console.log('  ✓ page: changing the type rewrites only the type line (the auth
 assert.equal(js[2], PAGE.replace('type:  column', 'type:  donut').replace('title: Sales\n', 'title: Sales\nlabels: true\n'));
 assert.deepEqual(js[3], [true, 2, 'true']);
 console.log('  ✓ page: Value labels adds one line before the data; the donut draws its slices and total');
-assert.equal(js[4], ',Q1,Q2,Q3,Q4', 'line series picker lists the series');
-const sheet = js[5];
+assert.equal(js[4], 'Q1,Q2,Q3,Q4*', 'one check box per series; the last one is the line by default');
+assert.equal(js[5], 'Q1,Q2,Q3*,Q4*', 'several series can be lines');
+const sheet = js[6];
 const meta = (t) => t.split('\n').filter((l) => l.includes('"charts"'));
 // the edited sheet is written again (as for any change to it); its cells stay the same and the other sheet is untouched
 const cells = (t) => t.split('\n').filter((l) => !l.includes('"charts"')).map((l) => l.replace(/ +\|/g, ' |').replace(/\| -+/g, '| ---').trim()).join('\n');
 assert.equal(cells(sheet), cells(SHEET)); assert.equal(sheet.slice(sheet.indexOf('## Rates')), SHEET.slice(SHEET.indexOf('## Rates')));
-assert.equal(meta(sheet).length, 1); assert.match(meta(sheet)[0], /"charts":\[\{"type":"combo","title":"Costs by quarter","range":"A1:G5","stacked":true,"secondary":true,"y2title":"Share","xtitle":"Item","labels":true\}\]/);
-assert.deepEqual(js[6], [true, true, 2, true]);
-console.log('  ✓ sheet: combo with a secondary axis, axis titles and value labels are saved with the chart and drawn');
-assert.deepEqual(js[7], [0, 1]);
+assert.equal(meta(sheet).length, 1); assert.match(meta(sheet)[0], /"charts":\[\{"type":"combo","title":"Costs by quarter","range":"A1:G5","stacked":true,"lines":"Q3, Q4","secondary":true,"y2title":"Share","xtitle":"Item","labels":true\}\]/);
+assert.deepEqual(js[7], [true, true, 2, true]);
+console.log('  ✓ sheet: combo with two line series on a secondary axis, axis titles and value labels are saved with the chart and drawn');
+assert.deepEqual(js[8], [0, 1]);
 console.log('  ✓ sheet: a donut hides the axis fields and draws its total');
 fs.rmSync(tmp, { recursive: true, force: true });

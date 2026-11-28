@@ -268,7 +268,10 @@ export async function importPowerPoint(buf, { name = 'Presentation', template = 
       const T = { barChart: el.barDir === 'bar' ? 'bar' : 'column', bar3DChart: 'column', lineChart: 'line', line3DChart: 'line', areaChart: 'area', area3DChart: 'area', pieChart: 'pie', pie3DChart: 'pie', doughnutChart: 'donut', scatterChart: 'scatter' };
       const items = el.data || []; const cats = items[0]?.values?.map((v) => items[0].xlabels?.[v.x] ?? v.x) || [];
       if (!items.length) return [];
-      const table = [`| | ${items.map((s) => s.key).join(' | ')} |`, `|---|${items.map(() => '---').join('|')}|`, ...cats.map((c, i) => `| ${c} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)];
+      // a scatter's x values are data, not categories: Folio reads them from the first series column
+      const table = el.chartType === 'scatterChart'
+        ? [`| Point | X | ${items.map((s) => s.key).join(' | ')} |`, `|---|---|${items.map(() => '---').join('|')}|`, ...items[0].values.map((v, i) => `| ${i + 1} | ${v.x ?? ''} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)]
+        : [`| | ${items.map((s) => s.key).join(' | ')} |`, `|---|${items.map(() => '---').join('|')}|`, ...cats.map((c, i) => `| ${c} | ${items.map((s) => s.values[i]?.y ?? '').join(' | ')} |`)];
       return [`::: box ${attrs({ [own(el, 'c')]: 1, ...geo })}\n\`\`\`chart\ntype: ${T[el.chartType] || 'column'}\n${(el.grouping || el.barGrouping) === 'stacked' ? 'stacked: true\n' : ''}data:\n${table.join('\n')}\n\`\`\`\n:::`];
     }
     // shapes and text boxes

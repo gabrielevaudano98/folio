@@ -1098,6 +1098,8 @@ a.md-card:hover { box-shadow: inset 0 0 0 0.5px var(--color-rule-strong); }
 .sh-chart-head .input { flex: 1; height: 30px; min-width: 0; font-size: var(--text-sm); }
 .sh-chart-head .select { width: 7.5rem; height: 30px; font-size: var(--text-sm); }
 .sh-chart-axes { display: flex; gap: var(--space-2xs); align-items: center; }
+.sh-chart-lines { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); margin: 0; padding: 0; border: 0; }
+.sh-chart-lines legend { width: 100%; padding: 0; margin-bottom: var(--space-3xs); font-size: var(--text-sm); color: var(--color-muted); }
 .sh-chart-axes .input, .sh-chart-axes .select { flex: 1; height: 30px; min-width: 0; font-size: var(--text-sm); }
 
 /* rich editor: drawn blocks */

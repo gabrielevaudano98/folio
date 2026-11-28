@@ -11,7 +11,7 @@ const ws = path.join(tmp, 'ws'), ud = path.join(tmp, 'ud'), out = path.join(tmp,
 fs.cpSync(new URL('./fixture', import.meta.url), ws, { recursive: true }); fs.mkdirSync(ud); fs.mkdirSync(out);
 fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ workspace: ws, openTabs: [], mcpPort: 47672 }));
 const data = 'data:\n| Month | Revenue | Costs | Margin |\n| --- | --- | --- | --- |\n| Jan | 1200 | 800 | 33 |\n| Feb | 1500 | 900 | 40 |\n| Mar | 900 | 950 | -5 |';
-const deck = `---\nmarp: true\ntheme: folio\n---\n\n## Share\n\n\`\`\`chart\ntype: donut\ntitle: Revenue share\nlabels: true\ndata:\n| Month | Revenue |\n| --- | --- |\n| Jan | 1200 |\n| Feb | 1500 |\n| Mar | 900 |\n\`\`\`\n\n---\n\n## Combo\n\n\`\`\`chart\ntype: combo\ntitle: Revenue and margin\nsecondary: true\nlabels: true\nxtitle: Month\nytitle: Euro\ny2title: Margin (%)\n${data}\n\`\`\`\n\n---\n\n## Bars\n\n\`\`\`chart\ntype: bar\ntitle: Costs\nxtitle: Euro\nytitle: Month\n${data}\n\`\`\`\n\n---\n\n## Area\n\n\`\`\`chart\ntype: area\nlabels: true\n${data}\n\`\`\`\n`;
+const deck = `---\nmarp: true\ntheme: folio\n---\n\n## Share\n\n\`\`\`chart\ntype: donut\ntitle: Revenue share\nlabels: true\ndata:\n| Month | Revenue |\n| --- | --- |\n| Jan | 1200 |\n| Feb | 1500 |\n| Mar | 900 |\n\`\`\`\n\n---\n\n## Combo\n\n\`\`\`chart\ntype: combo\ntitle: Revenue and margin\nsecondary: true\nlabels: true\nxtitle: Month\nytitle: Euro\ny2title: Margin (%)\n${data}\n\`\`\`\n\n---\n\n## Bars\n\n\`\`\`chart\ntype: bar\ntitle: Costs\nxtitle: Euro\nytitle: Month\n${data}\n\`\`\`\n\n---\n\n## Scatter\n\n\`\`\`chart\ntype: scatter\nlabels: true\ndata:\n| Point | Width | Height |\n| --- | --- | --- |\n| Ann | 3 | 30 |\n| Bob | 5 | 20 |\n| Cy | 9 | |\n\`\`\`\n\n---\n\n## Gaps\n\n\`\`\`chart\ntype: line\ndata:\n| Day | Visits | Sales |\n| --- | --- | --- |\n| Mon | 4 | 1 |\n| Tue | | 3 |\n| Wed | 6 | 2 |\n\`\`\`\n\n---\n\n## Pie\n\n\`\`\`chart\ntype: pie\n${data}\n\`\`\`\n\n---\n\n## Area\n\n\`\`\`chart\ntype: area\nlabels: true\n${data}\n\`\`\`\n`;
 fs.writeFileSync(path.join(ws, 'Charts.slides.md'), deck);
 
 function run(steps, env = {}) {
@@ -43,7 +43,7 @@ console.log('  ✓ the slides draw donut, combo (secondary axis, axis titles, la
 
 const zip = await JSZip.loadAsync(fs.readFileSync(path.join(out, 'Charts.pptx')));
 const charts = await Promise.all(Object.keys(zip.files).filter((f) => /^ppt\/charts\/chart\d+\.xml$/.test(f)).sort().map((f) => zip.file(f).async('string')));
-assert.equal(charts.length, 4, 'four native charts');
+assert.equal(charts.length, 7, 'seven native charts');
 const dn = charts.find((x) => x.includes('<c:doughnutChart>')); assert(dn, 'doughnut chart');
 assert.match(dn, /<c:holeSize val="58"\/>/); assert.match(dn, /<c:showVal val="1"\/>/); assert.match(dn, /<c:showPercent val="0"\/>/);
 console.log('  ✓ a donut is a native doughnut chart with its hole and value labels');
@@ -60,10 +60,18 @@ assert.match(catAx, />Month</); assert.match(valAx, />Euro</); assert.doesNotMat
 console.log('  ✓ on a bar chart the horizontal title names the value axis, the vertical one the categories');
 const ar = charts.find((x) => x.includes('<c:areaChart>')); assert(ar, 'area chart'); assert.match(ar, /<c:showVal val="1"\/>/); assert.doesNotMatch(ar, /<c:dLblPos /);
 console.log('  ✓ an area chart gets value labels without a label position (PowerPoint refuses one there)');
+const sc = charts.find((x) => x.includes('<c:scatterChart>')); assert(sc, 'scatter chart');
+assert.match(sc, /<a:t>Ann<\/a:t>[\s\S]*<a:t>Bob<\/a:t>/, 'scatter points carry their category as label'); assert.doesNotMatch(sc, /<c:showVal val="1"\/>/);
+const gp = charts.find((x) => x.includes('<c:lineChart>') && x.includes('<c:v>Visits</c:v>')); assert(gp, 'gap chart');
+assert.match(gp, /<c:pt idx="1"><c:v><\/c:v><\/c:pt>/, 'a blank cell stays blank'); assert.match(gp, /<c:dispBlanksAs val="gap"\/>/);
+const pie = charts.find((x) => x.includes('<c:pieChart>')); assert(pie, 'pie chart'); assert.equal((pie.match(/<c:ser>/g) || []).length, 1, 'a pie exports its first series only');
+console.log('  ✓ scatter labels name the points, blanks stay gaps, a pie exports the one series Folio draws');
 // and back: importing the file turns the doughnut into a donut chart block
 const r2 = await run([{ size: [1500, 950], wait: 1200 }, { js: "window.__folioRun('import-pptx');1", wait: 6000 }, { js: 'window.__folioErrors||[]', log: true, wait: 100 }], { FOLIO_IMPORT_FILE: path.join(out, 'Charts.pptx') });
 assert.deepEqual(r2.js.at(-1), [], r2.log.slice(-2000));
 const back = fs.readdirSync(ws).find((f) => /^Charts \d+\.slides\.md$/.test(f)); assert(back, 'imported deck');
 assert.match(fs.readFileSync(path.join(ws, back), 'utf8'), /\`\`\`chart\ntype: donut\n/);
-console.log('  ✓ importing the .pptx brings the doughnut back as type: donut');
+const backText = fs.readFileSync(path.join(ws, back), 'utf8'); const scat = backText.slice(backText.indexOf('type: scatter'));
+assert.match(scat, /\| Point \| X \| [^|\n]+ \|\n\|---\|---\|---\|\n\| 1 \| 3 \| 30 \|\n\| 2 \| 5 \| 20 \|/, 'scatter x values come back as the first series');
+console.log('  ✓ importing the .pptx brings the doughnut back as type: donut and keeps scatter x values');
 fs.rmSync(tmp, { recursive: true, force: true });

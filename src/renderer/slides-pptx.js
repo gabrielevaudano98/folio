@@ -545,8 +545,9 @@ async function chart(ctx, el, out) {
   const scs = getComputedStyle(el.closest('section.slide'));
   const shades = [1, 2, 3, 4, 5, 6].map((n) => cssColor(scs.getPropertyValue('--ch-' + n).trim())?.hex).filter(Boolean);
   const ink = cssColor(scs.color)?.hex || '1F1F1F', muted = cssColor(scs.getPropertyValue('--sl-muted').trim())?.hex || '6B6B6B', rule = cssColor(scs.getPropertyValue('--sl-rule').trim())?.hex || 'DDDDDD';
-  const row = (se) => ({ name: se.name, labels: categories, values: se.values.map((v) => v ?? 0) });
-  const data = type === 'scatter' ? [{ name: 'X', values: series[0]?.values || [] }, { name: series[1]?.name || 'Y', values: (series[1] || series[0])?.values || [] }] : series.map(row);
+  // blank cells stay blank (a gap, as Folio draws them); a pie or donut shows the first series only, as Folio does
+  const row = (se) => ({ name: se.name, labels: categories, values: se.values.map((v) => (round ? v ?? 0 : v ?? null)) });
+  const data = type === 'scatter' ? [{ name: 'X', values: series[0]?.values || [] }, { name: series[1]?.name || 'Y', values: (series[1] || series[0])?.values || [], ...(labels ? { labels: categories } : {}) }] : (round ? series.slice(0, 1) : series).map(row);
   const body = pickFont(scs.fontFamily);
   // axis titles: xtitle is the horizontal axis, so on a bar chart (categories run down) it names the value axis
   const xT = round ? '' : String(spec.xtitle || '').trim(), yT = round ? '' : String(spec.ytitle || '').trim();
@@ -559,7 +560,10 @@ async function chart(ctx, el, out) {
     showTitle: !!spec.title, title: spec.title || '', titleFontSize: 14, titleFontFace: body, catAxisLabelColor: muted, valAxisLabelColor: muted, legendColor: ink, titleColor: ink,
     catAxisLabelFontFace: body, valAxisLabelFontFace: body, showPercent: round && !labels, dataLabelColor: ink, valGridLine: { color: rule, size: 0.5 }, catGridLine: { style: 'none' },
     ...(catT ? { showCatAxisTitle: true, catAxisTitle: catT } : {}), ...(valT ? { showValAxisTitle: true, valAxisTitle: valT } : {}), ...(catT || valT ? axisTitle : {}),
-    ...(labels ? { showValue: true, dataLabelFontFace: body, dataLabelFontSize: 10, dataLabelFormatCode: 'General', dataLabelPosition: round ? 'bestFit' : type === 'bar' ? barLabelPos : type === 'scatter' ? 'r' : type === 'line' ? 't' : undefined } : {}), // area charts take no label position
+    displayBlanksAs: 'gap',
+    // a scatter point is labelled with its category (as Folio draws it), through custom labels on the y series
+    ...(labels && type === 'scatter' ? { dataLabelFormatScatter: 'custom', showLabel: true } : {}),
+    ...(labels ? { showValue: type !== 'scatter', dataLabelFontFace: body, dataLabelFontSize: 10, dataLabelFormatCode: 'General', dataLabelPosition: round ? 'bestFit' : type === 'bar' ? barLabelPos : type === 'scatter' ? 'r' : type === 'line' ? 't' : undefined } : {}), // area charts take no label position
     ...(type === 'doughnut' ? { holeSize: 58 } : {}),
   };
   if (spec.type !== 'combo') { out.chart(ctx.pptx.ChartType[type], data, opts); return; }

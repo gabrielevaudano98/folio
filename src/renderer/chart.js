@@ -180,10 +180,12 @@ export function chartSvg({ categories, series }, spec, { width = 640, height = 3
   const left = (horizontal ? Math.min(160, 12 + Math.max(...categories.map((c) => c.length)) * 7) : 54) + (yTitle ? 18 : 0), right = secondary ? 50 + (y2Title ? 18 : 0) : labels && horizontal && !spec.stacked ? 40 : 12;
   const pw = width - left - right, ph = height - top - bottom;
   let all = series.flatMap((s) => s.values.filter((v) => v != null));
+  // stacked: positives pile up from 0, negatives pile down from 0 (as Excel), so the axis spans both totals
+  const stackRange = (list) => categories.map((_, i) => list.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0)).concat(categories.map((_, i) => list.reduce((a, s) => a + Math.min(0, s.values[i] || 0), 0)));
   if (combo) {
     const bars = barS.flatMap((s) => s.values.filter((v) => v != null)), lines = lineS.flatMap((s) => s.values.filter((v) => v != null));
-    all = (spec.stacked ? categories.map((_, i) => barS.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0)).concat(bars.filter((v) => v < 0)) : bars).concat(secondary ? [] : lines);
-  } else if (spec.stacked && type !== 'line' && type !== 'scatter') all = categories.map((_, i) => series.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0)).concat(all.filter((v) => v < 0));
+    all = (spec.stacked ? stackRange(barS) : bars).concat(secondary ? [] : lines);
+  } else if (spec.stacked && type !== 'line' && type !== 'scatter') all = stackRange(series);
   // axis titles: the horizontal one under the axis, the vertical ones turned along their axis
   const axisTitles = (xTitle ? `<text class="ch-axis" x="${r1(left + pw / 2)}" y="${top + ph + 34}" text-anchor="middle">${esc(xTitle)}</text>` : '')
     + (yTitle ? `<text class="ch-axis" transform="translate(13,${r1(top + ph / 2)}) rotate(-90)" text-anchor="middle">${esc(yTitle)}</text>` : '')
@@ -222,10 +224,11 @@ export function chartSvg({ categories, series }, spec, { width = 640, height = 3
   const zero = V(0);
   const bars = (list) => {
     const k = spec.stacked ? 1 : list.length, bw = Math.max(2, (band * 0.72) / k);
-    const acc = new Array(n).fill(0);
+    const up = new Array(n).fill(0), down = new Array(n).fill(0);
     list.forEach(({ s, si }, bi) => s.values.forEach((v, i) => {
       if (v == null) return;
-      const off = spec.stacked ? V(acc[i] + Math.max(v, 0)) - V(acc[i]) : 0;
+      const acc = v < 0 ? down : up;
+      const off = spec.stacked ? V(acc[i] + v) - V(acc[i]) : 0;
       const base = spec.stacked ? V(acc[i]) : zero, len = spec.stacked ? off : V(v) - zero;
       const pos = band * i + band * 0.14 + (spec.stacked ? 0 : bi * bw);
       const thick = (spec.stacked ? band * 0.72 : bw) - 1;
@@ -235,10 +238,11 @@ export function chartSvg({ categories, series }, spec, { width = 640, height = 3
       if (labels) {
         const txt = fmt(v);
         if (spec.stacked) { if (Math.abs(len) >= (horizontal ? txt.length * 6.4 + 6 : 14)) g += horizontal ? valText(txt, left + base + len / 2, top + pos + thick / 2 + 4, 'middle') : valText(txt, left + pos + thick / 2, top + ph - base - len / 2 + 4, 'middle', thick + 8); }
-        else if (horizontal) g += valText(txt, left + V(v) + (v < 0 ? -4 : 4), top + pos + thick / 2 + 4, v < 0 ? 'end' : 'start');
-        else g += valText(txt, left + pos + thick / 2, top + ph - V(v) + (v < 0 ? 12 : -4), 'middle', band / k);
+        // past the bar end; a negative bar that reaches the axis edge takes its label inside, clear of the category labels
+        else if (horizontal) { const after = v >= 0 || V(v) < txt.length * 6.4 + 8; g += valText(txt, left + V(v) + (after ? 4 : -4), top + pos + thick / 2 + 4, after ? 'start' : 'end'); }
+        else { const below = v < 0 && V(v) >= 16; g += valText(txt, left + pos + thick / 2, top + ph - V(v) + (below ? 12 : -4), 'middle', band / k); }
       }
-      if (spec.stacked) acc[i] += Math.max(v, 0);
+      if (spec.stacked) acc[i] += v;
     }));
   };
   const lines = (list, Vs) => {
@@ -246,7 +250,13 @@ export function chartSvg({ categories, series }, spec, { width = 640, height = 3
     list.forEach(({ s, si }) => {
       const pts = s.values.map((v, i) => (v == null ? null : [left + band * (i + 0.5), top + ph - Vs(v)]));
       const d = pts.reduce((acc, p, i) => (p ? acc + `${acc && pts[i - 1] ? 'L' : 'M'}${p[0]},${p[1]} ` : acc), '');
-      if (type === 'area') { const first = pts.find(Boolean), last = [...pts].reverse().find(Boolean); g += `<path class="ch-area" d="${d} L${last[0]},${top + ph - z} L${first[0]},${top + ph - z}Z" style="fill:var(--ch-${(si % 6) + 1})"/>`; }
+      if (type === 'area') {
+        // each run of points between blank cells is filled down to the baseline on its own
+        const runs = []; pts.forEach((p, i) => { if (p) (pts[i - 1] && runs.length ? runs.at(-1) : runs[runs.push([]) - 1]).push(p); });
+        const fill = (dd, a, b) => `<path class="ch-area" d="${dd} L${b[0]},${top + ph - z} L${a[0]},${top + ph - z}Z" style="fill:var(--ch-${(si % 6) + 1})"/>`;
+        if (runs.length <= 1) { const first = pts.find(Boolean), last = [...pts].reverse().find(Boolean); g += fill(d, first, last); }
+        else for (const r of runs) g += fill(r.map((p, j) => `${j ? 'L' : 'M'}${p[0]},${p[1]} `).join(''), r[0], r.at(-1));
+      }
       g += `<path class="ch-line" d="${d}" style="stroke:var(--ch-${(si % 6) + 1})"/>`;
       pts.forEach((p, i) => { if (p) g += `<g><title>${esc(s.name)}, ${esc(categories[i])}: ${fmt(s.values[i])}</title>${mark(MARKS[si % 6], p[0], p[1], si)}</g>`; });
       if (labels) pts.forEach((p, i) => { if (p) g += valText(fmt(s.values[i]), p[0], p[1] - 9, 'middle', band); });
