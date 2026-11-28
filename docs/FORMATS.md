@@ -9,6 +9,8 @@ Every Folio document is a Markdown file. The type comes from the file name.
 | `name.board.md` | Board (board-md) | draw.io-style canvas |
 | `name.sheet.md` | Sheet (sheet-md) | Excel-style grid, Kanban |
 
+Line endings: Folio keeps a file's line endings. A file written with CRLF only stays CRLF when the page editor rewrites a block, and when an AI change is accepted, rejected or edited in the Review sheet; a file with mixed endings is never converted.
+
 ## References between documents
 
 Any document can point at a part of another one. References are plain text, so they work in pages, slides (flow text and boxes), and anything an AI writes.

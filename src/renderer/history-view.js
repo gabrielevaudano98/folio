@@ -12,7 +12,7 @@ export function dayLabel(t, now = Date.now()) {
   if (days === 0) return 'Today'; if (days === 1) return 'Yesterday';
   return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() !== n.getFullYear() ? { year: 'numeric' } : {}) });
 }
-const REASON = { git: tl('hist', 'Git commit'), open: tl('hist', 'Saved before editing'), created: 'Created', 'before-ai': tl('hist', 'Before an AI edit'), ai: tl('hist', 'AI edit'), 'before-restore': tl('hist', 'Before a restore'), 'before-rename': tl('hist', 'Before links were updated'), restore: 'Restored', named: tl('hist', 'Named version'), close: 'Closed', edit: '' };
+const REASON = { git: tl('hist', 'Git commit'), open: tl('hist', 'Saved before editing'), created: 'Created', 'before-ai': tl('hist', 'Before an AI edit'), ai: tl('hist', 'AI edit'), review: tl('hist', 'AI changes reviewed'), 'before-restore': tl('hist', 'Before a restore'), 'before-rename': tl('hist', 'Before links were updated'), restore: 'Restored', named: tl('hist', 'Named version'), close: 'Closed', edit: '' };
 const who = (v) => (v.by === 'you' ? 'You' : v.by);
 const initial = (v) => (who(v)[0] || '?').toUpperCase();
 const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };

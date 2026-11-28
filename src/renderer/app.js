@@ -1,6 +1,6 @@
 // Folio — renderer.
 import { diffLines } from 'diff';
-import { splitHunks, settleHunk } from './ai-hunks.js';
+import { splitHunks, settleHunk, hunkDraft, hunkEditText } from './ai-hunks.js';
 import { createEditor } from './editor.js';
 import { EditorView } from '@codemirror/view';
 import { undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirror/commands';
@@ -1729,12 +1729,23 @@ async function undoAi(p = S.active) {
     toast(tr('app.restored-p-to-how-it-was-before-client', { p: stem(p), client: rec.client }));
   } catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); }
 }
+/** the hunks the review sheet shows now, with the two texts they were computed from: a button settles a hunk only while both still hold */
+let diffView = null;
+const hunkKey = (h) => h.old + '\u0000' + h.new;
 function openDiff(p = S.active) {
   const rec = S.aiEdits.get(p); if (!rec) return;
-  const cur = activeTab()?.text ?? rec.after;
-  const { items, count } = splitHunks(rec.before ?? '', cur);
+  const cur = tabOf(p)?.text ?? rec.after;
+  const before = rec.before ?? '';
+  const { items, count } = splitHunks(before, cur);
+  const d = $('#sheet-diff');
+  // a rebuild (another AI edit, a reload from disk, a settled change) keeps what the reader was typing into a change that still reads the same
+  const drafts = new Map();
+  if (d.open && d.dataset.path === p && diffView) for (const ta of d.querySelectorAll('.diff-hunk-edit textarea')) {
+    const h = diffView.hunks.get(Number(ta.dataset.hunkId)); if (h) drafts.set(hunkKey(h), { value: ta.value, focused: document.activeElement === ta });
+  }
+  diffView = { path: p, before, cur, hunks: new Map(items.filter((it) => it.type === 'hunk').map((it) => [it.id, it])) };
   const row = (cls, n, sign, l) => `<div class="diff-line ${cls}"><span class="n">${n}</span><span class="s">${sign}</span><span class="t">${esc(l) || ' '}</span></div>`;
-  const lines = (t) => t.replace(/\n$/, '').split('\n');
+  const lines = (t) => t.replace(/\r?\n$/, '').split(/\r?\n/);
   let a = 1, b = 1; const rows = [];
   items.forEach((it, idx) => {
     if (it.type === 'same') {
@@ -1746,13 +1757,15 @@ function openDiff(p = S.active) {
       a += ls.length; b += ls.length; return;
     }
     const del = it.old ? lines(it.old) : [], add = it.new ? lines(it.new) : [];
-    rows.push(`<div class="diff-hunk" data-hunk="${it.id}">`
+    const label = tr('app.hunk-label', { i: it.id + 1, n: count });
+    rows.push(`<div class="diff-hunk" data-hunk="${it.id}" role="group" aria-label="${esc(label)}">`
       + del.map((l, i) => row('del', a + i, '−', l)).join('') + add.map((l, i) => row('add', b + i, '+', l)).join('')
-      + `<div class="diff-hunk-actions"><button class="btn" type="button" data-hunk-act="reject" data-hunk-id="${it.id}">${tr('app.hunk-reject')}</button><button class="btn" type="button" data-hunk-act="accept" data-hunk-id="${it.id}">${tr('app.hunk-accept')}</button></div></div>`);
+      + `<div class="diff-hunk-actions"><button class="btn" type="button" data-hunk-act="reject" data-hunk-id="${it.id}">${tr('app.hunk-reject')}</button>`
+      + `<button class="btn" type="button" data-hunk-act="edit-open" data-hunk-id="${it.id}" aria-expanded="false">${tr('app.hunk-edit')}</button>`
+      + `<button class="btn" type="button" data-hunk-act="accept" data-hunk-id="${it.id}">${tr('app.hunk-accept')}</button></div></div>`);
     a += del.length; b += add.length;
   });
-  const stats = lineChanges(rec.before, cur);
-  const d = $('#sheet-diff');
+  const stats = lineChanges(before, cur);
   d.dataset.path = p;
   d.innerHTML = `
     <div class="sheet-head"><div><h2 id="diff-title">${esc(tr('app.changes-by', { client: rec.client }))}</h2><p>${esc(tr('app.compared-with-before', { path: p }))} · ${esc(tr('app.hunks-pending', { count, n: count }))}</p></div>
@@ -1760,16 +1773,65 @@ function openDiff(p = S.active) {
     <div class="sheet-body"><div class="diff-summary"><span>+ ${stats.added} added</span><span>− ${stats.removed} removed</span></div><div class="diff">${rows.join('')}</div></div>
     <div class="sheet-foot"><button class="btn" type="button" data-diff="undo">${tr('app.undo-all-changes')}</button><button class="btn btn-primary" type="button" data-diff="keep">${tr('app.keep-changes')}</button></div>`;
   if (!d.open) d.showModal();
-  (d.querySelector('[data-hunk-act="accept"]') || d.querySelector('[data-diff="keep"]')).focus();
+  let focus = null;
+  for (const [id, h] of diffView.hunks) { const kept = drafts.get(hunkKey(h)); if (kept) { const ta = openHunkEditor(id, kept.value); if (kept.focused || !focus) focus = ta; } }
+  (focus || d.querySelector('[data-hunk-act="accept"]') || d.querySelector('[data-diff="keep"]')).focus();
 }
-/** Accept or reject one change of the AI edit on `p`; rejecting writes the old lines back. */
-async function settleAiHunk(p, id, action) {
+/** show the editor for the proposed text of one change, under its lines; returns its text box */
+function openHunkEditor(id, value) {
+  const d = $('#sheet-diff'), box = d.querySelector(`.diff-hunk[data-hunk="${id}"]`), h = diffView?.hunks.get(id);
+  if (!box || !h) return null;
+  let ed = box.querySelector('.diff-hunk-edit');
+  if (!ed) {
+    ed = document.createElement('div'); ed.className = 'diff-hunk-edit';
+    const draft = hunkDraft(h);
+    ed.innerHTML = `<textarea spellcheck="false" data-hunk-id="${id}" aria-label="${esc(tr('app.hunk-edit-label', { i: id + 1 }))}" aria-describedby="diff-edit-hint-${id}" rows="${Math.min(12, Math.max(2, draft.split('\n').length + 1))}"></textarea>`
+      + `<div class="diff-hunk-edit-foot"><span class="diff-hunk-edit-hint" id="diff-edit-hint-${id}">${esc(tr('app.hunk-edit-hint', { key: keyLabel('Mod+Enter') }))}</span>`
+      + `<button class="btn" type="button" data-hunk-act="edit-cancel" data-hunk-id="${id}">${tr('app.cancel')}</button>`
+      + `<button class="btn btn-primary" type="button" data-hunk-act="edit" data-hunk-id="${id}">${tr('app.hunk-accept-edit')}</button></div>`;
+    ed.querySelector('textarea').value = value ?? draft;
+    box.querySelector('.diff-hunk-actions').before(ed);
+  }
+  box.querySelector('[data-hunk-act="edit-open"]')?.setAttribute('aria-expanded', 'true');
+  return ed.querySelector('textarea');
+}
+function closeHunkEditor(id) {
+  const box = $(`#sheet-diff .diff-hunk[data-hunk="${id}"]`); if (!box) return;
+  box.querySelector('.diff-hunk-edit')?.remove();
+  const btn = box.querySelector('[data-hunk-act="edit-open"]'); btn?.setAttribute('aria-expanded', 'false'); btn?.focus();
+}
+/** a button of the review sheet: open or close a change's editor, or settle the change (all buttons wait while a write runs) */
+function hunkAction(btn) {
+  const id = Number(btn.dataset.hunkId), act = btn.dataset.hunkAct;
+  if (act === 'edit-open') { if (btn.getAttribute('aria-expanded') === 'true') closeHunkEditor(id); else openHunkEditor(id)?.focus(); return; }
+  if (act === 'edit-cancel') { closeHunkEditor(id); return; }
+  const value = act === 'edit' ? $(`#sheet-diff .diff-hunk-edit textarea[data-hunk-id="${id}"]`)?.value : undefined;
+  if (act === 'edit' && value == null) return;
+  const all = () => $$('#sheet-diff [data-hunk-act]');
+  all().forEach((b) => (b.disabled = true));
+  settleAiHunk($('#sheet-diff').dataset.path, id, act, value).finally(() => all().forEach((b) => (b.disabled = false)));
+}
+/** Accept, reject or edit one change of the AI edit on `p`. Rejecting writes the old lines back; editing writes the reader's text in the change's place. */
+async function settleAiHunk(p, id, action, value) {
   const rec = S.aiEdits.get(p); if (!rec) return;
   const t = tabOf(p); const cur = t?.text ?? rec.after;
-  const next = settleHunk(rec.before ?? '', cur, id, action);
+  const shown = diffView?.path === p && diffView.before === (rec.before ?? '') && diffView.cur === cur ? diffView.hunks.get(id) : null;
+  // the note changed after the sheet was drawn (an AI edit or a reload landed in between): never settle a change the reader did not see
+  if (!shown) { toast(tr('app.hunk-stale')); openDiff(p); return; }
+  const text = action === 'edit' ? hunkEditText(shown, value ?? '', cur, rec.before) : undefined;
+  const next = settleHunk(rec.before ?? '', cur, id, action, { text, expect: shown });
+  if (!next) { toast(tr('app.hunk-stale')); openDiff(p); return; }
   if (next.after !== cur) {
-    try { await folio.write(p, next.after); } catch (e) { toast(tr('app.could-not-undo-message', { message: e.message }), { kind: 'error' }); return; }
-    if (t) { t.saved = next.after; if (p === S.active) setActiveText(next.after); else t.text = next.after; }
+    try {
+      // what is on disk must still be what this tab last saved or loaded; otherwise writing would drop a change made outside Folio
+      const disk = await folio.read(p);
+      if (disk !== (t ? t.saved : rec.after)) { toast(tr('app.p-changed-on-disk-while-you-were-editi', { p: stem(p) }), { kind: 'error' }); return; }
+      if ((t?.text ?? rec.after) !== cur) { toast(tr('app.hunk-stale')); openDiff(p); return; } // typed or reloaded while the disk was read
+      // its own version in history, kept apart from the typing that follows (a plain save would be merged with it)
+      await folio.historySnapshot(p, next.after, 'review', true).catch(() => null);
+      await folio.write(p, next.after);
+    } catch (e) { toast(tr('app.hunk-write-failed', { p: stem(p), message: e.message }), { kind: 'error' }); return; }
+    if (t) { t.saved = next.after; if (p === S.active) setActiveText(next.after); else t.text = next.after; renderTabsDirty(); }
     renderPreview(); renderOutline();
   }
   rec.before = next.before; rec.after = next.after; rec.stats = lineChanges(rec.before, next.after);
@@ -2754,13 +2816,20 @@ function bindChrome() {
   // banner
   $('#ai-banner-undo').onclick = () => undoAi();
   $('#ai-banner-review').onclick = () => openDiff();
+  // in a change's editor: Mod+Enter accepts the edited text, Esc closes the editor only (not the whole review sheet, which would lose the draft)
+  $('#sheet-diff').addEventListener('keydown', (e) => {
+    const ta = e.target.closest?.('.diff-hunk-edit textarea'); if (!ta || e.isComposing) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeHunkEditor(Number(ta.dataset.hunkId)); }
+    else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); const b = $(`#sheet-diff [data-hunk-act="edit"][data-hunk-id="${ta.dataset.hunkId}"]`); if (b && !b.disabled) hunkAction(b); }
+  });
+  $('#sheet-diff').addEventListener('cancel', (e) => { if (document.activeElement?.closest?.('.diff-hunk-edit')) e.preventDefault(); });
   $('#ai-banner-close').onclick = () => dismissAi();
 
   // sheets: close buttons, settings, ai actions
   document.addEventListener('click', async (e) => {
     const close = e.target.closest('[data-close-sheet]'); if (close) close.closest('dialog').close();
     const url = e.target.closest('[data-open-url]'); if (url) folio.openExternal(url.dataset.openUrl);
-    const hk = e.target.closest('[data-hunk-act]'); if (hk) { if (hk.disabled) return; $$('#sheet-diff [data-hunk-act]').forEach((b) => (b.disabled = true)); settleAiHunk($('#sheet-diff').dataset.path, Number(hk.dataset.hunkId), hk.dataset.hunkAct).finally(() => $$('#sheet-diff [data-hunk-act]').forEach((b) => (b.disabled = false))); return; }
+    const hk = e.target.closest('[data-hunk-act]'); if (hk) { if (!hk.disabled) hunkAction(hk); return; }
     const diff = e.target.closest('[data-diff]'); if (diff) { $('#sheet-diff').close(); if (diff.dataset.diff === 'undo') undoAi(); else dismissAi(); }
     const inst = e.target.closest('[data-install]');
     if (inst) { inst.disabled = true; inst.textContent = tr('app.connecting'); try { const r = await folio.install(inst.dataset.install); toast(tr('app.connected-restart', { restart: r.restart })); } catch (er) { toast(er.message, { kind: 'error' }); } openAiSheet(); }
@@ -2841,7 +2910,10 @@ function bindIpc() {
     if (p !== S.active) backlinksSoon();
     if (p !== S.active && /\{\{|!\[\[|```chart/.test(activeTab()?.text || '')) { renderPreview(); curSurface()?.refresh?.(); }
     const t = tabOf(p); if (!t || content === t.saved) return;
-    if (t.text === t.saved) { t.saved = content; if (p === S.active) { setActiveText(content); renderPreview(); renderOutline(); } else t.text = content; }
+    if (t.text === t.saved) {
+      t.saved = content; if (p === S.active) { setActiveText(content); renderPreview(); renderOutline(); } else t.text = content;
+      const dd = $('#sheet-diff'); if (dd.open && dd.dataset.path === p && S.aiEdits.has(p)) openDiff(p); // the review shows the text as it is now
+    }
     else toast(tr('app.p-changed-on-disk-while-you-were-editi', { p: stem(p) }), { action: [tr('app.use-disk-version'), () => { t.saved = content; if (p === S.active) setActiveText(content); else t.text = content; }] });
   });
   folio.onAiEdit(onAiEdit);

@@ -40,7 +40,7 @@ copilot (area 28), streaming export of very large workbooks.
 
 ## Next: v1.3 AI-native
 
-- Accept or reject each AI change [#18](https://github.com/gabrielevaudano98/folio/issues/18) (assistants can already propose with `suggest_edit`).
+- Accept, reject or edit each AI change [#18](https://github.com/gabrielevaudano98/folio/issues/18): shipped in the Review sheet (edit the proposed text of a change, then accept it; assistants can also propose with `suggest_edit`).
 - Structured MCP tools for boards (slides done, sheets on the Univer branch) [#19](https://github.com/gabrielevaudano98/folio/issues/19).
 - Ask your AI from inside Folio [#20](https://github.com/gabrielevaudano98/folio/issues/20).
 

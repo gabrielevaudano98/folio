@@ -215,6 +215,25 @@ assert.equal(replaceImageSrc('![Cover](assets/a.png "t"){x=1 y=2 w=3 h=4}', 0, '
   }
   ok(`page corpus (${corpus.length} files): opening is byte-identical, editing a paragraph rewrites only that paragraph`);
 
+  { // a CRLF page stays CRLF: what the editor writes (an edited, inserted or re-serialized block) uses the page's line ending
+    const page = '# Title\r\n\r\nFirst para.\r\n\r\n- one\r\n- two\r\n\r\nLast para.\r\n';
+    const { m, doc, kids } = open(page);
+    assert.equal(codec.save(m, doc), page, 'opening a CRLF page changes nothing');
+    const edited = kids.slice(); edited[1] = para('First edited.');
+    assert.equal(codec.save(m, withKids(edited)), page.replace('First para.', 'First edited.'));
+    const added = [...kids.slice(0, 3), para('Inserted.'), ...kids.slice(3)];
+    assert.equal(codec.save(m, withKids(added)), page.replace('- two\r\n\r\n', '- two\r\n\r\nInserted.\r\n\r\n'));
+    const tail = [...kids, para('New last.')];
+    assert.equal(codec.save(m, withKids(tail)), page + '\r\nNew last.\r\n');
+    m.orig = null; const all = codec.save(m, withKids(kids.map((k) => schema.nodeFromJSON(k.toJSON()))));
+    assert.ok(!/(^|[^\r])\n/.test(all), 'an unbound save writes CRLF too: ' + JSON.stringify(all));
+    // a page with mixed endings is not converted: the editor's own text keeps LF, as before
+    const mixed = '# T\r\n\r\nA.\n\nB.\r\n';
+    const mx = open(mixed); const e2 = mx.kids.slice(); e2[1] = para('A2.');
+    assert.equal(codec.save(mx.m, withKids(e2)), '# T\n\nA2.\n\nB.\r\n');
+  }
+  ok('a CRLF page keeps CRLF when a paragraph is edited, inserted or the page is written whole');
+
   // W2-B: a date mention with a time, an end or a reminder is plain text after the day link: lossless, editable, and rewriting
   // the paragraph writes the same characters back (Folio writes →; a hand-typed -> is read, see FORMATS.md)
   {

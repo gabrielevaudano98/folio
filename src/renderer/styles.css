@@ -2116,6 +2116,11 @@ button.prop-key:hover { background: var(--color-hover); color: var(--color-ink);
 img.remote-blocked { display: inline-block; min-width: 8em; min-height: 3em; outline: 1px dashed var(--color-rule-strong); outline-offset: -1px; }
 .diff-hunk { position: relative; border-block: 1px solid var(--color-rule); }
 .diff-hunk-actions { display: flex; justify-content: flex-end; gap: var(--space-xs); padding: var(--space-2xs) var(--space-sm); background: var(--color-paper-3); }
+.diff-hunk-edit { display: grid; gap: var(--space-2xs); padding: var(--space-xs) var(--space-sm); background: var(--color-paper-3); border-top: 1px solid var(--color-rule); }
+.diff-hunk-edit textarea { width: 100%; resize: vertical; padding: var(--space-2xs) var(--space-xs); border: 1px solid var(--color-rule-strong); border-radius: var(--radius-sm); background: var(--color-paper); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.6; color: var(--color-ink); white-space: pre; overflow-wrap: normal; }
+.diff-hunk-edit textarea:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; }
+.diff-hunk-edit-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-xs); }
+.diff-hunk-edit-hint { margin-right: auto; color: var(--color-muted); font-family: var(--font-sans); font-size: var(--text-xs); }
 
 /* quiet chrome while writing: the ribbon and the side panels step back; any pointer movement brings them back */
 .app .ribbon, .app #sidebar, .app #outline, .app .titlebar { transition: opacity var(--dur-long) var(--ease-out); }

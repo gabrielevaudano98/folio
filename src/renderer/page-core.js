@@ -169,8 +169,11 @@ export function createPageCodec(md) {
 
   function save(model, doc) {
     const cur = []; doc.forEach((n) => cur.push(n));
+    // a page written with CRLF only gets CRLF in what the editor writes too (blocks kept verbatim keep theirs anyway)
+    const crlf = /\r\n/.test(model.text) && !/(^|[^\r])\n/.test(model.text);
+    const nl = (t) => (crlf ? t.replace(/\r?\n/g, '\r\n') : t);
     // not bound (the editor reshaped the document): fall back to writing everything, still keeping front matter
-    if (!model.orig) return model.fm + (serialize(cur, model.style) ? serialize(cur, model.style) + '\n' : '');
+    if (!model.orig) { const all = serialize(cur, model.style); return model.fm + (all ? nl(all + '\n') : ''); }
     const same = cur.length === model.orig.length && cur.every((n, i) => n === model.orig[i] || n.eq(model.orig[i]));
     if (same) return model.text;
 
@@ -184,7 +187,7 @@ export function createPageCodec(md) {
     }
     // group into pieces: whole original blocks are written verbatim, everything else is serialized in runs
     const pieces = []; let run = [];
-    const flush = () => { if (!run.length) return; const t = serialize(run, model.style); if (t) pieces.push({ text: t, k: null }); run = []; };
+    const flush = () => { if (!run.length) return; const t = serialize(run, model.style); if (t) pieces.push({ text: nl(t), k: null }); run = []; };
     for (let j = 0; j < items.length; j++) {
       const it = items[j];
       if (it.i != null && it.i >= model.owner.length) continue; // the editor's own empty paragraph at the end
@@ -203,8 +206,8 @@ export function createPageCodec(md) {
     pieces.forEach((p, n) => {
       out += p.text;
       const next = pieces[n + 1];
-      if (next) out += p.k != null && next.k === p.k + 1 ? model.blocks[p.k].sep : '\n\n';
-      else out += p.k === model.blocks.length - 1 ? model.blocks[p.k].sep : '\n';
+      if (next) out += p.k != null && next.k === p.k + 1 ? model.blocks[p.k].sep : nl('\n\n');
+      else out += p.k === model.blocks.length - 1 ? model.blocks[p.k].sep : nl('\n');
     });
     if (!pieces.length) out = model.lead.trim() ? model.lead : '';
     return model.fm + out;

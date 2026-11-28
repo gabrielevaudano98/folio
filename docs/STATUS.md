@@ -54,7 +54,9 @@ Version history of what landed is in [ROADMAP.md](ROADMAP.md#shipped). By area:
   Excel, several sheets, Kanban view, charts, `.xlsx` and CSV export.
 - **AI**: MCP server on `127.0.0.1:47321` with token and Host/Origin checks, stdio bridge inside the app binary, one-click
   setup for Claude Desktop, Cursor, VS Code, Windsurf, LM Studio and a command for Claude Code; 52 tools
-  ([reference](reference/mcp-tools.md)); every AI write is highlighted with Undo and kept in version history.
+  ([reference](reference/mcp-tools.md)); every AI write is highlighted with Undo and kept in version history; the Review
+  sheet accepts, rejects or edits each change ([#18](https://github.com/gabrielevaudano98/folio/issues/18)), never settles a
+  change the note no longer shows, and keeps the reviewed text as its own version.
 - **Meeting recorder** ([explanation](explanation/meeting-recorder.md)): optional download, local Whisper transcription,
   notes checked against the transcript, one-click start, offer to record when a call starts.
 - **Safety**: workspace boundary, atomic writes, sandboxed window with strict CSP, web images only when asked, pinned
@@ -137,6 +139,7 @@ About 30 remote branches belong to merged pull requests (`release-*`, `fix-*`, `
 | `Mod+Alt+C` fires two commands; a sidebar drop on a note goes to the root; the interface uses content colours (F4–F6) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | Paste as plain text fails on Electron 45 (`clipboard:read`) | UI | PR #77 | [#81](https://github.com/gabrielevaudano98/folio/issues/81) |
 | The same delayed-change problem in the slides, board and sheet surfaces: a change they report after a pause is applied to whichever tab is then active (the page editor is fixed). Found in review of the #82 fix; not reproduced yet | Possible data loss | Needs surfaces to name their document, as `d6ca0df` does for sheets | [#82](https://github.com/gabrielevaudano98/folio/issues/82) |
+| Fixed with #18: the page editor wrote LF around a block it rewrote in a CRLF page (mixed line endings after typing, or after an undo) | Unrelated bytes change (invariant 1) | `page-core.js` save uses the page's line ending; test in `formats.test.mjs` | [#18](https://github.com/gabrielevaudano98/folio/issues/18) |
 | Startup and opening a long page go over the 100 ms budget | Responsiveness | — | [#90](https://github.com/gabrielevaudano98/folio/issues/90) |
 
 ## Not started
